@@ -27,6 +27,7 @@
   "dependencies": {
     "@automerge/automerge-repo-react-hooks": "catalog:",
     "@automerge/react": "catalog:",
+    "@patchwork/bootloader": "workspace:^",
     "@patchwork/filesystem": "workspace:^",
     "@patchwork/plugins": "workspace:^",
     "@tldraw/tldraw": "2.0.0-alpha.17",

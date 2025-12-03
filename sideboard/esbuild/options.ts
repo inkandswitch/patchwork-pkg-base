@@ -1,10 +1,10 @@
 import type { BuildOptions, Plugin } from "esbuild";
-import dynamicExternal from "./plugin-dynamic-external.ts";
 import process from "node:process";
 import { solid } from "./plugin-solid.ts";
 import pushworkSync from "./plugin-pushwork-sync.ts";
 import pkgJSON from "../package.json" with { type: "json" };
 import { existsSync, rmSync } from "node:fs";
+import externals from "@patchwork/bootloader/externals";
 
 const pushworking = process.argv.includes("pushwork") || process.env.PUSHWORK;
 
@@ -19,10 +19,8 @@ export default {
   splitting: false,
   logLevel: "debug",
   sourcemap: !pushworking,
+  external: externals,
   plugins: [
-    dynamicExternal(
-      /^((@automerge\/automerge(-repo)?)|@patchwork\/.*|solid-js|solid-js\/(h|html|web|store))$/
-    ),
     solid(),
     {
       name: "empty outdir",

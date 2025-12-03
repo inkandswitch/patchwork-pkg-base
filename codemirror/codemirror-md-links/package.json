@@ -22,7 +22,8 @@
   "dependencies": {
     "@codemirror/language": "^6.11.3",
     "@codemirror/state": "^6.5.2",
-    "@codemirror/view": "^6.38.4"
+    "@codemirror/view": "^6.38.4",
+    "@patchwork/bootloader": "workspace:^"
   },
   "devDependencies": {
     "@babel/core": "^7.28.4",

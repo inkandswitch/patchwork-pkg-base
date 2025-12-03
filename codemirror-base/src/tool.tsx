@@ -3,7 +3,7 @@ import { CodeMirror } from "./lib/codemirror.tsx";
 /** CodeMirror Extensions */
 import { RangeSet, type Extension } from "@codemirror/state";
 import { Decoration, WidgetType } from "@codemirror/view";
-import { commentButtonGutter } from "./lib/comments/commentButtonGutter";
+import { commentButtonGutter } from "./lib/comments/commentButtonGutter.ts";
 
 /** Automerge */
 import type { PatchworkToolProps } from "./types.ts";

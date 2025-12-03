@@ -31,10 +31,12 @@
   "dependencies": {
     "@automerge/automerge-repo-solid-primitives": "^2.4.0",
     "@kobalte/core": "^0.13.11",
+    "@patchwork/bootloader": "workspace:^",
     "@patchwork/elements": "workspace:^",
     "solid-js": "^1.9.9"
   },
   "devDependencies": {
+    "@automerge/automerge": "catalog:",
     "@automerge/automerge-repo": "catalog:",
     "@babel/core": "7.28.4",
     "@babel/parser": "7.28.4",

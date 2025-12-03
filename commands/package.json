@@ -17,11 +17,12 @@
   },
   "dependencies": {
     "@automerge/automerge-repo-react-hooks": "catalog:",
-    "@patchwork/plugins": "workspace:^",
+    "@patchwork/bootloader": "workspace:^",
     "@patchwork/filesystem": "workspace:^",
+    "@patchwork/plugins": "workspace:^",
+    "cmdk": "^1.1.1",
     "react": "^18.3.0",
-    "react-dom": "^18.3.1",
-    "cmdk": "^1.1.1"
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@automerge/automerge-repo": "catalog:",
