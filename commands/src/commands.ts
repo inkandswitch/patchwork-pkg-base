@@ -13,8 +13,7 @@ import type {
   ModuleSettingsDoc,
 } from "@inkandswitch/patchwork-filesystem";
 import type { CommandItem } from "./CommandPalette";
-// TODO: this aint good...knows too much, will fix soon...
-import type { TinyPatchworkLayoutDoc } from "../../../sites/tiny-patchwork/src/layout-doc";
+import type { AccountDoc } from "@inkandswitch/patchwork-plugins";
 
 // Convert kebab-case to camelCase
 const toCamelCase = (str: string) => {
@@ -22,7 +21,7 @@ const toCamelCase = (str: string) => {
 };
 
 export const commands = (
-  accountDocHandle: DocHandle<TinyPatchworkLayoutDoc>,
+  accountDocHandle: DocHandle<AccountDoc>,
   repo: Repo
 ): CommandItem[] => [
   {
@@ -69,9 +68,14 @@ export const commands = (
         throw new Error("Module not found");
       }
 
-      const moduleSettingsHandle = await repo.find<ModuleSettingsDoc>(
-        accountDocHandle.doc().moduleSettingsUrl
-      );
+      const moduleSettingsUrl = accountDocHandle.doc().moduleSettingsUrl;
+      if (!moduleSettingsUrl) {
+        throw new Error(
+          "account has no moduleSettingsUrl yet; try again after the frame has finished mounting"
+        );
+      }
+      const moduleSettingsHandle =
+        await repo.find<ModuleSettingsDoc>(moduleSettingsUrl);
 
       moduleSettingsHandle.change((doc) => {
         const doesModuleAlreadyExist = doc.modules.includes(url);
@@ -102,16 +106,19 @@ export const commands = (
       const currentDocHandle = (window as any)
         .currentDocHandle as DocHandle<HasPatchworkMetadata>;
       const repo = (window as any).repo as Repo;
-      const accountDoc = (
-        window as any
-      ).accountDocHandle as DocHandle<TinyPatchworkLayoutDoc>;
+      const accountDoc = (window as any).accountDocHandle as DocHandle<AccountDoc>;
       if (!currentDocHandle || !accountDoc) {
         return;
       }
 
-      const rootFolderDocHandle = await repo.find<FolderDoc>(
-        accountDoc.doc().rootFolderUrl
-      );
+      const rootFolderUrl = accountDoc.doc().rootFolderUrl;
+      if (!rootFolderUrl) {
+        console.log(
+          "account has no rootFolderUrl yet; frame should lazy-create it on mount"
+        );
+        return;
+      }
+      const rootFolderDocHandle = await repo.find<FolderDoc>(rootFolderUrl);
 
       const originalDocLink = rootFolderDocHandle
         .doc()

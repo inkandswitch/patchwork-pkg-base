@@ -1,8 +1,41 @@
 import { Plugin, ToolImplementation } from "@inkandswitch/patchwork-plugins";
 import { render } from "solid-js/web";
-import type { TinyPatchworkConfigDoc } from "./types";
+import type { AccountDoc } from "./types";
 
 export const plugins: Plugin<any>[] = [
+  {
+    type: "patchwork:datatype",
+    id: "account",
+    name: "Patchwork Account",
+    icon: "UserCircle",
+    unlisted: true,
+    async load() {
+      const { AccountDatatype } = await import("./datatypes");
+      return AccountDatatype;
+    },
+  },
+  {
+    type: "patchwork:datatype",
+    id: "folder",
+    name: "Folder",
+    icon: "Folder",
+    unlisted: true,
+    async load() {
+      const { FolderDatatype } = await import("./datatypes");
+      return FolderDatatype;
+    },
+  },
+  {
+    type: "patchwork:datatype",
+    id: "patchwork:module-settings",
+    name: "Module Settings",
+    icon: "Settings",
+    unlisted: true,
+    async load() {
+      const { ModuleSettingsDatatype } = await import("./datatypes");
+      return ModuleSettingsDatatype;
+    },
+  },
   {
     type: "patchwork:tool",
     id: "patchwork-frame",
@@ -10,7 +43,7 @@ export const plugins: Plugin<any>[] = [
     name: "Patchwork Frame",
     icon: "Window",
     supportedDatatypes: ["account"],
-    async load(): Promise<ToolImplementation<TinyPatchworkConfigDoc>> {
+    async load(): Promise<ToolImplementation<AccountDoc>> {
       const { PatchworkFrame } = await import("./PatchworkFrame");
       return (handle, element) => {
         return render(

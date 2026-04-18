@@ -3,11 +3,11 @@ import type { ToolImplementation } from "@inkandswitch/patchwork-plugins";
 import styles from "./main.css";
 import { initCommands } from "./commands.ts";
 import type { DocHandle, Repo } from "@automerge/automerge-repo";
-import type { TinyPatchworkLayoutDoc } from "../../../sites/tiny-patchwork/src/layout-doc.ts";
+import type { AccountDoc } from "@inkandswitch/patchwork-plugins";
 
 declare global {
   interface Window {
-    accountDocHandle: DocHandle<TinyPatchworkLayoutDoc>;
+    accountDocHandle: DocHandle<AccountDoc>;
     repo: Repo;
   }
 }

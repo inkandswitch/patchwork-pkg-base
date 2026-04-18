@@ -1,7 +1,7 @@
 import { useDocHandle } from "@automerge/automerge-repo-solid-primitives";
 import type { DocHandle, Repo } from "@automerge/automerge-repo";
 import type { DocWithComments } from "@inkandswitch/annotations-comments";
-import type { TinyPatchworkConfigDoc } from "./types";
+import type { AccountDoc } from "./types";
 import {
   useSidebarState,
   useSidebarResize,
@@ -15,6 +15,7 @@ import { Sidebar } from "./components/Sidebar";
 import { DocumentToolbar } from "./components/DocumentToolbar";
 import { MainDocumentView } from "./components/MainDocumentView";
 import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
+import { ensureAccountSubdocs } from "./account/ensureSubdocs";
 import "./styles.css";
 
 // Sidebar dimensions
@@ -27,17 +28,20 @@ export const PatchworkFrame = ({
   element,
   repo,
 }: {
-  handle: DocHandle<TinyPatchworkConfigDoc>;
+  handle: DocHandle<AccountDoc>;
   element: HTMLElement | ShadowRoot;
   repo: Repo;
 }) => {
   // Track doc changes via a version counter so accountDoc() recomputes
   // on every change. We avoid useDocument/autoproduce because its store
   // proxying conflicts with Automerge array splice operations.
-  const accountDocHandle = useDocHandle<TinyPatchworkConfigDoc>(
-    () => handle.url,
-    { repo }
-  );
+  const accountDocHandle = useDocHandle<AccountDoc>(() => handle.url, { repo });
+
+  // Lazily populate subdoc fields (rootFolderUrl, moduleSettingsUrl, contactUrl)
+  // on first mount. Each is created via createDocOfDatatype2 of its own
+  // datatype, so defaults and shape are owned by the datatype, not the frame.
+  void ensureAccountSubdocs(handle, repo);
+
   const [docVersion, setDocVersion] = createSignal(0);
 
   createEffect(() => {
