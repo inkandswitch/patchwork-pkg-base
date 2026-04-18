@@ -26,17 +26,6 @@ export const plugins: Plugin<any>[] = [
     },
   },
   {
-    type: "patchwork:datatype",
-    id: "patchwork:module-settings",
-    name: "Module Settings",
-    icon: "Settings",
-    unlisted: true,
-    async load() {
-      const { ModuleSettingsDatatype } = await import("./datatypes");
-      return ModuleSettingsDatatype;
-    },
-  },
-  {
     type: "patchwork:tool",
     id: "patchwork-frame",
     tags: ["frame-tool"],
