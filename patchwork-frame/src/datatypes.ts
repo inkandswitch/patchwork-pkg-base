@@ -13,7 +13,6 @@ export const AccountDatatype: DatatypeImplementation<AccountDoc> = {
     doc.contextToolIds = ["comments-view", "history-view", "context-view"];
     doc.documentToolbarToolIds = [
       "document-title",
-      "back-link-button",
       "spacer",
       "highlight-changes-checkbox",
       "add-doc-to-sidebar-button",

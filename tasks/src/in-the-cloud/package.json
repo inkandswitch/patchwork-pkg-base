@@ -12,6 +12,6 @@
     "web-worker": "^1.5.0"
   },
   "scripts": {
-    "register": "patchwork-register-module \"$MODULE_SETTINGS_DOC_URL\" \"$(pushwork url)\""
+    "register": "pw-modules add \"$MODULE_SETTINGS_DOC_URL\" \"$(pushwork url)\""
   }
 }
