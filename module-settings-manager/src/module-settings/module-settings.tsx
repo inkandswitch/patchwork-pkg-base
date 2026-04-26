@@ -1,6 +1,6 @@
 import "../index.css";
 import { createSignal, onCleanup } from "solid-js";
-import { makeDocumentProjection } from "@automerge/automerge-repo-solid-primitives";
+import { makeDocumentProjection } from "solid-automerge";
 import type { AutomergeUrl } from "@automerge/automerge-repo";
 import type { ModuleSettingsDoc } from "@inkandswitch/patchwork-filesystem";
 import type { PatchworkToolProps } from "../types.ts";
