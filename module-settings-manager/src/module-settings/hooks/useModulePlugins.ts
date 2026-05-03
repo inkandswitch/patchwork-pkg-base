@@ -2,6 +2,7 @@ import { createMemo, createResource, mapArray, type Accessor } from "solid-js";
 import {
   isValidAutomergeUrl,
   type AutomergeUrl,
+  type Repo,
 } from "@automerge/automerge-repo";
 import { importModuleFromFolderDocUrl } from "@inkandswitch/patchwork-filesystem";
 import {
@@ -10,6 +11,10 @@ import {
   getSupportedDatatypesDisplay,
   type DatatypesDisplay,
 } from "../utils/datatypes.ts";
+import {
+  resolveModuleEntryToFolderUrl,
+  type ModuleSettingsDocWithBranches,
+} from "../utils/module-types.ts";
 import type {
   Plugin,
   PluginDescription,
@@ -17,6 +22,8 @@ import type {
 
 interface UseModulePluginsParams {
   modules: AutomergeUrl[];
+  settingsDoc: ModuleSettingsDocWithBranches;
+  repo: Repo;
   searchQuery: Accessor<string>;
   filterPluginType: Accessor<string>;
   filterDataType: Accessor<string>;
@@ -31,20 +38,42 @@ export type EnrichedPlugin = Plugin<PluginDescription> & {
 };
 
 export function useModulePlugins(params: UseModulePluginsParams) {
-  const { modules, searchQuery, filterPluginType, filterDataType, sortOrder } =
-    params;
+  const {
+    modules,
+    settingsDoc,
+    repo,
+    searchQuery,
+    filterPluginType,
+    filterDataType,
+    sortOrder,
+  } = params;
 
-  // Load all plugins from user's modules
+  // Load all plugins from user's modules. A module URL may point to a
+  // branches doc; resolve it to the chosen branch's folder/directory URL
+  // before importing. We attach the original module URL as importUrl so
+  // the table reflects what's actually listed in the settings doc.
   const modulePlugins = mapArray(
     () => modules,
     (url) => {
-      const [plugins] = createResource(
-        () => url,
-        async (url) => {
-          const module = await importModuleFromFolderDocUrl(url);
-          return module?.plugins || [];
+      // String key keeps createResource stable; only re-fetches when the URL
+      // or the chosen branch (when applicable) actually changes.
+      const sourceKey = () => `${url}|${settingsDoc.branches?.[url] ?? ""}`;
+      const [plugins] = createResource(sourceKey, async () => {
+        try {
+          const folderUrl = await resolveModuleEntryToFolderUrl(
+            repo,
+            url,
+            settingsDoc
+          );
+          if (!folderUrl) return [];
+          const module = await importModuleFromFolderDocUrl(folderUrl);
+          const plugins = (module?.plugins || []) as Plugin<PluginDescription>[];
+          return plugins.map((plugin) => ({ ...plugin, importUrl: url }));
+        } catch (error) {
+          console.error(`Failed to load plugins for ${url}`, error);
+          return [];
         }
-      );
+      });
       return plugins;
     }
   );

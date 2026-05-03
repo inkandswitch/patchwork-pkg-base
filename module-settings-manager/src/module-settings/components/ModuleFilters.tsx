@@ -12,10 +12,14 @@ import {
   type AutomergeUrl,
   type Repo,
 } from "@automerge/automerge-repo";
-import type { FolderDoc } from "@inkandswitch/patchwork-filesystem";
 import { automergeUrlToServiceWorkerUrl } from "@inkandswitch/patchwork-filesystem";
 import { ViewRaw } from "./ViewRaw.tsx";
 import { MODULE_FETCH_DEBOUNCE } from "../constants.ts";
+import {
+  getModuleEntryKind,
+  type BranchesDoc,
+  type ModuleEntryKind,
+} from "../utils/module-types.ts";
 
 interface ModuleFiltersProps {
   searchQuery: string;
@@ -38,8 +42,9 @@ interface PackageInfo {
 }
 
 interface ModulePreview {
-  isFolder: boolean;
+  kind: ModuleEntryKind;
   packageInfo?: PackageInfo;
+  branchNames?: string[];
   error?: string;
 }
 
@@ -94,24 +99,33 @@ export function ModuleFilters(props: ModuleFiltersProps) {
 
           if (!doc) {
             setPreview({
-              isFolder: false,
+              kind: "unknown",
               error: "Document not found",
             });
             return;
           }
 
-          // Check if it's a folder document
-          const isFolder = isFolderDoc(doc);
+          const kind = getModuleEntryKind(doc);
 
-          if (!isFolder) {
+          if (kind === "unknown") {
             setPreview({
-              isFolder: false,
-              error: "Not a folder document (modules must be folders)",
+              kind: "unknown",
+              error:
+                "Not a folder, directory, or branches doc (unsupported module type)",
             });
             return;
           }
 
-          // Try to fetch package.json
+          if (kind === "branches") {
+            const branches = (doc as BranchesDoc).branches ?? {};
+            setPreview({
+              kind,
+              branchNames: Object.keys(branches),
+            });
+            return;
+          }
+
+          // Folder/directory: try to fetch package.json for nicer preview.
           let packageInfo: PackageInfo | undefined;
           try {
             const packageJsonUrl = new URL(
@@ -132,17 +146,16 @@ export function ModuleFilters(props: ModuleFiltersProps) {
               };
             }
           } catch (err) {
-            // Package.json fetch failed, but we can still show it's a valid folder
             console.warn("Failed to fetch package.json:", err);
           }
 
           setPreview({
-            isFolder: true,
+            kind,
             packageInfo,
           });
         } catch (error) {
           setPreview({
-            isFolder: false,
+            kind: "unknown",
             error:
               error instanceof Error ? error.message : "Failed to fetch module",
           });
@@ -266,6 +279,31 @@ export function ModuleFilters(props: ModuleFiltersProps) {
                   </div>
                 </Show>
                 <Show when={!preview()?.error}>
+                  <Show when={preview()?.kind === "branches"}>
+                    <div class="module-settings-module-input__package-info">
+                      <div class="module-settings-module-input__package-row">
+                        <span class="module-settings-module-input__package-label">
+                          Branches:
+                        </span>
+                        <div class="module-settings-module-input__plugins">
+                          <Show
+                            when={preview()?.branchNames?.length}
+                            fallback={
+                              <span style={{ opacity: 0.6 }}>(empty)</span>
+                            }
+                          >
+                            <For each={preview()?.branchNames}>
+                              {(name) => (
+                                <span class="module-settings-module-input__plugin-pill">
+                                  {name}
+                                </span>
+                              )}
+                            </For>
+                          </Show>
+                        </div>
+                      </div>
+                    </div>
+                  </Show>
                   <Show when={preview()?.packageInfo}>
                     <div class="module-settings-module-input__package-info">
                       <Show when={preview()?.packageInfo?.name}>
@@ -306,9 +344,16 @@ export function ModuleFilters(props: ModuleFiltersProps) {
                       </Show>
                     </div>
                   </Show>
-                  <Show when={!preview()?.packageInfo}>
+                  <Show
+                    when={
+                      preview()?.kind !== "branches" &&
+                      !preview()?.packageInfo
+                    }
+                  >
                     <div class="module-settings-module-input__no-package">
-                      📁 Valid folder (no package.json found)
+                      {preview()?.kind === "directory"
+                        ? "📁 Valid directory (no package.json found)"
+                        : "📁 Valid folder (no package.json found)"}
                     </div>
                   </Show>
                   <Show when={previewUrl()}>
@@ -363,11 +408,3 @@ export function ModuleFilters(props: ModuleFiltersProps) {
   );
 }
 
-function isFolderDoc(doc: unknown): doc is FolderDoc {
-  return Boolean(
-    doc &&
-    typeof doc === "object" &&
-    "docs" in doc &&
-    Array.isArray((doc as { docs?: unknown }).docs)
-  );
-}

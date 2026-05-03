@@ -1,5 +1,7 @@
 {
-  "name": "@tiny-patchwork/module-settings-manager",
+  "name": "module-settings-manager",
+  "title": "Module Settings Manager",
+  "version": "3.0.0",
   "type": "module",
   "private": true,
   "main": "./dist/index.js",

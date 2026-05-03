@@ -1,4 +1,4 @@
 import { ModuleFilters } from "./ModuleFilters";
-import { ModuleTable } from "./ModuleTable";
+import { PackageList } from "./PackageList";
 
-export { ModuleFilters, ModuleTable };
+export { ModuleFilters, PackageList };

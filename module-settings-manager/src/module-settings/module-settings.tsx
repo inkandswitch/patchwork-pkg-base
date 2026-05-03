@@ -1,24 +1,27 @@
 import "../index.css";
 import { createSignal, onCleanup } from "solid-js";
 import { makeDocumentProjection } from "solid-automerge";
-import type { AutomergeUrl } from "@automerge/automerge-repo";
+import type { AutomergeUrl, DocHandle } from "@automerge/automerge-repo";
 import type { ModuleSettingsDoc } from "@inkandswitch/patchwork-filesystem";
 import type { PatchworkToolProps } from "../types.ts";
-import { ModuleFilters, ModuleTable } from "./components";
+import { ModuleFilters, PackageList } from "./components";
 import { useModulePlugins } from "./hooks/useModulePlugins.ts";
 import { MODULE_FETCH_DEBOUNCE } from "./constants.ts";
 import { DebugToggle } from "./components/DebugToggle.tsx";
 import { unregisterPlugins } from "@inkandswitch/patchwork-plugins";
+import type { ModuleSettingsDocWithBranches } from "./utils/module-types.ts";
 
 export function ModuleSettings(props: PatchworkToolProps<ModuleSettingsDoc>) {
   const [searchInputValue, setSearchInputValue] = createSignal("");
   const [debouncedSearch, setDebouncedSearch] = createSignal("");
-  const [sortOrder, setSortOrder] = createSignal<
+  const [sortOrder] = createSignal<
     "name-asc" | "name-desc" | "type-asc" | "type-desc" | "id-asc" | "id-desc"
   >("name-asc");
   const [filterPluginType, setFilterPluginType] = createSignal<string>("");
   const [filterDataType, setFilterDataType] = createSignal<string>("");
-  const doc = makeDocumentProjection(props.handle);
+  const settingsHandle =
+    props.handle as DocHandle<ModuleSettingsDocWithBranches>;
+  const doc = makeDocumentProjection(settingsHandle);
 
   // Debounce search to avoid expensive filtering on every keystroke
   let searchTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -41,6 +44,8 @@ export function ModuleSettings(props: PatchworkToolProps<ModuleSettingsDoc>) {
   const { filteredPlugins, uniquePluginTypes, uniqueDataTypes } =
     useModulePlugins({
       modules: doc.modules,
+      settingsDoc: doc,
+      repo: props.repo,
       searchQuery: debouncedSearch,
       filterPluginType,
       filterDataType,
@@ -65,17 +70,6 @@ export function ModuleSettings(props: PatchworkToolProps<ModuleSettingsDoc>) {
     });
   };
 
-  const handleToggleSort = (column: "name" | "type" | "id") => {
-    const current = sortOrder();
-    if (current.startsWith(column)) {
-      setSortOrder(
-        current.endsWith("-asc") ? `${column}-desc` : `${column}-asc`
-      );
-    } else {
-      setSortOrder(`${column}-asc`);
-    }
-  };
-
   const isModuleInstalled = (url: AutomergeUrl) => {
     return doc.modules.includes(url);
   };
@@ -83,7 +77,7 @@ export function ModuleSettings(props: PatchworkToolProps<ModuleSettingsDoc>) {
   return (
     <div class="module-settings-manager">
       <div class="module-settings-manager__content-container">
-        <h2 class="module-settings-manager__title">Plugins</h2>
+        <h2 class="module-settings-manager__title">Packages</h2>
 
         <div class="module-settings-manager__content">
           <ModuleFilters
@@ -99,11 +93,12 @@ export function ModuleSettings(props: PatchworkToolProps<ModuleSettingsDoc>) {
             onAdd={handleAddModule}
             isInstalled={isModuleInstalled}
           />
-          <ModuleTable
+          <PackageList
+            moduleUrls={doc.modules}
             plugins={filteredPlugins()}
-            sortOrder={sortOrder()}
-            onToggleSort={handleToggleSort}
             onRemoveModule={handleRemoveModule}
+            repo={props.repo}
+            settingsHandle={settingsHandle}
           />
         </div>
       </div>
