@@ -303,6 +303,7 @@
   transition: box-shadow 0.2s ease;
   margin-bottom: 0em;
   border: 1px solid var(--msm-widget-darken-5);
+  background: white;
 }
 
 @media (min-width: 769px) {
