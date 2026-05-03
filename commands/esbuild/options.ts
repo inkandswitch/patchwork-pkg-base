@@ -16,8 +16,6 @@ export default {
   splitting: true,
   logLevel: "debug",
   sourcemap: false,
-  jsx: "automatic",
-  jsxImportSource: "react",
   external: externals,
   plugins: [
     {

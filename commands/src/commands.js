@@ -1,35 +1,21 @@
 import {
-  type AutomergeUrl,
-  DocHandle,
   encodeHeads,
   isValidAutomergeUrl,
-  Repo,
   stringifyAutomergeUrl,
 } from "@automerge/automerge-repo";
 import { Automerge } from "@automerge/automerge-repo/slim";
-import type {
-  FolderDoc,
-  HasPatchworkMetadata,
-  ModuleSettingsDoc,
-} from "@inkandswitch/patchwork-filesystem";
-import type { CommandItem } from "./CommandPalette";
-import type { AccountDoc } from "@inkandswitch/patchwork-plugins";
 
-// Convert kebab-case to camelCase
-const toCamelCase = (str: string) => {
+const toCamelCase = (str) => {
   return str.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
 };
 
-export const commands = (
-  accountDocHandle: DocHandle<AccountDoc>,
-  repo: Repo
-): CommandItem[] => [
+export const commands = (accountDocHandle, repo) => [
   {
     id: "set-sidebar-tool-id",
     label: "Set Sidebar Tool ID",
     description: "Change the sidebar to a specific tool by ID",
     category: "Layout",
-    action: (sidebarToolId: string) => {
+    action: (sidebarToolId) => {
       accountDocHandle.change((doc) => {
         doc.accountSidebarToolId = sidebarToolId;
       });
@@ -58,12 +44,12 @@ export const commands = (
     label: "Install Module",
     description: "Install a module from an Automerge URL",
     category: "Tools",
-    action: async (url: AutomergeUrl) => {
+    action: async (url) => {
       if (!isValidAutomergeUrl(url)) {
         throw new Error("Invalid URL");
       }
 
-      const moduleDocHandle = await repo.find<HasPatchworkMetadata>(url);
+      const moduleDocHandle = await repo.find(url);
       if (!moduleDocHandle) {
         throw new Error("Module not found");
       }
@@ -74,8 +60,7 @@ export const commands = (
           "account has no moduleSettingsUrl yet; try again after the frame has finished mounting"
         );
       }
-      const moduleSettingsHandle =
-        await repo.find<ModuleSettingsDoc>(moduleSettingsUrl);
+      const moduleSettingsHandle = await repo.find(moduleSettingsUrl);
 
       moduleSettingsHandle.change((doc) => {
         const doesModuleAlreadyExist = doc.modules.includes(url);
@@ -103,10 +88,9 @@ export const commands = (
     description: "Create a copy of the currently open document",
     category: "Document",
     action: async () => {
-      const currentDocHandle = (window as any)
-        .currentDocHandle as DocHandle<HasPatchworkMetadata>;
-      const repo = (window as any).repo as Repo;
-      const accountDoc = (window as any).accountDocHandle as DocHandle<AccountDoc>;
+      const currentDocHandle = window.currentDocHandle;
+      const repo = window.repo;
+      const accountDoc = window.accountDocHandle;
       if (!currentDocHandle || !accountDoc) {
         return;
       }
@@ -118,7 +102,7 @@ export const commands = (
         );
         return;
       }
-      const rootFolderDocHandle = await repo.find<FolderDoc>(rootFolderUrl);
+      const rootFolderDocHandle = await repo.find(rootFolderUrl);
 
       const originalDocLink = rootFolderDocHandle
         .doc()
@@ -128,7 +112,7 @@ export const commands = (
         return;
       }
 
-      const copyDocHandle = await repo.create2<HasPatchworkMetadata>();
+      const copyDocHandle = await repo.create2();
 
       copyDocHandle.update(() => {
         return Automerge.clone(currentDocHandle.doc());
@@ -162,15 +146,11 @@ export const commands = (
   },
 ];
 
-export const initCommands = (
-  accountDocHandle: DocHandle<TinyPatchworkLayoutDoc>,
-  repo: Repo
-) => {
+export const initCommands = (accountDocHandle, repo) => {
   const commandList = commands(accountDocHandle, repo);
 
-  // Attach to window
-  (window as any).commands = commandList;
-  (window as any).$command = Object.fromEntries(
+  window.commands = commandList;
+  window.$command = Object.fromEntries(
     commandList.map((cmd) => [toCamelCase(cmd.id), cmd.action])
   );
 };
