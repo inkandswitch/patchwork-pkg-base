@@ -1,9 +1,9 @@
 export const FolderDatatype = {
   init(doc) {
-    doc.title = "";
+    doc.title = '';
     doc.docs = [];
   },
-  getTitle: (doc) => doc.title || "Untitled Folder",
+  getTitle: (doc) => doc.title || 'New Folder',
   setTitle: (doc, title) => {
     doc.title = title;
   },
@@ -14,7 +14,7 @@ export const FileDatatype = {
     throw new Error("Can't create empty ");
   },
   getTitle(doc) {
-    return doc.name || "Untitled File";
+    return doc.name || 'New File';
   },
   setTitle(doc, title) {
     doc.name = title;
