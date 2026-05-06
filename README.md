@@ -1,4 +1,4 @@
-# patchwork-core
+# patchwork-base
 
 A collection of the core tools that comprise the Patchwork system.
 
