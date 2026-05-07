@@ -150,6 +150,14 @@ function PackageCard(props: PackageCardProps) {
         {copiedUrl() === url() ? "copied" : url()}
       </code>
 
+      <ModuleControls
+        url={url()}
+        repo={props.repo}
+        settingsHandle={props.settingsHandle}
+        userSettingsHandle={props.userSettingsHandle}
+        plugins={props.plugins}
+      />
+
       <Show when={errorMessage()}>
         <div class="msm-card__error">
           <strong>Failed to load:</strong> {errorMessage()}
@@ -183,15 +191,6 @@ function PackageCard(props: PackageCardProps) {
       </Show>
 
       <div class="msm-card__action-row">
-        <div class="msm-card__action-row-left">
-          <ModuleControls
-            url={url()}
-            repo={props.repo}
-            settingsHandle={props.settingsHandle}
-            userSettingsHandle={props.userSettingsHandle}
-            plugins={props.plugins}
-          />
-        </div>
         <div class="msm-card__action-row-right">
           <button class="msm-card__text-btn" onClick={handleViewSource}>
             View source

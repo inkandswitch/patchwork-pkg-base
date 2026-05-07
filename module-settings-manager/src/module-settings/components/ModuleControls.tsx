@@ -26,6 +26,7 @@ import {
   unregisterContributions,
   type ContributedPlugin,
 } from "../utils/plugin-registry.ts";
+import { useCopyToClipboard } from "../hooks/useCopyToClipboard.ts";
 
 interface ModuleControlsProps {
   url: AutomergeUrl;
@@ -112,22 +113,24 @@ function BranchControls(props: BranchControlsProps) {
         />
       }
     >
-      <BranchControl
-        label="Module settings branch"
-        branchesDocUrl={props.branchesDocUrl}
-        targetHandle={props.settingsHandle}
-        repo={props.repo}
-        branches={branches()}
-        plugins={props.plugins}
-      />
-      <BranchControl
-        label="My branch"
-        branchesDocUrl={props.branchesDocUrl}
-        targetHandle={props.userSettingsHandle!}
-        repo={props.repo}
-        branches={branches()}
-        plugins={props.plugins}
-      />
+      <div class="module-settings-manager__branch-controls">
+        <BranchControl
+          label="Module settings branch"
+          branchesDocUrl={props.branchesDocUrl}
+          targetHandle={props.settingsHandle}
+          repo={props.repo}
+          branches={branches()}
+          plugins={props.plugins}
+        />
+        <BranchControl
+          label="My branch"
+          branchesDocUrl={props.branchesDocUrl}
+          targetHandle={props.userSettingsHandle!}
+          repo={props.repo}
+          branches={branches()}
+          plugins={props.plugins}
+        />
+      </div>
     </Show>
   );
 }
@@ -143,9 +146,10 @@ interface BranchControlProps {
 
 function BranchControl(props: BranchControlProps) {
   const targetDoc = makeDocumentProjection(props.targetHandle);
+  const [copiedUrl, copyUrl] = useCopyToClipboard();
 
   const currentBranch = createMemo(() =>
-    chosenBranchFor(targetDoc, props.branchesDocUrl)
+    chosenBranchFor([targetDoc], props.branchesDocUrl)
   );
 
   const branchNames = createMemo(() =>
@@ -196,15 +200,25 @@ function BranchControl(props: BranchControlProps) {
   return (
     <div class="module-settings-manager__branch-control">
       <FilterableBranchPicker
-        label={props.label}
         branches={branchNames()}
         value={currentBranch()}
         onChange={setBranch}
         onAdd={addBranch}
       />
+      <span class="module-settings-manager__branch-context">{props.label}</span>
       <Show when={currentBranchUrl()}>
-        <code class="module-settings-manager__branch-url">
-          {currentBranchUrl()}
+        <code
+          class="module-settings-manager__branch-url"
+          classList={{
+            "module-settings-manager__branch-url--copied":
+              copiedUrl() === currentBranchUrl(),
+          }}
+          onClick={() => copyUrl(currentBranchUrl()!)}
+          title="Click to copy URL"
+        >
+          {copiedUrl() === currentBranchUrl()
+            ? "copied"
+            : currentBranchUrl()}
         </code>
       </Show>
     </div>
@@ -212,7 +226,6 @@ function BranchControl(props: BranchControlProps) {
 }
 
 interface FilterableBranchPickerProps {
-  label?: string;
   branches: string[];
   value: string;
   onChange: (value: string) => void;
@@ -270,9 +283,6 @@ function FilterableBranchPicker(props: FilterableBranchPickerProps) {
 
   return (
     <div class="module-settings-manager__branch-picker" ref={containerRef}>
-      <span class="module-settings-manager__branch-picker-label">
-        {props.label ?? "Branch"}
-      </span>
       <button
         class="module-settings-manager__branch-picker-button"
         classList={{

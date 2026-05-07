@@ -27,23 +27,32 @@ export function getModuleEntryKind(doc: unknown): ModuleEntryKind {
   return "unknown";
 }
 
+/**
+ * Look up the chosen branch name for a branches doc by checking each settings
+ * doc in priority order. Pass `[userDoc, viewedDoc]` to mirror the watcher,
+ * which lets a user-local override beat the viewed doc's choice.
+ */
 export function chosenBranchFor(
-  settingsDoc: ModuleSettingsDocWithBranches | undefined,
+  settingsDocs: (ModuleSettingsDocWithBranches | undefined)[],
   branchesDocUrl: AutomergeUrl
 ): string {
-  return settingsDoc?.branches?.[branchesDocUrl] ?? DEFAULT_BRANCH;
+  for (const doc of settingsDocs) {
+    const branch = doc?.branches?.[branchesDocUrl];
+    if (branch) return branch;
+  }
+  return DEFAULT_BRANCH;
 }
 
 export async function resolveModuleEntryToFolderUrl(
   repo: Repo,
   url: AutomergeUrl,
-  settingsDoc: ModuleSettingsDocWithBranches | undefined
+  settingsDocs: (ModuleSettingsDocWithBranches | undefined)[]
 ): Promise<AutomergeUrl | undefined> {
   const handle = await repo.find(url);
   const doc = handle.doc();
   const kind = getModuleEntryKind(doc);
   if (kind !== "branches") return url;
-  const branchName = chosenBranchFor(settingsDoc, url);
+  const branchName = chosenBranchFor(settingsDocs, url);
   const branchUrl = (doc as BranchesDoc | undefined)?.branches?.[branchName];
   return branchUrl;
 }

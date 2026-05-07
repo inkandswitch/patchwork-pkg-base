@@ -1,4 +1,4 @@
-import { createSignal, onCleanup, Show } from "solid-js";
+import { createMemo, createSignal, onCleanup, Show } from "solid-js";
 import {
   makeDocumentProjection,
   useDocHandle,
@@ -48,6 +48,10 @@ export function ModuleSettings(props: PatchworkToolProps<ModuleSettingsDoc>) {
     () => (isForeignSettingsDoc() ? ownModuleSettingsUrl() : undefined),
     { repo: props.repo }
   );
+  const ownSettingsDoc = createMemo(() => {
+    const handle = ownSettingsHandle();
+    return handle ? makeDocumentProjection(handle) : undefined;
+  });
 
   // Debounce search to avoid expensive filtering on every keystroke
   let searchTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -76,6 +80,7 @@ export function ModuleSettings(props: PatchworkToolProps<ModuleSettingsDoc>) {
   } = useModulePlugins({
       modules: doc.modules,
       settingsDoc: doc,
+      userSettingsDoc: ownSettingsDoc(),
       repo: props.repo,
       searchQuery: debouncedSearch,
       filterPluginType,

@@ -32,6 +32,13 @@ import type {
 interface UseModulePluginsParams {
   modules: AutomergeUrl[];
   settingsDoc: ModuleSettingsDocWithBranches;
+  /**
+   * The current user's own settings doc, when it differs from `settingsDoc`.
+   * Its branch overrides win (mirroring the watcher), so the displayed folder
+   * URL matches what's actually loaded — otherwise the plugin status would
+   * read "shadowed" and the activate button would appear spuriously.
+   */
+  userSettingsDoc?: ModuleSettingsDocWithBranches;
   repo: Repo;
   searchQuery: Accessor<string>;
   filterPluginType: Accessor<string>;
@@ -80,20 +87,27 @@ export function useModulePlugins(params: UseModulePluginsParams) {
     sortOrder,
   } = params;
 
+  // User-first, like the watcher — mirrors chosenBranchFor in module-watcher.
+  const settingsDocs = () => [params.userSettingsDoc, settingsDoc];
+
   // Per-URL load state. The resource throws on failure so the state carries
   // the error and the UI can render an entry for every module — including
   // ones that fail to resolve, import, or that produce no plugins.
   const moduleStateAccessors = mapArray(
     () => modules,
     (url) => {
-      const sourceKey = () => `${url}|${settingsDoc.branches?.[url] ?? ""}`;
+      const sourceKey = () => {
+        const userBranch = params.userSettingsDoc?.branches?.[url] ?? "";
+        const viewedBranch = settingsDoc.branches?.[url] ?? "";
+        return `${url}|${userBranch}|${viewedBranch}`;
+      };
       const [resource] = createResource<ModulePayload, string>(
         sourceKey,
         async () => {
           const folderUrl = await resolveModuleEntryToFolderUrl(
             repo,
             url,
-            settingsDoc
+            settingsDocs()
           );
           if (!folderUrl) {
             throw new Error(
