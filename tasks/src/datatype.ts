@@ -1,4 +1,4 @@
-import type { AutomergeUrl } from '@automerge/vanillajs/slim';
+import type { AutomergeUrl } from '@automerge/automerge-repo/slim';
 import type { DatatypeImplementation } from '@inkandswitch/patchwork-plugins';
 
 // Task Queue

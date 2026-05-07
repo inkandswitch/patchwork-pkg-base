@@ -6,7 +6,16 @@ import cssInjectedByJsPlugin from 'vite-plugin-css-injected-by-js';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
 
-import external from '@inkandswitch/patchwork-bootloader/externals';
+import patchworkExternals from '@inkandswitch/patchwork-bootloader/externals';
+
+const external = [
+  ...patchworkExternals,
+  '@automerge/automerge-repo-react-hooks',
+  '@automerge/automerge-repo-network-messagechannel',
+  '@automerge/automerge-repo-storage-indexeddb',
+  '@automerge/automerge-subduction',
+  '@automerge/automerge-subduction/slim',
+];
 
 export default defineConfig({
   base: './',
@@ -29,8 +38,7 @@ export default defineConfig({
   worker: {
     format: 'es',
     rollupOptions: {
-      // Don't externalize dependencies for workers - let them use their own imports
-      external: [],
+      external,
       output: {
         format: 'es',
       },

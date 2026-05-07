@@ -7,9 +7,9 @@ import type {
   MessageToTaskQueueChannel,
   MessageToWorkerChannel,
 } from './protocol';
-import type { AutomergeUrl, DocHandle, DocHandleEphemeralMessagePayload, Repo } from '@automerge/vanillajs/slim';
+import type { AutomergeUrl, DocHandle, DocHandleEphemeralMessagePayload, Repo } from '@automerge/automerge-repo/slim';
 
-import { getRepo } from './webworker-lib';
+import { getRepo, setUpImportMap } from './webworker-lib';
 import generateName from 'boring-name-generator';
 import { seconds, shuffle } from './helpers';
 
@@ -39,7 +39,7 @@ self.addEventListener('connect', (e: any) => {
     try {
       switch (msg.type) {
         case 'init':
-          init(msg.repoPort, msg.contactUrl);
+          init(msg.repoPort, msg.contactUrl, msg.importMap, msg.baseURI);
           break;
         case 'update task queue set':
           updateTaskQueueSet(msg.taskQueues);
@@ -54,7 +54,7 @@ self.addEventListener('connect', (e: any) => {
   };
 });
 
-async function init(repoPort: MessagePort, _contactUrl: AutomergeUrl) {
+async function init(repoPort: MessagePort, _contactUrl: AutomergeUrl, importMap: any, baseURI: string) {
   if (contactUrl && repo && thisRouterHandle) {
     console.log('already initialized');
     return;
@@ -65,6 +65,7 @@ async function init(repoPort: MessagePort, _contactUrl: AutomergeUrl) {
   contactUrl = _contactUrl;
 
   if (!repo) {
+    await setUpImportMap(importMap, baseURI);
     repo = await getRepo(
       repoPort,
       `task-router-${Math.round(Math.random() * 1_000_000)}`,

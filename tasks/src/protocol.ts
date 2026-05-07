@@ -46,12 +46,11 @@ export interface InitMessage {
   type: 'init';
   repoPort: MessagePort;
   contactUrl: AutomergeUrl;
-}
-
-export interface WorkerInitMessage extends InitMessage {
   importMap: any;
   baseURI: string;
 }
+
+export interface WorkerInitMessage extends InitMessage {}
 
 export interface RegisterWorkerMessage {
   type: 'register worker';

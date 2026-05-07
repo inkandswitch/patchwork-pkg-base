@@ -1,10 +1,10 @@
 /* eslint-env worker */
 
-import type { AutomergeUrl, DocHandle, Repo } from '@automerge/vanillajs/slim';
+import type { AutomergeUrl, DocHandle, Repo } from '@automerge/automerge-repo/slim';
 import type { WorkerDoc, RouterDoc, TaskQueueDoc, TaskQueueSet } from './datatype';
 import type { MessageToWorkerPool, MessageToRouterChannel } from './protocol';
 
-import { getRepo } from './webworker-lib';
+import { getRepo, setUpImportMap } from './webworker-lib';
 import { seconds } from './helpers';
 
 interface TaskQueueState {
@@ -33,7 +33,7 @@ self.addEventListener('connect', (e: any) => {
     try {
       switch (msg.type) {
         case 'init':
-          init(msg.repoPort);
+          init(msg.repoPort, msg.importMap, msg.baseURI);
           break;
         case 'update task queue set':
           updateTaskQueueSet(msg.taskQueues);
@@ -48,7 +48,7 @@ self.addEventListener('connect', (e: any) => {
   };
 });
 
-async function init(port: MessagePort) {
+async function init(port: MessagePort, importMap: any, baseURI: string) {
   if (status !== 'not initialized') {
     return;
   }
@@ -56,6 +56,7 @@ async function init(port: MessagePort) {
   console.log('initializing...');
   status = 'initializing';
 
+  await setUpImportMap(importMap, baseURI);
   repo = await getRepo(port, `task-worker-pool-${Math.round(Math.random() * 10_000)}`);
   pSendWorkerStatuses(); // this is a "process", meant to be running in the background (hence no `await`)
 
@@ -94,7 +95,10 @@ async function updateTaskQueueSet(newTaskQueueUrls: TaskQueueSet) {
     try {
       taskQueueHandle = await repo.find<TaskQueueDoc>(taskQueueUrl);
     } catch (error) {
-      console.error('did not join task queue, unable to get its doc handle', { taskQueueUrl, error });
+      console.error('did not join task queue, unable to get its doc handle', {
+        taskQueueUrl,
+        error,
+      });
       return;
     }
 
@@ -176,4 +180,4 @@ async function pSendWorkerStatuses() {
   }
 }
 
-export { }; // to ensure this is a module
+export {}; // to ensure this is a module

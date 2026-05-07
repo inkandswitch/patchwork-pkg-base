@@ -4,12 +4,10 @@ console.log('task worker script starting; self.name =', (self as any).name);
 
 import type { TaskQueueDoc, TaskDoc, RunStatus, WorkerDoc, RunLogEntry } from './datatype';
 import type { MessageToWorker, MessageToWorkerChannel, MessageToWorkerPoolProxy } from './protocol';
-import type { Repo, AutomergeUrl, DocHandle } from '@automerge/vanillajs/slim';
+import type { Repo, AutomergeUrl, DocHandle } from '@automerge/automerge-repo/slim';
 
 import generateName from 'boring-name-generator';
-import { getRepo } from './webworker-lib';
-
-const shimCodeUrl = 'https://ga.jspm.io/npm:es-module-shims@1.6.2/dist/es-module-shims.wasm.js';
+import { getRepo, setUpImportMap } from './webworker-lib';
 
 let status: 'not initialized' | 'initializing' | 'ready' = 'not initialized';
 
@@ -18,9 +16,6 @@ declare global {
   // This makes it possible for the task code to access this variable by name.
   var repo: Repo;
 }
-
-let importMap: any;
-let baseURI: string;
 
 let workerHandle: DocHandle<WorkerDoc>;
 
@@ -60,17 +55,7 @@ async function init(
   console.log('initializing...');
   status = 'initializing';
 
-  try {
-    console.log('importing es-module-shims...');
-    await import(shimCodeUrl);
-    console.log('done');
-  } catch (error) {
-    console.error('failed to import es-module-shims:', error);
-  }
-
-  importMap = _importMap;
-  baseURI = _baseURI;
-  setUpImportMap();
+  await setUpImportMap(_importMap, _baseURI);
 
   // Important: if I take out the `globalThis.` from the assignment below, it doesn't work.
   // I get "ReferenceError: repo is not defined." This is probably b/c that variable only
@@ -107,54 +92,6 @@ async function init(
 
   console.log('ready', { workerUrl: workerHandle.url });
   console.log('hola, me llamo', workerHandle.doc().name);
-}
-
-function setUpImportMap() {
-  // Convert relative URLs in import map to absolute URLs
-  const resolvedImportMap: any = {};
-
-  // Handle imports
-  if (importMap.imports) {
-    resolvedImportMap.imports = {};
-    for (const [key, value] of Object.entries(importMap.imports)) {
-      // Resolve relative URLs to absolute URLs using the base URI from main thread
-      try {
-        resolvedImportMap.imports[key] = new URL(value as any, baseURI).href;
-      } catch (e) {
-        console.warn(`failed to resolve import map entry ${key}: ${value}`, e);
-        resolvedImportMap.imports[key] = value; // Keep original if resolution fails
-      }
-    }
-  }
-
-  // Handle scopes
-  if (importMap.scopes) {
-    resolvedImportMap.scopes = {};
-    for (const [scopeKey, scopeMap] of Object.entries(importMap.scopes)) {
-      // Resolve the scope key itself to absolute URL
-      let resolvedScopeKey;
-      try {
-        resolvedScopeKey = new URL(scopeKey, baseURI).href;
-      } catch (e) {
-        console.warn(`failed to resolve scope key ${scopeKey}`, e);
-        resolvedScopeKey = scopeKey; // Keep original if resolution fails
-      }
-
-      // Resolve each entry in the scope's import map
-      resolvedImportMap.scopes[resolvedScopeKey] = {};
-      for (const [key, value] of Object.entries(scopeMap as any)) {
-        try {
-          resolvedImportMap.scopes[resolvedScopeKey][key] = new URL(value as any, baseURI).href;
-        } catch (e) {
-          console.warn(`failed to resolve scope entry ${scopeKey}[${key}]: ${value}`, e);
-          resolvedImportMap.scopes[resolvedScopeKey][key] = value; // Keep original if resolution fails
-        }
-      }
-    }
-  }
-
-  (self as any).importShim.addImportMap(resolvedImportMap);
-  console.log('Import map configured from main thread', resolvedImportMap);
 }
 
 const tally = { numSuccesses: 0, numFailures: 0, numBails: 0 };
@@ -307,4 +244,4 @@ async function getTaskQueueHandle(taskQueueUrl: AutomergeUrl) {
   return handle;
 }
 
-export { }; // to ensure this is a module
+export {}; // to ensure this is a module

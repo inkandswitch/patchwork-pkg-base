@@ -1,7 +1,7 @@
 import type { AutomergeUrl } from '@automerge/automerge-repo';
+import type { Repo } from '@automerge/automerge-repo';
 import type { MessageToRouter, MessageToWorker, MessageToWorkerPool } from './protocol';
 
-import { IndexedDBStorageAdapter, MessageChannelNetworkAdapter, Repo } from '@automerge/vanillajs';
 import { getAccountHandle, getTaskQueues } from './helpers';
 
 import WorkerPool from './worker-pool.ts?sharedworker';
@@ -23,16 +23,16 @@ export class WorkerPoolProxy {
     importMap: any,
     baseURI: string,
   ) {
-    this.workerPool = this.createAndInitializeWorkerPool();
+    this.workerPool = this.createAndInitializeWorkerPool(importMap, baseURI);
 
     for (let workerId = 0; workerId < NUM_WORKERS; workerId++) {
       this.workers.push(this.createAndInitializeWorker(workerId, importMap, baseURI));
     }
 
-    this.router = this.createAndInitializeRouter();
+    this.router = this.createAndInitializeRouter(importMap, baseURI);
   }
 
-  private createAndInitializeWorkerPool() {
+  private createAndInitializeWorkerPool(importMap: any, baseURI: string) {
     // create the shared worker
     const workerPool = new WorkerPool({ name: `task-worker-pool-${BUILD_ID}` });
     workerPool.onerror = (error) => log(error);
@@ -45,6 +45,8 @@ export class WorkerPoolProxy {
         type: 'init',
         contactUrl: this.contactUrl,
         repoPort: repoPort,
+        importMap,
+        baseURI,
       } satisfies MessageToWorkerPool,
       [repoPort],
     );
@@ -91,7 +93,7 @@ export class WorkerPoolProxy {
     return worker;
   }
 
-  private createAndInitializeRouter() {
+  private createAndInitializeRouter(importMap: any, baseURI: string) {
     // create the shared worker
     const router = new TaskRouter({ name: `task-router-${BUILD_ID}` });
     router.onerror = (error) => log(error);
@@ -104,6 +106,8 @@ export class WorkerPoolProxy {
         type: 'init',
         repoPort,
         contactUrl: this.contactUrl,
+        importMap,
+        baseURI,
       } satisfies MessageToRouter,
       [repoPort],
     );
@@ -132,6 +136,7 @@ export class WorkerPoolProxy {
 
   async getRepo() {
     if (!this._repo) {
+      const { IndexedDBStorageAdapter, MessageChannelNetworkAdapter, Repo } = await importRepoModules();
       this._repo = new Repo({
         storage: new IndexedDBStorageAdapter(),
         network: [new MessageChannelNetworkAdapter((window as any).getRepoChannel())],
@@ -141,6 +146,23 @@ export class WorkerPoolProxy {
     }
     return this._repo;
   }
+}
+
+async function importRepoModules(): Promise<any> {
+  const repoSpecifier = '@automerge/automerge-repo';
+  const networkSpecifier = '@automerge/automerge-repo-network-messagechannel';
+  const storageSpecifier = '@automerge/automerge-repo-storage-indexeddb';
+  const [repo, network, storage] = await Promise.all([
+    import(/* @vite-ignore */ repoSpecifier),
+    import(/* @vite-ignore */ networkSpecifier),
+    import(/* @vite-ignore */ storageSpecifier),
+  ]);
+
+  return {
+    Repo: repo.Repo,
+    MessageChannelNetworkAdapter: network.MessageChannelNetworkAdapter,
+    IndexedDBStorageAdapter: storage.IndexedDBStorageAdapter,
+  };
 }
 
 function log(...args: any) {
