@@ -1,4 +1,4 @@
-import { type AutomergeUrl, type DocHandle, type Repo, isValidAutomergeUrl } from '@automerge/automerge-repo/slim';
+import { type AutomergeUrl, type DocHandle, type Repo } from '@automerge/automerge-repo/slim';
 import { TaskQueueSet } from './datatype';
 
 export const TASK_QUEUE_URLS_FIELD_NAME = '__taskQueues__';
@@ -6,7 +6,8 @@ export const TASK_QUEUE_URLS_FIELD_NAME = '__taskQueues__';
 // TODO: where's the type for account??
 export async function getAccountHandle(repo: Repo): Promise<DocHandle<any>> {
   const accountDocUrl = getAccountDocUrl();
-  if (!isValidAutomergeUrl(accountDocUrl)) {
+  // avoid importing isValidAutomergeUrl for BS packaging reasons
+  if (!accountDocUrl.startsWith('automerge:')) {
     const errorMsg = `account doc url invalid: ${accountDocUrl}`;
     console.error(errorMsg);
     throw new Error(errorMsg);
