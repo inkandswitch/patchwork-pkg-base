@@ -103,7 +103,7 @@ export function useCachedHistory(
       lastDispatchTime = Date.now();
     } else {
       console.log("Running history task on main thread until tasks stabilize.");
-      const module = import("../task").then((m) => {
+      import("../task").then((m) => {
         m.default(sourceUrl);
         lastDispatchTime = Date.now();
       });
@@ -145,6 +145,7 @@ export function useCachedHistory(
 
       // Bootstrap: no history doc yet — dispatch to create one.
       if (!histDoc) {
+        if (Date.now() - lastDispatchTime < DISPATCH_COOLDOWN_MS) return;
         dispatchTask(source.url);
         return;
       }
