@@ -1,6 +1,6 @@
 {
   "name": "@patchwork/tasks",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Task-Related Datatypes and Tools",
   "type": "module",
   "main": "src/index.ts",
