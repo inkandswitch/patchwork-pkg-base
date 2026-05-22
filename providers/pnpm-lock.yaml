@@ -15,14 +15,14 @@ importers:
         specifier: ^2.6.0-subduction.9
         version: 2.6.0-subduction.20
       '@inkandswitch/patchwork-comments':
-        specifier: link:../../patchwork-next/packages/comments
-        version: link:../../patchwork-next/packages/comments
+        specifier: file:../../patchwork-next/dist-tarballs/inkandswitch-patchwork-comments-0.0.1.tgz
+        version: file:../../patchwork-next/dist-tarballs/inkandswitch-patchwork-comments-0.0.1.tgz(@automerge/automerge-repo@2.6.0-subduction.20)
       '@inkandswitch/patchwork-plugins':
         specifier: ^0.0.6
         version: 0.0.6(@automerge/automerge-repo@2.6.0-subduction.20)(@automerge/automerge@3.2.6)(@inkandswitch/patchwork-filesystem@0.0.4(@automerge/automerge-repo@2.6.0-subduction.20)(@automerge/automerge@3.2.6))
       '@inkandswitch/patchwork-providers':
-        specifier: link:../../patchwork-next/packages/providers
-        version: link:../../patchwork-next/packages/providers
+        specifier: file:../../patchwork-next/dist-tarballs/inkandswitch-patchwork-providers-0.0.1.tgz
+        version: file:../../patchwork-next/dist-tarballs/inkandswitch-patchwork-providers-0.0.1.tgz(@automerge/automerge-repo@2.6.0-subduction.20)
     devDependencies:
       '@eslint/js':
         specifier: ^9.37.0
@@ -337,6 +337,12 @@ packages:
       '@automerge/vanillajs': 2.5.0
       '@keyhive/keyhive': 0.0.0-alpha.40
 
+  '@inkandswitch/patchwork-comments@file:../../patchwork-next/dist-tarballs/inkandswitch-patchwork-comments-0.0.1.tgz':
+    resolution: {integrity: sha512-6eAIrayRBnaXt2C0EEi0ZyejQlM6TitA9KAmuj0cDcF16739JBz3d8qLWBC13l0n5DHmbjB8oQtkWzZq0jKmvQ==, tarball: file:../../patchwork-next/dist-tarballs/inkandswitch-patchwork-comments-0.0.1.tgz}
+    version: 0.0.1
+    peerDependencies:
+      '@automerge/automerge-repo': '*'
+
   '@inkandswitch/patchwork-filesystem@0.0.4':
     resolution: {integrity: sha512-W44nTqmr4kGk3I9h+krexUXU8/vOGnQ7WQAseR/85OjXgSDcDjP47m+yAFLWBd2f/5kQM7xkDOCBo42PdwE0xw==}
     peerDependencies:
@@ -349,6 +355,12 @@ packages:
       '@automerge/automerge': '*'
       '@automerge/automerge-repo': '*'
       '@inkandswitch/patchwork-filesystem': ^0.0.4
+
+  '@inkandswitch/patchwork-providers@file:../../patchwork-next/dist-tarballs/inkandswitch-patchwork-providers-0.0.1.tgz':
+    resolution: {integrity: sha512-PIz7Q5cmwxe2MNKMJDFCZsVCHkDnXvLnU5eUQ48kw0/3Zcc6mVL/RztEnmRzgEK+GijZog8cpfQZ8rIB6eZrjA==, tarball: file:../../patchwork-next/dist-tarballs/inkandswitch-patchwork-providers-0.0.1.tgz}
+    version: 0.0.1
+    peerDependencies:
+      '@automerge/automerge-repo': '*'
 
   '@keyhive/keyhive@0.0.0-alpha.40':
     resolution: {integrity: sha512-FlvtX6ZK2q47OqqJZ/8G+SAevKJxjSdldhwJPlhUT9QTIv0LNmJO17pkEtLJ0VVrmPryP0tKQDIaQtmcE1f7Tg==}
@@ -1341,6 +1353,10 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  '@inkandswitch/patchwork-comments@file:../../patchwork-next/dist-tarballs/inkandswitch-patchwork-comments-0.0.1.tgz(@automerge/automerge-repo@2.6.0-subduction.20)':
+    dependencies:
+      '@automerge/automerge-repo': 2.6.0-subduction.20
+
   '@inkandswitch/patchwork-filesystem@0.0.4(@automerge/automerge-repo@2.6.0-subduction.20)(@automerge/automerge@3.2.6)':
     dependencies:
       '@automerge/automerge': 3.2.6
@@ -1364,6 +1380,10 @@ snapshots:
       resolve.exports: 2.0.3
     transitivePeerDependencies:
       - supports-color
+
+  '@inkandswitch/patchwork-providers@file:../../patchwork-next/dist-tarballs/inkandswitch-patchwork-providers-0.0.1.tgz(@automerge/automerge-repo@2.6.0-subduction.20)':
+    dependencies:
+      '@automerge/automerge-repo': 2.6.0-subduction.20
 
   '@keyhive/keyhive@0.0.0-alpha.40': {}
 

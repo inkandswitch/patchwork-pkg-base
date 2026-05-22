@@ -1,174 +1,170 @@
 import "./styles.css";
-import { useState, useEffect, useMemo } from "react";
+import {
+  createSignal,
+  createMemo,
+  createEffect,
+  onCleanup,
+  Show,
+  For,
+} from "solid-js";
 
 import { relativeTime } from "./relative-time";
-import { toolify, type ReactToolProps } from "@inkandswitch/patchwork-react";
-import { useRepo, useDocument } from "@automerge/automerge-repo-react-hooks";
+import {
+  useDocument,
+  useRepo,
+} from "@automerge/automerge-repo-solid-primitives";
 import {
   findRef,
   type AutomergeUrl,
-  type DocHandle,
   type Ref,
   type RefUrl,
   type Repo,
 } from "@automerge/automerge-repo";
 
-import { request } from "@inkandswitch/patchwork-providers";
+import { request } from "@inkandswitch/patchwork-providers-solid";
 import {
   createReply,
   type Comment,
   type CommentThread,
 } from "@inkandswitch/patchwork-comments";
-import { useRefValue } from "@inkandswitch/patchwork-refs-react";
 
-const VERSION = "v2.0.8";
+const VERSION = "v2.1.4";
 
-function useDocSnapshot<T extends object>(
-  handle: DocHandle<T> | null
-): T | undefined {
-  const [, setRevision] = useState(0);
-  useEffect(() => {
-    if (!handle) return;
-    const bump = () => setRevision((r) => r + 1);
-    handle.on("change", bump);
-    setRevision((r) => r + 1);
-    return () => {
-      handle.off("change", bump);
-    };
-  }, [handle]);
-  return handle?.doc();
-}
-
-const CommentsView = ({ element }: ReactToolProps) => {
+export function CommentsView(props: { element: HTMLElement }) {
   const repo = useRepo();
-  const [allComments, setAllComments] = useState<DocHandle<{
+
+  const [allComments] = request<{
     comments: { targetRef: RefUrl; threadRef: RefUrl }[];
-  }> | null>(null);
+  }>(props.element, "patchwork:comments");
 
-  useEffect(() => {
-    let cancelled = false;
-    request<{ comments: { targetRef: RefUrl; threadRef: RefUrl }[] }>(
-      element,
-      "patchwork:comments"
-    ).then((handle) => {
-      if (cancelled) return;
-      setAllComments(
-        handle as unknown as DocHandle<{
-          comments: { targetRef: RefUrl; threadRef: RefUrl }[];
-        }> | null
-      );
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [element]);
-
-  const allCommentsDoc = useDocSnapshot(allComments);
-
-  const threadUrls = useMemo(() => {
-    if (!allCommentsDoc) return [];
-    return Array.from(
-      new Set(allCommentsDoc.comments.map(({ threadRef }) => threadRef))
-    );
-  }, [allCommentsDoc]);
+  const threadUrls = createMemo<RefUrl[]>(() => {
+    const entries = allComments()?.comments;
+    if (!entries) return [];
+    const seen = new Set<RefUrl>();
+    const urls: RefUrl[] = [];
+    for (const { threadRef } of entries) {
+      if (seen.has(threadRef)) continue;
+      seen.add(threadRef);
+      urls.push(threadRef);
+    }
+    return urls;
+  });
 
   return (
-    <div className="h-full flex flex-col p-2 gap-2">
-      <div className="flex items-center justify-between text-xs text-gray-400">
-        <span className="font-medium">Comments</span>
+    <div class="h-full flex flex-col p-2 gap-2">
+      <div class="flex items-center justify-between text-xs text-gray-400">
+        <span class="font-medium">Comments</span>
         <span>{VERSION}</span>
       </div>
-      {threadUrls.map((threadUrl) => (
-        <ThreadView key={threadUrl} threadUrl={threadUrl} repo={repo} />
-      ))}
+      <For each={threadUrls()}>
+        {(threadUrl) => <ThreadView threadUrl={threadUrl} repo={repo} />}
+      </For>
     </div>
   );
-};
+}
 
-export const renderCommentsView = toolify(CommentsView);
+function ThreadView(props: { threadUrl: RefUrl; repo: Repo }) {
+  // TODO: drop this async findRef dance once subdoc handles land — we'll
+  // be able to resolve a RefUrl synchronously from the parent handle.
+  const [threadRef, setThreadRef] = createSignal<
+    Ref<CommentThread> | undefined
+  >(undefined);
 
-const ThreadView = ({
-  threadUrl,
-  repo,
-}: {
-  threadUrl: RefUrl;
-  repo: Repo;
-}) => {
-  const [threadRef, setThreadRef] = useState<Ref<CommentThread> | null>(null);
-
-  useEffect(() => {
+  createEffect(() => {
     let cancelled = false;
-    findRef<CommentThread>(repo, threadUrl)
+    setThreadRef(() => undefined);
+    findRef<CommentThread>(props.repo, props.threadUrl)
       .then((ref) => {
         if (cancelled) return;
-        setThreadRef(ref);
+        setThreadRef(() => ref);
       })
       .catch((error) => {
         console.error(
-          `[comments-view] failed to resolve thread ${threadUrl}`,
+          `[comments-view] failed to resolve thread ${props.threadUrl}`,
           error
         );
       });
-    return () => {
+    onCleanup(() => {
       cancelled = true;
-    };
-  }, [repo, threadUrl]);
+    });
+  });
 
-  const thread = useRefValue(threadRef ?? undefined);
+  // TODO: replace this manual ref→signal wiring once subdoc handles land —
+  // a subdoc handle is itself reactive and can be projected directly.
+  const [thread, setThread] = createSignal<CommentThread | undefined>(
+    undefined
+  );
+  createEffect(() => {
+    const r = threadRef();
+    if (!r) {
+      setThread(() => undefined);
+      return;
+    }
+    setThread(() => r.value());
+    onCleanup(r.onChange(() => setThread(() => r.value())));
+  });
 
-  // Get current account's contactUrl
   // todo: we should have a better way to get the contactUrl of the current account
+  const accountUrl = () =>
+    (window as any).accountDocHandle?.url as AutomergeUrl | undefined;
   const [currentAccount] = useDocument<{ contactUrl: AutomergeUrl }>(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).accountDocHandle?.url
+    accountUrl,
+    { repo: props.repo }
   );
 
-  if (!threadRef || !thread) {
-    return null;
-  }
+  const draftComment = createMemo(() => {
+    const t = thread();
+    if (!t) return undefined;
+    return t.comments.find(
+      (c) => c.draftContent !== undefined || c.content === undefined
+    );
+  });
 
-  const { comments } = thread;
+  const draftCommentRef = createMemo(() => {
+    const r = threadRef();
+    const t = thread();
+    const d = draftComment();
+    if (!r || !t || !d) return undefined;
+    return r.docHandle.ref(
+      "@comments",
+      "threads",
+      { id: t.id },
+      "comments",
+      { id: d.id }
+    );
+  });
 
   const onResolveThread = () => {
-    threadRef.change((t) => {
+    const r = threadRef();
+    if (!r) return;
+    r.change((t) => {
       t.isResolved = true;
     });
   };
 
   const onReplyToComment = () => {
-    if (!currentAccount?.contactUrl) return;
+    const r = threadRef();
+    const account = currentAccount();
+    if (!r || !account?.contactUrl) return;
     createReply({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      threadRef: threadRef as any,
+      threadRef: r as any,
       content: "",
-      contactUrl: currentAccount.contactUrl,
+      contactUrl: account.contactUrl,
     });
   };
 
   const onDeleteComment = (commentRef: Ref) => {
+    const r = threadRef();
     commentRef.remove();
-    if (threadRef.value()?.comments.length === 0) {
-      threadRef.remove();
+    if (r?.value()?.comments.length === 0) {
+      r.remove();
     }
   };
 
-  // Find draft comment if any
-  const draftComment = comments.find(
-    (c) => c.draftContent !== undefined || c.content === undefined
-  );
-  const draftCommentRef = draftComment
-    ? threadRef.docHandle.ref(
-        "@comments",
-        "threads",
-        { id: thread.id },
-        "comments",
-        { id: draftComment.id }
-      )
-    : null;
-
   const onSaveDraft = () => {
-    if (!draftCommentRef) return;
-    draftCommentRef.change((comment: Comment) => {
+    const r = draftCommentRef();
+    if (!r) return;
+    r.change((comment: Comment) => {
       comment.content = comment.draftContent;
       comment.timestamp = Date.now();
       delete comment.draftContent;
@@ -176,137 +172,167 @@ const ThreadView = ({
   };
 
   const onCancelDraft = () => {
-    if (!draftCommentRef) return;
-    const commentValue = draftCommentRef.value() as Comment | undefined;
+    const r = draftCommentRef();
+    if (!r) return;
+    const commentValue = r.value() as Comment | undefined;
     if (commentValue?.content === undefined) {
-      onDeleteComment(draftCommentRef);
+      onDeleteComment(r);
       return;
     }
-    draftCommentRef.change((comment: Comment) => {
+    r.change((comment: Comment) => {
       delete comment.draftContent;
     });
   };
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="card card-bordered shadow-sm bg-white border border-gray-200">
-        <div className="card-body p-2 space-y-2">
-          {comments.map((comment) => {
-            const commentRef = threadRef.docHandle.ref(
-              "@comments",
-              "threads",
-              { id: thread.id },
-              "comments",
-              { id: comment.id }
-            );
-
-            return (
-              <CommentView
-                key={commentRef.url}
-                commentRef={commentRef}
-                currentContactUrl={currentAccount?.contactUrl}
-              />
-            );
-          })}
+    <Show when={thread() && threadRef()}>
+      <div class="flex flex-col gap-2">
+        <div class="card card-bordered shadow-sm bg-white border border-gray-200">
+          <div class="card-body p-2 space-y-2">
+            <For each={thread()!.comments}>
+              {(comment) => {
+                const commentRef = createMemo(() => {
+                  const r = threadRef();
+                  const t = thread();
+                  if (!r || !t) return undefined;
+                  return r.docHandle.ref(
+                    "@comments",
+                    "threads",
+                    { id: t.id },
+                    "comments",
+                    { id: comment.id }
+                  );
+                });
+                return (
+                  <Show when={commentRef()}>
+                    {(ref) => (
+                      <CommentView
+                        commentRef={ref()}
+                        currentContactUrl={currentAccount()?.contactUrl}
+                        repo={props.repo}
+                      />
+                    )}
+                  </Show>
+                );
+              }}
+            </For>
+          </div>
         </div>
-      </div>
-      <div className="flex gap-2 justify-end">
-        {draftComment ? (
-          <>
-            <button className="btn btn-ghost btn-sm" onClick={onCancelDraft}>
+        <div class="flex gap-2 justify-end">
+          <Show
+            when={draftComment()}
+            fallback={
+              <>
+                <button
+                  class="btn btn-ghost btn-sm"
+                  onClick={onResolveThread}
+                  title="Resolve comment"
+                >
+                  Resolve
+                </button>
+                <button
+                  class="btn btn-ghost btn-sm"
+                  onClick={onReplyToComment}
+                  title="Reply to comment"
+                >
+                  Reply
+                </button>
+              </>
+            }
+          >
+            <button class="btn btn-ghost btn-sm" onClick={onCancelDraft}>
               Cancel
             </button>
-            <button className="btn btn-ghost btn-sm" onClick={onSaveDraft}>
+            <button class="btn btn-ghost btn-sm" onClick={onSaveDraft}>
               Save
             </button>
-          </>
-        ) : (
-          <>
-            <button
-              className="btn btn-ghost btn-sm"
-              onClick={onResolveThread}
-              title="Resolve comment"
-            >
-              Resolve
-            </button>
-            <button
-              className="btn btn-ghost btn-sm"
-              onClick={onReplyToComment}
-              title="Reply to comment"
-            >
-              Reply
-            </button>
-          </>
-        )}
+          </Show>
+        </div>
       </div>
-    </div>
+    </Show>
   );
-};
-
-type CommentViewProps = {
-  commentRef: Ref;
-  currentContactUrl?: string;
-};
+}
 
 type ContactDoc = { type: "anonymous" } | { type: "registered"; name: string };
 
-const CommentView = ({ commentRef, currentContactUrl }: CommentViewProps) => {
-  const comment = useRefValue(commentRef) as Comment | undefined;
-  const [contact] = useDocument<ContactDoc>(
-    comment?.contactUrl as AutomergeUrl
-  );
+function CommentView(props: {
+  commentRef: Ref;
+  currentContactUrl?: string;
+  repo: Repo;
+}) {
+  // TODO: replace this manual ref→signal wiring once subdoc handles land —
+  // a subdoc handle is itself reactive and can be projected directly.
+  const [comment, setComment] = createSignal<Comment | undefined>(undefined);
+  createEffect(() => {
+    const r = props.commentRef;
+    setComment(() => r.value() as Comment | undefined);
+    onCleanup(
+      r.onChange(() => setComment(() => r.value() as Comment | undefined))
+    );
+  });
 
-  if (!comment) {
-    return null;
-  }
+  const contactUrl = () => comment()?.contactUrl as AutomergeUrl | undefined;
+  const [contact] = useDocument<ContactDoc>(contactUrl, { repo: props.repo });
 
-  const { content, timestamp, draftContent } = comment;
-  const isDraft = draftContent !== undefined || content === undefined;
+  const isDraft = () => {
+    const c = comment();
+    if (!c) return false;
+    return c.draftContent !== undefined || c.content === undefined;
+  };
 
-  // Hide drafts from other users
-  if (isDraft && comment.contactUrl !== currentContactUrl) {
-    return null;
-  }
+  // Hide drafts from other users.
+  const shouldRender = () => {
+    const c = comment();
+    if (!c) return false;
+    if (isDraft() && c.contactUrl !== props.currentContactUrl) return false;
+    return true;
+  };
 
-  const contactName =
-    contact?.type === "registered" ? contact.name : "Anonymous";
+  const contactName = () => {
+    const ct = contact();
+    return ct?.type === "registered" ? ct.name : "Anonymous";
+  };
 
   const onChangeDraft = (newDraftContent: string) => {
-    commentRef.change((c: Comment) => {
+    props.commentRef.change((c: Comment) => {
       c.draftContent = newDraftContent;
     });
   };
 
   return (
-    <div className="space-y-2" data-id={commentRef.url}>
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-2">
-          <patchwork-view
-            doc-url={comment.contactUrl}
-            tool-id="contact-avatar"
+    <Show when={shouldRender() && comment()}>
+      <div class="space-y-2" data-id={props.commentRef.url}>
+        <div class="flex justify-between items-center">
+          <div class="flex items-center gap-2">
+            <patchwork-view
+              doc-url={comment()!.contactUrl}
+              tool-id="contact-avatar"
+            />
+            <span class="text-sm font-medium whitespace-nowrap">
+              {contactName()}
+            </span>
+          </div>
+          <Show when={!isDraft() && comment()!.timestamp}>
+            <span class="text-xs text-gray-400">
+              {relativeTime(comment()!.timestamp!)}
+            </span>
+          </Show>
+        </div>
+        <Show
+          when={isDraft()}
+          fallback={
+            <div class="text-base text-gray-800 whitespace-pre-wrap">
+              {comment()!.content}
+            </div>
+          }
+        >
+          <textarea
+            class="textarea w-full min-h-24 border border-gray-300 rounded-lg p-2"
+            value={comment()!.draftContent ?? ""}
+            onInput={(e) => onChangeDraft(e.currentTarget.value)}
           />
-          <span className="text-sm font-medium whitespace-nowrap">
-            {contactName}
-          </span>
-        </div>
-        {!isDraft && timestamp && (
-          <span className="text-xs text-gray-400">
-            {relativeTime(timestamp)}
-          </span>
-        )}
+        </Show>
       </div>
-      {isDraft ? (
-        <textarea
-          className="textarea w-full min-h-24 border border-gray-300 rounded-lg p-2"
-          value={draftContent ?? ""}
-          onChange={(e) => onChangeDraft(e.target.value)}
-        />
-      ) : (
-        <div className="text-base text-gray-800 whitespace-pre-wrap">
-          {content}
-        </div>
-      )}
-    </div>
+    </Show>
   );
-};
-
+}

@@ -22,6 +22,8 @@ import "./styles.css";
 const MIN_SIDEBAR_WIDTH = 48;
 const DRAG_THRESHOLD = 3;
 
+const VERSION = "v1.0.1";
+
 export const PatchworkFrame = ({
   handle,
   element,
@@ -114,6 +116,10 @@ export const PatchworkFrame = ({
 
   return (
     <div class="frame">
+      <div class="frame__version" title="Patchwork frame version">
+        Frame {VERSION}
+      </div>
+
       <DebugRegistryToast
         events={debugEvents()}
         onDismiss={dismissEvent}
