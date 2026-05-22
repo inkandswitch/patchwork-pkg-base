@@ -28,7 +28,7 @@ import {
   type CommentThread,
 } from "@inkandswitch/patchwork-comments";
 
-const VERSION = "v2.1.4";
+const VERSION = "v2.1.6";
 
 export function CommentsView(props: { element: HTMLElement }) {
   const repo = useRepo();

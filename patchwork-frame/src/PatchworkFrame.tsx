@@ -22,7 +22,7 @@ import "./styles.css";
 const MIN_SIDEBAR_WIDTH = 48;
 const DRAG_THRESHOLD = 3;
 
-const VERSION = "v1.0.1";
+const VERSION = "v1.0.2";
 
 export const PatchworkFrame = ({
   handle,
