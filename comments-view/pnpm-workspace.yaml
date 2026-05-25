@@ -4,3 +4,4 @@ allowBuilds:
 
 overrides:
   "@inkandswitch/patchwork-providers": "file:../../patchwork-next/dist-tarballs/inkandswitch-patchwork-providers-0.0.1.tgz"
+  "@patchwork/solid": "file:../../patchwork-next/dist-tarballs/patchwork-solid-1.0.0.tgz"

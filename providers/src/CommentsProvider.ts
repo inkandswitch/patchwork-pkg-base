@@ -23,7 +23,7 @@ type CommentEntry = { targetRef: RefUrl; threadRef: RefUrl };
 export const CommentsProvider = (element: HTMLElement) => {
   const repo = (window as unknown as { repo?: Repo }).repo;
   if (!repo) {
-    console.warn("[providers] window.repo is not set; comments disabled");
+    console.warn("[providers/comments] window.repo is not set; comments disabled");
     return () => {};
   }
 

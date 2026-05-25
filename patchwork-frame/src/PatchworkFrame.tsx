@@ -22,7 +22,7 @@ import "./styles.css";
 const MIN_SIDEBAR_WIDTH = 48;
 const DRAG_THRESHOLD = 3;
 
-const VERSION = "v1.0.2";
+const VERSION = "v1.0.7-comments";
 
 export const PatchworkFrame = ({
   handle,
@@ -99,20 +99,25 @@ export const PatchworkFrame = ({
     clearAll,
   } = useDebugRegistryToast();
 
-  // Wait for the comments provider to mount before rendering consumers,
-  // so their patchwork:request events aren't dispatched before the
-  // provider has attached its listener.
+  // Wait for each provider to mount before rendering consumers, so their
+  // patchwork:request events aren't dispatched before the provider has
+  // attached its listener.
   const [isCommentsProviderReady, setCommentsProviderReady] =
     createSignal(false);
-  const attachProviderReadyListener = (host: HTMLElement) => {
-    const onMounted = (event: Event) => {
-      const detail = (event as CustomEvent<{ componentId?: string }>).detail;
-      if (detail?.componentId !== "patchwork-comments-provider") return;
-      setCommentsProviderReady(true);
+  const [isFocusProviderReady, setFocusProviderReady] =
+    createSignal(false);
+
+  const makeProviderReadyListener =
+    (componentId: string, setReady: (value: boolean) => void) =>
+    (host: HTMLElement) => {
+      const onMounted = (event: Event) => {
+        const detail = (event as CustomEvent<{ componentId?: string }>).detail;
+        if (detail?.componentId !== componentId) return;
+        setReady(true);
+      };
+      host.addEventListener("patchwork:mounted", onMounted);
+      onCleanup(() => host.removeEventListener("patchwork:mounted", onMounted));
     };
-    host.addEventListener("patchwork:mounted", onMounted);
-    onCleanup(() => host.removeEventListener("patchwork:mounted", onMounted));
-  };
 
   return (
     <div class="frame">
@@ -141,34 +146,47 @@ export const PatchworkFrame = ({
 
       <patchwork-view-2
         component-id="patchwork-comments-provider"
-        ref={attachProviderReadyListener}
+        ref={makeProviderReadyListener(
+          "patchwork-comments-provider",
+          setCommentsProviderReady
+        )}
       >
         <Show when={isCommentsProviderReady()}>
-          {/* Main Content Area */}
-          <div class="main-area">
-            <DocumentToolbar
-              toolIds={() => accountDoc()?.documentToolbarToolIds}
-              docUrl={selectedDoc.selectedDocUrl}
-            />
-            <MainDocumentView
-              viewKey={selectedDoc.viewKey}
-              selectedDocUrl={selectedDoc.selectedDocUrl}
-              toolId={() => selectedDoc.selectedView()?.toolId}
-            />
-          </div>
+          <patchwork-view-2
+            component-id="patchwork-focus-provider"
+            ref={makeProviderReadyListener(
+              "patchwork-focus-provider",
+              setFocusProviderReady
+            )}
+          >
+            <Show when={isFocusProviderReady()}>
+              {/* Main Content Area */}
+              <div class="main-area">
+                <DocumentToolbar
+                  toolIds={() => accountDoc()?.documentToolbarToolIds}
+                  docUrl={selectedDoc.selectedDocUrl}
+                />
+                <MainDocumentView
+                  viewKey={selectedDoc.viewKey}
+                  selectedDocUrl={selectedDoc.selectedDocUrl}
+                  toolId={() => selectedDoc.selectedView()?.toolId}
+                />
+              </div>
 
-          {/* Right Sidebar */}
-          {accountDoc()?.contextSidebarToolId && (
-            <Sidebar
-              side="right"
-              isCollapsed={sidebarState.isRightSidebarCollapsed}
-              width={sidebarState.rightSidebarWidth}
-              toolId={accountDoc()!.contextSidebarToolId}
-              docUrl={accountDocUrl}
-              onMouseDown={handleMouseDown}
-              onToggleClick={handleToggleClick}
-            />
-          )}
+              {/* Right Sidebar */}
+              {accountDoc()?.contextSidebarToolId && (
+                <Sidebar
+                  side="right"
+                  isCollapsed={sidebarState.isRightSidebarCollapsed}
+                  width={sidebarState.rightSidebarWidth}
+                  toolId={accountDoc()!.contextSidebarToolId}
+                  docUrl={accountDocUrl}
+                  onMouseDown={handleMouseDown}
+                  onToggleClick={handleToggleClick}
+                />
+              )}
+            </Show>
+          </patchwork-view-2>
         </Show>
       </patchwork-view-2>
     </div>
