@@ -8,6 +8,7 @@ import {
 } from "@automerge/automerge-repo";
 import {
   provide,
+  request,
   type RequestEvent,
 } from "@inkandswitch/patchwork-providers";
 import type {
@@ -16,39 +17,48 @@ import type {
 } from "@inkandswitch/patchwork-elements";
 import type { DocWithComments } from "@inkandswitch/patchwork-comments";
 
+const SELECTOR = "patchwork:comments";
 
 type CommentEntry = { targetRef: RefUrl; threadRef: RefUrl };
 
 export const CommentsProvider = (element: HTMLElement) => {
-  const repo = (window as unknown as { repo?: Repo }).repo;
-  if (!repo) {
-    console.warn("[providers/comments] window.repo is not set; comments disabled");
-    return () => { };
-  }
-
-
-  // this is just a temporary document, we use a real doc handle here so we 
-  // don't need to invent something new. Eventually it would be nice to have
-  // a more generic solution for reactive values
-  const allComments = repo.create<{ comments: CommentEntry[] }>({
-    comments: [],
-  });
+  let disposed = false;
+  let repo: Repo | null = null;
+  let allComments: DocHandle<{ comments: CommentEntry[] }> | null = null;
 
   // Synchronous source of truth; survives the `await repo.find` below.
   const mountCounts = new Map<AutomergeUrl, number>();
   const handlesByUrl = new Map<AutomergeUrl, DocHandle<DocWithComments>>();
   const commentsByDocUrl = new Map<AutomergeUrl, CommentEntry[]>();
 
+  const readyPromise: Promise<DocHandle<{ comments: CommentEntry[] }> | null> =
+    request<Repo>(element, "patchwork:repo").then((r) => {
+      if (disposed) return null;
+      if (!r) {
+        console.warn(
+          "[providers] no `patchwork:repo` provider; comments disabled"
+        );
+        return null;
+      }
+      repo = r;
+      // this is just a temporary document, we use a real doc handle here so we
+      // don't need to invent something new. Eventually it would be nice to have
+      // a more generic solution for reactive values
+      allComments = r.create<{ comments: CommentEntry[] }>({ comments: [] });
+      return allComments;
+    });
+
   element.addEventListener("patchwork:mounted", startWatch);
   element.addEventListener("patchwork:unmounted", stopWatch);
   element.addEventListener("patchwork:request", onRequest);
 
   return () => {
+    disposed = true;
     element.removeEventListener("patchwork:mounted", startWatch);
     element.removeEventListener("patchwork:unmounted", stopWatch);
     element.removeEventListener("patchwork:request", onRequest);
     for (const url of [...handlesByUrl.keys()]) disposeDoc(url);
-    allComments.delete();
+    if (allComments) allComments.delete();
   };
 
   async function startWatch(event: MountedEvent) {
@@ -58,13 +68,19 @@ export const CommentsProvider = (element: HTMLElement) => {
     mountDoc(url);
     if (wasMounted) return;
 
+    if (!repo) {
+      await readyPromise;
+      if (!repo) return;
+    }
+
     let handle: DocHandle<DocWithComments>;
     try {
-      handle = await repo!.find<DocWithComments>(url);
+      handle = await repo.find<DocWithComments>(url);
     } catch (error) {
       console.error(`[providers] failed to watch comments on ${url}`, error);
       return;
     }
+    if (disposed) return;
     if (!isMounted(url)) return;
     if (handlesByUrl.has(url)) return;
 
@@ -83,8 +99,8 @@ export const CommentsProvider = (element: HTMLElement) => {
   }
 
   function onRequest(event: RequestEvent) {
-    if (event.detail.type !== "patchwork:comments") return;
-    provide(event, allComments as DocHandle<unknown>);
+    if (event.detail.type !== SELECTOR) return;
+    provide<DocHandle<unknown> | null>(event, allComments ?? readyPromise);
   }
 
   function onChange({ handle }: DocHandleChangePayload<DocWithComments>) {

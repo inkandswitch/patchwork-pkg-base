@@ -1,4 +1,4 @@
-import type { DocHandle, Repo } from "@automerge/automerge-repo";
+import type { AutomergeUrl, DocHandle, Repo } from "@automerge/automerge-repo";
 import {
   createDocOfDatatype2,
   getRegistry,
@@ -9,13 +9,12 @@ import type { AccountDoc } from "../types";
 
 type SubdocField = "rootFolderUrl" | "moduleSettingsUrl" | "contactUrl";
 
-/**
- * Wait for a datatype to be loadable, returning the loaded datatype.
- *
- * The account datatype is bundled with the frame and is always registered
- * by the time this runs, but subdoc datatypes (contact, etc.) can live in
- * separately-loaded plugin bundles, so we have to tolerate late registration.
- */
+type FolderDoc = {
+  title?: string;
+  docs?: unknown[];
+  workspaceUrl?: AutomergeUrl;
+};
+
 async function loadDatatypeWhenReady<D>(
   id: string
 ): Promise<LoadedDatatype<D> | undefined> {
@@ -52,10 +51,33 @@ async function ensureSubdoc<S>(
   });
 }
 
-/**
- * Lazily populate every subdoc URL the frame depends on. Idempotent: fields
- * already set (including those set concurrently by another tab) win.
- */
+async function ensureFolderWorkspace(
+  accountHandle: DocHandle<AccountDoc>,
+  repo: Repo
+) {
+  const folderUrl = accountHandle.doc()?.rootFolderUrl;
+  if (!folderUrl) return;
+
+  const folderHandle = await repo.find<FolderDoc>(folderUrl);
+  await folderHandle.whenReady();
+  if (folderHandle.doc()?.workspaceUrl) return;
+
+  const datatype = await loadDatatypeWhenReady("patchwork:workspace");
+  if (!datatype) {
+    console.warn(
+      `frame: datatype "patchwork:workspace" never registered; folder missing workspaceUrl`
+    );
+    return;
+  }
+  if (folderHandle.doc()?.workspaceUrl) return;
+
+  const wsHandle = await createDocOfDatatype2(datatype, repo);
+  folderHandle.change((d) => {
+    if (!d.workspaceUrl) d.workspaceUrl = wsHandle.url;
+  });
+}
+
+// already set (including those set concurrently by another tab) win.
 export async function ensureAccountSubdocs(
   accountHandle: DocHandle<AccountDoc>,
   repo: Repo
@@ -70,4 +92,5 @@ export async function ensureAccountSubdocs(
     ),
     ensureSubdoc(accountHandle, repo, "contactUrl", "contact"),
   ]);
+  await ensureFolderWorkspace(accountHandle, repo);
 }

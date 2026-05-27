@@ -1,6 +1,7 @@
 import type { DocHandle, RefUrl, Repo } from "@automerge/automerge-repo";
 import {
   provide,
+  request,
   type RequestEvent,
 } from "@inkandswitch/patchwork-providers";
 
@@ -19,26 +20,34 @@ export type FocusDoc = {
 };
 
 export const FocusProvider = (element: HTMLElement) => {
-  const repo = (window as unknown as { repo?: Repo }).repo;
-  if (!repo) {
-    console.warn("[providers/focus] window.repo is not set; focus disabled");
-    return () => {};
-  }
+  let disposed = false;
+  let handle: DocHandle<FocusDoc> | null = null;
 
-  const handle = repo.create<FocusDoc>({
-    selection: {},
-    highlight: {},
+  const readyPromise: Promise<DocHandle<FocusDoc> | null> = request<Repo>(
+    element,
+    "patchwork:repo"
+  ).then((repo) => {
+    if (disposed) return null;
+    if (!repo) {
+      console.warn(
+        "[providers/focus] no `patchwork:repo` provider; focus disabled"
+      );
+      return null;
+    }
+    handle = repo.create<FocusDoc>({ selection: {}, highlight: {} });
+    return handle;
   });
 
   const onRequest = (event: RequestEvent) => {
     if (event.detail.type !== SELECTOR) return;
-    provide(event, handle as DocHandle<unknown>);
+    provide<DocHandle<unknown> | null>(event, handle ?? readyPromise);
   };
 
   element.addEventListener("patchwork:request", onRequest);
 
   return () => {
+    disposed = true;
     element.removeEventListener("patchwork:request", onRequest);
-    handle.delete();
+    if (handle) handle.delete();
   };
 };
