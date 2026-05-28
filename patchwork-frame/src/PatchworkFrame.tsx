@@ -9,6 +9,7 @@ import {
   useSelectedDocument,
   useAnnotations,
   useCommentThreads,
+  useProviderReady,
   useDebugRegistryToast,
   DebugRegistryToast,
 } from "./hooks";
@@ -90,42 +91,28 @@ export const PatchworkFrame = ({
 
   // Gate consumers on `patchwork:mounted` so their `patchwork:request`
   // events don't fly before the listener attaches.
-  const [isCommentsProviderReady, setCommentsProviderReady] =
-    createSignal(false);
-  const [isFocusProviderReady, setFocusProviderReady] = createSignal(false);
+  let commentsProviderHost!: HTMLElement;
+  const isCommentsProviderReady = useProviderReady(
+    "patchwork-comments-provider",
+    () => commentsProviderHost
+  );
 
-  const makeProviderReadyListener =
-    (componentId: string, setReady: (value: boolean) => void) =>
-    (host: HTMLElement) => {
-      const onMounted = (event: Event) => {
-        const detail = (event as CustomEvent<{ componentId?: string }>).detail;
-        if (detail?.componentId !== componentId) return;
-        setReady(true);
-      };
-      host.addEventListener("patchwork:mounted", onMounted);
-      onCleanup(() => host.removeEventListener("patchwork:mounted", onMounted));
-    };
+  let focusProviderHost!: HTMLElement;
+  const isFocusProviderReady = useProviderReady(
+    "patchwork-focus-provider",
+    () => focusProviderHost
+  );
 
   // Per-doc draft-root provider — mounts on the currently-selected doc and
   // exposes `patchwork:host-doc`/`patchwork:host-repo`/`patchwork:draft-root`/
   // `patchwork:drafts`. We still gate on `patchwork:mounted` so requests
   // dispatched by descendants (the sidebars, the inner draft provider) don't
   // race the listener.
-  const [isDraftRootProviderReady, setDraftRootProviderReady] =
-    createSignal(false);
-  const [draftRootProviderHost, setDraftRootProviderHost] =
-    createSignal<HTMLElement | undefined>();
-  const attachDraftRootProviderReadyListener = (host: HTMLElement) => {
-    setDraftRootProviderReady(false);
-    setDraftRootProviderHost(host);
-    const onMounted = (event: Event) => {
-      const detail = (event as CustomEvent<{ componentId?: string }>).detail;
-      if (detail?.componentId !== "patchwork-draft-root-provider") return;
-      setDraftRootProviderReady(true);
-    };
-    host.addEventListener("patchwork:mounted", onMounted);
-    onCleanup(() => host.removeEventListener("patchwork:mounted", onMounted));
-  };
+  let draftRootProviderHost!: HTMLElement;
+  const isDraftRootProviderReady = useProviderReady(
+    "patchwork-draft-root-provider",
+    () => draftRootProviderHost
+  );
 
   const [draftsStateHandle, setDraftsStateHandle] =
     createSignal<DocHandle<DraftsState> | undefined>();
@@ -133,15 +120,14 @@ export const PatchworkFrame = ({
 
   createEffect(() => {
     if (!isDraftRootProviderReady()) return;
-    const host = draftRootProviderHost();
-    if (!host) return;
     let cancelled = false;
-    request<DocHandle<DraftsState> | null>(host, "patchwork:drafts").then(
-      (h) => {
-        if (cancelled || !h) return;
-        setDraftsStateHandle(() => h);
-      }
-    );
+    request<DocHandle<DraftsState> | null>(
+      draftRootProviderHost,
+      "patchwork:drafts"
+    ).then((h) => {
+      if (cancelled || !h) return;
+      setDraftsStateHandle(() => h);
+    });
     onCleanup(() => {
       cancelled = true;
       setDraftsStateHandle(undefined);
@@ -161,17 +147,11 @@ export const PatchworkFrame = ({
     return draftsStateHandle()?.doc()?.selectedDraft;
   });
 
-  const [isDraftProviderReady, setDraftProviderReady] = createSignal(false);
-  const attachDraftProviderReadyListener = (host: HTMLElement) => {
-    setDraftProviderReady(false);
-    const onMounted = (event: Event) => {
-      const detail = (event as CustomEvent<{ componentId?: string }>).detail;
-      if (detail?.componentId !== "patchwork-draft-provider") return;
-      setDraftProviderReady(true);
-    };
-    host.addEventListener("patchwork:mounted", onMounted);
-    onCleanup(() => host.removeEventListener("patchwork:mounted", onMounted));
-  };
+  let draftProviderHost!: HTMLElement;
+  const isDraftProviderReady = useProviderReady(
+    "patchwork-draft-provider",
+    () => draftProviderHost
+  );
 
   return (
     <div class="frame">
@@ -187,18 +167,12 @@ export const PatchworkFrame = ({
 
       <patchwork-view
         component="patchwork-comments-provider"
-        ref={makeProviderReadyListener(
-          "patchwork-comments-provider",
-          setCommentsProviderReady
-        )}
+        ref={commentsProviderHost}
       >
         <Show when={isCommentsProviderReady()}>
           <patchwork-view
             component="patchwork-focus-provider"
-            ref={makeProviderReadyListener(
-              "patchwork-focus-provider",
-              setFocusProviderReady
-            )}
+            ref={focusProviderHost}
           >
             <Show when={isFocusProviderReady()}>
               {/* Per-document draft scope. Keyed on the selected doc URL
@@ -247,7 +221,7 @@ export const PatchworkFrame = ({
                   <patchwork-view
                     component="patchwork-draft-root-provider"
                     doc-url={docUrl}
-                    ref={attachDraftRootProviderReadyListener}
+                    ref={draftRootProviderHost}
                   >
                     <Show when={isDraftRootProviderReady()}>
                       {accountDoc()?.accountSidebarToolId && (
@@ -288,7 +262,7 @@ export const PatchworkFrame = ({
                             <patchwork-view
                               component="patchwork-draft-provider"
                               url={draftUrl}
-                              ref={attachDraftProviderReadyListener}
+                              ref={draftProviderHost}
                             >
                               <Show when={isDraftProviderReady()}>
                                 <MainDocumentView
