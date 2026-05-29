@@ -16,12 +16,13 @@ import type { AutomergeUrl, DocHandle, Repo } from "@automerge/automerge-repo";
 import { requestDoc } from "@inkandswitch/patchwork-providers-solid";
 import { request } from "@inkandswitch/patchwork-providers";
 import type {
+  CloneEntry,
   DraftDoc,
   DraftsState,
   HasDrafts,
 } from "./draft-types";
 
-const VERSION = "v0.4.2-baseline-debug";
+const VERSION = "v0.5.0-merge";
 
 export function DraftsSidebar(props: { element: HTMLElement }) {
   const [hostDoc, hostDocHandle] = requestDoc<HasDrafts>(
@@ -87,6 +88,20 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     selectDraft(draft.url);
   };
 
+  const onMergeDraft = async () => {
+    const draftUrl = selected();
+    if (!draftUrl) return;
+    if (!window.confirm("Merge this draft into the main document?")) return;
+    const repo = await getHostRepo();
+    if (!repo) {
+      console.warn("[drafts] no `patchwork:host-repo` available");
+      return;
+    }
+    const draftHandle = await repo.find<DraftDoc>(draftUrl);
+    await mergeDraft(repo, draftHandle);
+    selectDraft(null);
+  };
+
   return (
     <div class="h-full flex flex-col p-2 gap-2">
       <div class="flex items-center justify-between text-xs text-gray-400">
@@ -118,17 +133,56 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
         </div>
 
         <div class="flex justify-end">
-          <button
-            class="btn btn-sm btn-primary"
-            onClick={onCreateDraft}
-            title="Create a new draft off this document"
-          >
-            New draft
-          </button>
+          <Show when={isMainSelected()}>
+            <button
+              class="btn btn-sm btn-primary"
+              onClick={onCreateDraft}
+              title="Create a new draft off this document"
+            >
+              New draft
+            </button>
+          </Show>
+          <Show when={!isMainSelected()}>
+            <button
+              class="btn btn-sm btn-warning"
+              onClick={onMergeDraft}
+              title="Merge this draft into Main"
+            >
+              Merge into Main
+            </button>
+          </Show>
         </div>
       </Show>
     </div>
   );
+}
+
+// Merges every cloned doc back into its original, recording per-clone
+// merge heads for auditing, and marks the draft as merged.
+async function mergeDraft(
+  repo: Repo,
+  draftHandle: DocHandle<DraftDoc>
+): Promise<void> {
+  const entries = Object.entries(draftHandle.doc()?.clones ?? {}) as [
+    AutomergeUrl,
+    CloneEntry,
+  ][];
+  for (const [originalUrl, entry] of entries) {
+    if (entry.cloneUrl === originalUrl) continue;
+    const [original, clone] = await Promise.all([
+      repo.find<unknown>(originalUrl),
+      repo.find<unknown>(entry.cloneUrl),
+    ]);
+    original.merge(clone);
+    const mergedAt = original.heads();
+    draftHandle.change((d) => {
+      const e = d.clones[originalUrl];
+      if (e) e.mergedAt = mergedAt;
+    });
+  }
+  draftHandle.change((d) => {
+    d.mergedAt = Date.now();
+  });
 }
 
 function MainCard(props: {
@@ -171,9 +225,13 @@ function DraftCard(props: {
 
   const cloneCount = createMemo(() => Object.keys(doc()?.clones ?? {}).length);
   const childCount = createMemo(() => doc()?.drafts.length ?? 0);
+  const isVisible = createMemo(() => {
+    const d = doc();
+    return !!d && d.mergedAt === undefined;
+  });
 
   return (
-    <Show when={doc()}>
+    <Show when={isVisible()}>
       <button
         type="button"
         class="text-left card card-bordered shadow-sm border hover:bg-gray-50"

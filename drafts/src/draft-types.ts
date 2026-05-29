@@ -1,18 +1,27 @@
 import type { AutomergeUrl, UrlHeads } from "@automerge/automerge-repo";
 
+// One COW relationship between an original doc and the per-draft clone we
+// write to. `clonedAt`/`mergedAt` capture the fork and join points on the
+// original — together they describe what the draft contributed to that doc.
 export type CloneEntry = {
   cloneUrl: AutomergeUrl;
   clonedAt: UrlHeads;
+  mergedAt?: UrlHeads;
 };
 
 // `parent` points at the URL this draft branches off of: either the host
 // document (for top-level drafts attached via `@patchwork.drafts`) or
 // another `DraftDoc` (for sub-drafts attached via `DraftDoc.drafts`).
+//
+// `mergedAt` is a wall-clock timestamp set when the draft is merged into
+// its parent; absent means "still open". The sidebar uses it to filter
+// merged drafts out of the list.
 export type DraftDoc = {
   "@patchwork": { type: "draft" };
   parent: AutomergeUrl;
   drafts: AutomergeUrl[];
   clones: Record<AutomergeUrl, CloneEntry>;
+  mergedAt?: number;
 };
 
 // Ephemeral state owned by the draft-list provider. `selectedDraft = null`
