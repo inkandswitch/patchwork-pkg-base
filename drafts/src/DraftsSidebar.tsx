@@ -1,6 +1,16 @@
 import "./styles.css";
-import { createMemo, For, Show } from "solid-js";
-import { useDocument } from "@automerge/automerge-repo-solid-primitives";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  onCleanup,
+  Show,
+} from "solid-js";
+import {
+  createDocumentProjection,
+  useDocument,
+} from "@automerge/automerge-repo-solid-primitives";
 import type { AutomergeUrl, DocHandle, Repo } from "@automerge/automerge-repo";
 
 import { requestDoc } from "@inkandswitch/patchwork-providers-solid";
@@ -18,14 +28,59 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     props.element,
     "patchwork:host-doc"
   );
-  const [, rootHandle] = requestDoc<DraftDoc>(
-    props.element,
-    "patchwork:draft-root"
+
+  // `@patchwork.draftUrl` is the link from a host doc to its draft tree.
+  // We re-request `patchwork:draft-root` and `patchwork:drafts` whenever it
+  // toggles, because the underlying `request()` is fire-and-forget and the
+  // provider tears down / rebuilds those handles when the marker changes.
+  const draftUrlMarker = createMemo<string | undefined>(
+    () => hostDoc()?.["@patchwork"]?.draftUrl
   );
-  const [state, stateHandle] = requestDoc<DraftsState>(
-    props.element,
-    "patchwork:drafts"
-  );
+
+  const [rootHandle, setRootHandle] =
+    createSignal<DocHandle<DraftDoc> | undefined>();
+  const [stateHandle, setStateHandle] =
+    createSignal<DocHandle<DraftsState> | undefined>();
+
+  createEffect(() => {
+    const marker = draftUrlMarker();
+    let cancelled = false;
+    onCleanup(() => {
+      cancelled = true;
+    });
+
+    if (!marker) {
+      setRootHandle(undefined);
+      setStateHandle(undefined);
+      return;
+    }
+
+    // The draft-root provider's reconcile is async; it may not have rebuilt
+    // its handles by the time we observe the host doc change. Retry briefly
+    // until both responses come back non-null.
+    void (async () => {
+      for (let attempt = 0; attempt < 50 && !cancelled; attempt++) {
+        const [root, drafts] = await Promise.all([
+          request<DocHandle<DraftDoc> | null>(
+            props.element,
+            "patchwork:draft-root"
+          ),
+          request<DocHandle<DraftsState> | null>(
+            props.element,
+            "patchwork:drafts"
+          ),
+        ]);
+        if (root && drafts && !cancelled) {
+          setRootHandle(() => root);
+          setStateHandle(() => drafts);
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    })();
+  });
+
+  const state = createDocumentProjection<DraftsState>(stateHandle);
 
   const drafts = createMemo<AutomergeUrl[]>(() => state()?.drafts ?? []);
   const selected = createMemo<AutomergeUrl | undefined>(
@@ -100,6 +155,12 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     selectDraft(child.url);
   };
 
+  // Single entry point used by the "New draft" button regardless of whether
+  // the host doc already has a draft tree. If it doesn't, we bootstrap the
+  // root and a child in one shot; otherwise we just add a child to the root.
+  const onCreateDraft = () =>
+    hasDraftTree() ? onCreateChild() : onCreateFirst();
+
   return (
     <div class="h-full flex flex-col p-2 gap-2">
       <div class="flex items-center justify-between text-xs text-gray-400">
@@ -113,18 +174,13 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
           <div class="text-xs text-gray-400">No document selected.</div>
         }
       >
-        <Show
-          when={hasDraftTree()}
-          fallback={
-            <div class="flex flex-col gap-2 text-xs text-gray-500">
-              <p>This document has no drafts yet.</p>
-              <button class="btn btn-sm btn-primary" onClick={onCreateFirst}>
-                Create first draft
-              </button>
-            </div>
-          }
-        >
-          <div class="flex flex-col gap-1">
+        <div class="flex flex-col gap-1">
+          <Show
+            when={hasDraftTree()}
+            fallback={
+              <VirtualMainCard hostDocUrl={hostDocHandle()?.url} />
+            }
+          >
             <For each={drafts()}>
               {(url) => (
                 <DraftCard
@@ -135,20 +191,47 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
                 />
               )}
             </For>
-          </div>
+          </Show>
+        </div>
 
-          <div class="flex justify-end">
-            <button
-              class="btn btn-sm btn-primary"
-              onClick={onCreateChild}
-              disabled={!rootHandle()}
-              title="Create a new draft off the root"
-            >
-              New draft
-            </button>
-          </div>
-        </Show>
+        <div class="flex justify-end">
+          <button
+            class="btn btn-sm btn-primary"
+            onClick={onCreateDraft}
+            title={
+              hasDraftTree()
+                ? "Create a new draft off the root"
+                : "Attach a draft tree to this document"
+            }
+          >
+            New draft
+          </button>
+        </div>
       </Show>
+    </div>
+  );
+}
+
+/** Placeholder shown when a host doc has no draft tree yet. Visually
+ * matches a selected `DraftCard` so the layout doesn't pop when the user
+ * clicks "New draft" and the real root materializes.
+ */
+function VirtualMainCard(props: { hostDocUrl: AutomergeUrl | undefined }) {
+  return (
+    <div
+      class="text-left card card-bordered shadow-sm border bg-base-200 border-primary ring-1 ring-primary"
+      title="Main version (host document)"
+    >
+      <div class="card-body p-2 space-y-1">
+        <div class="text-sm font-medium flex items-center gap-2">
+          <span>Main</span>
+          <span class="badge badge-xs badge-primary">current</span>
+        </div>
+        <div class="text-xs text-gray-500 font-mono break-all">
+          {props.hostDocUrl ?? ""}
+        </div>
+        <div class="text-xs text-gray-400">0 cloned doc(s) · 0 draft(s)</div>
+      </div>
     </div>
   );
 }
