@@ -23,7 +23,7 @@ import {
   type Repo,
 } from "@automerge/automerge-repo";
 
-import { requestDoc, subscribe } from "@inkandswitch/patchwork-providers-solid";
+import { subscribeDoc, subscribe } from "@inkandswitch/patchwork-providers-solid";
 import {
   useResolvedRefs,
   useResolvedRefMap,
@@ -34,7 +34,7 @@ import {
   type CommentThread,
 } from "@inkandswitch/patchwork-comments";
 
-const VERSION = "v2.3.9-comments";
+const VERSION = "v2.3.10-comments";
 
 export function CommentsView(props: { element: HTMLElement }) {
   const repo = useRepo();
@@ -48,14 +48,14 @@ export function CommentsView(props: { element: HTMLElement }) {
   // `selection` is read-only input (driven by the active editor), `highlight`
   // is our output. Splitting them avoids the feedback loop a single shared
   // map would have.
-  const [focusDoc, focusHandle] = requestDoc<{
+  const [focusDoc, focusHandle] = subscribeDoc<{
     selection: Record<RefUrl, true>;
     highlight: Record<RefUrl, true>;
-  }>(props.element, "patchwork:focus");
+  }>(props.element, { type: "patchwork:focus" });
 
-  const [, contactHandle] = requestDoc<Record<string, never>>(
+  const [, contactHandle] = subscribeDoc<Record<string, never>>(
     props.element,
-    "patchwork:contact"
+    { type: "patchwork:contact" }
   );
   const currentContactUrl = () =>
     contactHandle()?.url as AutomergeUrl | undefined;

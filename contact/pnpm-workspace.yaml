@@ -1,3 +1,5 @@
 allowBuilds:
   cbor-extract: true
   esbuild: true
+overrides:
+  '@inkandswitch/patchwork-providers': 'file:../../patchwork-next/dist/inkandswitch-patchwork-providers-0.1.2.tgz'

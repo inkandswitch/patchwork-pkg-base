@@ -23,7 +23,10 @@ import { annotations as globalAnnotations } from "@inkandswitch/annotations-cont
 import type { Annotation } from "@inkandswitch/annotations";
 import { Diff } from "@inkandswitch/annotations-diff";
 import { createComment } from "@inkandswitch/patchwork-comments";
-import { requestDoc, subscribe } from "@inkandswitch/patchwork-providers-solid";
+import {
+  subscribeDoc,
+  subscribe,
+} from "@inkandswitch/patchwork-providers-solid";
 
 /** Styles */
 import { createSignal, onMount } from "solid-js";
@@ -34,7 +37,7 @@ export type TextDoc = {
 };
 
 const PATH = ["content"];
-const VERSION = "v2.0.24-comments";
+const VERSION = "v2.0.25-comments";
 
 export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
   const contentRef = () => (props.handle as DocHandle<TextDoc>).ref(...PATH);
@@ -46,8 +49,6 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
   const contentAnnotations = globalAnnotations.onChildrenOf(contentRef());
   const diffAnnotations = useSubscribe(contentAnnotations.ofType(Diff));
 
-  // Scoped to this doc: the provider only sends entries whose `targetRef`
-  // lives here, so no client-side filtering by url is needed.
   const commentEntries = subscribe<{ targetRef: RefUrl; threadRef: RefUrl }[]>(
     props.element,
     { type: "patchwork:comments", url: props.handle.url },
@@ -56,15 +57,14 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
 
   // We own `selection` (cursor) and only read `highlight` (other views'
   // emphasis). Splitting the two avoids any feedback loop.
-  const [focusDoc, focusHandle] = requestDoc<{
+  const [focusDoc, focusHandle] = subscribeDoc<{
     selection: Record<RefUrl, true>;
     highlight: Record<RefUrl, true>;
-  }>(props.element, "patchwork:focus");
+  }>(props.element, { type: "patchwork:focus" });
 
-  const [, contactHandle] = requestDoc<Record<string, never>>(
-    props.element,
-    "patchwork:contact"
-  );
+  const contactUrl = subscribe<AutomergeUrl>(props.element, {
+    type: "patchwork:contact",
+  });
 
   let lastEmittedUrl: RefUrl | undefined;
 
@@ -100,12 +100,12 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
   };
 
   const onComment = (from: number, to: number) => {
-    const contactUrl = contactHandle()?.url as AutomergeUrl | undefined;
-    if (!contactUrl) {
+    const url = contactUrl();
+    if (!url) {
       console.warn("Cannot create comment: no contactUrl available");
       return;
     }
-    void createCommentForRange(props.handle, PATH, from, to, contactUrl);
+    void createCommentForRange(props.handle, PATH, from, to, url);
   };
 
   // Base CodeMirror extensions (context-specific, not language-specific)

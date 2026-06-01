@@ -1,8 +1,5 @@
-import type { DocHandle, RefUrl, Repo } from "@automerge/automerge-repo";
-import {
-  provide,
-  type RequestEvent,
-} from "@inkandswitch/patchwork-providers";
+import type { AutomergeUrl, RefUrl, Repo } from "@automerge/automerge-repo";
+import { accept, type SubscribeEvent } from "@inkandswitch/patchwork-providers";
 
 const SELECTOR = "patchwork:focus";
 
@@ -30,15 +27,19 @@ export const FocusProvider = (element: HTMLElement) => {
     highlight: {},
   });
 
-  const onRequest = (event: RequestEvent) => {
-    if (event.detail.type !== SELECTOR) return;
-    provide(event, handle as DocHandle<unknown>);
+  // Consumers recover the live handle from the global repo via this url, so
+  // they can both read (projection) and write (`.change`) the same doc.
+  const onSubscribe = (event: SubscribeEvent) => {
+    if (event.detail.selector.type !== SELECTOR) return;
+    accept<AutomergeUrl>(event, (respond) => {
+      respond(handle.url);
+    });
   };
 
-  element.addEventListener("patchwork:request", onRequest);
+  element.addEventListener("patchwork:subscribe", onSubscribe);
 
   return () => {
-    element.removeEventListener("patchwork:request", onRequest);
+    element.removeEventListener("patchwork:subscribe", onSubscribe);
     handle.delete();
   };
 };
