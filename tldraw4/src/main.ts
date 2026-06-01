@@ -26,8 +26,8 @@ export const plugins = [
   },
   {
     type: "patchwork:tool",
-    id: "tldraw4",
-    name: "tldraw",
+    id: "tldraw-2",
+    name: "tldraw with diff",
     supportedDatatypes: ["tldraw4"],
     async load(): Promise<ToolImplementation> {
       const { render } = await import("./tool.tsx");

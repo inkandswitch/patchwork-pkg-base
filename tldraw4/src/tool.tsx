@@ -22,7 +22,40 @@ import type { TLDrawDoc } from "./datatype.ts";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { UnixFileEntry } from "@inkandswitch/patchwork-filesystem";
 import { automergeUrlToServiceWorkerUrl } from "@inkandswitch/patchwork-filesystem";
+import { useDocRequest } from "@inkandswitch/patchwork-providers-react";
+import { decodeHeads, type UrlHeads } from "@automerge/automerge-repo";
 import { createRoot } from "react-dom/client";
+import { diffStore, type ShapeDiff } from "./diff.ts";
+import { DiffContext, diffComponents } from "./DiffOverlay.tsx";
+
+// Baseline served by the draft overlay (`patchwork:baseline`). When `heads`
+// is absent there is no baseline and no diff is rendered (e.g. on "main").
+type Baseline = { heads?: UrlHeads };
+
+const VERSION = "v0.2.0-diff";
+
+function VersionBadge() {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        bottom: 4,
+        right: 6,
+        fontSize: 11,
+        fontWeight: 500,
+        color: "var(--color-text-3, #9ca3af)",
+        pointerEvents: "none",
+        userSelect: "none",
+        zIndex: 1,
+      }}
+      title="tldraw tool version"
+    >
+      tldraw {VERSION}
+    </div>
+  );
+}
+
+const components = { ...diffComponents, InFrontOfTheCanvas: VersionBadge };
 
 const MIME_TO_EXT: Record<string, string> = {
   "image/png": "png",
@@ -73,7 +106,13 @@ function useContactInfo() {
   };
 }
 
-export function TldrawTool({ docUrl }: { docUrl: AutomergeUrl }) {
+export function TldrawTool({
+  docUrl,
+  element,
+}: {
+  docUrl: AutomergeUrl;
+  element: HTMLElement;
+}) {
   const handle = useDocHandle<TLDrawDoc>(docUrl, { suspense: true });
   const contactInfo = useContactInfo();
   const store = useAutomergeStore({ handle, userId: contactInfo.userId });
@@ -84,11 +123,61 @@ export function TldrawTool({ docUrl }: { docUrl: AutomergeUrl }) {
     userMetadata: contactInfo,
   });
 
+  const [baseline] = useDocRequest<Baseline>(element, "patchwork:baseline", {
+    url: docUrl,
+  });
+  const diff = useShapeDiff(handle, baseline?.heads);
+
   return (
-    <Tldraw inferDarkMode autoFocus store={store}>
-      <TldrawInner docUrl={docUrl} />
-    </Tldraw>
+    <DiffContext.Provider value={diff}>
+      <Tldraw inferDarkMode autoFocus store={store} components={components}>
+        <TldrawInner docUrl={docUrl} />
+      </Tldraw>
+    </DiffContext.Provider>
   );
+}
+
+// Recomputes the diff against `heads` on every doc change. `baseline.heads`
+// only moves when the draft is forked (copy-on-write), so without listening
+// to the handle the diff would freeze after the first computation — same
+// reasoning as `codemirror-base`'s `docTick`. The bump is deferred to a
+// microtask so we never recompute synchronously from inside the sync layer's
+// own `handle.change` callback.
+function useShapeDiff(
+  handle: DocHandle<TLDrawDoc>,
+  heads: UrlHeads | undefined
+): ShapeDiff | null {
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    let scheduled = false;
+    const onChange = () => {
+      if (scheduled) return;
+      scheduled = true;
+      queueMicrotask(() => {
+        scheduled = false;
+        setTick((t) => t + 1);
+      });
+    };
+    handle.on("change", onChange);
+    return () => {
+      handle.off("change", onChange);
+    };
+  }, [handle]);
+
+  return useMemo(() => {
+    if (!heads) return null;
+    const doc = handle.doc();
+    if (!doc) return null;
+    try {
+      return diffStore(doc, decodeHeads(heads));
+    } catch (error) {
+      console.warn("[tldraw4/diff] failed to compute diff", error);
+      return null;
+    }
+    // `tick` is intentionally a dependency: it forces recompute on doc change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handle, heads, tick]);
 }
 
 function TldrawInner(props: { docUrl: AutomergeUrl }) {
@@ -203,7 +292,7 @@ export function render(handle: any, element: any) {
   const root = createRoot(element);
   root.render(
     <RepoContext.Provider value={element.repo}>
-      <TldrawTool docUrl={handle.url} />
+      <TldrawTool docUrl={handle.url} element={element} />
     </RepoContext.Provider>
   );
   return () => root.unmount();
