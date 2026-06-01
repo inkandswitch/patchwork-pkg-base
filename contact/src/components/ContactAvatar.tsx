@@ -4,6 +4,7 @@ import {
   useDocHandle,
   useRemoteAwareness,
 } from "@automerge/automerge-repo-react-hooks";
+import { useDocRequest } from "@inkandswitch/patchwork-providers-react";
 import type { ContactDoc } from "../types";
 import { Avatar, AvatarFallback, AvatarImage } from "./Avatar";
 import { User as UserIcon } from "lucide-react";
@@ -19,15 +20,28 @@ declare global {
   }
 }
 
-export const ContactAvatar = ({ docUrl }: { docUrl: AutomergeUrl }) => {
+export const ContactAvatar = ({
+  docUrl,
+  element,
+}: {
+  docUrl: AutomergeUrl;
+  element: HTMLElement;
+}) => {
   const [contact] = useDocument<ContactDoc>(docUrl);
   const handle = useDocHandle(docUrl, { suspense: true });
 
-  const accountDocHandle = window.accountDocHandle;
-  const [currentAccount] = useDocument<TinyPatchworkLayoutDoc>(
-    accountDocHandle?.url
+  const [ownContact, ownContactHandle] = useDocRequest<ContactDoc>(
+    element,
+    "patchwork:contact"
   );
-  const [self] = useDocument<ContactDoc>(currentAccount?.contactUrl);
+  const accountDocHandle = window.accountDocHandle;
+  const [fallbackAccount] = useDocument<TinyPatchworkLayoutDoc>(
+    ownContactHandle ? undefined : accountDocHandle?.url
+  );
+  const [fallbackSelf] = useDocument<ContactDoc>(
+    ownContactHandle ? undefined : fallbackAccount?.contactUrl
+  );
+  const self = ownContact ?? fallbackSelf;
 
   const avatarHandle = useDocHandle(
     contact?.type === "registered" ? contact.avatarUrl : undefined

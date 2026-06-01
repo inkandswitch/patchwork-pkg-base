@@ -6,50 +6,85 @@ import {
   type RefUrl,
   type Repo,
 } from "@automerge/automerge-repo";
-import {
-  provide,
-  type RequestEvent,
-} from "@inkandswitch/patchwork-providers";
+import { accept, type SubscribeEvent } from "@inkandswitch/patchwork-providers";
 import type {
   MountedEvent,
   UnmountedEvent,
 } from "@inkandswitch/patchwork-elements";
 import type { DocWithComments } from "@inkandswitch/patchwork-comments";
 
-
 type CommentEntry = { targetRef: RefUrl; threadRef: RefUrl };
 
+/**
+ * Answers `patchwork:comments` subscriptions. Watches every mounted doc for
+ * comment threads and pushes the resulting `CommentEntry[]` to subscribers.
+ *
+ * Subscriptions are scoped:
+ *
+ * - `{ url }` → only entries whose `targetRef` lives in that doc. The
+ *   subscriber is re-notified only when its own slice changes.
+ * - no args → the flat list of every entry across all mounted docs.
+ */
 export const CommentsProvider = (element: HTMLElement) => {
   const repo = (window as unknown as { repo?: Repo }).repo;
   if (!repo) {
-    console.warn("[providers/comments] window.repo is not set; comments disabled");
-    return () => { };
+    console.warn(
+      "[providers/comments] window.repo is not set; comments disabled"
+    );
+    return () => {};
   }
 
-
-  // this is just a temporary document, we use a real doc handle here so we 
-  // don't need to invent something new. Eventually it would be nice to have
-  // a more generic solution for reactive values
-  const allComments = repo.create<{ comments: CommentEntry[] }>({
-    comments: [],
-  });
-
-  // Synchronous source of truth; survives the `await repo.find` below.
+  // Mount bookkeeping survives the `await repo.find` below.
   const mountCounts = new Map<AutomergeUrl, number>();
   const handlesByUrl = new Map<AutomergeUrl, DocHandle<DocWithComments>>();
-  const commentsByDocUrl = new Map<AutomergeUrl, CommentEntry[]>();
+
+  // Two indices over the same entries: keyed by the doc that *stores* the
+  // threads, and regrouped by the doc each entry's `targetRef` points at.
+  const entriesByStorageUrl = new Map<AutomergeUrl, CommentEntry[]>();
+  let entriesByTargetUrl = new Map<AutomergeUrl, CommentEntry[]>();
+  let flatEntries: CommentEntry[] = [];
+
+  // Subscribers, split by the doc url they asked about (or the global set
+  // for url-less subscriptions).
+  const subscribersByUrl = new Map<
+    AutomergeUrl,
+    Set<(entries: CommentEntry[]) => void>
+  >();
+  const globalSubscribers = new Set<(entries: CommentEntry[]) => void>();
 
   element.addEventListener("patchwork:mounted", startWatch);
   element.addEventListener("patchwork:unmounted", stopWatch);
-  element.addEventListener("patchwork:request", onRequest);
+  element.addEventListener("patchwork:subscribe", onSubscribe);
 
   return () => {
     element.removeEventListener("patchwork:mounted", startWatch);
     element.removeEventListener("patchwork:unmounted", stopWatch);
-    element.removeEventListener("patchwork:request", onRequest);
+    element.removeEventListener("patchwork:subscribe", onSubscribe);
     for (const url of [...handlesByUrl.keys()]) disposeDoc(url);
-    allComments.delete();
+    subscribersByUrl.clear();
+    globalSubscribers.clear();
   };
+
+  function onSubscribe(event: SubscribeEvent) {
+    if (event.detail.type !== "patchwork:comments") return;
+    const url = event.detail.args?.url as AutomergeUrl | undefined;
+
+    accept<CommentEntry[]>(event, (respond) => {
+      if (url) {
+        respond(entriesByTargetUrl.get(url) ?? []);
+        let set = subscribersByUrl.get(url);
+        if (!set) subscribersByUrl.set(url, (set = new Set()));
+        set.add(respond);
+        return () => {
+          set!.delete(respond);
+          if (set!.size === 0) subscribersByUrl.delete(url);
+        };
+      }
+      respond(flatEntries);
+      globalSubscribers.add(respond);
+      return () => globalSubscribers.delete(respond);
+    });
+  }
 
   async function startWatch(event: MountedEvent) {
     if (!("url" in event.detail)) return;
@@ -71,8 +106,8 @@ export const CommentsProvider = (element: HTMLElement) => {
     handle.on("change", onChange);
     handle.on("delete", onDelete);
     handlesByUrl.set(url, handle);
-    commentsByDocUrl.set(url, buildEntriesForDoc(handle));
-    rebuildAllComments();
+    entriesByStorageUrl.set(url, buildEntriesForDoc(handle));
+    rebuild();
   }
 
   function stopWatch(event: UnmountedEvent) {
@@ -82,18 +117,13 @@ export const CommentsProvider = (element: HTMLElement) => {
     if (!isMounted(url)) disposeDoc(url);
   }
 
-  function onRequest(event: RequestEvent) {
-    if (event.detail.type !== "patchwork:comments") return;
-    provide(event, allComments as DocHandle<unknown>);
-  }
-
   function onChange({ handle }: DocHandleChangePayload<DocWithComments>) {
-    const prev = commentsByDocUrl.get(handle.url);
+    const prev = entriesByStorageUrl.get(handle.url);
     if (!prev) return;
     const next = buildEntriesForDoc(handle);
     if (entryListsEqual(prev, next)) return;
-    commentsByDocUrl.set(handle.url, next);
-    rebuildAllComments();
+    entriesByStorageUrl.set(handle.url, next);
+    rebuild();
   }
 
   function onDelete({ handle }: DocHandleDeletePayload<DocWithComments>) {
@@ -104,11 +134,47 @@ export const CommentsProvider = (element: HTMLElement) => {
     const handle = handlesByUrl.get(url);
     mountCounts.delete(url);
     handlesByUrl.delete(url);
-    commentsByDocUrl.delete(url);
+    entriesByStorageUrl.delete(url);
     if (!handle) return;
     handle.off("change", onChange);
     handle.off("delete", onDelete);
-    rebuildAllComments();
+    rebuild();
+  }
+
+  // Recompute both indices from the per-storage-doc lists, then notify only
+  // the subscribers whose visible slice actually changed.
+  function rebuild() {
+    const nextFlat: CommentEntry[] = [];
+    for (const list of entriesByStorageUrl.values()) {
+      for (const entry of list) nextFlat.push(entry);
+    }
+
+    const nextByTarget = new Map<AutomergeUrl, CommentEntry[]>();
+    for (const entry of nextFlat) {
+      const targetDocUrl = docUrlOfRef(entry.targetRef);
+      if (!targetDocUrl) continue;
+      let bucket = nextByTarget.get(targetDocUrl);
+      if (!bucket) nextByTarget.set(targetDocUrl, (bucket = []));
+      bucket.push(entry);
+    }
+
+    const touched = new Set<AutomergeUrl>([
+      ...nextByTarget.keys(),
+      ...entriesByTargetUrl.keys(),
+    ]);
+    for (const url of touched) {
+      const before = entriesByTargetUrl.get(url) ?? [];
+      const after = nextByTarget.get(url) ?? [];
+      if (entryListsEqual(before, after)) continue;
+      const subs = subscribersByUrl.get(url);
+      if (subs) for (const emit of subs) emit(after);
+    }
+    entriesByTargetUrl = nextByTarget;
+
+    if (!entryListsEqual(flatEntries, nextFlat)) {
+      flatEntries = nextFlat;
+      for (const emit of globalSubscribers) emit(flatEntries);
+    }
   }
 
   function buildEntriesForDoc(
@@ -128,33 +194,6 @@ export const CommentsProvider = (element: HTMLElement) => {
     return entries;
   }
 
-  // In-place mutation only: the automerge-solid bindings throw on `del`
-  // patches with non-numeric paths, so every removal must be an array pop.
-  function rebuildAllComments() {
-    const next: CommentEntry[] = [];
-    for (const entries of commentsByDocUrl.values()) {
-      for (const entry of entries) next.push(entry);
-    }
-    allComments.change((doc) => {
-      while (doc.comments.length > next.length) doc.comments.pop();
-      for (let i = 0; i < next.length; i++) {
-        if (i < doc.comments.length) {
-          const cur = doc.comments[i];
-          if (!entriesEqual(cur, next[i])) {
-            if (cur.targetRef !== next[i].targetRef) {
-              cur.targetRef = next[i].targetRef;
-            }
-            if (cur.threadRef !== next[i].threadRef) {
-              cur.threadRef = next[i].threadRef;
-            }
-          }
-        } else {
-          doc.comments.push(next[i]);
-        }
-      }
-    });
-  }
-
   function mountDoc(url: AutomergeUrl) {
     mountCounts.set(url, (mountCounts.get(url) ?? 0) + 1);
   }
@@ -169,6 +208,21 @@ export const CommentsProvider = (element: HTMLElement) => {
     return mountCounts.has(url);
   }
 };
+
+function docUrlOfRef(ref: RefUrl): AutomergeUrl | undefined {
+  const slash = ref.indexOf("/");
+  const hash = ref.indexOf("#");
+  const end =
+    slash === -1
+      ? hash === -1
+        ? ref.length
+        : hash
+      : hash === -1
+        ? slash
+        : Math.min(slash, hash);
+  const head = ref.slice(0, end);
+  return head ? (head as AutomergeUrl) : undefined;
+}
 
 const entriesEqual = (a: CommentEntry, b: CommentEntry) =>
   a.targetRef === b.targetRef && a.threadRef === b.threadRef;

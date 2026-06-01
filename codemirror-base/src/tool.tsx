@@ -11,6 +11,7 @@ import {
   cursor,
   parseAutomergeUrl,
   refFromUrl,
+  type AutomergeUrl,
   type DocHandle,
   type Ref,
   type RefUrl,
@@ -22,7 +23,7 @@ import { annotations as globalAnnotations } from "@inkandswitch/annotations-cont
 import type { Annotation } from "@inkandswitch/annotations";
 import { Diff } from "@inkandswitch/annotations-diff";
 import { createComment } from "@inkandswitch/patchwork-comments";
-import { requestDoc } from "@inkandswitch/patchwork-providers-solid";
+import { requestDoc, subscribe } from "@inkandswitch/patchwork-providers-solid";
 
 /** Styles */
 import { createSignal, onMount } from "solid-js";
@@ -45,10 +46,13 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
   const contentAnnotations = globalAnnotations.onChildrenOf(contentRef());
   const diffAnnotations = useSubscribe(contentAnnotations.ofType(Diff));
 
-  // TODO: once subdoc handles land this can just be `{targetRef, threadRef}[]`.
-  const [allComments] = requestDoc<{
-    comments: { targetRef: RefUrl; threadRef: RefUrl }[];
-  }>(props.element, "patchwork:comments");
+  // Scoped to this doc: the provider only sends entries whose `targetRef`
+  // lives here, so no client-side filtering by url is needed.
+  const commentEntries = subscribe<{ targetRef: RefUrl; threadRef: RefUrl }[]>(
+    props.element,
+    "patchwork:comments",
+    { url: props.handle.url }
+  );
 
   // We own `selection` (cursor) and only read `highlight` (other views'
   // emphasis). Splitting the two avoids any feedback loop.
@@ -56,6 +60,11 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
     selection: Record<RefUrl, true>;
     highlight: Record<RefUrl, true>;
   }>(props.element, "patchwork:focus");
+
+  const [, contactHandle] = requestDoc<Record<string, never>>(
+    props.element,
+    "patchwork:contact"
+  );
 
   let lastEmittedUrl: RefUrl | undefined;
 
@@ -73,7 +82,7 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
   const decorations = () => {
     const dark = prefersDarkMode();
     const targetRefs = resolveCommentTargetsInDoc(
-      allComments()?.comments,
+      commentEntries(),
       props.handle
     );
     const emphasisRefs = resolveFocusRefsInDoc(
@@ -90,8 +99,14 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
     );
   };
 
-  const onComment = (from: number, to: number) =>
-    createCommentForRange(props.handle, PATH, from, to);
+  const onComment = (from: number, to: number) => {
+    const contactUrl = contactHandle()?.url as AutomergeUrl | undefined;
+    if (!contactUrl) {
+      console.warn("Cannot create comment: no contactUrl available");
+      return;
+    }
+    void createCommentForRange(props.handle, PATH, from, to, contactUrl);
+  };
 
   // Base CodeMirror extensions (context-specific, not language-specific)
   const [extensions, setExtensions] = createSignal<Extension[]>([
@@ -133,6 +148,8 @@ function prefersDarkMode(): boolean {
   return window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
+// The comments provider already scopes entries to this doc by `targetRef`,
+// so this just dedupes and resolves each ref to a `Ref` on the handle.
 function resolveCommentTargetsInDoc(
   comments: { targetRef: RefUrl }[] | undefined,
   handle: DocHandle<unknown>
@@ -141,7 +158,6 @@ function resolveCommentTargetsInDoc(
   const seen = new Set<RefUrl>();
   const refs: Ref[] = [];
   for (const { targetRef } of comments) {
-    if (!targetRef.startsWith(handle.url)) continue;
     if (seen.has(targetRef)) continue;
     seen.add(targetRef);
     try {
@@ -351,23 +367,13 @@ function refsOverlap(a: Ref, b: Ref): boolean {
   }
 }
 
-// TODO: better way to get the contactUrl of the current account.
 async function createCommentForRange(
   handle: DocHandle<unknown>,
   path: readonly string[],
   from: number,
-  to: number
+  to: number,
+  contactUrl: AutomergeUrl
 ): Promise<void> {
-  const accountDoc = (
-    window as unknown as { accountDocHandle?: DocHandle<unknown> }
-  ).accountDocHandle?.doc?.() as { contactUrl?: string } | undefined;
-  const contactUrl = accountDoc?.contactUrl;
-  if (!contactUrl) {
-    console.warn("Cannot create comment: no contactUrl available", {
-      accountDoc,
-    });
-    return;
-  }
   const targetRef = handle.ref(...path, cursor(from, to));
   await createComment({
     refs: [

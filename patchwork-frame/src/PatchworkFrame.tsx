@@ -164,6 +164,7 @@ export const PatchworkFrame = ({
             <Show when={isFocusProviderReady()}>
               <patchwork-view
                 component="patchwork-account-provider"
+                doc-url={accountDocUrl}
                 ref={setAccountProviderElement}
               >
                 <Show when={isAccountProviderReady()}>

@@ -23,7 +23,7 @@ import {
   type Repo,
 } from "@automerge/automerge-repo";
 
-import { requestDoc } from "@inkandswitch/patchwork-providers-solid";
+import { requestDoc, subscribe } from "@inkandswitch/patchwork-providers-solid";
 import {
   useResolvedRefs,
   useResolvedRefMap,
@@ -39,9 +39,10 @@ const VERSION = "v2.3.9-comments";
 export function CommentsView(props: { element: HTMLElement }) {
   const repo = useRepo();
 
-  const [allComments] = requestDoc<{
-    comments: { targetRef: RefUrl; threadRef: RefUrl }[];
-  }>(props.element, "patchwork:comments");
+  const commentEntries = subscribe<{ targetRef: RefUrl; threadRef: RefUrl }[]>(
+    props.element,
+    "patchwork:comments"
+  );
 
   // `selection` is read-only input (driven by the active editor), `highlight`
   // is our output. Splitting them avoids the feedback loop a single shared
@@ -51,8 +52,15 @@ export function CommentsView(props: { element: HTMLElement }) {
     highlight: Record<RefUrl, true>;
   }>(props.element, "patchwork:focus");
 
+  const [, contactHandle] = requestDoc<Record<string, never>>(
+    props.element,
+    "patchwork:contact"
+  );
+  const currentContactUrl = () =>
+    contactHandle()?.url as AutomergeUrl | undefined;
+
   const threadUrls = createMemo<RefUrl[]>(() => {
-    const entries = allComments()?.comments;
+    const entries = commentEntries();
     if (!entries) return [];
     const seen = new Set<RefUrl>();
     const urls: RefUrl[] = [];
@@ -65,7 +73,7 @@ export function CommentsView(props: { element: HTMLElement }) {
   });
 
   const threadTargetUrlMap = createMemo<Map<RefUrl, RefUrl[]>>(() => {
-    const entries = allComments()?.comments;
+    const entries = commentEntries();
     const map = new Map<RefUrl, RefUrl[]>();
     if (!entries) return map;
     for (const { targetRef, threadRef } of entries) {
@@ -160,6 +168,7 @@ export function CommentsView(props: { element: HTMLElement }) {
             primaryThreadUrl={primaryThreadUrl}
             secondaryThreadUrls={secondaryThreadUrls}
             onSelectThread={onSelectThread}
+            currentContactUrl={currentContactUrl}
           />
         )}
       </For>
@@ -202,6 +211,7 @@ function ThreadView(props: {
   primaryThreadUrl: () => RefUrl | undefined;
   secondaryThreadUrls: () => Set<RefUrl>;
   onSelectThread: (threadUrl: RefUrl, targetUrls: RefUrl[]) => void;
+  currentContactUrl: () => AutomergeUrl | undefined;
 }) {
   // TODO: drop this async findRef + manual ref→signal dance once subdoc
   // handles land — they'll be synchronously resolvable and natively reactive.
@@ -274,14 +284,6 @@ function ThreadView(props: {
     return next;
   }, []);
 
-  // TODO: better way to get the contactUrl of the current account.
-  const accountUrl = () =>
-    (window as any).accountDocHandle?.url as AutomergeUrl | undefined;
-  const [currentAccount] = useDocument<{ contactUrl: AutomergeUrl }>(
-    accountUrl,
-    { repo: props.repo }
-  );
-
   const draftComment = createMemo(() => {
     const t = thread();
     if (!t) return undefined;
@@ -310,12 +312,12 @@ function ThreadView(props: {
 
   const onReplyToComment = () => {
     const r = threadRef();
-    const account = currentAccount();
-    if (!r || !account?.contactUrl) return;
+    const contactUrl = props.currentContactUrl();
+    if (!r || !contactUrl) return;
     createReply({
       threadRef: r as any,
       content: "",
-      contactUrl: account.contactUrl,
+      contactUrl,
     });
   };
 
@@ -383,7 +385,7 @@ function ThreadView(props: {
                     {(ref) => (
                       <CommentView
                         commentRef={ref()}
-                        currentContactUrl={currentAccount()?.contactUrl}
+                        currentContactUrl={props.currentContactUrl()}
                         repo={props.repo}
                       />
                     )}
