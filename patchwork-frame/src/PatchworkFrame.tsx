@@ -111,6 +111,13 @@ export const PatchworkFrame = ({
     accountProviderElement
   );
 
+  const [selectedDocProviderElement, setSelectedDocProviderElement] =
+    createSignal<HTMLElement>();
+  const isSelectedDocProviderReady = useProviderReady(
+    "patchwork-selected-doc-provider",
+    selectedDocProviderElement
+  );
+
   return (
     <div class="frame">
       <div class="frame__version" title="Patchwork frame version">
@@ -123,60 +130,73 @@ export const PatchworkFrame = ({
         onClearAll={clearAll}
       />
 
-      {/* Left Sidebar */}
-      {accountDoc()?.accountSidebarToolId && (
-        <Sidebar
-          side="left"
-          isCollapsed={sidebarState.isSidebarCollapsed}
-          width={sidebarState.leftSidebarWidth}
-          toolId={accountDoc()!.accountSidebarToolId}
-          docUrl={accountDocUrl}
-          onMouseDown={handleMouseDown}
-          onToggleClick={handleToggleClick}
-        />
-      )}
-
+      {/*
+        Outermost provider: wraps both sidebars and the main area so that
+        `patchwork:open-document` events from anywhere (and the matching
+        `patchwork:selected-doc` subscriptions) reach it. `patchwork-view`
+        defaults to `display: contents`, so this wrapper is layout-neutral.
+      */}
       <patchwork-view
-        component="patchwork-comments-provider"
-        ref={setCommentsProviderElement}
+        component="patchwork-selected-doc-provider"
+        ref={setSelectedDocProviderElement}
       >
-        <Show when={isCommentsProviderReady()}>
-          <patchwork-view
-            component="patchwork-focus-provider"
-            ref={setFocusProviderElement}
-          >
-            <Show when={isFocusProviderReady()}>
-              <patchwork-view
-                component="patchwork-account-provider"
-                doc-url={accountDocUrl}
-                ref={setAccountProviderElement}
-              >
-                <Show when={isAccountProviderReady()}>
-                  {/* Main Content Area */}
-                  <div class="main-area">
-                    <DocumentToolbar
-                      toolIds={() => accountDoc()?.documentToolbarToolIds}
-                      docUrl={() => selectedView()?.url}
-                    />
-                    <MainDocumentView
-                      viewKey={() => selectedView()?.url}
-                      selectedDocUrl={() => selectedView()?.url}
-                      toolId={() => selectedView()?.toolId}
-                    />
-                  </div>
+        <Show when={isSelectedDocProviderReady()}>
+          {/* Left Sidebar */}
+          {accountDoc()?.accountSidebarToolId && (
+            <Sidebar
+              side="left"
+              isCollapsed={sidebarState.isSidebarCollapsed}
+              width={sidebarState.leftSidebarWidth}
+              toolId={accountDoc()!.accountSidebarToolId}
+              docUrl={accountDocUrl}
+              onMouseDown={handleMouseDown}
+              onToggleClick={handleToggleClick}
+            />
+          )}
 
-                  {/* Right Sidebar */}
-                  {accountDoc()?.contextSidebarToolId && (
-                    <Sidebar
-                      side="right"
-                      isCollapsed={sidebarState.isRightSidebarCollapsed}
-                      width={sidebarState.rightSidebarWidth}
-                      toolId={accountDoc()!.contextSidebarToolId}
-                      docUrl={accountDocUrl}
-                      onMouseDown={handleMouseDown}
-                      onToggleClick={handleToggleClick}
-                    />
-                  )}
+          <patchwork-view
+            component="patchwork-comments-provider"
+            ref={setCommentsProviderElement}
+          >
+            <Show when={isCommentsProviderReady()}>
+              <patchwork-view
+                component="patchwork-focus-provider"
+                ref={setFocusProviderElement}
+              >
+                <Show when={isFocusProviderReady()}>
+                  <patchwork-view
+                    component="patchwork-account-provider"
+                    doc-url={accountDocUrl}
+                    ref={setAccountProviderElement}
+                  >
+                    <Show when={isAccountProviderReady()}>
+                      {/* Main Content Area */}
+                      <div class="main-area">
+                        <DocumentToolbar
+                          toolIds={() => accountDoc()?.documentToolbarToolIds}
+                          docUrl={() => selectedView()?.url}
+                        />
+                        <MainDocumentView
+                          viewKey={() => selectedView()?.url}
+                          selectedDocUrl={() => selectedView()?.url}
+                          toolId={() => selectedView()?.toolId}
+                        />
+                      </div>
+
+                      {/* Right Sidebar */}
+                      {accountDoc()?.contextSidebarToolId && (
+                        <Sidebar
+                          side="right"
+                          isCollapsed={sidebarState.isRightSidebarCollapsed}
+                          width={sidebarState.rightSidebarWidth}
+                          toolId={accountDoc()!.contextSidebarToolId}
+                          docUrl={accountDocUrl}
+                          onMouseDown={handleMouseDown}
+                          onToggleClick={handleToggleClick}
+                        />
+                      )}
+                    </Show>
+                  </patchwork-view>
                 </Show>
               </patchwork-view>
             </Show>

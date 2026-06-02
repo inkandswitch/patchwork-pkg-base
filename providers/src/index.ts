@@ -28,4 +28,13 @@ export const plugins: Plugin<any>[] = [
       return AccountProvider;
     },
   },
+  {
+    type: "patchwork:component",
+    id: "patchwork-selected-doc-provider",
+    name: "Selected Doc Provider",
+    async load() {
+      const { SelectedDocProvider } = await import("./SelectedDocProvider.js");
+      return SelectedDocProvider;
+    },
+  },
 ];
