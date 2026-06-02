@@ -1,13 +1,9 @@
 import { useDocHandle } from "@automerge/automerge-repo-solid-primitives";
 import type { DocHandle, Repo } from "@automerge/automerge-repo";
-import type { DocWithComments } from "@inkandswitch/annotations-comments";
 import type { AccountDoc } from "./types";
 import {
   useSidebarState,
   useSidebarResize,
-  useSelectedDocument,
-  useAnnotations,
-  useCommentThreads,
   useProviderReady,
   useDebugRegistryToast,
   DebugRegistryToast,
