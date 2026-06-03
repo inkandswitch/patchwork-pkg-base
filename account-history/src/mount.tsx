@@ -2,13 +2,9 @@
 import { render } from "solid-js/web";
 import type { ToolImplementation } from "@inkandswitch/patchwork-plugins";
 import type { HistoryDoc } from "./types.ts";
+import accountHistoryStyles from "./index.css";
 
 const STYLE_ID = "account-history-styles";
-
-async function loadStyles() {
-  const url = new URL("./index.css", import.meta.url);
-  return (await fetch(url)).text();
-}
 
 function addStyles(textContent: string) {
   if (document.head.querySelector(`#${STYLE_ID}`)) return;
@@ -36,11 +32,8 @@ export async function renderHistoryRecorder(): Promise<ToolImplementation<any>> 
 export async function renderHistoryViewer(): Promise<
   ToolImplementation<HistoryDoc>
 > {
-  const [{ HistoryViewer }, styles] = await Promise.all([
-    import("./HistoryViewer.tsx"),
-    loadStyles(),
-  ]);
-  addStyles(styles);
+  const { HistoryViewer } = await import("./HistoryViewer.tsx");
+  addStyles(accountHistoryStyles);
   return (handle, element) => {
     return render(
       () => (
@@ -58,11 +51,8 @@ export async function renderHistoryViewer(): Promise<
 export async function renderNotebookViewer(): Promise<
   ToolImplementation<HistoryDoc>
 > {
-  const [{ NotebookViewer }, styles] = await Promise.all([
-    import("./NotebookViewer.tsx"),
-    loadStyles(),
-  ]);
-  addStyles(styles);
+  const { NotebookViewer } = await import("./NotebookViewer.tsx");
+  addStyles(accountHistoryStyles);
   return (handle, element) => {
     return render(
       () => (

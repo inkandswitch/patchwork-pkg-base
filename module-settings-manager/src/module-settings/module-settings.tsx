@@ -192,15 +192,12 @@ function removeStyles() {
   document.head.querySelector(`#${STYLE_ID}`)?.remove();
 }
 
-async function loadStyles() {
-  const url = new URL("../index.css", import.meta.url);
-  return (await fetch(url)).text();
-}
+import moduleSettingsStyles from "../index.css";
 
 export async function renderModuleSettingsManager(): Promise<
   ToolImplementation<ModuleSettingsDoc>
 > {
-  const css = await loadStyles();
+  const css = moduleSettingsStyles;
   return function (handle, element: ToolElement) {
     addStyles(css);
     const dispose = render(

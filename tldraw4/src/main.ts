@@ -1,15 +1,11 @@
 import type { ToolImplementation } from "@inkandswitch/patchwork-plugins";
+import tldraw4Styles from "./main.css";
 
 function addStyles(textContent: string, element: HTMLElement = document.head) {
   const id = "tldraw4-styles";
   const el = element.querySelector(`#${id}`) ?? document.createElement("style");
   Object.assign(el, { textContent, id });
   element.append(el);
-}
-
-async function loadStyles() {
-  const url = new URL("./main.css", import.meta.url);
-  return (await fetch(url)).text();
 }
 
 export const plugins = [
@@ -29,9 +25,8 @@ export const plugins = [
     supportedDatatypes: ["tldraw4"],
     async load(): Promise<ToolImplementation> {
       const { render } = await import("./tool.tsx");
-      const styles = await loadStyles();
       return (handle, element) => {
-        addStyles(styles);
+        addStyles(tldraw4Styles);
         return render(handle, element);
       };
     },

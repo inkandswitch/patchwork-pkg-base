@@ -33,5 +33,5 @@ export default {
       },
     } satisfies Plugin,
   ].concat(pushworking ? [pushworkSync()] : []),
-  loader: { ".ttf": "dataurl" },
+  loader: { ".ttf": "dataurl", ".css": "text" },
 } satisfies BuildOptions;
