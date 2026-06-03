@@ -17,6 +17,7 @@
     "@inkandswitch/patchwork-filesystem": "^0.0.8",
     "@inkandswitch/patchwork-plugins": "^0.0.11",
     "@inkandswitch/patchwork-providers": "^0.2.1",
+    "@inkandswitch/patchwork-providers-solid": "^0.2.1",
     "solid-js": "^1.9.10"
   },
   "devDependencies": {

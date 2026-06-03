@@ -45,8 +45,6 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
     []
   );
 
-  // We own `selection` (cursor) and only read `highlight` (other views'
-  // emphasis). Splitting the two avoids any feedback loop.
   const [focusDoc, focusHandle] = subscribeDoc<{
     selection: Record<AutomergeUrl, true>;
     highlight: Record<AutomergeUrl, true>;
@@ -56,8 +54,6 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
     type: "patchwork:contact",
   });
 
-  // `getDedupedCommentTargets` resolves refs asynchronously, so drive it
-  // through a resource keyed on the comment entries.
   const [commentTargets] = createResource(
     commentEntries,
     (entries) =>
@@ -65,9 +61,6 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
     { initialValue: [] }
   );
 
-  // CommentsView writes selected comment targets into `selection`/`highlight`.
-  // Read those URL keys directly so this memo updates when the maps change;
-  // using `focusDoc()` itself doesn't trigger a change when the selection and highlight array inside of it change
   const focusRefUrls = createMemo(() => {
     const doc = focusDoc();
     return [

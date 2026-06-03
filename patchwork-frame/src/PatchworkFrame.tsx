@@ -1,5 +1,11 @@
+import "@inkandswitch/patchwork-elements";
 import { useDocHandle } from "@automerge/automerge-repo-solid-primitives";
-import type { DocHandle, Repo } from "@automerge/automerge-repo";
+import type {
+  AutomergeUrl,
+  Doc,
+  DocHandle,
+  Repo,
+} from "@automerge/automerge-repo";
 import type { AccountDoc } from "./types";
 import {
   useSidebarState,
@@ -12,83 +18,36 @@ import { Sidebar } from "./components/Sidebar";
 import { DocumentToolbar } from "./components/DocumentToolbar";
 import { MainDocumentView } from "./components/MainDocumentView";
 import {
+  type Accessor,
   createEffect,
   createMemo,
   createSignal,
   onCleanup,
   Show,
 } from "solid-js";
+import { subscribe } from "@inkandswitch/patchwork-providers-solid";
 import { ensureAccountSubdocs } from "./account/ensureSubdocs";
 import "./styles.css";
-import { useSelectedView } from "./hooks/useSelectedDocument";
 
 // Sidebar dimensions
 const MIN_SIDEBAR_WIDTH = 48;
 const DRAG_THRESHOLD = 3;
 
-const VERSION = "v1.0.8-comments";
+const VERSION = "v1.0.9-comments";
+
+type SelectedView = {
+  url: AutomergeUrl;
+  toolId: string | null;
+};
 
 export const PatchworkFrame = ({
   handle,
-  element,
   repo,
 }: {
   handle: DocHandle<AccountDoc>;
-  element: HTMLElement | ShadowRoot;
   repo: Repo;
 }) => {
-  // Track doc changes via a version counter so accountDoc() recomputes
-  // on every change. We avoid useDocument/autoproduce because its store
-  // proxying conflicts with Automerge array splice operations.
-  const accountDocHandle = useDocHandle<AccountDoc>(() => handle.url, { repo });
-
-  // Lazily populate subdoc fields (rootFolderUrl, moduleSettingsUrl, contactUrl)
-  // on first mount. Each is created via createDocOfDatatype2 of its own
-  // datatype, so defaults and shape are owned by the datatype, not the frame.
-  void ensureAccountSubdocs(handle, repo);
-
-  const [docVersion, setDocVersion] = createSignal(0);
-
-  createEffect(() => {
-    const h = accountDocHandle();
-    if (!h) return;
-    const onChange = () => setDocVersion((v) => v + 1);
-    h.on("change", onChange);
-    onCleanup(() => h.off("change", onChange));
-  });
-
-  const accountDoc = createMemo(() => {
-    docVersion();
-    return accountDocHandle()?.doc();
-  });
-
   const accountDocUrl = handle.url;
-
-  // Sidebar state management
-  const sidebarState = useSidebarState();
-
-  // Sidebar resize handlers
-  const { handleMouseDown, handleToggleClick } = useSidebarResize({
-    setLeftSidebarWidth: sidebarState.setLeftSidebarWidth,
-    setRightSidebarWidth: sidebarState.setRightSidebarWidth,
-    setIsSidebarCollapsed: sidebarState.setIsSidebarCollapsed,
-    setIsRightSidebarCollapsed: sidebarState.setIsRightSidebarCollapsed,
-    minWidth: MIN_SIDEBAR_WIDTH,
-    dragThreshold: DRAG_THRESHOLD,
-  });
-
-  // Selected document management
-  const selectedView = useSelectedView({
-    element,
-    repo,
-  });
-
-  // Debug registry toast
-  const {
-    events: debugEvents,
-    dismissEvent,
-    clearAll,
-  } = useDebugRegistryToast();
 
   const [commentsProviderElement, setCommentsProviderElement] =
     createSignal<HTMLElement>();
@@ -118,17 +77,19 @@ export const PatchworkFrame = ({
     selectedDocProviderElement
   );
 
+  const areProvidersReady = createMemo(
+    () =>
+      isSelectedDocProviderReady() &&
+      isCommentsProviderReady() &&
+      isFocusProviderReady() &&
+      isAccountProviderReady()
+  );
+
   return (
     <div class="frame">
       <div class="frame__version" title="Patchwork frame version">
         Frame {VERSION}
       </div>
-
-      <DebugRegistryToast
-        events={debugEvents()}
-        onDismiss={dismissEvent}
-        onClearAll={clearAll}
-      />
 
       {/*
         Outermost provider: wraps both sidebars and the main area so that
@@ -140,69 +101,153 @@ export const PatchworkFrame = ({
         component="patchwork-selected-doc-provider"
         ref={setSelectedDocProviderElement}
       >
-        <Show when={isSelectedDocProviderReady()}>
-          {/* Left Sidebar */}
-          {accountDoc()?.accountSidebarToolId && (
-            <Sidebar
-              side="left"
-              isCollapsed={sidebarState.isSidebarCollapsed}
-              width={sidebarState.leftSidebarWidth}
-              toolId={accountDoc()!.accountSidebarToolId}
-              docUrl={accountDocUrl}
-              onMouseDown={handleMouseDown}
-              onToggleClick={handleToggleClick}
-            />
-          )}
-
+        <patchwork-view
+          component="patchwork-comments-provider"
+          ref={setCommentsProviderElement}
+        >
           <patchwork-view
-            component="patchwork-comments-provider"
-            ref={setCommentsProviderElement}
+            component="patchwork-focus-provider"
+            ref={setFocusProviderElement}
           >
-            <Show when={isCommentsProviderReady()}>
-              <patchwork-view
-                component="patchwork-focus-provider"
-                ref={setFocusProviderElement}
-              >
-                <Show when={isFocusProviderReady()}>
-                  <patchwork-view
-                    component="patchwork-account-provider"
-                    doc-url={accountDocUrl}
-                    ref={setAccountProviderElement}
-                  >
-                    <Show when={isAccountProviderReady()}>
-                      {/* Main Content Area */}
-                      <div class="main-area">
-                        <DocumentToolbar
-                          toolIds={() => accountDoc()?.documentToolbarToolIds}
-                          docUrl={() => selectedView()?.url}
-                        />
-                        <MainDocumentView
-                          viewKey={() => selectedView()?.url}
-                          selectedDocUrl={() => selectedView()?.url}
-                          toolId={() => selectedView()?.toolId}
-                        />
-                      </div>
-
-                      {/* Right Sidebar */}
-                      {accountDoc()?.contextSidebarToolId && (
-                        <Sidebar
-                          side="right"
-                          isCollapsed={sidebarState.isRightSidebarCollapsed}
-                          width={sidebarState.rightSidebarWidth}
-                          toolId={accountDoc()!.contextSidebarToolId}
-                          docUrl={accountDocUrl}
-                          onMouseDown={handleMouseDown}
-                          onToggleClick={handleToggleClick}
-                        />
-                      )}
-                    </Show>
-                  </patchwork-view>
-                </Show>
-              </patchwork-view>
-            </Show>
+            <patchwork-view
+              component="patchwork-account-provider"
+              doc-url={accountDocUrl}
+              ref={setAccountProviderElement}
+            >
+              <Show when={areProvidersReady()}>
+                <InnerPatchworkFrame handle={handle} repo={repo} />
+              </Show>
+            </patchwork-view>
           </patchwork-view>
-        </Show>
+        </patchwork-view>
       </patchwork-view>
     </div>
   );
 };
+
+function InnerPatchworkFrame(props: {
+  handle: DocHandle<AccountDoc>;
+  repo: Repo;
+}) {
+  // Track doc changes via a version counter so accountDoc() recomputes
+  // on every change. We avoid useDocument/autoproduce because its store
+  // proxying conflicts with Automerge array splice operations.
+  const accountDocHandle = useDocHandle<AccountDoc>(() => props.handle.url, {
+    repo: props.repo,
+  });
+
+  // Lazily populate subdoc fields (rootFolderUrl, moduleSettingsUrl, contactUrl)
+  // on first mount. Each is created via createDocOfDatatype2 of its own
+  // datatype, so defaults and shape are owned by the datatype, not the frame.
+  void ensureAccountSubdocs(props.handle, props.repo);
+
+  const [docVersion, setDocVersion] = createSignal(0);
+  createEffect(() => {
+    const h = accountDocHandle();
+    if (!h) return;
+    const onChange = () => setDocVersion((v) => v + 1);
+    h.on("change", onChange);
+    onCleanup(() => h.off("change", onChange));
+  });
+
+  const accountDoc = createMemo(() => {
+    docVersion();
+    return accountDocHandle()?.doc();
+  });
+  const accountDocUrl = props.handle.url;
+
+  const sidebarState = useSidebarState();
+  const sidebarResize = useSidebarResize({
+    setLeftSidebarWidth: sidebarState.setLeftSidebarWidth,
+    setRightSidebarWidth: sidebarState.setRightSidebarWidth,
+    setIsSidebarCollapsed: sidebarState.setIsSidebarCollapsed,
+    setIsRightSidebarCollapsed: sidebarState.setIsRightSidebarCollapsed,
+    minWidth: MIN_SIDEBAR_WIDTH,
+    dragThreshold: DRAG_THRESHOLD,
+  });
+
+  const {
+    events: debugEvents,
+    dismissEvent,
+    clearAll,
+  } = useDebugRegistryToast();
+
+  const [innerElement, setInnerElement] = createSignal<HTMLElement>();
+
+  return (
+    <div ref={setInnerElement} style={{ display: "contents" }}>
+      <DebugRegistryToast
+        events={debugEvents()}
+        onDismiss={dismissEvent}
+        onClearAll={clearAll}
+      />
+      <Show when={innerElement()} keyed>
+        {(element) => (
+          <InnerPatchworkFrameContent
+            element={element}
+            accountDoc={accountDoc}
+            accountDocUrl={accountDocUrl}
+            sidebarState={sidebarState}
+            sidebarResize={sidebarResize}
+          />
+        )}
+      </Show>
+    </div>
+  );
+}
+
+function InnerPatchworkFrameContent(props: {
+  element: HTMLElement;
+  accountDoc: Accessor<Doc<AccountDoc> | undefined>;
+  accountDocUrl: AutomergeUrl;
+  sidebarState: ReturnType<typeof useSidebarState>;
+  sidebarResize: ReturnType<typeof useSidebarResize>;
+}) {
+  // Subscribe from an element inside the provider wrappers so events bubble to
+  // whichever provider owns the selector.
+  const selectedView = subscribe<SelectedView | null>(
+    props.element,
+    { type: "patchwork:selected-view" },
+    null
+  );
+
+  return (
+    <>
+      {props.accountDoc()?.accountSidebarToolId && (
+        <Sidebar
+          side="left"
+          isCollapsed={props.sidebarState.isSidebarCollapsed}
+          width={props.sidebarState.leftSidebarWidth}
+          toolId={props.accountDoc()!.accountSidebarToolId}
+          docUrl={props.accountDocUrl}
+          onMouseDown={props.sidebarResize.handleMouseDown}
+          onToggleClick={props.sidebarResize.handleToggleClick}
+        />
+      )}
+
+      <div class="main-area">
+        <DocumentToolbar
+          toolIds={() => props.accountDoc()?.documentToolbarToolIds}
+          docUrl={() => selectedView()?.url}
+        />
+        <MainDocumentView
+          viewKey={() => selectedView()?.url}
+          selectedDocUrl={() => selectedView()?.url}
+          toolId={() => selectedView()?.toolId ?? undefined}
+        />
+      </div>
+
+      {props.accountDoc()?.contextSidebarToolId && (
+        <Sidebar
+          side="right"
+          isCollapsed={props.sidebarState.isRightSidebarCollapsed}
+          width={props.sidebarState.rightSidebarWidth}
+          toolId={props.accountDoc()!.contextSidebarToolId}
+          docUrl={props.accountDocUrl}
+          onMouseDown={props.sidebarResize.handleMouseDown}
+          onToggleClick={props.sidebarResize.handleToggleClick}
+        />
+      )}
+    </>
+  );
+}
