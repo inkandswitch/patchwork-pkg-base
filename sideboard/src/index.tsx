@@ -11,8 +11,7 @@ export const plugins = [
     icon: "FolderOpen",
     unlisted: true,
     async load(): Promise<ToolImplementation<TinyPatchworkAccountDoc>> {
-      const { renderSideboard } = await import("./sideboard/sideboard.tsx");
-      return renderSideboard;
+      return (await import("./sideboard/sideboard.tsx")).renderSideboard();
     },
   },
 ];
