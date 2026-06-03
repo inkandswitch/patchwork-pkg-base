@@ -33,8 +33,6 @@ import "./styles.css";
 const MIN_SIDEBAR_WIDTH = 48;
 const DRAG_THRESHOLD = 3;
 
-const VERSION = "v1.0.9-comments";
-
 type SelectedView = {
   url: AutomergeUrl;
   toolId: string | null;
@@ -87,10 +85,6 @@ export const PatchworkFrame = ({
 
   return (
     <div class="frame">
-      <div class="frame__version" title="Patchwork frame version">
-        Frame {VERSION}
-      </div>
-
       {/*
         Outermost provider: wraps both sidebars and the main area so that
         `patchwork:open-document` events from anywhere (and the matching

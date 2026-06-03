@@ -5,7 +5,7 @@ export const plugins: Plugin<any>[] = [
     type: "patchwork:tool",
     id: "comments-view",
     tags: ["context-tool"],
-    name: "Comments 2",
+    name: "Comments",
     icon: "Comments",
     supportedDatatypes: ["account"],
     async load() {

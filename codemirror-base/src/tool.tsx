@@ -34,7 +34,6 @@ type CommentEntry = {
 };
 
 const PATH = ["content"];
-const VERSION = "v2.0.39-comments";
 
 export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
   const isReadOnly = props.handle.isReadOnly();
@@ -61,6 +60,9 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
     { initialValue: [] }
   );
 
+  // CommentsView writes selected comment targets into `selection`/`highlight`.
+  // Read those URL keys directly so this memo updates when the maps change;
+  // using `focusDoc()` itself doesn't trigger a change when the selection and highlight array inside of it change
   const focusRefUrls = createMemo(() => {
     const doc = focusDoc();
     return [
@@ -123,12 +125,6 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
 
   return (
     <div class="w-full h-full overflow-auto bg-base relative">
-      <div
-        class="absolute top-1 right-2 text-xs text-gray-400 font-medium pointer-events-none select-none z-10"
-        title="Text Editor 2 version"
-      >
-        Text Editor {VERSION}
-      </div>
       <div class="p-4 h-full">
         <div class="flex h-full">
           <div class="relative flex-1 h-full">

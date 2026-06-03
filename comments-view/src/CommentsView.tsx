@@ -27,8 +27,6 @@ import {
 } from "@inkandswitch/patchwork-providers-solid";
 import { createReply, type Comment, type CommentThread } from "./comments";
 
-const VERSION = "v2.3.11-comments";
-
 export function CommentsView(props: { element: HTMLElement }) {
   const repo = useRepo();
 
@@ -151,7 +149,6 @@ export function CommentsView(props: { element: HTMLElement }) {
     <div class="h-full flex flex-col p-2 gap-2">
       <div class="flex items-center justify-between text-xs text-gray-400">
         <span class="font-medium">Comments</span>
-        <span>{VERSION}</span>
       </div>
       <For each={threadUrls()}>
         {(threadUrl) => (
