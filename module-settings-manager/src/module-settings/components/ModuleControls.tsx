@@ -51,7 +51,9 @@ export function ModuleControls(props: ModuleControlsProps) {
   const moduleDoc = createMemo(() => {
     const handle = moduleHandle();
     if (!handle) return undefined;
-    return makeDocumentProjection<unknown>(handle as DocHandle<unknown>);
+    return makeDocumentProjection<Record<string, unknown>>(
+      handle as DocHandle<Record<string, unknown>>
+    );
   });
 
   const kind = createMemo(() => {

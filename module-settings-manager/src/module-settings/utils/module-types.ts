@@ -2,13 +2,16 @@ import type { AutomergeUrl, Repo } from "@automerge/automerge-repo";
 import { getType } from "@inkandswitch/patchwork-filesystem";
 import type { ModuleSettingsDoc } from "@inkandswitch/patchwork-filesystem";
 
+export type ModuleEntry = string;
+
 export type BranchesDoc = {
   "@patchwork": { type: "branches" };
   branches: { [branchName: string]: AutomergeUrl };
 };
 
 // Until @inkandswitch/patchwork-filesystem ships .branches in ModuleSettingsDoc.
-export type ModuleSettingsDocWithBranches = ModuleSettingsDoc & {
+export type ModuleSettingsDocWithBranches = Omit<ModuleSettingsDoc, "modules"> & {
+  modules: ModuleEntry[];
   branches?: Record<AutomergeUrl, string>;
 };
 

@@ -22,6 +22,7 @@ import {
 } from "../utils/datatypes.ts";
 import {
   resolveModuleEntryToFolderUrl,
+  type ModuleEntry,
   type ModuleSettingsDocWithBranches,
 } from "../utils/module-types.ts";
 import type {
@@ -30,7 +31,7 @@ import type {
 } from "@inkandswitch/patchwork-plugins";
 
 interface UseModulePluginsParams {
-  modules: AutomergeUrl[];
+  modules: ModuleEntry[];
   settingsDoc: ModuleSettingsDocWithBranches;
   /**
    * The current user's own settings doc, when it differs from `settingsDoc`.
@@ -62,7 +63,7 @@ export type EnrichedPlugin = Plugin<PluginDescription> & {
 };
 
 export interface ModuleLoadState {
-  url: AutomergeUrl;
+  url: ModuleEntry;
   loading: boolean;
   error: unknown;
   folderUrl?: AutomergeUrl;
@@ -71,7 +72,7 @@ export interface ModuleLoadState {
 }
 
 interface ModulePayload {
-  folderUrl: AutomergeUrl;
+  folderUrl?: AutomergeUrl;
   pkgInfo?: PackageInfo;
   plugins: EnrichedPlugin[];
 }
@@ -97,47 +98,60 @@ export function useModulePlugins(params: UseModulePluginsParams) {
     () => modules,
     (url) => {
       const sourceKey = () => {
-        const userBranch = params.userSettingsDoc?.branches?.[url] ?? "";
-        const viewedBranch = settingsDoc.branches?.[url] ?? "";
+        const branchKey = isValidAutomergeUrl(url)
+          ? (url as AutomergeUrl)
+          : undefined;
+        const userBranch = branchKey
+          ? (params.userSettingsDoc?.branches?.[branchKey] ?? "")
+          : "";
+        const viewedBranch = branchKey
+          ? (settingsDoc.branches?.[branchKey] ?? "")
+          : "";
         return `${url}|${userBranch}|${viewedBranch}`;
       };
       const [resource] = createResource<ModulePayload, string>(
         sourceKey,
         async () => {
-          const folderUrl = await resolveModuleEntryToFolderUrl(
-            repo,
-            url,
-            settingsDocs()
-          );
-          if (!folderUrl) {
-            throw new Error(
-              "Could not resolve module entry to a folder URL"
-            );
+          const validAutomergeUrl = isValidAutomergeUrl(url);
+          const folderUrl = validAutomergeUrl
+            ? await resolveModuleEntryToFolderUrl(
+                repo,
+                url as AutomergeUrl,
+                settingsDocs()
+              )
+            : undefined;
+          if (validAutomergeUrl && !folderUrl) {
+            throw new Error("Could not resolve module entry to a folder URL");
           }
-          const module = await importModuleFromFolderDocUrl(folderUrl);
+
+          const module = validAutomergeUrl
+            ? await importModuleFromFolderDocUrl(folderUrl!)
+            : await import(/* @vite-ignore */ url);
           const plugins = (module?.plugins ||
             []) as Plugin<PluginDescription>[];
 
           let pkgInfo: PackageInfo | undefined;
-          try {
-            const pkgJsonUrl = new URL(
-              "package.json",
-              new URL(
-                automergeUrlToServiceWorkerUrl(folderUrl),
-                window.location.origin
-              )
-            ).href;
-            const res = await fetch(pkgJsonUrl);
-            if (res.ok) {
-              const pkg = await res.json();
-              pkgInfo = {
-                title: pkg.title,
-                name: pkg.name,
-                version: pkg.version,
-              };
+          if (folderUrl) {
+            try {
+              const pkgJsonUrl = new URL(
+                "package.json",
+                new URL(
+                  automergeUrlToServiceWorkerUrl(folderUrl),
+                  window.location.origin
+                )
+              ).href;
+              const res = await fetch(pkgJsonUrl);
+              if (res.ok) {
+                const pkg = await res.json();
+                pkgInfo = {
+                  title: pkg.title,
+                  name: pkg.name,
+                  version: pkg.version,
+                };
+              }
+            } catch {
+              // package.json is optional metadata
             }
-          } catch {
-            // package.json is optional metadata
           }
 
           const enriched = plugins.map((plugin): EnrichedPlugin => ({
@@ -145,7 +159,7 @@ export function useModulePlugins(params: UseModulePluginsParams) {
             importUrl: url,
             packageName: pkgInfo?.name,
             packageTitle: pkgInfo?.title,
-            isValidUrl: isValidAutomergeUrl(url),
+            isValidUrl: validAutomergeUrl,
             datatypesDisplay: getSupportedDatatypesDisplay(
               "supportedDatatypes" in plugin
                 ? (plugin.supportedDatatypes as

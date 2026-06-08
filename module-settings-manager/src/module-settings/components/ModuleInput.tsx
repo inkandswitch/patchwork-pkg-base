@@ -9,21 +9,23 @@ import { automergeUrlToServiceWorkerUrl } from "@inkandswitch/patchwork-filesyst
 import { ViewRaw } from "./ViewRaw.tsx";
 import { ClearIcon, InstallIcon } from "../icons/index.ts";
 import { MODULE_FETCH_DEBOUNCE } from "../constants.ts";
+import type { ModuleEntry } from "../utils/module-types.ts";
 
 interface ModuleInputProps {
-  isInstalled: (url: AutomergeUrl) => boolean;
-  onAdd: (url: AutomergeUrl) => void;
+  isInstalled: (url: ModuleEntry) => boolean;
+  onAdd: (url: ModuleEntry) => void;
   repo: Repo;
 }
 
 interface PackageInfo {
   name?: string;
   version?: string;
-  plugins?: Array<{ id: string; name: string; type: string }>;
+  plugins?: Array<{ id?: string; name?: string; type: string }>;
 }
 
 interface ModulePreview {
   isFolder: boolean;
+  isDirect?: boolean;
   packageInfo?: PackageInfo;
   error?: string;
 }
@@ -33,7 +35,7 @@ export function ModuleInput(props: ModuleInputProps) {
   const [isValid, setIsValid] = createSignal<boolean | null>(null);
   const [preview, setPreview] = createSignal<ModulePreview | null>(null);
   const [isLoading, setIsLoading] = createSignal(false);
-  const [previewUrl, setPreviewUrl] = createSignal<AutomergeUrl | null>(null);
+  const [previewUrl, setPreviewUrl] = createSignal<ModuleEntry | null>(null);
 
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
@@ -57,7 +59,7 @@ export function ModuleInput(props: ModuleInputProps) {
       timeoutId = setTimeout(async () => {
         setIsLoading(true);
         setPreview(null);
-        setPreviewUrl(value as AutomergeUrl);
+        setPreviewUrl(value);
 
         try {
           const handle = await props.repo.find(value as AutomergeUrl);
@@ -123,7 +125,31 @@ export function ModuleInput(props: ModuleInputProps) {
         }
       }, MODULE_FETCH_DEBOUNCE);
     } else {
-      setPreview(null);
+      if (timeoutId) clearTimeout(timeoutId);
+
+      timeoutId = setTimeout(async () => {
+        setIsLoading(true);
+        setPreview(null);
+        setPreviewUrl(value);
+
+        try {
+          const module = await import(/* @vite-ignore */ value);
+          setPreview({
+            isFolder: false,
+            isDirect: true,
+            packageInfo: extractPackageInfo(module),
+          });
+        } catch (error) {
+          setPreview({
+            isFolder: false,
+            isDirect: true,
+            error:
+              error instanceof Error ? error.message : "Failed to import module",
+          });
+        } finally {
+          setIsLoading(false);
+        }
+      }, MODULE_FETCH_DEBOUNCE);
     }
   });
 
@@ -133,8 +159,8 @@ export function ModuleInput(props: ModuleInputProps) {
 
   const handleAdd = () => {
     const value = input().trim();
-    if (isValid() && value) {
-      props.onAdd(value as AutomergeUrl);
+    if (canInstall() && value) {
+      props.onAdd(value);
       setInput("");
       setIsValid(null);
       setPreview(null);
@@ -142,11 +168,16 @@ export function ModuleInput(props: ModuleInputProps) {
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Enter" && isValid() && input().trim()) {
+    if (e.key === "Enter" && canInstall() && input().trim()) {
       e.preventDefault();
       handleAdd();
     }
   };
+
+  const canInstall = () => isValid() === true || directImportSucceeded();
+
+  const directImportSucceeded = () =>
+    isValid() === false && preview()?.isDirect === true && !preview()?.error;
 
   const hasValidation = () =>
     Boolean(
@@ -193,7 +224,10 @@ export function ModuleInput(props: ModuleInputProps) {
           class="module-settings-module-input__add-button"
           onClick={handleAdd}
           disabled={
-            !isValid() || !input().trim() || props.isInstalled(previewUrl()!)
+            !canInstall() ||
+            isLoading() ||
+            !input().trim() ||
+            (previewUrl() !== null && props.isInstalled(previewUrl()!))
           }
           style={{
             display: "flex",
@@ -209,12 +243,6 @@ export function ModuleInput(props: ModuleInputProps) {
 
       <Show when={hasValidation()}>
         <div class="module-settings-module-input__validation">
-          <Show when={input().trim() && isValid() === false}>
-            <div class="module-settings-module-input__error">
-              Invalid Automerge URL
-            </div>
-          </Show>
-
           <Show when={isLoading()}>
             <div class="module-settings-module-input__loading">
               Loading module details...
@@ -229,6 +257,18 @@ export function ModuleInput(props: ModuleInputProps) {
                 </div>
               </Show>
               <Show when={!preview()?.error}>
+                <Show when={preview()?.isDirect}>
+                  <div class="module-settings-module-input__package-info">
+                    <div class="module-settings-module-input__package-row">
+                      <span class="module-settings-module-input__package-label">
+                        Import:
+                      </span>
+                      <span class="module-settings-module-input__package-value">
+                        Direct module
+                      </span>
+                    </div>
+                  </div>
+                </Show>
                 <Show when={preview()?.packageInfo}>
                   <div class="module-settings-module-input__package-info">
                     <Show when={preview()?.packageInfo?.name}>
@@ -269,17 +309,19 @@ export function ModuleInput(props: ModuleInputProps) {
                     </Show>
                   </div>
                 </Show>
-                <Show when={!preview()?.packageInfo}>
+                <Show when={!preview()?.packageInfo && !preview()?.isDirect}>
                   <div class="module-settings-module-input__no-package">
                     📁 Valid folder (no package.json found)
                   </div>
                 </Show>
                 <Show when={previewUrl()}>
                   <div class="module-settings-module-input__actions">
-                    <ViewRaw
-                      url={previewUrl()!}
-                      class="module-settings-module-input__view-raw-button"
-                    />
+                    <Show when={isValidAutomergeUrl(previewUrl()!)}>
+                      <ViewRaw
+                        url={previewUrl()! as AutomergeUrl}
+                        class="module-settings-module-input__view-raw-button"
+                      />
+                    </Show>
                     <Show when={props.isInstalled(previewUrl()!)}>
                       <span class="module-settings-module-input__installed-pill">
                         Installed
@@ -303,4 +345,19 @@ function isFolderDoc(doc: unknown): doc is FolderDoc {
     "docs" in doc &&
     Array.isArray((doc as { docs?: unknown }).docs)
   );
+}
+
+function extractPackageInfo(module: unknown): PackageInfo | undefined {
+  if (!module || typeof module !== "object") return undefined;
+  const plugins = (module as { plugins?: unknown }).plugins;
+  if (!Array.isArray(plugins)) return undefined;
+  return {
+    plugins: plugins.filter(isPackagePlugin),
+  };
+}
+
+function isPackagePlugin(
+  plugin: unknown
+): plugin is { id?: string; name?: string; type: string } {
+  return Boolean(plugin && typeof plugin === "object" && "type" in plugin);
 }
