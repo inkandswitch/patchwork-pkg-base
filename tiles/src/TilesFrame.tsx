@@ -5,6 +5,7 @@ import {
   For,
   onCleanup,
   onMount,
+  Show,
 } from "solid-js";
 import type { DocHandle } from "@automerge/automerge-repo";
 import type { TilesFrameDoc } from "./types";
@@ -12,7 +13,10 @@ import type { ToolElement } from "@inkandswitch/patchwork-plugins";
 import { LayoutButton } from "./LayoutButton";
 import type { LayoutPreset } from "./LayoutButton";
 import { TileCell } from "./TileCell";
+import { TileContentPicker } from "./TileConfigurator";
 import "./styles.css";
+
+const LOG = "[tiles-frame]";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -20,17 +24,13 @@ const SNAP_FRACTIONS = [1 / 6, 1 / 4, 1 / 3, 1 / 2, 2 / 3, 3 / 4, 5 / 6];
 const SNAP_THRESHOLD = 0.05;
 const MIN_TRACK = 0.08;
 const DRAG_THRESHOLD = 5;
+const MIN_ROW_PX = 160; // each row keeps at least this height → enables scroll
+const MIN_COL_PX = 220; // each column keeps at least this width → enables h-scroll
+const GROW_MARGIN = 24; // px past the last track before we add a new track
 
 // ─── Plain-data helpers ───────────────────────────────────────────────────────
-//
-// Every write to the Automerge doc goes through these helpers. We read the
-// current doc into plain JS objects OUTSIDE the change callback, then write
-// only those plain objects INSIDE. This avoids Automerge-proxy mutations which
-// generate patches with internal element IDs (not numeric indices) that break
-// the framework's applyDelPatch listener.
-//
-// toolId and docUrl are always present as "" so we never generate `del` patches
-// when clearing a tile (we overwrite with "" instead of deleting the key).
+// Read the doc into plain JS OUTSIDE handle.change, write plain values INSIDE.
+// Avoids Automerge-proxy mutations that crash the framework's patch listener.
 
 type PlainTile = {
   id: string;
@@ -55,12 +55,10 @@ function readTiles(d: any): PlainTile[] {
 }
 
 function readTracks(d: any, field: string): number[] {
-  return Array.from(d?.[field] ?? []).map(Number);
+  const arr = Array.from(d?.[field] ?? []).map(Number);
+  return arr.length ? arr : [1];
 }
 
-// Resolve reference markers to the account doc's live tool settings.
-// "@sidebar" → accountSidebarToolId, "@context" → contextSidebarToolId.
-// Anything else is a literal tool ID and passes through unchanged.
 function resolveToolId(toolId: string, d: any): string {
   if (toolId === "@sidebar") return d?.accountSidebarToolId || "";
   if (toolId === "@context") return d?.contextSidebarToolId || "";
@@ -74,23 +72,62 @@ function snapValue(raw: number): number {
   return raw;
 }
 
-function recomputeTracks(
-  tracks: number[],
-  handleIndex: number,
-  dividerFraction: number
-): number[] {
+function recomputeTracks(tracks: number[], handleIndex: number, dividerFraction: number): number[] {
   const total = tracks.reduce((a, b) => a + b, 0);
   const leftSum = tracks.slice(0, handleIndex + 1).reduce((a, b) => a + b, 0);
   const rightSum = total - leftSum;
-  const newLeft = dividerFraction * total;
-  const newRight = (1 - dividerFraction) * total;
-  const ls = leftSum > 0 ? newLeft / leftSum : 0;
-  const rs = rightSum > 0 ? newRight / rightSum : 0;
-  const raw = tracks.map((t, i) =>
-    Math.max(MIN_TRACK * total, i <= handleIndex ? t * ls : t * rs)
-  );
+  const ls = leftSum > 0 ? (dividerFraction * total) / leftSum : 0;
+  const rs = rightSum > 0 ? ((1 - dividerFraction) * total) / rightSum : 0;
+  const raw = tracks.map((t, i) => Math.max(MIN_TRACK * total, i <= handleIndex ? t * ls : t * rs));
   const rawTotal = raw.reduce((a, b) => a + b, 0);
   return raw.map((t) => (t * total) / rawTotal);
+}
+
+// ─── Occupancy helpers (1-indexed col/row) ──────────────────────────────────────
+
+type Occ = Record<string, string>; // "col,row" → tileId
+
+function buildOcc(tiles: PlainTile[]): Occ {
+  const occ: Occ = {};
+  for (const t of tiles) {
+    for (let r = t.row; r < t.row + t.rowSpan; r++)
+      for (let c = t.col; c < t.col + t.colSpan; c++) occ[`${c},${r}`] = t.id;
+  }
+  return occ;
+}
+
+// Is the rectangle blocked by another tile (in-grid) or out of bounds (top/left)?
+// Cells past the right/bottom edge are allowed — that's how we grow the grid.
+function regionBlocked(
+  occ: Occ, col: number, row: number, colSpan: number, rowSpan: number, ignoreId: string
+): boolean {
+  if (col < 1 || row < 1) return true;
+  for (let r = row; r < row + rowSpan; r++)
+    for (let c = col; c < col + colSpan; c++) {
+      const owner = occ[`${c},${r}`];
+      if (owner && owner !== ignoreId) return true;
+    }
+  return false;
+}
+
+// Parse the grid's actual rendered track sizes (px) and gap from the DOM.
+function gridGeometry(el: HTMLElement) {
+  const cs = getComputedStyle(el);
+  const cols = cs.gridTemplateColumns.split(" ").map(parseFloat).filter((n) => !isNaN(n));
+  const rows = cs.gridTemplateRows.split(" ").map(parseFloat).filter((n) => !isNaN(n));
+  const colGap = parseFloat(cs.columnGap) || 0;
+  const rowGap = parseFloat(cs.rowGap) || 0;
+  const padL = parseFloat(cs.paddingLeft) || 0;
+  const padT = parseFloat(cs.paddingTop) || 0;
+  const rect = el.getBoundingClientRect();
+  // Column bands [startX, endX] in client coordinates
+  const colBands: [number, number][] = [];
+  let x = rect.left + padL - el.scrollLeft;
+  for (const w of cols) { colBands.push([x, x + w]); x += w + colGap; }
+  const rowBands: [number, number][] = [];
+  let y = rect.top + padT - el.scrollTop;
+  for (const h of rows) { rowBands.push([y, y + h]); y += h + rowGap; }
+  return { colBands, rowBands };
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -100,43 +137,27 @@ interface TilesFrameProps {
   element: ToolElement;
 }
 
-const LOG = "[tiles-frame]";
-
 export function TilesFrame(props: TilesFrameProps) {
   console.log(LOG, "mount", { docUrl: props.handle.url });
 
-  // Version-counter pattern: avoids automerge-repo-solid-primitives' internal
-  // store listener (which calls applyDelPatch and crashes on our patches).
-  //
-  // IMPORTANT: when used as the account frame, the account doc changes constantly
-  // (sideboard, context tools, annotations, etc. all write to it). We only bump
-  // docVersion when the tiles-specific slice of the doc actually changed —
-  // otherwise we'd trigger hundreds of unnecessary re-renders.
+  // Doc subscription with tiles-only fingerprint (account doc changes a lot).
   const [docVersion, setDocVersion] = createSignal(0);
-
   let prevFingerprint = "";
-  function tilesFingerprint(d: any): string {
+  function fingerprint(d: any): string {
     if (!d) return "";
     const tiles = Array.isArray(d.tiles)
-      ? d.tiles.map((t: any) =>
-          `${t.id}:${t.col},${t.row},${t.colSpan},${t.rowSpan},${t.toolId ?? ""},${t.docUrl ?? ""}`
-        ).join("|")
+      ? d.tiles.map((t: any) => `${t.id}:${t.col},${t.row},${t.colSpan},${t.rowSpan},${t.toolId ?? ""},${t.docUrl ?? ""}`).join("|")
       : "";
     const cols = Array.isArray(d.columnTracks) ? d.columnTracks.join(",") : "";
     const rows = Array.isArray(d.rowTracks) ? d.rowTracks.join(",") : "";
-    // Include account slot settings so changing them in settings re-renders the
-    // tiles that reference them via @sidebar / @context markers.
     const slots = `${d.accountSidebarToolId ?? ""},${d.contextSidebarToolId ?? ""}`;
     return `${tiles}~${cols}~${rows}~${d.mainTileId ?? ""}~${d.gap ?? 8}~${slots}`;
   }
-
   createEffect(() => {
     const cb = () => {
-      const d = props.handle.doc() as any;
-      const fp = tilesFingerprint(d);
-      if (fp === prevFingerprint) return; // unrelated account-doc change — skip
+      const fp = fingerprint(props.handle.doc() as any);
+      if (fp === prevFingerprint) return;
       prevFingerprint = fp;
-      console.log(LOG, "tiles state changed → version", docVersion() + 1, readTiles(d));
       setDocVersion((v) => v + 1);
     };
     props.handle.on("change", cb);
@@ -147,13 +168,11 @@ export function TilesFrame(props: TilesFrameProps) {
     return props.handle.doc() as any;
   });
 
-  // Lazy-init: if this doc has no tile layout yet (e.g. an account doc that just
-  // switched frameToolId to "tiles-frame"), populate it with sensible defaults.
+  // Lazy-init when there is no tile layout yet.
   createEffect(() => {
     const d = doc();
     if (!d) return;
     if (Array.isArray(d.tiles) && d.tiles.length > 0) return;
-    console.log(LOG, "lazy-init: no tiles found, initialising");
     const sideId = crypto.randomUUID();
     const mainId = crypto.randomUUID();
     props.handle.change((draft: any) => {
@@ -169,243 +188,333 @@ export function TilesFrame(props: TilesFrameProps) {
     });
   });
 
-  // ── Track resize ──
-  let resizeAxis: "col" | "row" | null = null;
-  let resizeHandleIdx = -1;
   let containerRef: HTMLDivElement | undefined;
-  let resizeStartX = 0;
-  let resizeStartY = 0;
-  let resizeHasMoved = false;
+
+  // ── Base (committed) state ──
+  const baseTiles = createMemo(() => readTiles(doc()));
+  const baseCols = createMemo(() => readTracks(doc(), "columnTracks"));
+  const baseRows = createMemo(() => readTracks(doc(), "rowTracks"));
+  const mainTileId = createMemo(() => String(doc()?.mainTileId ?? ""));
+  const gap = createMemo(() => Number(doc()?.gap ?? 8));
+
+  // ── Interaction preview overrides (null when idle) ──
+  const [previewTiles, setPreviewTiles] = createSignal<PlainTile[] | null>(null);
+  const [previewCols, setPreviewCols] = createSignal<number[] | null>(null);
+  const [previewRows, setPreviewRows] = createSignal<number[] | null>(null);
+  const [ghost, setGhost] = createSignal<{ col: number; row: number; colSpan: number; rowSpan: number; valid: boolean } | null>(null);
+  // Divider-resize live overrides
   const [localColTracks, setLocalColTracks] = createSignal<number[] | null>(null);
   const [localRowTracks, setLocalRowTracks] = createSignal<number[] | null>(null);
-  const [isResizing, setIsResizing] = createSignal(false);
+  const [isInteracting, setIsInteracting] = createSignal(false);
+  const [activeMoveId, setActiveMoveId] = createSignal<string | null>(null);
+  // Drag-a-file-from-sideboard placement preview
+  const [placeGhost, setPlaceGhost] = createSignal<{ col: number; row: number } | null>(null);
 
-  // ── Tile drag ──
-  let pendingDragTileId: string | null = null;
-  let tileDragStartX = 0;
-  let tileDragStartY = 0;
-  let tileDragMoved = false;
-  const [draggingTileId, setDraggingTileId] = createSignal<string | null>(null);
-  const [dropTargetId, setDropTargetId] = createSignal<string | null>(null);
-
-  // ── Tile signals ──
-  // Drive <For> by stable string IDs (compared by value) so rows update in place
-  // instead of remounting every time Automerge returns fresh object references.
-  const tiles = createMemo(() => readTiles(doc()));
+  // ── Displayed (merged) state ──
+  const tiles = createMemo(() => previewTiles() ?? baseTiles());
+  const cols = createMemo(() => previewCols() ?? localColTracks() ?? baseCols());
+  const rows = createMemo(() => previewRows() ?? localRowTracks() ?? baseRows());
   const tileIds = createMemo(() => tiles().map((t) => t.id));
   const tilesById = createMemo(() => {
-    const m: Record<string, ReturnType<typeof readTiles>[number]> = {};
+    const m: Record<string, PlainTile> = {};
     for (const t of tiles()) m[t.id] = t;
     return m;
   });
-  const mainTileId = createMemo(() => String(doc()?.mainTileId ?? ""));
 
-  // ── Derived grid signals ──
-  const colTracks = createMemo(() => localColTracks() ?? readTracks(doc(), "columnTracks") ?? [1]);
-  const rowTracks = createMemo(() => localRowTracks() ?? readTracks(doc(), "rowTracks") ?? [1]);
-  const gap = createMemo(() => Number(doc()?.gap ?? 8));
+  // minmax tracks keep a minimum px size: baseline layouts fill the viewport
+  // (fr), but once tiles are added/extended past the edge the grid grows and the
+  // wrapper scrolls instead of squashing everything.
+  const colTemplate = createMemo(() => cols().map((t) => `minmax(${MIN_COL_PX}px, ${t}fr)`).join(" "));
+  const rowTemplate = createMemo(() => rows().map((t) => `minmax(${MIN_ROW_PX}px, ${t}fr)`).join(" "));
 
-  const colTemplate = createMemo(() => colTracks().map((t) => `${t}fr`).join(" "));
-  const rowTemplate = createMemo(() => rowTracks().map((t) => `${t}fr`).join(" "));
+  // Empty cells (uncovered) → fillable drop zones
+  const emptyCells = createMemo(() => {
+    const occ = buildOcc(tiles());
+    const out: { col: number; row: number }[] = [];
+    const nCols = cols().length;
+    const nRows = rows().length;
+    for (let r = 1; r <= nRows; r++)
+      for (let c = 1; c <= nCols; c++) if (!occ[`${c},${r}`]) out.push({ col: c, row: r });
+    return out;
+  });
 
+  // ── Divider resize handle positions ──
   const colHandleFracs = createMemo(() => {
-    const t = colTracks();
+    const t = cols();
     const total = t.reduce((a, b) => a + b, 0);
     let cum = 0;
     return t.slice(0, -1).map((v) => { cum += v; return cum / total; });
   });
   const rowHandleFracs = createMemo(() => {
-    const t = rowTracks();
+    const t = rows();
     const total = t.reduce((a, b) => a + b, 0);
     let cum = 0;
     return t.slice(0, -1).map((v) => { cum += v; return cum / total; });
   });
 
-  // ── Resize handlers ──
-  const startResize = (axis: "col" | "row", idx: number, e: MouseEvent) => {
+  // ─── Interaction state machine ───────────────────────────────────────────────
+  type Mode =
+    | { kind: "none" }
+    | { kind: "divider"; axis: "col" | "row"; idx: number; startX: number; startY: number; moved: boolean }
+    | { kind: "move"; tileId: string; grabDC: number; grabDR: number; startX: number; startY: number; moved: boolean }
+    | { kind: "resize"; tileId: string; moved: boolean };
+  let mode: Mode = { kind: "none" };
+
+  const resetCursor = () => {
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+  };
+  const clearPreviews = () => {
+    setPreviewTiles(null);
+    setPreviewCols(null);
+    setPreviewRows(null);
+    setGhost(null);
+    setLocalColTracks(null);
+    setLocalRowTracks(null);
+    setIsInteracting(false);
+    setActiveMoveId(null);
+  };
+
+  // Which grid cell (1-indexed) is the client point over? Clamps to nearest.
+  const cellAtPoint = (clientX: number, clientY: number) => {
+    if (!containerRef) return { col: 1, row: 1, pastRight: false, pastBottom: false };
+    const { colBands, rowBands } = gridGeometry(containerRef);
+    let col = 1, pastRight = false;
+    if (colBands.length) {
+      if (clientX < colBands[0][0]) col = 1;
+      else if (clientX > colBands[colBands.length - 1][1] + GROW_MARGIN) { col = colBands.length + 1; pastRight = true; }
+      else { col = colBands.findIndex(([s, e]) => clientX <= e + (e - s) / 2 || clientX <= e); col = col === -1 ? colBands.length : col + 1; }
+    }
+    let row = 1, pastBottom = false;
+    if (rowBands.length) {
+      if (clientY < rowBands[0][0]) row = 1;
+      else if (clientY > rowBands[rowBands.length - 1][1] + GROW_MARGIN) { row = rowBands.length + 1; pastBottom = true; }
+      else { row = rowBands.findIndex(([, e]) => clientY <= e); row = row === -1 ? rowBands.length : row + 1; }
+    }
+    return { col, row, pastRight, pastBottom };
+  };
+
+  // ── Start interactions ──
+  const startDivider = (axis: "col" | "row", idx: number, e: MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    resizeAxis = axis;
-    resizeHandleIdx = idx;
-    resizeStartX = e.clientX;
-    resizeStartY = e.clientY;
-    resizeHasMoved = false;
+    mode = { kind: "divider", axis, idx, startX: e.clientX, startY: e.clientY, moved: false };
     document.body.style.cursor = axis === "col" ? "col-resize" : "row-resize";
     document.body.style.userSelect = "none";
   };
-
-  const handleResizeMove = (e: MouseEvent) => {
-    if (!resizeAxis || !containerRef) return;
-    if (Math.abs(e.clientX - resizeStartX) > 2 || Math.abs(e.clientY - resizeStartY) > 2)
-      resizeHasMoved = true;
-    if (!resizeHasMoved) return;
-    if (!isResizing()) setIsResizing(true);
-    const rect = containerRef.getBoundingClientRect();
-    const p = gap();
-    if (resizeAxis === "col") {
-      const raw = (e.clientX - rect.left - p) / (rect.width - 2 * p);
-      setLocalColTracks(recomputeTracks(readTracks(doc(), "columnTracks"), resizeHandleIdx, snapValue(Math.max(0.05, Math.min(0.95, raw)))));
-    } else {
-      const raw = (e.clientY - rect.top - p) / (rect.height - 2 * p);
-      setLocalRowTracks(recomputeTracks(readTracks(doc(), "rowTracks"), resizeHandleIdx, snapValue(Math.max(0.05, Math.min(0.95, raw)))));
-    }
-  };
-
-  const endResize = () => {
-    if (!resizeAxis) return;
-    if (resizeHasMoved) {
-      if (resizeAxis === "col" && localColTracks()) {
-        const v = localColTracks()!;
-        console.log(LOG, "resize col committed", v);
-        props.handle.change((d: any) => { d.columnTracks = v; });
-      } else if (resizeAxis === "row" && localRowTracks()) {
-        const v = localRowTracks()!;
-        console.log(LOG, "resize row committed", v);
-        props.handle.change((d: any) => { d.rowTracks = v; });
-      }
-    }
-    resizeAxis = null;
-    resizeHasMoved = false;
-    setLocalColTracks(null);
-    setLocalRowTracks(null);
-    setIsResizing(false);
-    document.body.style.cursor = "";
-    document.body.style.userSelect = "";
-  };
-
-  // ── Tile drag handlers ──
-  const startTileDrag = (tileId: string, e: MouseEvent) => {
+  const startMove = (tileId: string, e: MouseEvent) => {
     e.preventDefault();
-    pendingDragTileId = tileId;
-    tileDragStartX = e.clientX;
-    tileDragStartY = e.clientY;
-    tileDragMoved = false;
+    const tile = tilesById()[tileId];
+    if (!tile || !containerRef) return;
+    const { col, row } = cellAtPoint(e.clientX, e.clientY);
+    mode = {
+      kind: "move", tileId,
+      grabDC: Math.max(0, Math.min(tile.colSpan - 1, col - tile.col)),
+      grabDR: Math.max(0, Math.min(tile.rowSpan - 1, row - tile.row)),
+      startX: e.clientX, startY: e.clientY, moved: false,
+    };
+  };
+  const startResize = (tileId: string, e: MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    mode = { kind: "resize", tileId, moved: false };
+    document.body.style.cursor = "nwse-resize";
+    document.body.style.userSelect = "none";
   };
 
-  const handleTileDragMove = (e: MouseEvent) => {
-    if (!pendingDragTileId) return;
-    if (Math.hypot(e.clientX - tileDragStartX, e.clientY - tileDragStartY) > DRAG_THRESHOLD) {
-      tileDragMoved = true;
-      if (!draggingTileId()) {
-        setDraggingTileId(pendingDragTileId);
+  // ── Mouse move ──
+  const onMove = (e: MouseEvent) => {
+    // Snapshot into a const so TS narrowing survives the function calls below.
+    const m = mode;
+    if (m.kind === "none") return;
+
+    if (m.kind === "divider") {
+      if (Math.abs(e.clientX - m.startX) > 2 || Math.abs(e.clientY - m.startY) > 2) m.moved = true;
+      if (!m.moved || !containerRef) return;
+      setIsInteracting(true);
+      const rect = containerRef.getBoundingClientRect();
+      const p = gap();
+      if (m.axis === "col") {
+        const raw = (e.clientX - rect.left - p) / (rect.width - 2 * p);
+        setLocalColTracks(recomputeTracks(baseCols(), m.idx, snapValue(Math.max(0.05, Math.min(0.95, raw)))));
+      } else {
+        const raw = (e.clientY - rect.top - p) / (rect.height - 2 * p);
+        setLocalRowTracks(recomputeTracks(baseRows(), m.idx, snapValue(Math.max(0.05, Math.min(0.95, raw)))));
+      }
+      return;
+    }
+
+    if (m.kind === "move") {
+      if (!m.moved && Math.hypot(e.clientX - m.startX, e.clientY - m.startY) > DRAG_THRESHOLD) {
+        m.moved = true;
         document.body.style.cursor = "grabbing";
         document.body.style.userSelect = "none";
+        setIsInteracting(true);
+        setActiveMoveId(m.tileId);
       }
+      if (!m.moved) return;
+      const tile = baseTiles().find((t) => t.id === m.tileId);
+      if (!tile) return;
+      const nCols = baseCols().length, nRows = baseRows().length;
+      const { col, row } = cellAtPoint(e.clientX, e.clientY);
+      const targetCol = Math.max(1, Math.min(nCols - tile.colSpan + 1, col - m.grabDC));
+      const targetRow = Math.max(1, Math.min(nRows - tile.rowSpan + 1, row - m.grabDR));
+      const occ = buildOcc(baseTiles());
+      const free = !regionBlocked(occ, targetCol, targetRow, tile.colSpan, tile.rowSpan, tile.id);
+      setGhost({ col: targetCol, row: targetRow, colSpan: tile.colSpan, rowSpan: tile.rowSpan, valid: free || canSwap(tile, targetCol, targetRow) });
+      return;
+    }
+
+    if (m.kind === "resize") {
+      m.moved = true;
+      setIsInteracting(true);
+      const tile = baseTiles().find((t) => t.id === m.tileId);
+      if (!tile) return;
+      const baseColsArr = baseCols(), baseRowsArr = baseRows();
+      const { col, row } = cellAtPoint(e.clientX, e.clientY);
+      let desiredColSpan = Math.max(1, col - tile.col + 1);
+      let desiredRowSpan = Math.max(1, row - tile.row + 1);
+      const occ = buildOcc(baseTiles());
+      // Clamp each axis down until the rectangle no longer overlaps a neighbor.
+      while (desiredColSpan > 1 && regionBlocked(occ, tile.col, tile.row, desiredColSpan, desiredRowSpan, tile.id)) desiredColSpan--;
+      while (desiredRowSpan > 1 && regionBlocked(occ, tile.col, tile.row, desiredColSpan, desiredRowSpan, tile.id)) desiredRowSpan--;
+      // Grow grid if extending past the current edge
+      const needCols = tile.col + desiredColSpan - 1;
+      const needRows = tile.row + desiredRowSpan - 1;
+      const newCols = needCols > baseColsArr.length
+        ? [...baseColsArr, ...Array(needCols - baseColsArr.length).fill(1)] : baseColsArr;
+      const newRows = needRows > baseRowsArr.length
+        ? [...baseRowsArr, ...Array(needRows - baseRowsArr.length).fill(1)] : baseRowsArr;
+      setPreviewCols(newCols);
+      setPreviewRows(newRows);
+      setPreviewTiles(baseTiles().map((t) => t.id === tile.id ? { ...t, colSpan: desiredColSpan, rowSpan: desiredRowSpan } : t));
+      return;
     }
   };
 
-  const endTileDrag = () => {
-    if (!pendingDragTileId) return;
-    if (!tileDragMoved) {
-      // Click on bar = set as main tile
-      const id = pendingDragTileId;
-      console.log(LOG, "set main tile →", id);
-      props.handle.change((d: any) => { d.mainTileId = id; });
-    } else {
-      const from = draggingTileId();
-      const to = dropTargetId();
-      if (from && to && from !== to) {
-        console.log(LOG, "swap tiles", { from, to });
-        // Swap: read outside, write inside (avoid proxy mutations)
-        const tiles = readTiles(doc());
-        const ai = tiles.findIndex((t) => t.id === from);
-        const bi = tiles.findIndex((t) => t.id === to);
-        if (ai !== -1 && bi !== -1) {
-          const posA = { col: tiles[ai].col, row: tiles[ai].row, colSpan: tiles[ai].colSpan, rowSpan: tiles[ai].rowSpan };
-          const posB = { col: tiles[bi].col, row: tiles[bi].row, colSpan: tiles[bi].colSpan, rowSpan: tiles[bi].rowSpan };
-          tiles[ai] = { ...tiles[ai], ...posB };
-          tiles[bi] = { ...tiles[bi], ...posA };
-          props.handle.change((d: any) => { d.tiles = tiles; });
-        } else {
-          console.warn(LOG, "swap: tile not found", { ai, bi });
+  // Can the dragged tile swap with a single same-size tile at the target?
+  const canSwap = (tile: PlainTile, targetCol: number, targetRow: number): boolean => {
+    const others = baseTiles().filter((t) => t.id !== tile.id);
+    const occOther = buildOcc(others);
+    const ids = new Set<string>();
+    for (let r = targetRow; r < targetRow + tile.rowSpan; r++)
+      for (let c = targetCol; c < targetCol + tile.colSpan; c++) { const o = occOther[`${c},${r}`]; if (o) ids.add(o); }
+    if (ids.size !== 1) return false;
+    const other = others.find((t) => t.id === [...ids][0])!;
+    return other.colSpan === tile.colSpan && other.rowSpan === tile.rowSpan;
+  };
+
+  // ── Mouse up — commit ──
+  const onUp = () => {
+    const m = mode;
+    mode = { kind: "none" };
+
+    if (m.kind === "divider") {
+      if (m.moved) {
+        if (m.axis === "col" && localColTracks()) { const v = localColTracks()!; props.handle.change((d: any) => { d.columnTracks = v; }); }
+        else if (m.axis === "row" && localRowTracks()) { const v = localRowTracks()!; props.handle.change((d: any) => { d.rowTracks = v; }); }
+      }
+    } else if (m.kind === "move") {
+      if (!m.moved) {
+        // Click on bar = make this the document target
+        props.handle.change((d: any) => { d.mainTileId = m.tileId; });
+      } else {
+        const g = ghost();
+        const tile = baseTiles().find((t) => t.id === m.tileId);
+        if (g && g.valid && tile) {
+          const occ = buildOcc(baseTiles());
+          if (!regionBlocked(occ, g.col, g.row, tile.colSpan, tile.rowSpan, tile.id)) {
+            // Move into empty space
+            const next = baseTiles().map((t) => t.id === tile.id ? { ...t, col: g.col, row: g.row } : t);
+            console.log(LOG, "move tile", tile.id, "→", { col: g.col, row: g.row });
+            props.handle.change((d: any) => { d.tiles = next; });
+          } else if (canSwap(tile, g.col, g.row)) {
+            // Swap with the single same-size neighbor
+            const others = baseTiles().filter((t) => t.id !== tile.id);
+            const occOther = buildOcc(others);
+            const otherId = occOther[`${g.col},${g.row}`];
+            const oldCol = tile.col, oldRow = tile.row;
+            const next = baseTiles().map((t) => {
+              if (t.id === tile.id) return { ...t, col: g.col, row: g.row };
+              if (t.id === otherId) return { ...t, col: oldCol, row: oldRow };
+              return t;
+            });
+            console.log(LOG, "swap tiles", tile.id, "↔", otherId);
+            props.handle.change((d: any) => { d.tiles = next; });
+          }
+        }
+      }
+    } else if (m.kind === "resize") {
+      if (m.moved) {
+        const pt = previewTiles(), pc = previewCols(), pr = previewRows();
+        if (pt) {
+          console.log(LOG, "resize tile", m.tileId);
+          props.handle.change((d: any) => {
+            d.tiles = pt;
+            if (pc) d.columnTracks = pc;
+            if (pr) d.rowTracks = pr;
+          });
         }
       }
     }
-    pendingDragTileId = null;
-    tileDragMoved = false;
-    setDraggingTileId(null);
-    setDropTargetId(null);
-    document.body.style.cursor = "";
-    document.body.style.userSelect = "";
+
+    clearPreviews();
+    resetCursor();
   };
 
-  // ── Tile content mutations (all use read-outside-write-inside) ──
-
+  // ─── Tile content mutations ──────────────────────────────────────────────────
   const setTile = (tileId: string, toolId: string, docUrl: string) => {
-    console.log(LOG, "setTile", { tileId, toolId, docUrl });
-    const tiles = readTiles(doc()).map((t) =>
-      t.id === tileId ? { ...t, toolId, docUrl } : t
-    );
-    props.handle.change((d: any) => { d.tiles = tiles; });
+    const next = readTiles(doc()).map((t) => t.id === tileId ? { ...t, toolId, docUrl } : t);
+    props.handle.change((d: any) => { d.tiles = next; });
   };
-
   const clearTile = (tileId: string) => {
-    console.log(LOG, "clearTile", tileId);
-    // Reset to "" — never delete properties (del patches with string keys crash applyDelPatch)
-    const tiles = readTiles(doc()).map((t) =>
-      t.id === tileId ? { ...t, toolId: "", docUrl: "" } : t
-    );
-    props.handle.change((d: any) => { d.tiles = tiles; });
+    const next = readTiles(doc()).map((t) => t.id === tileId ? { ...t, toolId: "", docUrl: "" } : t);
+    props.handle.change((d: any) => { d.tiles = next; });
+  };
+  // Remove a tile entirely → leaves open space
+  const removeTile = (tileId: string) => {
+    const next = readTiles(doc()).filter((t) => t.id !== tileId);
+    props.handle.change((d: any) => { d.tiles = next; });
+  };
+  // Create a tile in a previously-empty cell
+  const addTileAt = (col: number, row: number, toolId: string, docUrl: string) => {
+    const id = crypto.randomUUID();
+    const next = [...readTiles(doc()), { id, col, row, colSpan: 1, rowSpan: 1, toolId, docUrl }];
+    props.handle.change((d: any) => { d.tiles = next; });
   };
 
-  const splitTileRight = (tileId: string) => {
-    console.log(LOG, "splitTileRight", tileId);
+  // '+' on a tile header: split its last column in two and drop an empty block
+  // beside it. Keeps everything within the current width (no scroll needed).
+  const addBlockBeside = (tileId: string) => {
     const d = doc();
     const tiles = readTiles(d);
     const colTracks = readTracks(d, "columnTracks");
     const ti = tiles.findIndex((t) => t.id === tileId);
-    if (ti === -1) { console.warn(LOG, "splitTileRight: tile not found"); return; }
+    if (ti === -1) return;
     const tile = tiles[ti];
-    const colIdx = tile.col + tile.colSpan - 2;
-    const w = colTracks[colIdx];
+    const colIdx = tile.col + tile.colSpan - 2; // 0-based last column of the tile
+    const w = colTracks[colIdx] ?? 1;
     const newColTracks = [...colTracks.slice(0, colIdx), w / 2, w / 2, ...colTracks.slice(colIdx + 1)];
-    const splitAfter = tile.col + tile.colSpan - 1;
-    const newTiles = [
-      ...tiles.map((t) => t.id !== tileId && t.col > splitAfter ? { ...t, col: t.col + 1 } : t),
+    const splitAfter = tile.col + tile.colSpan - 1; // 1-based
+    const shifted = tiles.map((t) => (t.id !== tileId && t.col > splitAfter ? { ...t, col: t.col + 1 } : t));
+    const next = [
+      ...shifted,
       { id: crypto.randomUUID(), col: splitAfter + 1, row: tile.row, colSpan: 1, rowSpan: tile.rowSpan, toolId: "", docUrl: "" },
     ];
-    props.handle.change((d: any) => {
-      d.columnTracks = newColTracks;
-      d.tiles = newTiles;
-    });
-  };
-
-  const splitTileDown = (tileId: string) => {
-    console.log(LOG, "splitTileDown", tileId);
-    const d = doc();
-    const tiles = readTiles(d);
-    const rTracks = readTracks(d, "rowTracks");
-    const ti = tiles.findIndex((t) => t.id === tileId);
-    if (ti === -1) { console.warn(LOG, "splitTileDown: tile not found"); return; }
-    const tile = tiles[ti];
-    const rowIdx = tile.row + tile.rowSpan - 2;
-    const w = rTracks[rowIdx];
-    const newRowTracks = [...rTracks.slice(0, rowIdx), w / 2, w / 2, ...rTracks.slice(rowIdx + 1)];
-    const splitAfter = tile.row + tile.rowSpan - 1;
-    const newTiles = [
-      ...tiles.map((t) => t.id !== tileId && t.row > splitAfter ? { ...t, row: t.row + 1 } : t),
-      { id: crypto.randomUUID(), col: tile.col, row: splitAfter + 1, colSpan: tile.colSpan, rowSpan: 1, toolId: "", docUrl: "" },
-    ];
-    props.handle.change((d: any) => {
-      d.rowTracks = newRowTracks;
-      d.tiles = newTiles;
-    });
+    props.handle.change((dd: any) => { dd.columnTracks = newColTracks; dd.tiles = next; });
   };
 
   const applyPreset = (preset: LayoutPreset) => {
-    console.log(LOG, "applyPreset", preset.label ?? preset);
     const oldTiles = readTiles(doc());
     const newTiles = preset.tiles.map((t, i) => {
       const old = oldTiles[i];
       return {
         id: old?.id ?? crypto.randomUUID(),
         col: t.col, row: t.row, colSpan: t.colSpan, rowSpan: t.rowSpan,
-        toolId: old?.toolId ?? "",
-        docUrl: old?.docUrl ?? "",
+        toolId: old?.toolId ?? "", docUrl: old?.docUrl ?? "",
       };
     });
-    const mainId = doc()?.mainTileId;
-    const stillValid = newTiles.some((t) => t.id === mainId);
+    const stillValid = newTiles.some((t) => t.id === doc()?.mainTileId);
     props.handle.change((d: any) => {
       d.columnTracks = preset.columnTracks;
       d.rowTracks = preset.rowTracks;
@@ -414,119 +523,181 @@ export function TilesFrame(props: TilesFrameProps) {
     });
   };
 
-  // ── Mount ──
+  // ─── Mount: events ───────────────────────────────────────────────────────────
   onMount(() => {
-    // Route patchwork:open-document events to the main tile
     const onOpenDoc = (e: Event) => {
       const evt = e as CustomEvent<{ url: string; toolId?: string }>;
       evt.stopPropagation();
       const { url, toolId } = evt.detail ?? {};
-      if (!url) { console.warn(LOG, "open-document: no url in event"); return; }
+      if (!url) return;
       const d = doc();
-      if (!d) { console.warn(LOG, "open-document: doc not ready"); return; }
-      const mainId = d.mainTileId;
-      const tiles = readTiles(d);
-      const idx = mainId ? tiles.findIndex((t) => t.id === mainId) : 0;
-      if (idx === -1 || !tiles[idx]) { console.warn(LOG, "open-document: target tile not found"); return; }
-
-      // toolId from the event is often null → "use the default tool for this doc".
-      // We store "" in that case and let patchwork-view resolve the default tool.
+      if (!d) return;
+      const mId = d.mainTileId;
+      const ts = readTiles(d);
+      const idx = mId ? ts.findIndex((t) => t.id === mId) : 0;
+      if (idx === -1 || !ts[idx]) return;
       const nextToolId = toolId ? String(toolId) : "";
-
-      // Dedup guard: if the target tile already shows this exact doc+tool, do
-      // nothing. Without this, every render re-fires open-document → infinite loop.
-      if (tiles[idx].docUrl === url && tiles[idx].toolId === nextToolId) {
-        return;
-      }
-
-      console.log(LOG, "open-document → tile", tiles[idx].id, { url, toolId: nextToolId || "(default)" });
-      const newTiles = tiles.map((t, i) =>
-        i !== idx ? t : { ...t, docUrl: url, toolId: nextToolId }
-      );
-      props.handle.change((d: any) => { d.tiles = newTiles; });
+      if (ts[idx].docUrl === url && ts[idx].toolId === nextToolId) return;
+      console.log(LOG, "open-document → tile", ts[idx].id, { url, toolId: nextToolId || "(default)" });
+      const next = ts.map((t, i) => i !== idx ? t : { ...t, docUrl: url, toolId: nextToolId });
+      props.handle.change((dd: any) => { dd.tiles = next; });
     };
     props.element.addEventListener("patchwork:open-document", onOpenDoc);
-
-    const onMove = (e: MouseEvent) => { handleResizeMove(e); handleTileDragMove(e); };
-    const onUp = () => { endResize(); endTileDrag(); };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
-
     onCleanup(() => {
       props.element.removeEventListener("patchwork:open-document", onOpenDoc);
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
+      resetCursor();
     });
   });
 
   const frameDocUrl = props.handle.url;
 
+  // ─── Drag a file from the sideboard → placeable tool ─────────────────────────
+  // Best-effort: read an automerge URL out of the native drag dataTransfer, show
+  // a placement ghost on dragover, and create/replace a tile on drop.
+  const extractUrl = (dt: DataTransfer): string | null => {
+    const types = Array.from(dt.types || []);
+    for (const ty of ["text/uri-list", "text/plain", ...types]) {
+      try {
+        const v = dt.getData(ty);
+        const m = v && v.match(/automerge:[A-Za-z0-9]+/);
+        if (m) return m[0];
+      } catch { /* some types throw on getData during dragover */ }
+    }
+    return null;
+  };
+  const clampedCell = (clientX: number, clientY: number) => {
+    const { col, row } = cellAtPoint(clientX, clientY);
+    return { col: Math.min(col, cols().length), row: Math.min(row, rows().length) };
+  };
+  const onDragOver = (e: DragEvent) => {
+    if (!e.dataTransfer) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    setPlaceGhost(clampedCell(e.clientX, e.clientY));
+  };
+  const onDragLeave = (e: DragEvent) => {
+    if (e.relatedTarget && containerRef?.contains(e.relatedTarget as Node)) return;
+    setPlaceGhost(null);
+  };
+  const onDrop = (e: DragEvent) => {
+    if (!e.dataTransfer) return;
+    e.preventDefault();
+    console.log(LOG, "drop dataTransfer types:", Array.from(e.dataTransfer.types || []));
+    const url = extractUrl(e.dataTransfer);
+    const g = placeGhost();
+    setPlaceGhost(null);
+    if (!url) { console.warn(LOG, "drop: no automerge: URL found in dataTransfer"); return; }
+    if (!g) return;
+    const occ = buildOcc(baseTiles());
+    const ownerId = occ[`${g.col},${g.row}`];
+    if (ownerId) setTile(ownerId, "", url); // replace doc in the targeted block
+    else addTileAt(g.col, g.row, "", url); // drop into open space
+    console.log(LOG, "placed dropped doc", url, "at", g);
+  };
+
   return (
-    <div
-      ref={containerRef}
-      class="tiles-frame"
-      style={{
-        "grid-template-columns": colTemplate(),
-        "grid-template-rows": rowTemplate(),
-        gap: `${gap()}px`,
-        padding: `${gap()}px`,
-        transition: isResizing() || draggingTileId() ? "none"
-          : "grid-template-columns 0.18s ease, grid-template-rows 0.18s ease",
-      }}
-    >
-      <For each={tileIds()}>
-        {(tileId) => {
-          // Reactive accessors so the row updates in place when this tile's
-          // data (or the resolved sidebar/context tool) changes.
-          const tile = () => tilesById()[tileId];
-          const resolvedToolId = () => resolveToolId(tile()?.toolId ?? "", doc());
-          return (
-            <Show when={tile()}>
-              <TileCell
-                tile={tile()!}
-                frameDocUrl={frameDocUrl}
-                resolvedToolId={resolvedToolId()}
-                isMain={tileId === mainTileId()}
-                isDragging={draggingTileId() === tileId}
-                isDropTarget={dropTargetId() === tileId}
-                isDragActive={draggingTileId() !== null}
-                onSetTile={(toolId, docUrl) => setTile(tileId, toolId, docUrl)}
-                onClearTile={() => clearTile(tileId)}
-                onBarMouseDown={(e) => startTileDrag(tileId, e)}
-                onDropEnter={() => setDropTargetId(tileId)}
-                onDropLeave={() => setDropTargetId((prev) => prev === tileId ? null : prev)}
-                onSplitRight={() => splitTileRight(tileId)}
-                onSplitDown={() => splitTileDown(tileId)}
-                onSetMain={() => props.handle.change((d: any) => { d.mainTileId = tileId; })}
-              />
-            </Show>
-          );
+    <div class="tiles-scroll">
+      <div
+        ref={containerRef}
+        class="tiles-frame"
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+        style={{
+          "grid-template-columns": colTemplate(),
+          "grid-template-rows": rowTemplate(),
+          gap: `${gap()}px`,
+          padding: `${gap()}px`,
+          transition: isInteracting() ? "none" : "grid-template-columns 0.18s ease, grid-template-rows 0.18s ease",
         }}
-      </For>
+      >
+        {/* ── Empty cells ── */}
+        <For each={emptyCells()}>
+          {(cell) => (
+            <div class="empty-cell" style={{ "grid-column": `${cell.col}`, "grid-row": `${cell.row}` }}>
+              <TileContentPicker
+                frameDocUrl={frameDocUrl}
+                onSet={(toolId, docUrl) => addTileAt(cell.col, cell.row, toolId, docUrl)}
+              />
+            </div>
+          )}
+        </For>
 
-      <For each={colHandleFracs()}>
-        {(frac, i) => (
-          <div
-            class={`resize-handle resize-handle--col${isResizing() && resizeAxis === "col" && resizeHandleIdx === i() ? " resize-handle--active" : ""}`}
-            style={{ left: `calc(${frac * 100}%)` }}
-            onMouseDown={(e) => startResize("col", i(), e)}
-          />
-        )}
-      </For>
+        {/* ── Tiles ── */}
+        <For each={tileIds()}>
+          {(tileId) => {
+            const tile = () => tilesById()[tileId];
+            const resolvedToolId = () => resolveToolId(tile()?.toolId ?? "", doc());
+            return (
+              <Show when={tile()}>
+                <TileCell
+                  tile={tile()!}
+                  frameDocUrl={frameDocUrl}
+                  resolvedToolId={resolvedToolId()}
+                  isMain={tileId === mainTileId()}
+                  isDragging={activeMoveId() === tileId}
+                  onSetTile={(toolId, docUrl) => setTile(tileId, toolId, docUrl)}
+                  onClearTile={() => clearTile(tileId)}
+                  onRemove={() => removeTile(tileId)}
+                  onBarMouseDown={(e) => startMove(tileId, e)}
+                  onResizeMouseDown={(e) => startResize(tileId, e)}
+                  onAddBlock={() => addBlockBeside(tileId)}
+                  onSetMain={() => props.handle.change((d: any) => { d.mainTileId = tileId; })}
+                />
+              </Show>
+            );
+          }}
+        </For>
 
-      <For each={rowHandleFracs()}>
-        {(frac, i) => (
-          <div
-            class={`resize-handle resize-handle--row${isResizing() && resizeAxis === "row" && resizeHandleIdx === i() ? " resize-handle--active" : ""}`}
-            style={{ top: `calc(${frac * 100}%)` }}
-            onMouseDown={(e) => startResize("row", i(), e)}
-          />
-        )}
-      </For>
+        {/* ── Move ghost ── */}
+        <Show when={ghost()}>
+          {(g) => (
+            <div
+              class={`move-ghost${g().valid ? " move-ghost--valid" : " move-ghost--invalid"}`}
+              style={{
+                "grid-column": `${g().col} / span ${g().colSpan}`,
+                "grid-row": `${g().row} / span ${g().rowSpan}`,
+              }}
+            />
+          )}
+        </Show>
 
-      <LayoutButton onApplyPreset={applyPreset} />
+        {/* ── Drop-from-sideboard placement ghost ── */}
+        <Show when={placeGhost()}>
+          {(g) => (
+            <div
+              class="move-ghost move-ghost--valid"
+              style={{ "grid-column": `${g().col}`, "grid-row": `${g().row}` }}
+            />
+          )}
+        </Show>
+
+        {/* ── Divider resize handles ── */}
+        <For each={colHandleFracs()}>
+          {(frac, i) => (
+            <div
+              class="resize-handle resize-handle--col"
+              style={{ left: `calc(${frac * 100}%)` }}
+              onMouseDown={(e) => startDivider("col", i(), e)}
+            />
+          )}
+        </For>
+        <For each={rowHandleFracs()}>
+          {(frac, i) => (
+            <div
+              class="resize-handle resize-handle--row"
+              style={{ top: `calc(${frac * 100}%)` }}
+              onMouseDown={(e) => startDivider("row", i(), e)}
+            />
+          )}
+        </For>
+
+        <LayoutButton onApplyPreset={applyPreset} />
+      </div>
     </div>
   );
 }
