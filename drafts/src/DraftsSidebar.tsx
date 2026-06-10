@@ -1,20 +1,9 @@
 import "./styles.css";
-import {
-  createEffect,
-  createMemo,
-  createSignal,
-  For,
-  onCleanup,
-  Show,
-} from "solid-js";
-import {
-  createDocumentProjection,
-  useDocument,
-} from "@automerge/automerge-repo-solid-primitives";
+import { createMemo, For, Show } from "solid-js";
+import { useDocument } from "@automerge/automerge-repo-solid-primitives";
 import type { AutomergeUrl, DocHandle, Repo } from "@automerge/automerge-repo";
 
-import { requestDoc } from "@inkandswitch/patchwork-providers-solid";
-import { request } from "@inkandswitch/patchwork-providers";
+import { subscribeDoc } from "@inkandswitch/patchwork-providers-solid";
 import type {
   CloneEntry,
   DraftDoc,
@@ -22,31 +11,17 @@ import type {
   HasDrafts,
 } from "./draft-types";
 
-const VERSION = "v0.5.0-merge";
+const VERSION = "v0.6.0-overlay";
 
 export function DraftsSidebar(props: { element: HTMLElement }) {
-  const [hostDoc, hostDocHandle] = requestDoc<HasDrafts>(
-    props.element,
-    "patchwork:host-doc"
-  );
-
-  const [stateHandle, setStateHandle] =
-    createSignal<DocHandle<DraftsState> | undefined>();
-
-  createEffect(() => {
-    let cancelled = false;
-    onCleanup(() => {
-      cancelled = true;
-    });
-    void request<DocHandle<DraftsState> | null>(
-      props.element,
-      "patchwork:drafts"
-    ).then((h) => {
-      if (!cancelled && h) setStateHandle(() => h);
-    });
+  const [hostDoc, hostDocHandle] = subscribeDoc<HasDrafts>(props.element, {
+    type: "patchwork:host-doc",
   });
 
-  const state = createDocumentProjection<DraftsState>(stateHandle);
+  const [state, stateHandle] = subscribeDoc<DraftsState>(props.element, {
+    type: "patchwork:drafts",
+  });
+
   const drafts = createMemo<AutomergeUrl[]>(() => state()?.drafts ?? []);
   const selected = createMemo<AutomergeUrl | null>(
     () => state()?.selectedDraft ?? null
@@ -59,15 +34,15 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     });
   };
 
-  const getHostRepo = () =>
-    request<Repo>(props.element, "patchwork:host-repo");
+  const getRepo = (): Repo | undefined =>
+    "repo" in window ? window.repo : undefined;
 
   const onCreateDraft = async () => {
     const docHandle = hostDocHandle();
     if (!docHandle) return;
-    const repo = await getHostRepo();
+    const repo = getRepo();
     if (!repo) {
-      console.warn("[drafts] no `patchwork:host-repo` available");
+      console.warn("[drafts] window.repo is not set");
       return;
     }
     const draft = repo.create<DraftDoc>({
@@ -92,9 +67,9 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     const draftUrl = selected();
     if (!draftUrl) return;
     if (!window.confirm("Merge this draft into the main document?")) return;
-    const repo = await getHostRepo();
+    const repo = getRepo();
     if (!repo) {
-      console.warn("[drafts] no `patchwork:host-repo` available");
+      console.warn("[drafts] window.repo is not set");
       return;
     }
     const draftHandle = await repo.find<DraftDoc>(draftUrl);

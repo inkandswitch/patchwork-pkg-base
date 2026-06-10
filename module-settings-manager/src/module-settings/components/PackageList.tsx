@@ -1,5 +1,6 @@
 import { ErrorBoundary, For, Show, createMemo } from "solid-js";
 import {
+  isValidAutomergeUrl,
   type AutomergeUrl,
   type DocHandle,
   type Repo,
@@ -11,7 +12,10 @@ import type {
   EnrichedPlugin,
   ModuleLoadState,
 } from "../hooks/useModulePlugins.ts";
-import type { ModuleSettingsDocWithBranches } from "../utils/module-types.ts";
+import type {
+  ModuleEntry,
+  ModuleSettingsDocWithBranches,
+} from "../utils/module-types.ts";
 import {
   forceActivatePlugin,
   sameAutomergeDoc,
@@ -19,10 +23,10 @@ import {
 } from "../utils/plugin-registry.ts";
 
 interface PackageListProps {
-  moduleUrls: AutomergeUrl[];
+  moduleUrls: ModuleEntry[];
   moduleStateMap: Map<string, ModuleLoadState>;
   filteredPlugins: EnrichedPlugin[];
-  onRemoveModule: (url: AutomergeUrl) => void;
+  onRemoveModule: (url: ModuleEntry) => void;
   repo: Repo;
   settingsHandle: DocHandle<ModuleSettingsDocWithBranches>;
   /**
@@ -33,7 +37,7 @@ interface PackageListProps {
   userSettingsHandle?: DocHandle<ModuleSettingsDocWithBranches>;
 }
 
-function defaultState(url: AutomergeUrl): ModuleLoadState {
+function defaultState(url: ModuleEntry): ModuleLoadState {
   return { url, loading: true, error: undefined, plugins: [] };
 }
 
@@ -50,10 +54,10 @@ export function PackageList(props: PackageListProps) {
     return map;
   });
 
-  const lookupState = (url: AutomergeUrl): ModuleLoadState =>
+  const lookupState = (url: ModuleEntry): ModuleLoadState =>
     props.moduleStateMap.get(String(url)) ?? defaultState(url);
 
-  const lookupPlugins = (url: AutomergeUrl): EnrichedPlugin[] =>
+  const lookupPlugins = (url: ModuleEntry): EnrichedPlugin[] =>
     filteredByModule().get(String(url)) ?? [];
 
   return (
@@ -103,7 +107,7 @@ function PackageCard(props: PackageCardProps) {
 
   const handleViewSource = (e: MouseEvent) => {
     const detail: OpenDocumentEventDetail = {
-      url: url(),
+      url: url() as AutomergeUrl,
       toolId: "raw",
     };
     (e.currentTarget as HTMLButtonElement).dispatchEvent(
@@ -123,6 +127,7 @@ function PackageCard(props: PackageCardProps) {
     if (info?.name) return info.name;
     if (props.state.error) return "(failed to load)";
     if (props.state.loading) return "(loading…)";
+    if (!isValidAutomergeUrl(url())) return url();
     return "(unnamed package)";
   };
 
@@ -150,13 +155,15 @@ function PackageCard(props: PackageCardProps) {
         <div class="msm-card__meta">v{pkgInfo()?.version}</div>
       </Show>
 
-      <ModuleControls
-        url={url()}
-        repo={props.repo}
-        settingsHandle={props.settingsHandle}
-        userSettingsHandle={props.userSettingsHandle}
-        plugins={props.plugins}
-      />
+      <Show when={isValidAutomergeUrl(url())}>
+        <ModuleControls
+          url={url() as AutomergeUrl}
+          repo={props.repo}
+          settingsHandle={props.settingsHandle}
+          userSettingsHandle={props.userSettingsHandle}
+          plugins={props.plugins}
+        />
+      </Show>
 
       <Show when={errorMessage()}>
         <div class="msm-card__error">
@@ -183,7 +190,7 @@ function PackageCard(props: PackageCardProps) {
           <ul class="msm-card__plugins">
             <For each={props.plugins}>
               {(plugin) => (
-                <PluginItem plugin={plugin} folderUrl={folderUrl()} />
+                <PluginItem plugin={plugin} sourceUrl={folderUrl() ?? url()} />
               )}
             </For>
           </ul>
@@ -192,9 +199,11 @@ function PackageCard(props: PackageCardProps) {
 
       <div class="msm-card__action-row">
         <div class="msm-card__action-row-right">
-          <button class="msm-card__text-btn" onClick={handleViewSource}>
-            View source
-          </button>
+          <Show when={isValidAutomergeUrl(url())}>
+            <button class="msm-card__text-btn" onClick={handleViewSource}>
+              View source
+            </button>
+          </Show>
           <button
             class="msm-card__text-btn msm-card__text-btn--danger"
             onClick={props.onRemove}
@@ -208,7 +217,7 @@ function PackageCard(props: PackageCardProps) {
 }
 
 function PackageCardError(props: {
-  url: AutomergeUrl;
+  url: ModuleEntry;
   error: unknown;
   onReset: () => void;
   onRemove: () => void;
@@ -257,7 +266,7 @@ function formatError(error: unknown): string | undefined {
 
 function PluginItem(props: {
   plugin: EnrichedPlugin;
-  folderUrl: AutomergeUrl | undefined;
+  sourceUrl: string | undefined;
 }) {
   const [copiedId, copyId] = useCopyToClipboard();
   const activeImportUrl = useActiveImportUrl(
@@ -269,7 +278,12 @@ function PluginItem(props: {
       if (!props.plugin.id) return "unknown";
       const active = activeImportUrl();
       if (!active) return "inactive";
-      if (sameAutomergeDoc(active, props.folderUrl)) return "active";
+      if (
+        active === props.sourceUrl ||
+        sameAutomergeDoc(active, props.sourceUrl)
+      ) {
+        return "active";
+      }
       return "shadowed";
     }
   );
@@ -347,13 +361,13 @@ function PluginItem(props: {
       <Show
         when={
           (status() === "shadowed" || status() === "inactive") &&
-          props.folderUrl
+          props.sourceUrl
         }
       >
         <button
           class="msm-plugin__activate"
           onClick={() =>
-            forceActivatePlugin(props.plugin, props.folderUrl as string)
+            forceActivatePlugin(props.plugin, props.sourceUrl as string)
           }
           title={
             status() === "shadowed"

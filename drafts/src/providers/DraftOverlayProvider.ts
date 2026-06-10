@@ -4,26 +4,34 @@ import {
   stringifyAutomergeUrl,
   type AutomergeUrl,
   type DocHandle,
-  type Repo,
 } from "@automerge/automerge-repo";
 import {
-  provide,
-  request,
-  type RepoLike,
-  type RequestEvent,
+  accept,
+  type DocHandleDescriptor,
+  type SubscribeEvent,
 } from "@inkandswitch/patchwork-providers";
 
-import { DraftRepo } from "../overlay/repo.js";
 import type { Baseline, DraftDoc } from "../draft-types.js";
 
-// Mounts on a draft URL and owns the `DraftRepo` overlay for that draft;
-// the frame keys remounts on `selectedDraft` so the overlay never has to
-// be hot-swapped in place.
+const DOCHANDLE_SELECTOR = "patchwork:dochandle";
+const BASELINE_SELECTOR = "patchwork:baseline";
+
+// Mounts on a draft URL and remaps documents resolved beneath it onto
+// per-draft clones, so edits stay inside the draft.
 //
-// If the `url` attribute is absent or empty the provider becomes a no-op:
-// it registers no listeners and lets all `patchwork:request` events bubble
-// up to the outer providers, so the frame can mount this component
-// unconditionally and have "main" fall through to the host repo.
+// Under the new provider model the host `<patchwork-view>` wraps legacy tool
+// document resolution in an `OverlayRepo` that asks the provider tree for a
+// `patchwork:dochandle` descriptor. This provider answers with
+// `{ url, cloneUrl }`: the clone is forked eagerly the first time a document is
+// requested in this draft (recorded in `DraftDoc.clones`), and the editor then
+// reads and writes the clone while still reporting the original url. The fork
+// point is published as `patchwork:baseline { heads }` so consumers can render
+// a diff against the pre-draft state.
+//
+// If the `url` attribute is absent or empty the provider becomes a no-op: it
+// registers no listeners and lets `patchwork:dochandle`/`patchwork:baseline`
+// subscriptions bubble up to the root `<repo-provider>`, so the frame can mount
+// this component unconditionally and have "main" fall through to the host repo.
 export const DraftOverlayProvider = (element: HTMLElement) => {
   const rawUrl = element.getAttribute("url");
   if (!rawUrl) return () => {};
@@ -36,178 +44,132 @@ export const DraftOverlayProvider = (element: HTMLElement) => {
   }
   const draftUrl: AutomergeUrl = rawUrl;
 
-  let draftRepo: DraftRepo | null = null;
-  const baselineHandles = new Map<AutomergeUrl, DocHandle<Baseline>>();
-  let disposed = false;
-  let rescanScheduled = false;
+  const repo = "repo" in window ? window.repo : undefined;
+  if (!repo) {
+    console.warn(
+      "[drafts] window.repo is not set; draft overlay provider disabled"
+    );
+    return () => {};
+  }
+  const liveRepo = repo;
 
-  const readyPromise: Promise<DraftRepo> = (async () => {
-    const repo = await request<Repo>(element, "patchwork:repo");
-    if (!repo) {
-      throw new Error(
-        "[drafts] no `patchwork:repo` provider found; draft overlay provider disabled"
-      );
-    }
-    const handle = await repo.find<DraftDoc>(draftUrl);
-    draftRepo = new DraftRepo(repo, handle);
-    handle.on("change", scheduleRescan);
-    return draftRepo;
+  let draftHandle: DocHandle<DraftDoc> | null = null;
+  let disposed = false;
+
+  // One eager-clone resolution per original url; de-dupes concurrent requests.
+  const cloneResolutions = new Map<AutomergeUrl, Promise<AutomergeUrl>>();
+  // `patchwork:baseline` subscribers keyed by the canonical target url.
+  const baselineSubscribers = new Map<
+    AutomergeUrl,
+    Set<(baseline: Baseline) => void>
+  >();
+
+  const ready: Promise<DocHandle<DraftDoc>> = (async () => {
+    const handle = await liveRepo.find<DraftDoc>(draftUrl);
+    await handle.whenReady();
+    if (disposed) throw new Error("[drafts] provider disposed mid-load");
+    draftHandle = handle;
+    return handle;
   })();
-  readyPromise.catch((err) => {
+  ready.catch((err) => {
     console.error(
       `[drafts] failed to load draft overlay for ${draftUrl}:`,
       err
     );
   });
 
-  const onRequest = (event: RequestEvent) => {
-    const { type } = event.detail;
+  const onSubscribe = (event: SubscribeEvent) => {
+    const selector = event.detail.selector;
 
-    if (type === "patchwork:repo") {
-      provide<RepoLike>(event, draftRepo ?? readyPromise);
-      return;
-    }
-
-    if (type === "patchwork:dochandle") {
-      const url = event.detail.url as AutomergeUrl | undefined;
-      const lookup = (dr: DraftRepo) =>
-        url ? dr.find<unknown>(url) : dr.create<unknown>();
-      provide<DocHandle<unknown>>(
-        event,
-        draftRepo ? lookup(draftRepo) : readyPromise.then(lookup)
-      );
-      return;
-    }
-
-    if (type === "patchwork:baseline") {
-      const rawTarget = event.detail.url;
+    if (selector.type === DOCHANDLE_SELECTOR) {
+      const rawTarget = selector.url;
       if (typeof rawTarget !== "string" || !isValidAutomergeUrl(rawTarget)) {
-        console.log(
-          "[drafts/baseline] ignoring request, invalid target url:",
-          rawTarget
-        );
+        return;
+      }
+      const original = canonicalUrl(rawTarget);
+      accept<DocHandleDescriptor>(event, (respond) => {
+        void resolveClone(original).then((cloneUrl) => {
+          if (disposed) return;
+          respond({ url: original, cloneUrl });
+        });
+      });
+      return;
+    }
+
+    if (selector.type === BASELINE_SELECTOR) {
+      const rawTarget = selector.url;
+      if (typeof rawTarget !== "string" || !isValidAutomergeUrl(rawTarget)) {
         return;
       }
       const target = canonicalUrl(rawTarget);
-      console.log(
-        "[drafts/baseline] request for",
-        target,
-        "draft:",
-        draftUrl,
-        "draftRepo ready:",
-        !!draftRepo
-      );
-      provide<DocHandle<Baseline>>(
-        event,
-        draftRepo
-          ? baselineFor(draftRepo, target)
-          : readyPromise.then((dr) => baselineFor(dr, target))
-      );
+      accept<Baseline>(event, (respond) => {
+        void ready.then(() => {
+          if (disposed) return;
+          respond(currentBaseline(target));
+        });
+        let set = baselineSubscribers.get(target);
+        if (!set) baselineSubscribers.set(target, (set = new Set()));
+        set.add(respond);
+        return () => {
+          set!.delete(respond);
+          if (set!.size === 0) baselineSubscribers.delete(target);
+        };
+      });
       return;
     }
   };
 
-  element.addEventListener("patchwork:request", onRequest);
+  element.addEventListener("patchwork:subscribe", onSubscribe);
   return () => {
     disposed = true;
-    element.removeEventListener("patchwork:request", onRequest);
-    if (draftRepo) draftRepo.draftHandle.off("change", scheduleRescan);
-    for (const [, h] of baselineHandles) {
-      draftRepo?.repo.delete(h.url);
-    }
-    baselineHandles.clear();
+    element.removeEventListener("patchwork:subscribe", onSubscribe);
+    baselineSubscribers.clear();
+    cloneResolutions.clear();
   };
 
-  // Defer to a microtask so we never write to a baseline doc synchronously
-  // from inside a `draftHandle.change` callback. The COW path records the
-  // clone via `draftHandle.change` while still inside CodeMirror's
-  // `view.update`, and a synchronous baseline write here would propagate
-  // through Solid into `view.dispatch` → reentrancy error.
-  function scheduleRescan(): void {
-    if (rescanScheduled) return;
-    rescanScheduled = true;
-    queueMicrotask(() => {
-      rescanScheduled = false;
-      onDraftChange();
-    });
-  }
+  // Ensure a clone of `original` exists for this draft and return its url.
+  // Reuses an existing clone recorded in `DraftDoc.clones`; otherwise forks
+  // `original` at its current heads and records the fork point so the baseline
+  // and merge-back can find it.
+  function resolveClone(original: AutomergeUrl): Promise<AutomergeUrl> {
+    const cached = cloneResolutions.get(original);
+    if (cached) return cached;
+    const promise = (async () => {
+      const handle = await ready;
+      const existing = handle.doc()?.clones?.[original];
+      if (existing) return canonicalUrl(existing.cloneUrl);
 
-  // Returns the cached baseline handle for `target`, creating it if needed
-  // and seeding `heads` from the current `clonedAt` (if any).
-  function baselineFor(
-    dr: DraftRepo,
-    target: AutomergeUrl
-  ): DocHandle<Baseline> {
-    const cached = baselineHandles.get(target);
-    if (cached) {
-      console.log(
-        "[drafts/baseline] reusing cached baseline for",
-        target,
-        "heads:",
-        cached.doc()?.heads
-      );
-      return cached;
-    }
-    const initial = dr.draftHandle.doc()?.clones?.[target]?.clonedAt;
-    const handle = dr.repo.create<Baseline>(
-      initial ? { heads: initial } : {}
-    );
-    baselineHandles.set(target, handle);
-    console.log(
-      "[drafts/baseline] created baseline for",
-      target,
-      "initial heads:",
-      initial,
-      "baseline url:",
-      handle.url
-    );
-    return handle;
-  }
+      const originalHandle = await liveRepo.find<unknown>(original);
+      await originalHandle.whenReady();
+      const clonedAt = originalHandle.heads();
+      const clone = liveRepo.clone(originalHandle);
+      const cloneUrl = canonicalUrl(clone.url);
 
-  // Sync every cached baseline to the current `clonedAt`. Cheap: there are
-  // typically only a handful of baseline subscribers per draft, and writes
-  // are no-ops when the heads haven't changed.
-  function onDraftChange(): void {
-    if (disposed || !draftRepo) return;
-    const clones = draftRepo.draftHandle.doc()?.clones ?? {};
-    console.log(
-      "[drafts/baseline] draft changed, clones now:",
-      Object.keys(clones),
-      "watching:",
-      Array.from(baselineHandles.keys())
-    );
-    for (const [target, baseline] of baselineHandles) {
-      const next = clones[target]?.clonedAt;
-      const current = baseline.doc()?.heads;
-      if (sameHeads(current, next)) continue;
-      console.log(
-        "[drafts/baseline] updating baseline for",
-        target,
-        "from",
-        current,
-        "to",
-        next
-      );
-      baseline.change((d) => {
-        if (next) d.heads = next;
-        else delete d.heads;
+      handle.change((d) => {
+        d.clones[original] = { cloneUrl, clonedAt };
       });
-    }
+
+      notifyBaseline(original);
+      return cloneUrl;
+    })();
+    cloneResolutions.set(original, promise);
+    return promise;
+  }
+
+  function currentBaseline(target: AutomergeUrl): Baseline {
+    const heads = draftHandle?.doc()?.clones?.[target]?.clonedAt;
+    return { heads: heads ?? null };
+  }
+
+  function notifyBaseline(target: AutomergeUrl): void {
+    const set = baselineSubscribers.get(target);
+    if (!set) return;
+    const baseline = currentBaseline(target);
+    for (const respond of [...set]) respond(baseline);
   }
 };
 
 function canonicalUrl(url: AutomergeUrl): AutomergeUrl {
   const { documentId } = parseAutomergeUrl(url);
   return stringifyAutomergeUrl({ documentId });
-}
-
-function sameHeads(
-  a: readonly string[] | undefined,
-  b: readonly string[] | undefined
-): boolean {
-  if (a === b) return true;
-  if (!a || !b) return false;
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
-  return true;
 }

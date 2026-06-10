@@ -33,11 +33,13 @@ export type DraftsState = {
 
 // Response shape for `patchwork:baseline { url }`. The draft overlay
 // publishes `heads` as the document's fork-point heads (`clones[url].clonedAt`)
-// once the doc has been COW'd in this draft; consumers compute a diff
-// against the live doc state from there. `heads` is undefined while there
-// is no baseline yet (e.g. the doc hasn't been written to in this draft).
+// once the doc has been cloned in this draft; consumers compute a diff
+// against the live doc state from there. `heads` is `null` while there is no
+// baseline yet (e.g. the doc hasn't been resolved in this draft, or "main" is
+// selected). It is `null` rather than optional so the value is a valid
+// structured-cloneable `JSONValue` crossing the provider channel.
 export type Baseline = {
-  heads?: UrlHeads;
+  heads: UrlHeads | null;
 };
 
 // Convention: any document may carry `@patchwork.drafts` listing the

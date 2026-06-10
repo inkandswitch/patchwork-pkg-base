@@ -1,17 +1,12 @@
-import {
-  useDocHandle,
-  createDocSignal,
-} from "@automerge/automerge-repo-solid-primitives";
+import "@inkandswitch/patchwork-elements";
+import { useDocHandle } from "@automerge/automerge-repo-solid-primitives";
 import type { AutomergeUrl, DocHandle, Repo } from "@automerge/automerge-repo";
-import type { DocWithComments } from "@inkandswitch/annotations-comments";
-import { request } from "@inkandswitch/patchwork-providers";
+import { subscribe } from "@inkandswitch/patchwork-providers";
+import { subscribeDoc } from "@inkandswitch/patchwork-providers-solid";
 import type { AccountDoc } from "./types";
 import {
   useSidebarState,
   useSidebarResize,
-  useSelectedDocument,
-  useAnnotations,
-  useCommentThreads,
   useProviderReady,
   useDebugRegistryToast,
   DebugRegistryToast,
@@ -24,7 +19,10 @@ import {
   createMemo,
   createSignal,
   onCleanup,
+  onMount,
   Show,
+  type Accessor,
+  type JSX,
 } from "solid-js";
 import { ensureAccountSubdocs } from "./account/ensureSubdocs";
 import "./styles.css";
@@ -35,26 +33,121 @@ type DraftsState = {
   selectedDraft: AutomergeUrl | null;
 };
 
+type SelectedView = {
+  url: AutomergeUrl;
+  toolId: string | null;
+};
+
+type SidebarResize = ReturnType<typeof useSidebarResize>;
+type SidebarState = ReturnType<typeof useSidebarState>;
+
 const MIN_SIDEBAR_WIDTH = 48;
 const DRAG_THRESHOLD = 3;
 
-const VERSION = "v1.3.0-flat-drafts";
+const VERSION = "v1.4.0-drafts-overlay";
 
 export const PatchworkFrame = ({
   handle,
-  element,
   repo,
 }: {
   handle: DocHandle<AccountDoc>;
-  element: HTMLElement | ShadowRoot;
   repo: Repo;
 }) => {
-  const accountDocHandle = useDocHandle<AccountDoc>(() => handle.url, { repo });
+  const accountDocUrl = handle.url;
 
-  void ensureAccountSubdocs(handle, repo);
+  const [commentsProviderElement, setCommentsProviderElement] =
+    createSignal<HTMLElement>();
+  const isCommentsProviderReady = useProviderReady(
+    "patchwork-comments-provider",
+    commentsProviderElement
+  );
+
+  const [focusProviderElement, setFocusProviderElement] =
+    createSignal<HTMLElement>();
+  const isFocusProviderReady = useProviderReady(
+    "patchwork-focus-provider",
+    focusProviderElement
+  );
+
+  const [accountProviderElement, setAccountProviderElement] =
+    createSignal<HTMLElement>();
+  const isAccountProviderReady = useProviderReady(
+    "patchwork-account-provider",
+    accountProviderElement
+  );
+
+  const [selectedDocProviderElement, setSelectedDocProviderElement] =
+    createSignal<HTMLElement>();
+  const isSelectedDocProviderReady = useProviderReady(
+    "patchwork-selected-doc-provider",
+    selectedDocProviderElement
+  );
+
+  const areProvidersReady = createMemo(
+    () =>
+      isSelectedDocProviderReady() &&
+      isCommentsProviderReady() &&
+      isFocusProviderReady() &&
+      isAccountProviderReady()
+  );
+
+  return (
+    <div class="frame">
+      <div class="frame__version" title="Patchwork frame version">
+        Frame {VERSION}
+      </div>
+
+      {/*
+        Outermost provider: wraps both sidebars and the main area so that
+        `patchwork:open-document` events from anywhere (and the matching
+        `patchwork:selected-doc` subscriptions) reach it. `patchwork-view`
+        defaults to `display: contents`, so this wrapper is layout-neutral.
+      */}
+      <patchwork-view
+        component="patchwork-selected-doc-provider"
+        ref={setSelectedDocProviderElement}
+      >
+        <patchwork-view
+          component="patchwork-comments-provider"
+          ref={setCommentsProviderElement}
+        >
+          <patchwork-view
+            component="patchwork-focus-provider"
+            ref={setFocusProviderElement}
+          >
+            <patchwork-view
+              component="patchwork-account-provider"
+              doc-url={accountDocUrl}
+              ref={setAccountProviderElement}
+            >
+              <Show when={areProvidersReady()}>
+                <PatchworkFrameInner handle={handle} repo={repo} />
+              </Show>
+            </patchwork-view>
+          </patchwork-view>
+        </patchwork-view>
+      </patchwork-view>
+    </div>
+  );
+};
+
+function PatchworkFrameInner(props: {
+  handle: DocHandle<AccountDoc>;
+  repo: Repo;
+}) {
+  // Track doc changes via a version counter so accountDoc() recomputes
+  // on every change. We avoid useDocument/autoproduce because its store
+  // proxying conflicts with Automerge array splice operations.
+  const accountDocHandle = useDocHandle<AccountDoc>(() => props.handle.url, {
+    repo: props.repo,
+  });
+
+  // Lazily populate subdoc fields (rootFolderUrl, moduleSettingsUrl, contactUrl)
+  // on first mount. Each is created via createDocOfDatatype2 of its own
+  // datatype, so defaults and shape are owned by the datatype, not the frame.
+  void ensureAccountSubdocs(props.handle, props.repo);
 
   const [docVersion, setDocVersion] = createSignal(0);
-
   createEffect(() => {
     const h = accountDocHandle();
     if (!h) return;
@@ -67,11 +160,10 @@ export const PatchworkFrame = ({
     docVersion();
     return accountDocHandle()?.doc();
   });
-
-  const accountDocUrl = handle.url;
+  const accountDocUrl = props.handle.url;
 
   const sidebarState = useSidebarState();
-  const { handleMouseDown, handleToggleClick } = useSidebarResize({
+  const sidebarResize = useSidebarResize({
     setLeftSidebarWidth: sidebarState.setLeftSidebarWidth,
     setRightSidebarWidth: sidebarState.setRightSidebarWidth,
     setIsSidebarCollapsed: sidebarState.setIsSidebarCollapsed,
@@ -80,67 +172,155 @@ export const PatchworkFrame = ({
     dragThreshold: DRAG_THRESHOLD,
   });
 
-  const selectedDoc = useSelectedDocument({ element, repo });
-
-  const commentThreadsWithRef = useCommentThreads(
-    () =>
-      selectedDoc.selectedDocHandle() as DocHandle<DocWithComments> | undefined,
-    repo
-  );
-
-  useAnnotations({
-    selectedDocRef: selectedDoc.selectedDocRef,
-    commentThreadsWithRef,
-  });
-
   const {
     events: debugEvents,
     dismissEvent,
     clearAll,
   } = useDebugRegistryToast();
 
-  const [commentsProviderHost, setCommentsProviderHost] =
-    createSignal<HTMLElement>();
-  const isCommentsProviderReady = useProviderReady(
-    "patchwork-comments-provider",
-    commentsProviderHost
+  let element!: HTMLDivElement;
+  const [selectedView, setSelectedView] = createSignal<SelectedView | null>(
+    null
   );
 
-  const [focusProviderHost, setFocusProviderHost] = createSignal<HTMLElement>();
-  const isFocusProviderReady = useProviderReady(
-    "patchwork-focus-provider",
-    focusProviderHost
-  );
+  onMount(() => {
+    const unsubscribeSelectedView = subscribe<SelectedView | null>(
+      element,
+      { type: "patchwork:selected-view" },
+      (view) => setSelectedView(view)
+    );
 
+    onCleanup(unsubscribeSelectedView);
+  });
+
+  const selectedDocUrl = () => selectedView()?.url;
+  const selectedToolId = () => selectedView()?.toolId ?? undefined;
+
+  // Per-document draft scope. Keyed on the selected doc URL so the whole
+  // draft tree remounts when the user switches docs. When no doc is selected
+  // we still render the sidebars (so the drafts sidebar can show its
+  // "no doc selected" empty state), just without a draft-root scope.
   const [draftListProviderHost, setDraftListProviderHost] =
     createSignal<HTMLElement>();
   const isDraftListProviderReady = useProviderReady(
     "patchwork-draft-list-provider",
     draftListProviderHost
   );
+  const readyDraftListHost = () =>
+    isDraftListProviderReady() ? draftListProviderHost() : undefined;
 
-  const [draftsStateHandle, setDraftsStateHandle] = createSignal<
-    DocHandle<DraftsState> | undefined
-  >();
+  return (
+    <div ref={element} style={{ display: "contents" }}>
+      <DebugRegistryToast
+        events={debugEvents()}
+        onDismiss={dismissEvent}
+        onClearAll={clearAll}
+      />
 
-  createEffect(() => {
-    if (!isDraftListProviderReady()) return;
-    const host = draftListProviderHost();
-    if (!host) return;
-    let cancelled = false;
-    request<DocHandle<DraftsState> | null>(host, "patchwork:drafts").then(
-      (h) => {
-        if (cancelled || !h) return;
-        setDraftsStateHandle(() => h);
-      }
-    );
-    onCleanup(() => {
-      cancelled = true;
-      setDraftsStateHandle(undefined);
-    });
+      <Show
+        when={selectedDocUrl()}
+        keyed
+        fallback={
+          <FrameLayout
+            accountDoc={accountDoc}
+            accountDocUrl={accountDocUrl}
+            sidebarState={sidebarState}
+            sidebarResize={sidebarResize}
+          >
+            <div class="main-area">
+              <MainDocumentView
+                viewKey={selectedDocUrl}
+                selectedDocUrl={selectedDocUrl}
+                toolId={selectedToolId}
+              />
+            </div>
+          </FrameLayout>
+        }
+      >
+        {(docUrl) => (
+          <patchwork-view
+            component="patchwork-draft-list-provider"
+            doc-url={docUrl}
+            ref={setDraftListProviderHost}
+          >
+            <Show when={readyDraftListHost()}>
+              {(host) => (
+                <FrameLayout
+                  accountDoc={accountDoc}
+                  accountDocUrl={accountDocUrl}
+                  sidebarState={sidebarState}
+                  sidebarResize={sidebarResize}
+                >
+                  <DraftDocumentArea
+                    host={host()}
+                    accountDoc={accountDoc}
+                    selectedDocUrl={selectedDocUrl}
+                    selectedToolId={selectedToolId}
+                  />
+                </FrameLayout>
+              )}
+            </Show>
+          </patchwork-view>
+        )}
+      </Show>
+    </div>
+  );
+}
+
+// Sidebars plus a slot for the main column. Shared by the no-doc fallback and
+// the in-draft layout so the account/context sidebars render identically.
+function FrameLayout(props: {
+  accountDoc: Accessor<AccountDoc | undefined>;
+  accountDocUrl: AutomergeUrl;
+  sidebarState: SidebarState;
+  sidebarResize: SidebarResize;
+  children: JSX.Element;
+}) {
+  return (
+    <>
+      {props.accountDoc()?.accountSidebarToolId && (
+        <Sidebar
+          side="left"
+          isCollapsed={props.sidebarState.isSidebarCollapsed}
+          width={props.sidebarState.leftSidebarWidth}
+          toolId={props.accountDoc()!.accountSidebarToolId}
+          docUrl={props.accountDocUrl}
+          onMouseDown={props.sidebarResize.handleMouseDown}
+          onToggleClick={props.sidebarResize.handleToggleClick}
+        />
+      )}
+
+      {props.children}
+
+      {props.accountDoc()?.contextSidebarToolId && (
+        <Sidebar
+          side="right"
+          isCollapsed={props.sidebarState.isRightSidebarCollapsed}
+          width={props.sidebarState.rightSidebarWidth}
+          toolId={props.accountDoc()!.contextSidebarToolId}
+          docUrl={props.accountDocUrl}
+          onMouseDown={props.sidebarResize.handleMouseDown}
+          onToggleClick={props.sidebarResize.handleToggleClick}
+        />
+      )}
+    </>
+  );
+}
+
+// Reads the draft list state from the draft-list provider, then renders the
+// main document inside a draft-overlay provider keyed on the selected draft.
+// The overlay provider is always mounted; it becomes a no-op when its `url`
+// is empty (the "main" case), letting document resolution fall through to the
+// host repo.
+function DraftDocumentArea(props: {
+  host: HTMLElement;
+  accountDoc: Accessor<AccountDoc | undefined>;
+  selectedDocUrl: Accessor<AutomergeUrl | undefined>;
+  selectedToolId: Accessor<string | undefined>;
+}) {
+  const [draftsState] = subscribeDoc<DraftsState>(props.host, {
+    type: "patchwork:drafts",
   });
-
-  const draftsState = createDocSignal<DraftsState>(draftsStateHandle);
 
   const draftProviderKey = createMemo<AutomergeUrl | "main">(
     () => draftsState()?.selectedDraft ?? "main"
@@ -154,139 +334,28 @@ export const PatchworkFrame = ({
   );
 
   return (
-    <div class="frame">
-      <div class="frame__version" title="Patchwork frame version">
-        Frame {VERSION}
-      </div>
-
-      <DebugRegistryToast
-        events={debugEvents()}
-        onDismiss={dismissEvent}
-        onClearAll={clearAll}
+    <div class="main-area">
+      <DocumentToolbar
+        toolIds={() => props.accountDoc()?.documentToolbarToolIds}
+        docUrl={props.selectedDocUrl}
       />
-
-      <patchwork-view
-        component="patchwork-comments-provider"
-        ref={setCommentsProviderHost}
-      >
-        <Show when={isCommentsProviderReady()}>
+      <Show when={draftProviderKey()} keyed>
+        {(key) => (
           <patchwork-view
-            component="patchwork-focus-provider"
-            ref={setFocusProviderHost}
+            component="patchwork-draft-overlay-provider"
+            url={key === "main" ? "" : key}
+            ref={setDraftOverlayProviderHost}
           >
-            <Show when={isFocusProviderReady()}>
-              {/* Per-document draft scope. Keyed on the selected doc URL
-               * so the whole draft tree remounts when the user switches
-               * docs. When no doc is selected we still render sidebars
-               * (so the drafts sidebar can show its "no doc selected"
-               * empty state, etc.), just without a draft-root scope. */}
-              <Show
-                when={selectedDoc.selectedDocUrl()}
-                keyed
-                fallback={
-                  <>
-                    {accountDoc()?.accountSidebarToolId && (
-                      <Sidebar
-                        side="left"
-                        isCollapsed={sidebarState.isSidebarCollapsed}
-                        width={sidebarState.leftSidebarWidth}
-                        toolId={accountDoc()!.accountSidebarToolId}
-                        docUrl={accountDocUrl}
-                        onMouseDown={handleMouseDown}
-                        onToggleClick={handleToggleClick}
-                      />
-                    )}
-                    <div class="main-area">
-                      <MainDocumentView
-                        viewKey={selectedDoc.viewKey}
-                        selectedDocUrl={selectedDoc.selectedDocUrl}
-                        toolId={() => selectedDoc.selectedView()?.toolId}
-                      />
-                    </div>
-                    {accountDoc()?.contextSidebarToolId && (
-                      <Sidebar
-                        side="right"
-                        isCollapsed={sidebarState.isRightSidebarCollapsed}
-                        width={sidebarState.rightSidebarWidth}
-                        toolId={accountDoc()!.contextSidebarToolId}
-                        docUrl={accountDocUrl}
-                        onMouseDown={handleMouseDown}
-                        onToggleClick={handleToggleClick}
-                      />
-                    )}
-                  </>
-                }
-              >
-                {(docUrl) => (
-                  <patchwork-view
-                    component="patchwork-draft-list-provider"
-                    doc-url={docUrl}
-                    ref={setDraftListProviderHost}
-                  >
-                    <Show when={isDraftListProviderReady()}>
-                      {accountDoc()?.accountSidebarToolId && (
-                        <Sidebar
-                          side="left"
-                          isCollapsed={sidebarState.isSidebarCollapsed}
-                          width={sidebarState.leftSidebarWidth}
-                          toolId={accountDoc()!.accountSidebarToolId}
-                          docUrl={accountDocUrl}
-                          onMouseDown={handleMouseDown}
-                          onToggleClick={handleToggleClick}
-                        />
-                      )}
-
-                      <div class="main-area">
-                        <DocumentToolbar
-                          toolIds={() => accountDoc()?.documentToolbarToolIds}
-                          docUrl={selectedDoc.selectedDocUrl}
-                        />
-                        {/* Draft overlay provider is always mounted; it
-                         * becomes a no-op when its `url` attribute is
-                         * empty (the "main" case), letting requests
-                         * bubble up to the host repo. Keying on
-                         * `draftProviderKey` remounts on selection
-                         * change. */}
-                        <Show when={draftProviderKey()} keyed>
-                          {(key) => (
-                            <patchwork-view
-                              component="patchwork-draft-overlay-provider"
-                              url={key === "main" ? "" : key}
-                              ref={setDraftOverlayProviderHost}
-                            >
-                              <Show when={isDraftOverlayProviderReady()}>
-                                <MainDocumentView
-                                  viewKey={selectedDoc.viewKey}
-                                  selectedDocUrl={selectedDoc.selectedDocUrl}
-                                  toolId={() =>
-                                    selectedDoc.selectedView()?.toolId
-                                  }
-                                />
-                              </Show>
-                            </patchwork-view>
-                          )}
-                        </Show>
-                      </div>
-
-                      {accountDoc()?.contextSidebarToolId && (
-                        <Sidebar
-                          side="right"
-                          isCollapsed={sidebarState.isRightSidebarCollapsed}
-                          width={sidebarState.rightSidebarWidth}
-                          toolId={accountDoc()!.contextSidebarToolId}
-                          docUrl={accountDocUrl}
-                          onMouseDown={handleMouseDown}
-                          onToggleClick={handleToggleClick}
-                        />
-                      )}
-                    </Show>
-                  </patchwork-view>
-                )}
-              </Show>
+            <Show when={isDraftOverlayProviderReady()}>
+              <MainDocumentView
+                viewKey={props.selectedDocUrl}
+                selectedDocUrl={props.selectedDocUrl}
+                toolId={props.selectedToolId}
+              />
             </Show>
           </patchwork-view>
-        </Show>
-      </patchwork-view>
+        )}
+      </Show>
     </div>
   );
-};
+}

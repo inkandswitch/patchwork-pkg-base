@@ -5,27 +5,23 @@ import {
   type Repo,
 } from "@automerge/automerge-repo";
 import {
-  provide,
-  request,
-  type RequestEvent,
+  accept,
+  type SubscribeEvent,
 } from "@inkandswitch/patchwork-providers";
 
-import type {
-  DraftDoc,
-  DraftsState,
-  HasDrafts,
-} from "../draft-types.js";
+import type { DraftDoc, DraftsState, HasDrafts } from "../draft-types.js";
 
-const REQ_HOST_DOC = "patchwork:host-doc";
-const REQ_HOST_REPO = "patchwork:host-repo";
-const REQ_DRAFTS = "patchwork:drafts";
+const HOST_DOC_SELECTOR = "patchwork:host-doc";
+const DRAFTS_SELECTOR = "patchwork:drafts";
 
 const ATTR_DOC_URL = "doc-url";
 
 // Mounts on a document URL and exposes that document's per-doc draft list:
-//   - `patchwork:host-doc`   → DocHandle of the doc this provider is on
-//   - `patchwork:host-repo`  → root Repo (so consumers can write outside COW)
-//   - `patchwork:drafts`     → DocHandle<DraftsState>, always available
+//   - `patchwork:host-doc` → AutomergeUrl of the doc this provider is on
+//   - `patchwork:drafts`   → AutomergeUrl of the ephemeral DraftsState doc
+//
+// Consumers recover the live `DocHandle`s from the realm-local `window.repo`,
+// so only plain `AutomergeUrl`s cross the subscription channel.
 //
 // The link from a host doc to its drafts is `@patchwork.drafts`, an array
 // of `DraftDoc` URLs that branch off of it. A `DraftDoc` may have its own
@@ -42,10 +38,22 @@ export const DraftListProvider = (element: HTMLElement) => {
   }
   const docUrl: AutomergeUrl = rawUrl;
 
-  let repo: Repo | null = null;
+  const maybeRepo = "repo" in window ? window.repo : undefined;
+  if (!maybeRepo) {
+    console.warn(
+      "[drafts] window.repo is not set; draft-list provider disabled"
+    );
+    return () => {};
+  }
+  const repo: Repo = maybeRepo;
+
   let hostDocHandle: DocHandle<HasDrafts> | null = null;
   let draftsStateHandle: DocHandle<DraftsState> | null = null;
   const trackedDrafts = new Map<AutomergeUrl, DocHandle<DraftDoc>>();
+
+  // `patchwork:drafts` subscribers that arrived before the ephemeral
+  // DraftsState doc was created; flushed once it exists.
+  const pendingDraftsSubscribers = new Set<(url: AutomergeUrl) => void>();
 
   let disposed = false;
   let rewalkInFlight = false;
@@ -53,18 +61,10 @@ export const DraftListProvider = (element: HTMLElement) => {
   const onTrackedChange = () => scheduleRewalk();
   const onHostDocChange = () => scheduleRewalk();
 
-  const ready: Promise<DocHandle<HasDrafts>> = (async () => {
-    const r = await request<Repo>(element, "patchwork:repo");
-    if (!r) {
-      throw new Error(
-        "[drafts] no `patchwork:repo` provider found; draft-list provider disabled"
-      );
-    }
-    repo = r;
-
+  const ready: Promise<void> = (async () => {
     const handle = await repo.find<HasDrafts>(docUrl);
     await handle.whenReady();
-    if (disposed) throw new Error("[drafts] provider disposed mid-load");
+    if (disposed) return;
     hostDocHandle = handle;
 
     // Eagerly create the ephemeral DraftsState so the sidebar can render
@@ -74,61 +74,62 @@ export const DraftListProvider = (element: HTMLElement) => {
       drafts: [],
       selectedDraft: null,
     });
+    const draftsUrl = draftsStateHandle.url;
+    for (const respond of pendingDraftsSubscribers) respond(draftsUrl);
+    pendingDraftsSubscribers.clear();
 
     handle.on("change", onHostDocChange);
     scheduleRewalk();
-    return handle;
   })();
   ready.catch((err) => {
     console.error(`[drafts] failed to initialize draft-list provider:`, err);
   });
 
-  const onRequest = (event: RequestEvent) => {
-    const { type } = event.detail;
+  const onSubscribe = (event: SubscribeEvent) => {
+    const { type } = event.detail.selector;
 
-    if (type === REQ_HOST_DOC) {
-      provide<DocHandle<HasDrafts>>(event, hostDocHandle ?? ready);
+    if (type === HOST_DOC_SELECTOR) {
+      accept<AutomergeUrl>(event, (respond) => {
+        respond(docUrl);
+      });
       return;
     }
 
-    if (type === REQ_HOST_REPO) {
-      provide<Repo>(event, repo ?? ready.then(() => repo!));
-      return;
-    }
-
-    if (type === REQ_DRAFTS) {
-      provide<DocHandle<DraftsState> | null>(
-        event,
-        draftsStateHandle ?? ready.then(() => draftsStateHandle)
-      );
+    if (type === DRAFTS_SELECTOR) {
+      accept<AutomergeUrl>(event, (respond) => {
+        if (draftsStateHandle) {
+          respond(draftsStateHandle.url);
+          return;
+        }
+        pendingDraftsSubscribers.add(respond);
+        return () => pendingDraftsSubscribers.delete(respond);
+      });
       return;
     }
   };
 
-  element.addEventListener("patchwork:request", onRequest);
+  element.addEventListener("patchwork:subscribe", onSubscribe);
 
   return () => {
     disposed = true;
-    element.removeEventListener("patchwork:request", onRequest);
+    element.removeEventListener("patchwork:subscribe", onSubscribe);
     if (hostDocHandle) hostDocHandle.off("change", onHostDocChange);
     for (const [, h] of trackedDrafts) h.off("change", onTrackedChange);
     trackedDrafts.clear();
-    if (draftsStateHandle && repo) {
-      repo.delete(draftsStateHandle.url);
-    }
+    pendingDraftsSubscribers.clear();
+    if (draftsStateHandle) repo.delete(draftsStateHandle.url);
     draftsStateHandle = null;
     hostDocHandle = null;
   };
 
   function scheduleRewalk(): void {
     if (disposed) return;
-    if (!repo || !hostDocHandle || !draftsStateHandle) return;
+    if (!hostDocHandle || !draftsStateHandle) return;
     if (rewalkInFlight) {
       rewalkPending = true;
       return;
     }
     rewalkInFlight = true;
-    const liveRepo = repo;
     const liveHostDoc = hostDocHandle;
     const liveState = draftsStateHandle;
     void (async () => {
@@ -137,7 +138,7 @@ export const DraftListProvider = (element: HTMLElement) => {
           isValidAutomergeUrl
         );
         const allDrafts = await collectAllDrafts(
-          liveRepo,
+          repo,
           roots,
           trackedDrafts,
           onTrackedChange
@@ -147,10 +148,7 @@ export const DraftListProvider = (element: HTMLElement) => {
         const selected = liveState.doc()?.selectedDraft ?? null;
         const nextSelected =
           selected && !allDrafts.includes(selected) ? null : selected;
-        if (
-          sameUrlList(current, allDrafts) &&
-          nextSelected === selected
-        ) {
+        if (sameUrlList(current, allDrafts) && nextSelected === selected) {
           return;
         }
         liveState.change((d) => {

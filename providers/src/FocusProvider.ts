@@ -1,9 +1,5 @@
-import type { DocHandle, RefUrl, Repo } from "@automerge/automerge-repo";
-import {
-  provide,
-  request,
-  type RequestEvent,
-} from "@inkandswitch/patchwork-providers";
+import type { AutomergeUrl } from "@automerge/automerge-repo";
+import { accept, type SubscribeEvent } from "@inkandswitch/patchwork-providers";
 
 const SELECTOR = "patchwork:focus";
 
@@ -15,39 +11,35 @@ const SELECTOR = "patchwork:focus";
 // Two fields instead of one because a single shared `selection` would
 // create a feedback loop between the editor and any view writing back.
 export type FocusDoc = {
-  selection: Record<RefUrl, true>;
-  highlight: Record<RefUrl, true>;
+  selection: Record<AutomergeUrl, true>;
+  highlight: Record<AutomergeUrl, true>;
 };
 
 export const FocusProvider = (element: HTMLElement) => {
-  let disposed = false;
-  let handle: DocHandle<FocusDoc> | null = null;
+  const repo = "repo" in window ? window.repo : undefined;
+  if (!repo) {
+    console.warn("[providers/focus] window.repo is not set; focus disabled");
+    return () => {};
+  }
 
-  const readyPromise: Promise<DocHandle<FocusDoc> | null> = request<Repo>(
-    element,
-    "patchwork:repo"
-  ).then((repo) => {
-    if (disposed) return null;
-    if (!repo) {
-      console.warn(
-        "[providers/focus] no `patchwork:repo` provider; focus disabled"
-      );
-      return null;
-    }
-    handle = repo.create<FocusDoc>({ selection: {}, highlight: {} });
-    return handle;
+  const handle = repo.create<FocusDoc>({
+    selection: {},
+    highlight: {},
   });
 
-  const onRequest = (event: RequestEvent) => {
-    if (event.detail.type !== SELECTOR) return;
-    provide<DocHandle<unknown> | null>(event, handle ?? readyPromise);
+  // Consumers recover the live handle from the global repo via this url, so
+  // they can both read (projection) and write (`.change`) the same doc.
+  const onSubscribe = (event: SubscribeEvent) => {
+    if (event.detail.selector.type !== SELECTOR) return;
+    accept<AutomergeUrl>(event, (respond) => {
+      respond(handle.url);
+    });
   };
 
-  element.addEventListener("patchwork:request", onRequest);
+  element.addEventListener("patchwork:subscribe", onSubscribe);
 
   return () => {
-    disposed = true;
-    element.removeEventListener("patchwork:request", onRequest);
-    if (handle) handle.delete();
+    element.removeEventListener("patchwork:subscribe", onSubscribe);
+    handle.delete();
   };
 };

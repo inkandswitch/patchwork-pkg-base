@@ -18,6 +18,7 @@ import { MODULE_FETCH_DEBOUNCE } from "../constants.ts";
 import {
   getModuleEntryKind,
   type BranchesDoc,
+  type ModuleEntry,
   type ModuleEntryKind,
 } from "../utils/module-types.ts";
 
@@ -31,18 +32,18 @@ interface ModuleFiltersProps {
   uniquePluginTypes: string[];
   uniqueDataTypes: string[];
   repo: Repo;
-  onAdd: (url: AutomergeUrl) => void;
-  isInstalled: (url: AutomergeUrl) => boolean;
+  onAdd: (url: ModuleEntry) => void;
+  isInstalled: (url: ModuleEntry) => boolean;
 }
 
 interface PackageInfo {
   name?: string;
   version?: string;
-  plugins?: Array<{ id: string; name: string; type: string }>;
+  plugins?: Array<{ id?: string; name?: string; type: string }>;
 }
 
 interface ModulePreview {
-  kind: ModuleEntryKind;
+  kind: ModuleEntryKind | "direct";
   packageInfo?: PackageInfo;
   branchNames?: string[];
   error?: string;
@@ -53,7 +54,7 @@ export function ModuleFilters(props: ModuleFiltersProps) {
   const [isValid, setIsValid] = createSignal<boolean | null>(null);
   const [preview, setPreview] = createSignal<ModulePreview | null>(null);
   const [isLoading, setIsLoading] = createSignal(false);
-  const [previewUrl, setPreviewUrl] = createSignal<AutomergeUrl | null>(null);
+  const [previewUrl, setPreviewUrl] = createSignal<ModuleEntry | null>(null);
 
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
@@ -90,7 +91,7 @@ export function ModuleFilters(props: ModuleFiltersProps) {
       timeoutId = setTimeout(async () => {
         setIsLoading(true);
         setPreview(null);
-        setPreviewUrl(value as AutomergeUrl);
+        setPreviewUrl(value);
 
         try {
           const handle = await props.repo.find(value as AutomergeUrl);
@@ -164,15 +165,38 @@ export function ModuleFilters(props: ModuleFiltersProps) {
         }
       }, MODULE_FETCH_DEBOUNCE);
     } else {
-      setPreview(null);
-      setPreviewUrl(null);
+      if (timeoutId) clearTimeout(timeoutId);
+
+      timeoutId = setTimeout(async () => {
+        setIsLoading(true);
+        setPreview(null);
+        setPreviewUrl(value);
+
+        try {
+          const module = await import(/* @vite-ignore */ value);
+          setPreview({
+            kind: "direct",
+            packageInfo: extractPackageInfo(module),
+          });
+        } catch (error) {
+          setPreview({
+            kind: "direct",
+            error:
+              error instanceof Error
+                ? error.message
+                : "Failed to import module",
+          });
+        } finally {
+          setIsLoading(false);
+        }
+      }, MODULE_FETCH_DEBOUNCE);
     }
   });
 
   const handleAdd = () => {
     const value = props.searchQuery.trim();
-    if (isValid() && value) {
-      props.onAdd(value as AutomergeUrl);
+    if (canInstall() && value) {
+      props.onAdd(value);
       props.onSearchChange("");
       setIsValid(null);
       setPreview(null);
@@ -180,7 +204,7 @@ export function ModuleFilters(props: ModuleFiltersProps) {
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Enter" && isValid() && props.searchQuery.trim()) {
+    if (e.key === "Enter" && canInstall() && props.searchQuery.trim()) {
       e.preventDefault();
       handleAdd();
     }
@@ -192,7 +216,12 @@ export function ModuleFilters(props: ModuleFiltersProps) {
       (isValid() === false || isLoading() || preview() !== null)
     );
 
-  const showInstallUI = () => isValid() === true;
+  const canInstall = () => isValid() === true || directImportSucceeded();
+
+  const directImportSucceeded = () =>
+    isValid() === false && preview()?.kind === "direct" && !preview()?.error;
+
+  const showInstallUI = () => isValid() === true || directImportSucceeded();
 
   return (
     <div class="module-settings-manager__filter-bar">
@@ -242,9 +271,10 @@ export function ModuleFilters(props: ModuleFiltersProps) {
               class="module-settings-module-input__add-button"
               onClick={handleAdd}
               disabled={
-                !isValid() ||
+                !canInstall() ||
+                isLoading() ||
                 !props.searchQuery.trim() ||
-                props.isInstalled(previewUrl()!)
+                (previewUrl() !== null && props.isInstalled(previewUrl()!))
               }
               style={{
                 display: "flex",
@@ -259,11 +289,7 @@ export function ModuleFilters(props: ModuleFiltersProps) {
           </Show>
         </div>
 
-        <Show
-          when={
-            hasValidation() && isValidAutomergeUrl(props.searchQuery.trim())
-          }
-        >
+        <Show when={hasValidation()}>
           <div class="module-settings-module-input__validation">
             <Show when={isLoading()}>
               <div class="module-settings-module-input__loading">
@@ -346,8 +372,7 @@ export function ModuleFilters(props: ModuleFiltersProps) {
                   </Show>
                   <Show
                     when={
-                      preview()?.kind !== "branches" &&
-                      !preview()?.packageInfo
+                      preview()?.kind !== "branches" && !preview()?.packageInfo
                     }
                   >
                     <div class="module-settings-module-input__no-package">
@@ -408,3 +433,17 @@ export function ModuleFilters(props: ModuleFiltersProps) {
   );
 }
 
+function extractPackageInfo(module: unknown): PackageInfo | undefined {
+  if (!module || typeof module !== "object") return undefined;
+  const plugins = (module as { plugins?: unknown }).plugins;
+  if (!Array.isArray(plugins)) return undefined;
+  return {
+    plugins: plugins.filter(isPackagePlugin),
+  };
+}
+
+function isPackagePlugin(
+  plugin: unknown
+): plugin is { id?: string; name?: string; type: string } {
+  return Boolean(plugin && typeof plugin === "object" && "type" in plugin);
+}

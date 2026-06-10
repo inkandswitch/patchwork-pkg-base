@@ -3,18 +3,16 @@ import { CodeMirror } from "./lib/codemirror.tsx";
 /** CodeMirror Extensions */
 import { RangeSet, type Extension, type Range } from "@codemirror/state";
 import { Decoration, WidgetType } from "@codemirror/view";
-import { commentButtonGutter } from "./lib/comments/commentButtonGutter.ts";
+import { commentButtonGutter } from "./lib/extensions/commentButtonGutter.ts";
 
 /** Automerge */
 import type { PatchworkToolProps } from "./types.ts";
 import {
   cursor,
   decodeHeads,
-  parseAutomergeUrl,
-  refFromUrl,
+  type AutomergeUrl,
   type DocHandle,
-  type Ref,
-  type RefUrl,
+  type Repo,
   type UrlHeads,
 } from "@automerge/automerge-repo";
 
@@ -22,40 +20,55 @@ import {
 import { getRegistry } from "@inkandswitch/patchwork-plugins";
 import type { Annotation } from "@inkandswitch/annotations";
 import { Diff, diffAnnotationsOfDoc } from "@inkandswitch/annotations-diff";
-import { createComment } from "@inkandswitch/patchwork-comments";
-import { requestDoc } from "@inkandswitch/patchwork-providers-solid";
+import {
+  subscribe,
+  subscribeDoc,
+} from "@inkandswitch/patchwork-providers-solid";
 
 /** Styles */
-import { createMemo, createSignal, onCleanup, onMount } from "solid-js";
+import {
+  createMemo,
+  createResource,
+  createSignal,
+  onCleanup,
+  onMount,
+} from "solid-js";
+import { createCommentForRange } from "./lib/extensions/comments.ts";
 
 export type TextDoc = {
   content: string;
 };
 
-// Diff baseline served by the draft overlay (`patchwork:baseline`). When
-// `heads` is absent, there is no baseline and no diff is rendered.
-type Baseline = { heads?: UrlHeads };
+type CommentEntry = {
+  targetUrl: AutomergeUrl;
+};
+
+// Diff baseline served by the draft overlay (`patchwork:baseline`). `heads`
+// is `null` when there is no baseline yet (e.g. the doc hasn't been COW'd in
+// the active draft, or "main" is selected), in which case no diff is rendered.
+type Baseline = { heads: UrlHeads | null };
 
 const PATH = ["content"];
-const VERSION = "v2.1.5-baseline-debug";
+const VERSION = "v2.2.0-overlay-diff";
 
 export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
-  const isReadOnly = () => !!parseAutomergeUrl(props.handle.url).heads;
+  const isReadOnly = props.handle.isReadOnly();
 
-  const [baseline] = requestDoc<Baseline>(
+  // Diff baseline from the active draft overlay; plain JSON `{ heads }`.
+  const baseline = subscribe<Baseline>(
     props.element,
-    "patchwork:baseline",
-    { url: props.handle.url }
+    { type: "patchwork:baseline", url: props.handle.url },
+    { heads: null }
   );
 
-  // Track the current doc heads so the diff memo recomputes on every
-  // local edit. `baseline.heads` only moves on COW, so without this the
-  // diff would freeze at the first computation.
+  // Track the current doc heads so the diff memo recomputes on every local
+  // edit. `baseline.heads` only moves on fork, so without this the diff would
+  // freeze at the first computation.
   //
   // The tick is bumped from a microtask so we don't trigger a CodeMirror
   // re-dispatch while CodeMirror is already mid-update (the sync extension
-  // applies Automerge changes inside `view.update`, which synchronously
-  // emits `change` on the handle).
+  // applies Automerge changes inside `view.update`, which synchronously emits
+  // `change` on the handle).
   const [docTick, setDocTick] = createSignal(0);
   onMount(() => {
     let scheduled = false;
@@ -71,61 +84,68 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
     onCleanup(() => props.handle.off("change", onChange));
   });
 
-  // Restrict to annotations on direct children of the content text so we
-  // get text-position refs only (with `rangePositions`); doc-root and
-  // ancestor refs from `diffAnnotationsOfDoc` don't render in CodeMirror.
+  // Restrict to annotations on direct children of the content text so we get
+  // text-position refs only (with `rangePositions`); doc-root and ancestor
+  // refs from `diffAnnotationsOfDoc` don't render in CodeMirror.
   const diffAnnotations = createMemo<
     Iterable<Annotation<unknown, Diff<unknown>>>
   >(() => {
     docTick();
     const heads = baseline()?.heads;
-    console.log(
-      "[codemirror/diff] memo running for",
-      props.handle.url,
-      "baseline heads:",
-      heads
-    );
     if (!heads) return [];
     const contentRef = (props.handle as DocHandle<TextDoc>).ref(...PATH);
     const set = diffAnnotationsOfDoc(
       props.handle as DocHandle<unknown>,
       decodeHeads(heads)
     );
-    const filtered = Array.from(
-      set.onChildrenOf(contentRef).entriesOfType(Diff)
-    );
-    const allEntries = Array.from(set.entriesOfType(Diff));
-    console.log(
-      "[codemirror/diff] doc heads:",
-      props.handle.heads(),
-      "total Diff entries:",
-      allEntries.length,
-      "after onChildrenOf(contentRef):",
-      filtered.length,
-      "contentRef:",
-      contentRef.url
-    );
-    return filtered;
+    return Array.from(set.onChildrenOf(contentRef).entriesOfType(Diff));
   });
 
-  // TODO: once subdoc handles land this can just be `{targetRef, threadRef}[]`.
-  const [allComments] = requestDoc<{
-    comments: { targetRef: RefUrl; threadRef: RefUrl }[];
-  }>(props.element, "patchwork:comments");
+  const commentEntries = subscribe<CommentEntry[]>(
+    props.element,
+    { type: "patchwork:comments" },
+    []
+  );
 
-  // We own `selection` (cursor) and only read `highlight` (other views'
-  // emphasis). Splitting the two avoids any feedback loop.
-  const [focusDoc, focusHandle] = requestDoc<{
-    selection: Record<RefUrl, true>;
-    highlight: Record<RefUrl, true>;
-  }>(props.element, "patchwork:focus");
+  const [focusDoc, focusHandle] = subscribeDoc<{
+    selection: Record<AutomergeUrl, true>;
+    highlight: Record<AutomergeUrl, true>;
+  }>(props.element, { type: "patchwork:focus" });
 
-  let lastEmittedUrl: RefUrl | undefined;
+  const contactUrl = subscribe<AutomergeUrl>(props.element, {
+    type: "patchwork:contact",
+  });
+
+  const [commentTargets] = createResource(
+    commentEntries,
+    (entries) => getDedupedCommentTargets(entries, props.handle.url, props.repo),
+    { initialValue: [] }
+  );
+
+  // CommentsView writes selected comment targets into `selection`/`highlight`.
+  // Read those URL keys directly so this memo updates when the maps change;
+  // using `focusDoc()` itself doesn't trigger a change when the selection and
+  // highlight maps inside of it change.
+  const focusRefUrls = createMemo(() => {
+    const doc = focusDoc();
+    return [
+      ...Object.keys(doc?.selection ?? {}),
+      ...Object.keys(doc?.highlight ?? {}),
+    ] as AutomergeUrl[];
+  });
+
+  const [emphasisTargets] = createResource(
+    focusRefUrls,
+    async (urls) => resolveSubDocUrlsOfDoc(urls, props.handle.url, props.repo),
+    { initialValue: [] }
+  );
+
+  let lastEmittedUrl: AutomergeUrl | undefined;
 
   const onChangeSelection = (from: number, to: number) => {
     const handle = focusHandle();
     if (!handle) return;
-    const nextUrl = props.handle.ref(...PATH, cursor(from, to)).url as RefUrl;
+    const nextUrl = props.handle.sub(...PATH, cursor(from, to)).url;
     if (nextUrl === lastEmittedUrl) return;
     handle.change((doc) => {
       doc.selection = { [nextUrl]: true };
@@ -135,15 +155,8 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
 
   const decorations = () => {
     const dark = prefersDarkMode();
-    const targetRefs = resolveCommentTargetsInDoc(
-      allComments()?.comments,
-      props.handle
-    );
-    const emphasisRefs = resolveFocusRefsInDoc(
-      focusDoc()?.selection,
-      focusDoc()?.highlight,
-      props.handle
-    );
+    const targetRefs = commentTargets();
+    const emphasisRefs = emphasisTargets();
     return RangeSet.of<Decoration>(
       [
         ...buildDiffDecorations(diffAnnotations(), dark),
@@ -153,8 +166,14 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
     );
   };
 
-  const onComment = (from: number, to: number) =>
-    createCommentForRange(props.handle, PATH, from, to);
+  const onComment = (from: number, to: number) => {
+    const url = contactUrl();
+    if (!url) {
+      console.warn("Cannot create comment: no contactUrl available");
+      return;
+    }
+    createCommentForRange(props.handle, PATH, from, to, url);
+  };
 
   // Base CodeMirror extensions (context-specific, not language-specific)
   const [extensions, setExtensions] = createSignal<Extension[]>([
@@ -182,7 +201,7 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
               path={PATH}
               decorations={decorations}
               extensions={extensions()}
-              readOnly={isReadOnly()}
+              readOnly={isReadOnly}
               onChangeSelection={onChangeSelection}
             />
           </div>
@@ -196,52 +215,73 @@ function prefersDarkMode(): boolean {
   return window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
-function resolveCommentTargetsInDoc(
-  comments: { targetRef: RefUrl }[] | undefined,
-  handle: DocHandle<unknown>
-): Ref[] {
+// The comments provider already scopes entries to this doc by `targetUrl`,
+// so this just dedupes and resolves each url to a `DocHandle`.
+async function getDedupedCommentTargets(
+  comments: CommentEntry[] | undefined,
+  docUrl: AutomergeUrl,
+  repo: Repo
+): Promise<DocHandle<unknown>[]> {
   if (!comments) return [];
-  const seen = new Set<RefUrl>();
-  const refs: Ref[] = [];
-  for (const { targetRef } of comments) {
-    if (!targetRef.startsWith(handle.url)) continue;
-    if (seen.has(targetRef)) continue;
-    seen.add(targetRef);
-    try {
-      refs.push(refFromUrl(handle, targetRef));
-    } catch (error) {
-      console.warn(
-        `[codemirror-base] could not resolve ref ${targetRef}`,
-        error
-      );
+  const overlappingRefs = new Set<DocHandle<unknown>>();
+  for (const comment of comments) {
+    if (comment.targetUrl.startsWith(docUrl)) {
+      const target = await repo.find(comment.targetUrl);
+      overlappingRefs.add(target);
     }
   }
-  return refs;
+  return Array.from(overlappingRefs);
 }
 
-function resolveFocusRefsInDoc(
-  selectionMap: Record<string, true> | undefined,
-  highlightMap: Record<string, true> | undefined,
-  handle: DocHandle<unknown>
-): Ref[] {
-  const refs: Ref[] = [];
-  const seen = new Set<string>();
-  const pushFrom = (map: Record<string, true> | undefined) => {
-    if (!map) return;
-    for (const url of Object.keys(map)) {
-      if (seen.has(url)) continue;
-      seen.add(url);
-      if (!url.startsWith(handle.url)) continue;
-      try {
-        refs.push(refFromUrl(handle, url as RefUrl));
-      } catch {
-        // unresolvable; skip.
-      }
+// Scopes ref urls to this doc and resolves each one to a `DocHandle`.
+// Used for both our own `selection` and other views' `highlight`.
+async function resolveSubDocUrlsOfDoc(
+  urls: AutomergeUrl[],
+  docUrl: AutomergeUrl,
+  repo: Repo
+): Promise<DocHandle<unknown>[]> {
+  const refs = new Set<DocHandle<unknown>>();
+  for (const url of urls) {
+    if (url.startsWith(docUrl)) {
+      refs.add(await repo.find(url));
     }
-  };
-  pushFrom(selectionMap);
-  pushFrom(highlightMap);
-  return refs;
+  }
+  return Array.from(refs);
+}
+
+// Targets that overlap `emphasisRefs` (selection ∪ highlight) render in
+// darker yellow; the rest stay in light yellow.
+function buildCommentDecorations(
+  targetRefs: DocHandle<unknown>[],
+  emphasisRefs: DocHandle<unknown>[],
+  dark: boolean
+): Range<Decoration>[] {
+  const out: Range<Decoration>[] = [];
+  for (const ref of targetRefs) {
+    const positions = ref.rangePositions();
+    if (!positions) continue;
+    const [start, end] = positions;
+    if (start === end) continue;
+    const isEmphasised = emphasisRefs.some((s) => s.overlaps(ref));
+    out.push(
+      Decoration.mark({
+        attributes: { style: commentTargetStyle(isEmphasised, dark) },
+      }).range(start, end)
+    );
+  }
+  return out;
+}
+
+function commentTargetStyle(isEmphasised: boolean, dark: boolean): string {
+  return isEmphasised
+    ? `
+        border-bottom: 2px solid ${dark ? "#facc15" : "#ca8a04"};
+        background-color: ${dark ? "#a16207" : "#fde047"};
+      `
+    : `
+        border-bottom: 2px solid ${dark ? "#ca8a04" : "#eab308"};
+        background-color: ${dark ? "#713f12" : "#fef9c3"};
+      `;
 }
 
 function buildDiffDecorations(
@@ -353,78 +393,6 @@ class DeletionMarker extends WidgetType {
   ignoreEvent() {
     return true;
   }
-}
-
-// Targets that overlap `emphasisRefs` (selection ∪ highlight) render in
-// darker yellow; the rest stay in light yellow.
-function buildCommentDecorations(
-  targetRefs: Ref[],
-  emphasisRefs: Ref[],
-  dark: boolean
-): Range<Decoration>[] {
-  const out: Range<Decoration>[] = [];
-  for (const ref of targetRefs) {
-    const positions = ref.rangePositions;
-    if (!positions) continue;
-    const [start, end] = positions;
-    if (start === end) continue;
-    const isEmphasised = emphasisRefs.some((s) => refsOverlap(s, ref));
-    out.push(
-      Decoration.mark({
-        attributes: { style: commentTargetStyle(isEmphasised, dark) },
-      }).range(start, end)
-    );
-  }
-  return out;
-}
-
-function commentTargetStyle(isEmphasised: boolean, dark: boolean): string {
-  return isEmphasised
-    ? `
-        border-bottom: 2px solid ${dark ? "#facc15" : "#ca8a04"};
-        background-color: ${dark ? "#a16207" : "#fde047"};
-      `
-    : `
-        border-bottom: 2px solid ${dark ? "#ca8a04" : "#eab308"};
-        background-color: ${dark ? "#713f12" : "#fef9c3"};
-      `;
-}
-
-function refsOverlap(a: Ref, b: Ref): boolean {
-  try {
-    return a.equals(b) || a.contains(b) || b.contains(a) || a.overlaps(b);
-  } catch {
-    return false;
-  }
-}
-
-// TODO: better way to get the contactUrl of the current account.
-async function createCommentForRange(
-  handle: DocHandle<unknown>,
-  path: readonly string[],
-  from: number,
-  to: number
-): Promise<void> {
-  const accountDoc = (
-    window as unknown as { accountDocHandle?: DocHandle<unknown> }
-  ).accountDocHandle?.doc?.() as { contactUrl?: string } | undefined;
-  const contactUrl = accountDoc?.contactUrl;
-  if (!contactUrl) {
-    console.warn("Cannot create comment: no contactUrl available", {
-      accountDoc,
-    });
-    return;
-  }
-  const targetRef = handle.ref(...path, cursor(from, to));
-  await createComment({
-    refs: [
-      targetRef as unknown as Parameters<
-        typeof createComment
-      >[0]["refs"][number],
-    ],
-    content: "",
-    contactUrl,
-  });
 }
 
 async function loadCodeMirrorExtensionsForDoc(

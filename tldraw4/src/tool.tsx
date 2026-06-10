@@ -22,15 +22,17 @@ import type { TLDrawDoc } from "./datatype.ts";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { UnixFileEntry } from "@inkandswitch/patchwork-filesystem";
 import { automergeUrlToServiceWorkerUrl } from "@inkandswitch/patchwork-filesystem";
-import { useDocRequest } from "@inkandswitch/patchwork-providers-react";
+import { useSubscribe } from "@inkandswitch/patchwork-providers-react";
 import { decodeHeads, type UrlHeads } from "@automerge/automerge-repo";
 import { createRoot } from "react-dom/client";
 import { diffStore, type ShapeDiff } from "./diff.ts";
 import { DiffContext, diffComponents } from "./DiffOverlay.tsx";
 
-// Baseline served by the draft overlay (`patchwork:baseline`). When `heads`
-// is absent there is no baseline and no diff is rendered (e.g. on "main").
-type Baseline = { heads?: UrlHeads };
+// Baseline served by the draft overlay (`patchwork:baseline`). `heads` is
+// `null` when there is no baseline and no diff is rendered (e.g. on "main").
+// It is `null` rather than optional so the value is a valid structured-
+// cloneable `JSONValue` crossing the provider channel.
+type Baseline = { heads: UrlHeads | null };
 
 const VERSION = "v0.2.0-diff";
 
@@ -123,10 +125,12 @@ export function TldrawTool({
     userMetadata: contactInfo,
   });
 
-  const [baseline] = useDocRequest<Baseline>(element, "patchwork:baseline", {
-    url: docUrl,
-  });
-  const diff = useShapeDiff(handle, baseline?.heads);
+  const baseline = useSubscribe<Baseline>(
+    element,
+    { type: "patchwork:baseline", url: docUrl },
+    { heads: null }
+  );
+  const diff = useShapeDiff(handle, baseline.heads ?? undefined);
 
   return (
     <DiffContext.Provider value={diff}>

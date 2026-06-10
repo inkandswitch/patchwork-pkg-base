@@ -16,7 +16,10 @@ import { useModulePlugins } from "./hooks/useModulePlugins.ts";
 import { MODULE_FETCH_DEBOUNCE } from "./constants.ts";
 import { DebugToggle } from "./components/DebugToggle.tsx";
 import { unregisterPlugins } from "@inkandswitch/patchwork-plugins";
-import type { ModuleSettingsDocWithBranches } from "./utils/module-types.ts";
+import type {
+  ModuleEntry,
+  ModuleSettingsDocWithBranches,
+} from "./utils/module-types.ts";
 
 type AccountDocLike = { moduleSettingsUrl?: AutomergeUrl };
 
@@ -96,7 +99,7 @@ export function ModuleSettings(props: PatchworkToolProps<ModuleSettingsDoc>) {
     sortOrder,
   });
 
-  const handleAddModule = (url: AutomergeUrl) => {
+  const handleAddModule = (url: ModuleEntry) => {
     props.handle.change((doc) => {
       if (!doc.modules.includes(url)) {
         doc.modules.push(url);
@@ -104,7 +107,7 @@ export function ModuleSettings(props: PatchworkToolProps<ModuleSettingsDoc>) {
     });
   };
 
-  const handleRemoveModule = (url: AutomergeUrl) => {
+  const handleRemoveModule = (url: ModuleEntry) => {
     unregisterPlugins(url);
     props.handle.change((doc) => {
       const idx = doc.modules.indexOf(url);
@@ -114,7 +117,7 @@ export function ModuleSettings(props: PatchworkToolProps<ModuleSettingsDoc>) {
     });
   };
 
-  const isModuleInstalled = (url: AutomergeUrl) => {
+  const isModuleInstalled = (url: ModuleEntry) => {
     return doc.modules.includes(url);
   };
 
