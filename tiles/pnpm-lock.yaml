@@ -26,6 +26,9 @@ importers:
       '@inkandswitch/patchwork-plugins':
         specifier: ^0.0.6
         version: 0.0.6(@automerge/automerge-repo@2.6.0-subduction.29)(@automerge/automerge@3.2.6)(@inkandswitch/patchwork-filesystem@0.0.4(@automerge/automerge-repo@2.6.0-subduction.29)(@automerge/automerge@3.2.6))
+      dockview-core:
+        specifier: ^6.6.1
+        version: 6.6.1
       solid-js:
         specifier: ^1.9.10
         version: 1.9.13
@@ -631,6 +634,9 @@ packages:
   detect-libc@2.1.2:
     resolution: {integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==}
     engines: {node: '>=8'}
+
+  dockview-core@6.6.1:
+    resolution: {integrity: sha512-WuNoO2wl3rGI8MaTuvmfgViek4WafHLD9Kf//Hw69g8TgAHSpAWr6RW15kU6U9vwtQxIi/YBxQNcIA5RzQ46Fw==}
 
   electron-to-chromium@1.5.371:
     resolution: {integrity: sha512-e9htk9mAYL6AzmkEhSvVVw7IWGSBJ/Bqdn2eRyRLrj1g6sncN4WbFt5qnILYoCktktr45pyjIrOiRvBThQ808w==}
@@ -1463,6 +1469,8 @@ snapshots:
 
   detect-libc@2.1.2:
     optional: true
+
+  dockview-core@6.6.1: {}
 
   electron-to-chromium@1.5.371: {}
 

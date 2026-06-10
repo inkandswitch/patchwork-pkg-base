@@ -7,118 +7,66 @@
 }
 
 /* ════════════════════════════════════════
-   Scroll wrapper + frame container
+   Frame + dockview grid
    ════════════════════════════════════════ */
-
-/* Outer wrapper owns the viewport box and scrolls when the grid grows past it */
-.tiles-scroll {
-  width: 100%;
-  height: 100%;
-  overflow: auto;
-  background: var(--color-base-200);
-}
 
 .tiles-frame {
   position: relative;
-  display: grid;
-  /* min-width/height keep the grid filling the viewport for baseline layouts;
-     it only grows (and the wrapper scrolls) when tiles are added/extended past
-     the edge. minmax(MIN, 1fr) tracks + min-* dimensions = fit-then-scroll. */
-  min-width: 100%;
-  min-height: 100%;
+  width: 100%;
+  height: 100%;
   box-sizing: border-box;
+  background: var(--color-base-200);
+  overflow: hidden;
+  /* Whitespace between tiles. Each gridview panel view is inset by this amount
+     so adjacent cards read as separated. */
+  --dv-spacing-padding: 8px;
+}
+
+/* dockview gridview fills the frame; it manages its own sashes/resizing */
+.tiles-grid {
+  position: absolute;
+  inset: 0;
+}
+
+/* Inset each gridview panel so there's breathing room between tiles. The
+   padding area shows the panel background, so paint it the frame colour to make
+   the gaps blend with the background. */
+.tiles-frame .dv-grid-view,
+.tiles-frame .dv-branch-node,
+.tiles-frame .dv-view-container,
+.tiles-frame .dv-view {
   background: var(--color-base-200);
 }
 
-/* ── Empty cell (open space) ── */
-.empty-cell {
-  border: 1.5px dashed var(--color-base-300);
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-  transition: border-color 0.12s ease, background-color 0.12s ease;
+.tiles-frame .dv-view {
+  padding: var(--dv-spacing-padding);
+  box-sizing: border-box;
 }
 
-.empty-cell:hover {
-  border-color: var(--color-accent);
-  background: oklch(0.5 0.12 250 / 0.04);
-}
-
-/* ── Move ghost (anticipated drop target) ── */
-.move-ghost {
-  pointer-events: none;
-  border-radius: 6px;
-  z-index: 30;
-  transition: all 0.08s ease;
-}
-
-.move-ghost--valid {
-  background: oklch(0.5 0.15 250 / 0.14);
-  box-shadow: 0 0 0 2px var(--color-accent) inset;
-}
-
-.move-ghost--invalid {
-  background: oklch(0.6 0.2 25 / 0.1);
-  box-shadow: 0 0 0 2px oklch(0.6 0.2 25 / 0.5) inset;
-}
-
-/* ── Resize grip (bottom-right corner) ── */
-.tile-resize-grip {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 18px;
-  height: 18px;
-  cursor: nwse-resize;
-  z-index: 7;
-  opacity: 0;
-  transition: opacity 0.12s ease;
-}
-
-.tile-resize-grip::after {
-  content: "";
-  position: absolute;
-  right: 3px;
-  bottom: 3px;
-  width: 8px;
-  height: 8px;
-  border-right: 2px solid var(--color-base-content);
-  border-bottom: 2px solid var(--color-base-content);
-  border-bottom-right-radius: 3px;
-  opacity: 0.5;
-}
-
-.tile-cell:hover .tile-resize-grip {
-  opacity: 1;
+/* Soften dockview's sash so resizing feels calm */
+.tiles-frame .dv-sash {
+  --dv-active-sash-color: var(--color-accent);
 }
 
 /* ════════════════════════════════════════
-   Tile cell (header tab + body)
+   Tile (panel content): header tab + body
    ════════════════════════════════════════ */
 
-.tile-cell {
-  background: var(--color-base-100);
-  border-radius: 6px;
-  overflow: hidden;
-  position: relative;
+.tile-host {
   display: flex;
   flex-direction: column;
-  /* Critical: let the cell shrink to its grid track instead of growing to fit
-     its contents. Without these, a tool's intrinsic size blows out the track. */
-  min-width: 0;
-  min-height: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--color-base-100);
+  overflow: hidden;
+  /* small inset so panels read as distinct cards within the grid */
+  border-radius: 6px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  transition: box-shadow 0.12s ease, opacity 0.12s ease;
+  transition: opacity 0.12s ease;
 }
 
-.tile-cell--dragging {
+.tile-host--dragging {
   opacity: 0.4;
-  box-shadow: none;
-  z-index: 1;
 }
 
 /* ── Header tab ── */
@@ -134,12 +82,13 @@
   user-select: none;
 }
 
-.tile-cell--main .tile-header {
+/* The blue bar is the only "this is the document target" indicator */
+.tile-header--main {
   border-bottom-color: var(--color-accent);
   box-shadow: inset 0 2px 0 -1px var(--color-accent);
+  background: oklch(0.55 0.18 250 / 0.08);
 }
 
-/* Grabber: dots, drag to move */
 .tile-grab {
   flex: 1;
   height: 100%;
@@ -147,7 +96,6 @@
   align-items: center;
   cursor: grab;
 }
-
 .tile-grab:active {
   cursor: grabbing;
 }
@@ -157,12 +105,10 @@
   height: 10px;
   background-image: radial-gradient(currentColor 1px, transparent 1.4px);
   background-size: 5px 5px;
-  background-position: 0 0;
   color: var(--color-base-content);
   opacity: 0.3;
   transition: opacity 0.12s ease;
 }
-
 .tile-grab:hover .tile-grab-dots {
   opacity: 0.6;
 }
@@ -180,7 +126,7 @@
   border-radius: 4px;
   background: transparent;
   color: var(--color-base-content);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1;
   cursor: pointer;
   display: flex;
@@ -190,21 +136,54 @@
   transition: opacity 0.12s ease, background-color 0.1s ease;
   padding: 0;
 }
-
 .tile-hbtn:hover {
   opacity: 1;
   background: var(--color-base-300);
 }
-
-.tile-hbtn--active {
-  opacity: 1;
-  color: var(--color-accent);
-}
-
 .tile-hbtn--danger:hover {
   background: oklch(0.6 0.2 25 / 0.18);
   color: oklch(0.5 0.22 25);
 }
+
+/* ── Directional add menu (d-pad) ── */
+.tile-add {
+  position: relative;
+}
+.tile-add-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 22px);
+  grid-template-rows: repeat(3, 22px);
+  gap: 2px;
+  padding: 5px;
+  background: var(--color-base-100);
+  border: 1px solid var(--color-base-300);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  z-index: 200;
+}
+.tile-add-dir {
+  border: none;
+  border-radius: 4px;
+  background: var(--color-base-200);
+  color: var(--color-base-content);
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.1s ease, color 0.1s ease;
+}
+.tile-add-dir:hover {
+  background: var(--color-accent);
+  color: #fff;
+}
+.tile-add-dir--up { grid-column: 2; grid-row: 1; }
+.tile-add-dir--left { grid-column: 1; grid-row: 2; }
+.tile-add-dir--right { grid-column: 3; grid-row: 2; }
+.tile-add-dir--down { grid-column: 2; grid-row: 3; }
 
 /* ── Body ── */
 .tile-body {
@@ -214,7 +193,6 @@
   overflow: hidden;
   position: relative;
 }
-
 .tile-body patchwork-view {
   display: block;
   width: 100%;
@@ -232,7 +210,6 @@
   height: 100%;
   padding: 20px;
 }
-
 .tile-picker-idle {
   display: flex;
   flex-direction: column;
@@ -240,14 +217,12 @@
   gap: 8px;
   width: 100%;
 }
-
 .tile-picker-quick {
   display: flex;
   flex-direction: column;
   gap: 4px;
   width: 100%;
 }
-
 .tile-picker-quick-btn {
   width: 100%;
   padding: 6px 10px;
@@ -261,11 +236,9 @@
   text-align: center;
   transition: background-color 0.1s ease;
 }
-
 .tile-picker-quick-btn:hover {
   background: var(--color-base-300);
 }
-
 .tile-picker-manual {
   background: none;
   border: none;
@@ -279,11 +252,9 @@
   padding: 2px 4px;
   transition: opacity 0.1s ease;
 }
-
 .tile-picker-manual:hover {
   opacity: 0.65;
 }
-
 .tile-picker-form {
   display: flex;
   flex-direction: column;
@@ -291,7 +262,6 @@
   width: 100%;
   max-width: 260px;
 }
-
 .tile-picker-input {
   padding: 6px 8px;
   border: 1px solid var(--color-base-300);
@@ -303,17 +273,14 @@
   outline: none;
   transition: border-color 0.1s ease;
 }
-
 .tile-picker-input:focus {
   border-color: oklch(0.6 0.15 250 / 0.6);
 }
-
 .tile-picker-actions {
   display: flex;
   gap: 6px;
   justify-content: flex-end;
 }
-
 .tile-picker-btn {
   padding: 5px 12px;
   border-radius: 5px;
@@ -322,99 +289,37 @@
   cursor: pointer;
   transition: background-color 0.1s ease;
 }
-
 .tile-picker-btn--cancel {
   background: transparent;
   border: 1px solid var(--color-base-300);
   color: var(--color-base-content);
 }
-
 .tile-picker-btn--cancel:hover {
   background: var(--color-base-200);
 }
-
 .tile-picker-btn--open {
   background: var(--color-base-content);
   border: 1px solid var(--color-base-content);
   color: var(--color-base-100);
 }
-
 .tile-picker-btn--open:hover:not(:disabled) {
   opacity: 0.85;
 }
-
 .tile-picker-btn--open:disabled {
   opacity: 0.3;
   cursor: default;
 }
 
 /* ════════════════════════════════════════
-   Track resize handles
-   ════════════════════════════════════════ */
-
-.resize-handle {
-  position: absolute;
-  z-index: 10;
-  background: transparent;
-}
-
-.resize-handle--col {
-  top: 0;
-  bottom: 0;
-  width: 16px;
-  margin-left: -8px;
-  cursor: col-resize;
-}
-
-.resize-handle--row {
-  left: 0;
-  right: 0;
-  height: 16px;
-  margin-top: -8px;
-  cursor: row-resize;
-}
-
-.resize-handle::after {
-  content: "";
-  position: absolute;
-  border-radius: 2px;
-  background: var(--color-base-content);
-  opacity: 0;
-  transition: opacity 0.12s ease;
-}
-
-.resize-handle--col::after {
-  top: 18%;
-  bottom: 18%;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 2px;
-}
-
-.resize-handle--row::after {
-  left: 18%;
-  right: 18%;
-  top: 50%;
-  transform: translateY(-50%);
-  height: 2px;
-}
-
-.resize-handle:hover::after,
-.resize-handle--active::after {
-  opacity: 0.22;
-}
-
-/* ════════════════════════════════════════
-   Layout button
+   Layout button + popup
    ════════════════════════════════════════ */
 
 .layout-button-container {
   position: absolute;
   top: 10px;
   left: 10px;
-  z-index: 20;
+  z-index: 50;
 }
-
 .layout-button {
   width: 28px;
   height: 28px;
@@ -429,20 +334,14 @@
   transition: opacity 0.15s ease, box-shadow 0.15s ease;
   padding: 0;
 }
-
 .layout-button:hover {
   opacity: 1;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
 }
-
 .layout-button--active {
   opacity: 1;
   background: var(--color-base-200);
 }
-
-/* ════════════════════════════════════════
-   Layout popup
-   ════════════════════════════════════════ */
 
 .layout-popup {
   position: absolute;
@@ -453,10 +352,9 @@
   border-radius: 8px;
   padding: 8px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.09), 0 1px 4px rgba(0, 0, 0, 0.05);
-  min-width: 210px;
+  min-width: 200px;
   z-index: 100;
 }
-
 .layout-popup-label {
   font-size: 0.625rem;
   text-transform: uppercase;
@@ -468,23 +366,11 @@
   padding: 0 4px;
   font-family: system-ui, sans-serif;
 }
-
 .layout-popup-list {
   display: flex;
   flex-direction: column;
   gap: 1px;
 }
-
-.layout-popup-hint {
-  font-size: 0.6875rem;
-  font-family: system-ui, sans-serif;
-  color: var(--color-base-content);
-  opacity: 0.3;
-  margin-top: 8px;
-  padding: 0 4px;
-  line-height: 1.4;
-}
-
 .layout-preset-button {
   display: flex;
   align-items: center;
@@ -501,22 +387,36 @@
   color: var(--color-base-content);
   transition: background-color 0.1s ease;
 }
-
 .layout-preset-button:hover {
   background: var(--color-base-200);
 }
 
-/* ════════════════════════════════════════
-   Grid icon (3×3 dots)
-   ════════════════════════════════════════ */
+/* Preset mini-icon */
+.preset-icon {
+  display: flex;
+  gap: 1.5px;
+  width: 32px;
+  height: 22px;
+  flex-shrink: 0;
+}
+.preset-icon-col {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5px;
+  flex: 1;
+}
+.preset-cell {
+  background: var(--color-base-300);
+  border-radius: 1.5px;
+}
 
+/* Grid icon (3×3 dots) */
 .grid-icon {
   display: grid;
   grid-template-columns: repeat(3, 3px);
   grid-template-rows: repeat(3, 3px);
   gap: 2px;
 }
-
 .grid-icon-dot {
   width: 3px;
   height: 3px;

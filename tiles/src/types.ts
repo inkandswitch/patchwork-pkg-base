@@ -1,17 +1,16 @@
-export type TileConfig = {
-  id: string;
-  toolId?: string;
-  docUrl?: string;
-  col: number;
-  row: number;
-  colSpan: number;
-  rowSpan: number;
+export type TileContent = {
+  toolId: string;
+  docUrl: string;
 };
 
 export type TilesFrameDoc = {
-  tiles: TileConfig[];
-  columnTracks: number[]; // fractional weights, e.g. [1, 3] → "1fr 3fr"
-  rowTracks: number[];
-  mainTileId?: string;    // tile that receives patchwork:open-document events
-  gap: number;
+  // Serialized dockview Gridview layout (panel ids + sizes). dockview owns this.
+  layout?: any;
+  // Per-panel content, keyed by the gridview panel id.
+  content?: Record<string, TileContent>;
+  // Panel that receives patchwork:open-document events.
+  mainTileId?: string;
+  // Account slot settings (present when this is the account frame).
+  accountSidebarToolId?: string;
+  contextSidebarToolId?: string;
 };

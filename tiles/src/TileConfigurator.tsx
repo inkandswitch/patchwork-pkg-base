@@ -4,10 +4,8 @@ import { createSignal } from "solid-js";
 // resolve at render time to the account doc's accountSidebarToolId /
 // contextSidebarToolId, so changing those in settings updates the tile live.
 const QUICK_TOOLS = [
-  { label: "Account Sidebar", toolId: "@sidebar" },
+  { label: "Sideboard", toolId: "@sidebar" },
   { label: "Context Sidebar", toolId: "@context" },
-  { label: "Comments", toolId: "comments-view" },
-  { label: "History", toolId: "history-view" },
 ];
 
 interface TileContentPickerProps {

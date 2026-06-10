@@ -1,59 +1,12 @@
 import { createSignal, onCleanup } from "solid-js";
-import type { TileConfig } from "./types";
 
-export type LayoutPreset = {
-  label: string;
-  columnTracks: number[];
-  rowTracks: number[];
-  tiles: Omit<TileConfig, "id" | "docUrl" | "toolId">[];
-};
+export type PresetKey = "single" | "sidebar-main" | "two-col" | "main-split";
 
-export const LAYOUT_PRESETS: LayoutPreset[] = [
-  {
-    label: "Single",
-    columnTracks: [1],
-    rowTracks: [1],
-    tiles: [{ col: 1, row: 1, colSpan: 1, rowSpan: 1 }],
-  },
-  {
-    label: "Sidebar + Main",
-    columnTracks: [1, 3],
-    rowTracks: [1],
-    tiles: [
-      { col: 1, row: 1, colSpan: 1, rowSpan: 1 },
-      { col: 2, row: 1, colSpan: 1, rowSpan: 1 },
-    ],
-  },
-  {
-    label: "Two equal columns",
-    columnTracks: [1, 1],
-    rowTracks: [1],
-    tiles: [
-      { col: 1, row: 1, colSpan: 1, rowSpan: 1 },
-      { col: 2, row: 1, colSpan: 1, rowSpan: 1 },
-    ],
-  },
-  {
-    label: "Main + right split",
-    columnTracks: [2, 1],
-    rowTracks: [1, 1],
-    tiles: [
-      { col: 1, row: 1, colSpan: 1, rowSpan: 2 },
-      { col: 2, row: 1, colSpan: 1, rowSpan: 1 },
-      { col: 2, row: 2, colSpan: 1, rowSpan: 1 },
-    ],
-  },
-  {
-    label: "Sidebar + Main + right split",
-    columnTracks: [1, 3, 2],
-    rowTracks: [1, 1],
-    tiles: [
-      { col: 1, row: 1, colSpan: 1, rowSpan: 2 },
-      { col: 2, row: 1, colSpan: 1, rowSpan: 2 },
-      { col: 3, row: 1, colSpan: 1, rowSpan: 1 },
-      { col: 3, row: 2, colSpan: 1, rowSpan: 1 },
-    ],
-  },
+const PRESETS: { key: PresetKey; label: string; cells: { flexRow?: number[]; rows?: number }[] }[] = [
+  { key: "single", label: "Single", cells: [{ flexRow: [1] }] },
+  { key: "sidebar-main", label: "Sidebar + Main", cells: [{ flexRow: [1, 3] }] },
+  { key: "two-col", label: "Two columns", cells: [{ flexRow: [1, 1] }] },
+  { key: "main-split", label: "Main + split", cells: [{ flexRow: [2, 1] }] },
 ];
 
 function GridIcon() {
@@ -66,39 +19,39 @@ function GridIcon() {
   );
 }
 
-function PresetIcon(props: { preset: LayoutPreset }) {
+function PresetIcon(props: { preset: { key: PresetKey } }) {
+  // Simple flex mock of each layout
+  const k = props.preset.key;
   return (
-    <div
-      style={{
-        display: "grid",
-        "grid-template-columns": props.preset.columnTracks
-          .map((t) => `${t}fr`)
-          .join(" "),
-        "grid-template-rows": props.preset.rowTracks
-          .map((t) => `${t}fr`)
-          .join(" "),
-        gap: "1.5px",
-        width: "32px",
-        height: "22px",
-        "flex-shrink": "0",
-      }}
-    >
-      {props.preset.tiles.map((t) => (
-        <div
-          style={{
-            "grid-column": `${t.col} / span ${t.colSpan}`,
-            "grid-row": `${t.row} / span ${t.rowSpan}`,
-            background: "var(--color-base-300)",
-            "border-radius": "1.5px",
-          }}
-        />
-      ))}
+    <div class="preset-icon">
+      {k === "single" && <div class="preset-cell" style={{ flex: 1 }} />}
+      {k === "sidebar-main" && (
+        <>
+          <div class="preset-cell" style={{ flex: 1 }} />
+          <div class="preset-cell" style={{ flex: 3 }} />
+        </>
+      )}
+      {k === "two-col" && (
+        <>
+          <div class="preset-cell" style={{ flex: 1 }} />
+          <div class="preset-cell" style={{ flex: 1 }} />
+        </>
+      )}
+      {k === "main-split" && (
+        <>
+          <div class="preset-cell" style={{ flex: 2 }} />
+          <div class="preset-icon-col">
+            <div class="preset-cell" style={{ flex: 1 }} />
+            <div class="preset-cell" style={{ flex: 1 }} />
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
 interface LayoutButtonProps {
-  onApplyPreset: (preset: LayoutPreset) => void;
+  onApplyPreset: (key: PresetKey) => void;
 }
 
 export function LayoutButton(props: LayoutButtonProps) {
@@ -108,17 +61,14 @@ export function LayoutButton(props: LayoutButtonProps) {
     e.stopPropagation();
     setOpen((o) => !o);
   };
-
   const handleOutsideClick = () => setOpen(false);
   onCleanup(() => document.removeEventListener("click", handleOutsideClick));
 
   let wasOpen = false;
   const isOpen = () => {
     const o = open();
-    if (o && !wasOpen)
-      setTimeout(() => document.addEventListener("click", handleOutsideClick), 0);
-    if (!o && wasOpen)
-      document.removeEventListener("click", handleOutsideClick);
+    if (o && !wasOpen) setTimeout(() => document.addEventListener("click", handleOutsideClick), 0);
+    if (!o && wasOpen) document.removeEventListener("click", handleOutsideClick);
     wasOpen = o;
     return o;
   };
@@ -138,11 +88,11 @@ export function LayoutButton(props: LayoutButtonProps) {
         <div class="layout-popup" onClick={(e) => e.stopPropagation()}>
           <span class="layout-popup-label">Layout</span>
           <div class="layout-popup-list">
-            {LAYOUT_PRESETS.map((preset) => (
+            {PRESETS.map((preset) => (
               <button
                 class="layout-preset-button"
                 onClick={() => {
-                  props.onApplyPreset(preset);
+                  props.onApplyPreset(preset.key);
                   setOpen(false);
                 }}
                 title={preset.label}
@@ -151,9 +101,6 @@ export function LayoutButton(props: LayoutButtonProps) {
                 {preset.label}
               </button>
             ))}
-          </div>
-          <div class="layout-popup-hint">
-            Drag tile bars to move · edges to resize · ⟩↓ to split
           </div>
         </div>
       )}
