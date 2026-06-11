@@ -10,6 +10,10 @@
   "pushwork": {
     "url": "automerge:3gH1AZwy53dHX3mqxkdfN875J3HT"
   },
+  "allowScripts": {
+    "cbor-extract": true,
+    "esbuild": true
+  },
   "scripts": {
     "build": "vite build",
     "dev": "vite build --watch",

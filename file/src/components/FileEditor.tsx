@@ -1,5 +1,8 @@
 import {Show, Match, Switch} from "solid-js"
-import {useDocHandle} from "@automerge/automerge-repo-solid-primitives"
+import {
+	useDocHandle,
+	createDocumentProjection,
+} from "@automerge/automerge-repo-solid-primitives"
 import type {FileDoc} from "../types"
 import {isImmutableStringFileDoc} from "../datatype"
 import {isImageFile} from "../utils"
@@ -18,7 +21,7 @@ export function FileEditor(props: {
 	element: PatchworkViewElement
 }) {
 	const handle = useDocHandle<FileDoc>(props.handle.url, props.element)
-	const doc = () => handle.latest?.doc()
+	const doc = createDocumentProjection<FileDoc>(() => handle.latest)
 
 	return (
 		<Show when={doc()} fallback={"Loading..."}>
