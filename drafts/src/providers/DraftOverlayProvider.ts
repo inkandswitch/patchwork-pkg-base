@@ -16,6 +16,23 @@ import type { Baseline, DraftDoc } from "../draft-types.js";
 const DOCHANDLE_SELECTOR = "patchwork:dochandle";
 const BASELINE_SELECTOR = "patchwork:baseline";
 
+// HACK: datatypes the draft overlay must never clone into a draft.
+//
+// The overlay forks *every* document resolved beneath it so edits stay scoped
+// to the draft. But some docs pulled through the overlay are app-global rather
+// than part of the document being drafted: the account doc (read by the context
+// sidebar, which renders inside the overlay) and contact docs (resolved per
+// comment author). Forking those branches global state — account config, user
+// profiles — into a draft, which is wrong and could even merge back into main.
+//
+// The principled fix is to know which documents actually belong to the draft
+// and fork only those — the overlay shouldn't clone a doc just because it was
+// resolved beneath it. Until we have that notion of draft membership we invert
+// the problem with a blunt skip-list: it bakes app-level datatype names into
+// the otherwise-generic overlay and relies on each doc carrying a matching
+// `@patchwork.type`.
+const SKIPPED_DATATYPES: ReadonlySet<string> = new Set(["account", "contact"]);
+
 // Mounts on a draft URL and remaps documents resolved beneath it onto
 // per-draft clones, so edits stay inside the draft.
 //
@@ -66,7 +83,6 @@ export const DraftOverlayProvider = (element: HTMLElement) => {
 
   const ready: Promise<DocHandle<DraftDoc>> = (async () => {
     const handle = await liveRepo.find<DraftDoc>(draftUrl);
-    await handle.whenReady();
     if (disposed) throw new Error("[drafts] provider disposed mid-load");
     draftHandle = handle;
     return handle;
@@ -88,9 +104,9 @@ export const DraftOverlayProvider = (element: HTMLElement) => {
       }
       const original = canonicalUrl(rawTarget);
       accept<DocHandleDescriptor>(event, (respond) => {
-        void resolveClone(original).then((cloneUrl) => {
+        void resolveDescriptor(original).then((descriptor) => {
           if (disposed) return;
-          respond({ url: original, cloneUrl });
+          respond(descriptor);
         });
       });
       return;
@@ -127,6 +143,33 @@ export const DraftOverlayProvider = (element: HTMLElement) => {
     cloneResolutions.clear();
   };
 
+  // Resolve a `patchwork:dochandle` request: skipped docs (account, contacts)
+  // resolve straight to the real doc (no `cloneUrl` -> no fork); everything
+  // else is forked into this draft via `resolveClone`.
+  async function resolveDescriptor(
+    original: AutomergeUrl
+  ): Promise<DocHandleDescriptor> {
+    if (await isSkippedDoc(original)) return { url: original };
+    const cloneUrl = await resolveClone(original);
+    return { url: original, cloneUrl };
+  }
+
+  // A doc is skipped when its `@patchwork.type` is in `SKIPPED_DATATYPES`. On
+  // any failure we fall back to cloning (the existing behaviour), which is the
+  // safe default — a doc that should be skipped merely keeps forking, it isn't
+  // lost.
+  async function isSkippedDoc(original: AutomergeUrl): Promise<boolean> {
+    try {
+      const handle = await liveRepo.find<{ "@patchwork"?: { type?: string } }>(
+        original
+      );
+      const type = handle.doc()?.["@patchwork"]?.type;
+      return type != null && SKIPPED_DATATYPES.has(type);
+    } catch {
+      return false;
+    }
+  }
+
   // Ensure a clone of `original` exists for this draft and return its url.
   // Reuses an existing clone recorded in `DraftDoc.clones`; otherwise forks
   // `original` at its current heads and records the fork point so the baseline
@@ -140,7 +183,6 @@ export const DraftOverlayProvider = (element: HTMLElement) => {
       if (existing) return canonicalUrl(existing.cloneUrl);
 
       const originalHandle = await liveRepo.find<unknown>(original);
-      await originalHandle.whenReady();
       const clonedAt = originalHandle.heads();
       const clone = liveRepo.clone(originalHandle);
       const cloneUrl = canonicalUrl(clone.url);

@@ -77,12 +77,10 @@ function useContactInfo() {
       | DocHandle<{ contactUrl: AutomergeUrl }>
       | undefined;
     if (!accountDocHandle) return;
-    accountDocHandle.whenReady().then(() => {
-      const doc = accountDocHandle.doc();
-      if (doc?.contactUrl) {
-        setContactUrl(doc.contactUrl);
-      }
-    });
+    const doc = accountDocHandle.doc();
+    if (doc?.contactUrl) {
+      setContactUrl(doc.contactUrl);
+    }
   }, []);
 
   const [contactDoc] = useDocument<ContactDoc>(contactUrl);
