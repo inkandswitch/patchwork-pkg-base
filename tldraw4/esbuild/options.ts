@@ -21,10 +21,7 @@ export default {
   sourcemap: false,
   jsx: "automatic",
   jsxImportSource: "react",
-  // hack: I'm not sure why we externalize this, because it breaks since we don't externalize react
-  external: externals.filter(
-    (name) => name !== "@automerge/automerge-repo-react-hooks"
-  ),
+  external: externals,
   plugins: [
     {
       name: "empty outdir",
