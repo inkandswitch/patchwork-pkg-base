@@ -6,9 +6,8 @@ export const plugins: Plugin<any>[] = [
     id: "patchwork-draft-list-provider",
     name: "Draft List Provider",
     async load() {
-      const { DraftListProvider } = await import(
-        "./providers/DraftListProvider.js"
-      );
+      const { DraftListProvider } =
+        await import("./providers/DraftListProvider.js");
       return DraftListProvider;
     },
   },
@@ -17,9 +16,8 @@ export const plugins: Plugin<any>[] = [
     id: "patchwork-draft-overlay-provider",
     name: "Draft Overlay Provider",
     async load() {
-      const { DraftOverlayProvider } = await import(
-        "./providers/DraftOverlayProvider.js"
-      );
+      const { DraftOverlayProvider } =
+        await import("./providers/DraftOverlayProvider.js");
       return DraftOverlayProvider;
     },
   },
@@ -31,6 +29,7 @@ export const plugins: Plugin<any>[] = [
       const { DraftDatatype } = await import("./DraftDatatype.js");
       return DraftDatatype;
     },
+    unlisted: true,
   },
   {
     type: "patchwork:tool",
