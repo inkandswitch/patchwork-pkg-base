@@ -96,6 +96,87 @@
   height: 100%;
 }
 
+/* Context sidebar (tabbed)
+   Recreates the original `context-sidebar` tool, which rendered plain daisyUI v5
+   tabs (`tabs` / `tab` / `tab-active`) on a base-300 surface. Its `tabs-lifted`
+   class was a no-op leftover from daisyUI v4, so tabs were just text labels:
+   2.5rem tall, 0.75rem inline padding, 0.875rem font, inactive at 50% color,
+   active/hover at full color, with no active background, border, or separators. */
+.context-sidebar {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--color-base-300);
+}
+
+.context-sidebar__tabs {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.context-sidebar__tablist {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.context-sidebar__tab {
+  height: 2.5rem;
+  padding-inline: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  cursor: pointer;
+  color: color-mix(in oklab, var(--color-base-content) 50%, transparent);
+}
+
+.context-sidebar__tab:hover,
+.context-sidebar__tab[data-active] {
+  color: var(--color-base-content);
+}
+
+.context-sidebar__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding-inline: 0.5rem;
+  margin-top: 16px;
+  margin-right: 4px;
+  border: none;
+  background: transparent;
+  color: var(--color-base-content);
+  cursor: pointer;
+  opacity: 0.5;
+}
+
+.context-sidebar__close:hover {
+  opacity: 1;
+}
+
+.context-sidebar__content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--color-base-300);
+}
+
+.context-sidebar__content patchwork-view {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
 /* Debug Registry Toast */
 .debug-registry-toast {
   position: fixed;

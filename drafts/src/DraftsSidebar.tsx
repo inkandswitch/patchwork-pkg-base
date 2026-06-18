@@ -82,10 +82,6 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
 
   return (
     <div class="h-full flex flex-col p-2 gap-2">
-      <div class="flex items-center justify-between text-xs text-gray-400">
-        <span class="font-medium">Drafts</span>
-      </div>
-
       <Show
         when={hostDoc()}
         fallback={

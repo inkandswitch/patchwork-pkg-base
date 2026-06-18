@@ -12,6 +12,7 @@ import {
   DebugRegistryToast,
 } from "./hooks";
 import { Sidebar } from "./components/Sidebar";
+import { ContextSidebar } from "./components/ContextSidebar";
 import { DocumentToolbar } from "./components/DocumentToolbar";
 import { MainDocumentView } from "./components/MainDocumentView";
 import {
@@ -141,6 +142,12 @@ function PatchworkFrameInner(props: {
     dragThreshold: DRAG_THRESHOLD,
   });
 
+  // Selected context-sidebar tab, lifted here (above the per-document and
+  // per-draft remount boundaries) so the active tab survives document and
+  // branch switches even though the tab's tool content remounts.
+  const [selectedContextToolId, setSelectedContextToolId] =
+    createSignal<string>();
+
   const {
     events: debugEvents,
     dismissEvent,
@@ -228,6 +235,8 @@ function PatchworkFrameInner(props: {
                     selectedToolId={selectedToolId}
                     sidebarState={sidebarState}
                     sidebarResize={sidebarResize}
+                    selectedContextToolId={selectedContextToolId}
+                    setSelectedContextToolId={setSelectedContextToolId}
                   />
                 </FrameLayout>
               )}
@@ -293,6 +302,8 @@ function DraftDocumentArea(props: {
   selectedToolId: Accessor<string | undefined>;
   sidebarState: SidebarState;
   sidebarResize: SidebarResize;
+  selectedContextToolId: Accessor<string | undefined>;
+  setSelectedContextToolId: (id: string) => void;
 }) {
   const [draftsState] = subscribeDoc<DraftsState>(props.host, {
     type: "draft:list",
@@ -359,15 +370,19 @@ function DraftDocumentArea(props: {
                   />
                 </div>
 
-                {props.accountDoc()?.contextSidebarToolId && (
-                  <Sidebar
-                    side="right"
+                {!!props.accountDoc()?.contextToolIds?.length && (
+                  <ContextSidebar
+                    contextToolIds={() => props.accountDoc()?.contextToolIds}
+                    docUrl={props.accountDocUrl}
+                    selectedToolId={props.selectedContextToolId}
+                    setSelectedToolId={props.setSelectedContextToolId}
                     isCollapsed={props.sidebarState.isRightSidebarCollapsed}
                     width={props.sidebarState.rightSidebarWidth}
-                    toolId={props.accountDoc()!.contextSidebarToolId}
-                    docUrl={props.accountDocUrl}
                     onMouseDown={props.sidebarResize.handleMouseDown}
                     onToggleClick={props.sidebarResize.handleToggleClick}
+                    onClose={() =>
+                      props.sidebarState.setIsRightSidebarCollapsed(true)
+                    }
                   />
                 )}
               </Show>
