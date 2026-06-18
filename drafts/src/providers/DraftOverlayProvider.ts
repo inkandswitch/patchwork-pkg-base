@@ -31,7 +31,11 @@ const BASELINE_SELECTOR = "draft:baseline";
 // the problem with a blunt skip-list: it bakes app-level datatype names into
 // the otherwise-generic overlay and relies on each doc carrying a matching
 // `@patchwork.type`.
-const SKIPPED_DATATYPES: ReadonlySet<string> = new Set(["account", "contact"]);
+const SKIPPED_DATATYPES: ReadonlySet<string> = new Set([
+  "account",
+  "contact",
+  "draft",
+]);
 
 // Mounts on a draft URL and remaps documents resolved beneath it onto
 // per-draft clones, so edits stay inside the draft.
