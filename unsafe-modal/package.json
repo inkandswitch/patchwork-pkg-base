@@ -1,0 +1,13 @@
+{
+  "name": "@tiny-patchwork/unsafe-modal",
+  "type": "module",
+  "private": true,
+  "main": "unsafe-modal.js",
+  "exports": {
+    ".": "unsafe-modal.js"
+  },
+  "scripts": {
+    "push": "pushwork sync",
+    "register": "pw-modules add \"$MODULE_SETTINGS_DOC_URL\" \"$(pushwork url)\""
+  }
+}

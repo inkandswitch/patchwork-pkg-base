@@ -95,9 +95,11 @@ export const PatchworkFrame = ({
           doc-url={accountDocUrl}
           ref={setAccountProviderElement}
         >
-          <Show when={areProvidersReady()}>
-            <PatchworkFrameInner handle={handle} repo={repo} />
-          </Show>
+          <patchwork-view component="patchwork-unsafe-modal">
+            <Show when={areProvidersReady()}>
+              <PatchworkFrameInner handle={handle} repo={repo} />
+            </Show>
+          </patchwork-view>
         </patchwork-view>
       </patchwork-view>
     </div>

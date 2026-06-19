@@ -13,7 +13,7 @@ import type { PatchworkToolProps } from "../types.ts";
 import { filter, setFilter, setPendingNewDoc } from "./state.ts";
 import CreateNew from "./create-new.tsx";
 import type { FolderDoc } from "@inkandswitch/patchwork-filesystem";
-import { createOpenEvent } from "./events.ts";
+import { createOpenEvent, createOpenUnsafeModalEvent } from "./events.ts";
 import { SearchIcon } from "./icons.tsx";
 import { DocumentList } from "./document-list/document-list.tsx";
 import type { AutomergeUrl } from "@automerge/automerge-repo";
@@ -46,6 +46,10 @@ export function Sideboard(
 
   function open(detail: OpenDocumentEventDetail) {
     props.element.dispatchEvent(createOpenEvent(detail));
+  }
+
+  function openUnsafeModal(detail: OpenDocumentEventDetail) {
+    props.element.dispatchEvent(createOpenUnsafeModalEvent(detail));
   }
 
   const [isDraggingFile, setIsDraggingFile] = createSignal(false);
@@ -170,7 +174,7 @@ export function Sideboard(
         <footer class="sideboard-footer">
           <button
             onClick={() =>
-              open({
+              openUnsafeModal({
                 url: accountDocUrl(),
                 toolId: "account-picker",
               })
@@ -181,7 +185,7 @@ export function Sideboard(
           </button>
 
           <button
-            onClick={() => open({ url: moduleSettingsUrl()! })}
+            onClick={() => openUnsafeModal({ url: moduleSettingsUrl()! })}
             class="sideboard-footer__button"
           >
             Packages
@@ -189,7 +193,7 @@ export function Sideboard(
 
           <button
             onClick={() =>
-              open({
+              openUnsafeModal({
                 url: accountDocUrl(),
                 toolId: "frame-configurator",
               })

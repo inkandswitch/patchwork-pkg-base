@@ -1222,6 +1222,8 @@ importers:
         specifier: ^8.45.0
         version: 8.62.0(eslint@9.39.4)(typescript@5.9.3)
 
+  unsafe-modal: {}
+
 packages:
 
   '@automerge/automerge-codemirror@0.1.0':
