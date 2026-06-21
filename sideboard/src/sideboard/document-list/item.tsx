@@ -331,6 +331,9 @@ export default function Item(props: {
           clearDragstack();
           props.openWith();
         }}
+        on:dblclick={() => {
+          props.startRenaming();
+        }}
         onkeydown={(event: KeyboardEvent) => {
           // Arrow key navigation
           if (event.key === "ArrowDown" || event.key === "ArrowUp") {

@@ -1,0 +1,5 @@
+{
+  "name": "document presence",
+  "type": "module",
+  "main": "doc-presence.js"
+}
