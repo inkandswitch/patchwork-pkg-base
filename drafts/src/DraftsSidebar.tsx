@@ -1,6 +1,9 @@
 import "./styles.css";
 import { createMemo, For, Show } from "solid-js";
-import { useDocument } from "@automerge/automerge-repo-solid-primitives";
+import {
+  createDocSignal,
+  useDocument,
+} from "@automerge/automerge-repo-solid-primitives";
 import type { AutomergeUrl, DocHandle, Repo } from "@automerge/automerge-repo";
 import { subscribeDoc } from "@inkandswitch/patchwork-providers-solid";
 import type {
@@ -15,14 +18,20 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     type: "draft:root-doc",
   });
 
-  const [state, stateHandle] = subscribeDoc<DraftsState>(props.element, {
+  const [, stateHandle] = subscribeDoc<DraftsState>(props.element, {
     type: "draft:list",
   });
 
-  const drafts = createMemo<AutomergeUrl[]>(() => state()?.drafts ?? []);
+  // Read the DraftsState coarsely from the live handle (handle.doc()) rather
+  // than a fine-grained patch-replay projection: the projection can render the
+  // list doubled because it re-applies a change its initial snapshot already
+  // reflects, whereas handle.doc() is always the correct materialized document.
+  const stateDoc = createDocSignal(stateHandle);
+  const drafts = createMemo<AutomergeUrl[]>(() => stateDoc()?.drafts ?? []);
   const selected = createMemo<AutomergeUrl | null>(
-    () => state()?.selectedDraft ?? null
+    () => stateDoc()?.selectedDraft ?? null
   );
+
   const isMainSelected = createMemo(() => selected() === null);
   // Drafting off a folder isn't supported yet, so creating a draft is disabled
   // while viewing a folder on Main.

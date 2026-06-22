@@ -71,7 +71,9 @@ export const DraftListProvider = (element: HTMLElement) => {
       selectedDraft: null,
     });
     const draftsUrl = draftsStateHandle.url;
-    for (const respond of pendingDraftsSubscribers) respond(draftsUrl);
+    for (const respond of pendingDraftsSubscribers) {
+      respond(draftsUrl);
+    }
     pendingDraftsSubscribers.clear();
 
     handle.on("change", onHostDocChange);
