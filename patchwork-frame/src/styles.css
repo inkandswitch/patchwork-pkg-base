@@ -1,4 +1,3 @@
-@layer package {
 /* Layout */
 
 :root,
@@ -24,7 +23,6 @@
   font-family: var(--patchwork-frame-family);
   color: var(--patchwork-frame-fg);
   background: var(--patchwork-frame-bg);
-}
 
 .frame__version {
   position: absolute;
@@ -179,17 +177,6 @@
   animation: toast-slide-in 0.2s ease-out;
 }
 
-@keyframes toast-slide-in {
-  from {
-    opacity: 0;
-    transform: translateX(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
 .debug-registry-toast__item:hover {
   background: oklch(0.2 0.01 270);
 }
@@ -231,6 +218,18 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+}
+@keyframes toast-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 
 /* Custom colors for event types */
 :root,
@@ -242,6 +241,7 @@
   --debug-toast-changed: color-mix(in oklch, var(--studio-warning, #f8c43b), var(--studio-line, black) 10%);
 }
 
+.frame {
 .sidebar-toggle {
   height: 100%;
   padding: 0;
@@ -315,4 +315,5 @@
 .sidebar-resize-handle--left {
   left: 0;
 }
+
 }
