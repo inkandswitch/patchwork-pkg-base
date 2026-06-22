@@ -301,9 +301,56 @@ type UnixFileEntry = { content: string | Uint8Array | ImmutableString; extension
 
 ## 11. Styling & theming
 
-**Do NOT use Tailwind, DaisyUI, or any CSS framework.** Write plain CSS with namespaced
-class names. The theming system provides CSS custom properties you should use for colors,
-fonts, spacing, radius, and shadows.
+**Do NOT use Tailwind, DaisyUI, or any CSS framework.** Write plain CSS following the
+CUBE CSS methodology (cube.fyi). The theming system provides CSS custom properties for
+colors, fonts, spacing, radius, and shadows.
+
+### CUBE CSS methodology
+
+We structure CSS using **Composition, Utility, Block, Exception** layers:
+
+1. **Composition** — layout primitives that control how elements flow and relate to each
+   other. These are generic and reusable (e.g. a `.flow` class that adds vertical rhythm,
+   a `.cluster` for inline groups with gap). Composition classes never apply visual
+   treatments — only spacing and layout.
+
+2. **Block** — the namespaced component. A block is a skeletal container for one
+   contextual piece of UI (e.g. `.history-panel`, `.sideboard`, `.comments-thread`).
+   Blocks define their appearance using local CSS variables derived from the theme.
+   Child elements use simple descendant selectors: `.my-tool .header`, `.my-tool .title`.
+
+3. **Exception** — a state deviation from a block, applied via **data attributes** (not
+   class modifiers). E.g. `data-selected`, `data-state="reversed"`, `data-expanded`.
+
+```html
+<!-- Block with exception via data attribute -->
+<div class="history-item" data-selected>…</div>
+
+<!-- Composition + Block together -->
+<div class="flow comments-panel">…</div>
+```
+
+```css
+/* Composition — generic layout */
+.flow > * + * {
+  margin-top: var(--flow-space, var(--studio-space, 0.75rem));
+}
+
+/* Block — the component */
+.history-item {
+  display: flex;
+  gap: var(--studio-space-sm, 0.5rem);
+  padding: var(--studio-space-xs, 0.375rem);
+  border-radius: var(--studio-radius-sm, 4px);
+  cursor: pointer;
+}
+
+/* Exception — state via data attribute */
+.history-item[data-selected] {
+  background: var(--history-accent);
+  color: var(--history-accent-fg);
+}
+```
 
 ### CSS variables
 
@@ -334,15 +381,16 @@ Use these variables (with fallbacks) instead of hardcoded values:
 **Transitions:**
 - `var(--studio-transition-fast, 0.1s ease)` through `var(--studio-transition-slow, 0.25s ease)`
 
-### CSS structure pattern
+### CSS file structure
 
-Every tool's CSS should follow this structure:
+Every tool's CSS follows this structure:
 
-1. **Define local variables in `:root, [theme]`** so they update when a theme attribute
-   is set. Derive them from `--studio-*` variables:
+1. **Define local variables in `:root, :host, [theme]`** so they re-evaluate when a theme is
+   applied (the theme system sets a `[theme]` attribute):
 
 ```css
 :root,
+:host,
 [theme] {
   --my-tool-bg: var(--studio-fill, white);
   --my-tool-fg: var(--studio-line, black);
@@ -353,7 +401,15 @@ Every tool's CSS should follow this structure:
 }
 ```
 
-2. **Wrap all rules in a namespaced class** and reference the local variables:
+2. **Composition classes** (if needed) for layout patterns:
+
+```css
+.my-tool .flow > * + * {
+  margin-top: var(--flow-space, var(--studio-space-sm, 0.5rem));
+}
+```
+
+3. **Block classes** using the local variables:
 
 ```css
 .my-tool {
@@ -362,20 +418,28 @@ Every tool's CSS should follow this structure:
   font-family: var(--studio-family-sans, system-ui, sans-serif);
 }
 
-.my-tool__header {
+.my-tool .header {
   border-bottom: 1px solid var(--my-tool-border);
   color: var(--my-tool-muted);
 }
 ```
 
-The `:root, [theme]` selector is critical — when a theme is applied, it sets a `[theme]`
-attribute on the root element, and your variables re-evaluate against the new `--studio-*`
-values automatically.
+4. **Exception rules** via data attributes:
+
+```css
+.my-tool .card[data-selected] {
+  background: var(--my-tool-accent);
+}
+
+.my-tool .card[data-state="editing"] {
+  outline: 2px solid var(--my-tool-accent);
+}
+```
 
 ### Derive your colors from the theme
 
-**Never introduce new hex color values.** Instead, derive all colors from the theme
-variables using `color-mix()`:
+**Never introduce new hex color values.** Derive all colors from the theme using
+`color-mix()`:
 
 ```css
 /* Good — derived from theme */
@@ -388,11 +452,6 @@ background: #f5f5f5;
 border-color: rgba(53, 247, 202, 0.5);
 color: #666;
 ```
-
-Use `color-mix(in oklch, …)` to create lighter/darker/transparent variants from the
-existing `--studio-*` color variables. The `--studio-fill-offset-*` and
-`--studio-line-offset-*` variables already do this at set percentages, but for custom
-tints, use `color-mix()` directly. For transparency, mix with `transparent`.
 
 When you need "lighter" or "darker", mix with `var(--studio-fill)` or `var(--studio-line)`
 respectively — **not** literal `white`/`black` — so the derivations invert correctly in
@@ -413,7 +472,7 @@ Register a theme plugin to contribute a color scheme:
   async load() { return {} } }
 ```
 
-The CSS file should set `:root, [theme]` variables (same shape as the default theme).
+The CSS file should set `:root, :host, [theme]` variables (same shape as the default theme).
 
 ## 12. Build & sync
 
