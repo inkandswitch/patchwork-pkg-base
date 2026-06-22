@@ -11,9 +11,11 @@
  * `patchwork`/`browser`/`import` conditions, falling back to `main`).
  *
  * Usage:
- *   node scripts/build-static.mjs [--out <dir>] [--build]
+ *   node scripts/build-static.mjs [--out <dir>] [--install] [--build]
  *
  *   --out <dir>   Output directory (default: static-dist)
+ *   --install     Run `pnpm install` in each tool before building. Implies
+ *                 --build. Useful in CI where tool node_modules are absent.
  *   --build       Run each tool's own `pnpm build` (in its isolated
  *                 node_modules) before copying. Off by default; we copy the
  *                 existing dist/.
@@ -42,12 +44,15 @@ const IGNORE_DIRS = new Set([
 ]);
 
 function parseArgs(argv) {
-  const args = { out: "static-dist", build: false };
+  const args = { out: "static-dist", build: false, install: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--out") args.out = argv[++i];
     else if (a === "--build") args.build = true;
-    else throw new Error(`Unknown argument: ${a}`);
+    else if (a === "--install") {
+      args.install = true;
+      args.build = true;
+    } else throw new Error(`Unknown argument: ${a}`);
   }
   return args;
 }
@@ -83,7 +88,7 @@ function normalizeRel(p) {
 }
 
 function main() {
-  const { out, build } = parseArgs(process.argv.slice(2));
+  const { out, build, install } = parseArgs(process.argv.slice(2));
   const outDir = resolvePath(ROOT, out);
   const toolsOutDir = join(outDir, "tools");
 
@@ -105,6 +110,14 @@ function main() {
     }
 
     const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+
+    if (install) {
+      console.log(`[install] ${name}: pnpm install`);
+      execSync("pnpm install --prefer-offline", {
+        cwd: toolDir,
+        stdio: "inherit",
+      });
+    }
 
     if (build && pkg.scripts?.build) {
       console.log(`[build] ${name}: pnpm build`);
@@ -143,6 +156,14 @@ function main() {
     modules,
   };
   writeFileSync(join(outDir, "modules.json"), JSON.stringify(manifest, null, 2) + "\n");
+
+  // The shell loads these tools cross-origin, and module `import()` is always a
+  // CORS request, so the tools host must allow it. `_headers` is read by Netlify
+  // (and Cloudflare Pages), so the bundle is portable across static hosts.
+  writeFileSync(
+    join(outDir, "_headers"),
+    ["/*", "  Access-Control-Allow-Origin: *", ""].join("\n")
+  );
 
   console.log(`\nWrote ${modules.length} modules to ${join(outDir, "modules.json")}`);
   if (skipped.length) {
