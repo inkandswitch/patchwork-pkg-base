@@ -53,7 +53,7 @@ const TaskQueue: React.FC<{ element: HTMLElement; taskQueueUrl: AutomergeUrl }> 
   const [{ title, pending, done }] = useDocument<TaskQueueDoc>(taskQueueUrl, { suspense: true });
   return (
     <div
-      className="h-full flex items-center"
+      className="task-titlebar"
       onClick={() => element.dispatchEvent(createOpenEvent({ url: taskQueueUrl }))}
     >
       <span>{title ?? 'TQ'}</span>

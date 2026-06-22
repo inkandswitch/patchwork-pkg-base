@@ -12,15 +12,12 @@
   "dependencies": {
     "@automerge/automerge": "^3.2.5",
     "@automerge/automerge-repo": "^2.6.0-subduction.9",
-    "@inkandswitch/patchwork-plugins": "^0.0.6",
-    "tailwindcss": "^4.1.14"
+    "@inkandswitch/patchwork-plugins": "^0.0.6"
   },
   "devDependencies": {
     "@eslint/js": "^9.37.0",
     "@inkandswitch/patchwork-bootloader": "^0.0.4",
-    "@tailwindcss/vite": "^4.1.14",
     "@typescript-eslint/parser": "^8.40.0",
-    "daisyui": "^5.4.4",
     "eslint": "^9.34.0",
     "globals": "^16.4.0",
     "typescript-eslint": "^8.41.0",

@@ -46,11 +46,8 @@ export function DateHeader(props: DateHeaderProps) {
   };
 
   return (
-    <div class="flex items-center gap-3 py-2 px-3 mb-1">
-      <div class="flex-1 h-px bg-[#ccc]"></div>
-      <div class="text-xs text-[#666] whitespace-nowrap shrink-0">
-        {displayDay()}, {formattedDate()}
-      </div>
+    <div class="history-date-header">
+      {displayDay()}, {formattedDate()}
     </div>
   );
 }

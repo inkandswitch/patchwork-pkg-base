@@ -1,3 +1,18 @@
+@layer package {
+:root,
+:host,
+[theme] {
+  --command-palette-bg: var(--studio-fill, white);
+  --command-palette-fg: var(--studio-line, black);
+  --command-palette-muted: var(--studio-line-offset-50, #999);
+  --command-palette-secondary: var(--studio-line-offset-40, #666);
+  --command-palette-border: var(--studio-fill-offset-20, #ccc);
+  --command-palette-hover: var(--studio-fill-offset-10, #e5e5e5);
+  --command-palette-accent: var(--studio-secondary, #33ccf8);
+  --command-palette-accent-hover: color-mix(in oklch, var(--studio-secondary, #33ccf8), var(--studio-line, black) 20%);
+  --command-palette-font-size: var(--studio-font-size, 16px);
+}
+
 .command-palette-backdrop {
   position: fixed;
   top: 0;
@@ -16,18 +31,12 @@
 .command-palette-container {
   width: 100%;
   max-width: 640px;
-  background: white;
+  background: var(--command-palette-bg);
   border-radius: 12px;
   box-shadow: 0 16px 70px rgba(0, 0, 0, 0.3);
   overflow: hidden;
   animation: slideDown 0.2s ease-out;
-}
-
-@media (prefers-color-scheme: dark) {
-  .command-palette-container {
-    background: #1e1e1e;
-    border: 1px solid #333;
-  }
+  border: 1px solid var(--command-palette-border);
 }
 
 @keyframes slideDown {
@@ -46,20 +55,14 @@
   padding: 16px 20px;
   border: none;
   outline: none;
-  font-size: 16px;
+  font-size: var(--command-palette-font-size);
   background: transparent;
-  border-bottom: 1px solid #e5e5e5;
+  color: var(--command-palette-fg);
+  border-bottom: 1px solid var(--command-palette-border);
 }
 
-@media (prefers-color-scheme: dark) {
-  .command-palette-input {
-    color: white;
-    border-bottom-color: #333;
-  }
-
-  .command-palette-input::placeholder {
-    color: #666;
-  }
+.command-palette-input::placeholder {
+  color: var(--command-palette-secondary);
 }
 
 .command-palette-list {
@@ -71,7 +74,7 @@
 .command-palette-empty {
   padding: 32px 20px;
   text-align: center;
-  color: #999;
+  color: var(--command-palette-muted);
   font-size: 14px;
 }
 
@@ -79,15 +82,9 @@
   padding: 8px 12px;
   font-size: 12px;
   font-weight: 600;
-  color: #666;
+  color: var(--command-palette-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-}
-
-@media (prefers-color-scheme: dark) {
-  .command-palette-group-heading {
-    color: #999;
-  }
 }
 
 .command-palette-item {
@@ -99,23 +96,11 @@
 }
 
 .command-palette-item[aria-selected="true"] {
-  background: #f5f5f5;
-}
-
-@media (prefers-color-scheme: dark) {
-  .command-palette-item[aria-selected="true"] {
-    background: #2a2a2a;
-  }
+  background: var(--command-palette-hover);
 }
 
 .command-palette-item:hover {
-  background: #f5f5f5;
-}
-
-@media (prefers-color-scheme: dark) {
-  .command-palette-item:hover {
-    background: #2a2a2a;
-  }
+  background: var(--command-palette-hover);
 }
 
 .command-palette-item-content {
@@ -127,24 +112,12 @@
 .command-palette-item-label {
   font-size: 14px;
   font-weight: 500;
-  color: #000;
-}
-
-@media (prefers-color-scheme: dark) {
-  .command-palette-item-label {
-    color: #fff;
-  }
+  color: var(--command-palette-fg);
 }
 
 .command-palette-item-description {
   font-size: 12px;
-  color: #666;
-}
-
-@media (prefers-color-scheme: dark) {
-  .command-palette-item-description {
-    color: #999;
-  }
+  color: var(--command-palette-secondary);
 }
 
 /* Argument Form Styles */
@@ -153,19 +126,13 @@
   align-items: center;
   gap: 12px;
   padding: 16px 20px;
-  border-bottom: 1px solid #e5e5e5;
-}
-
-@media (prefers-color-scheme: dark) {
-  .command-palette-header {
-    border-bottom-color: #333;
-  }
+  border-bottom: 1px solid var(--command-palette-border);
 }
 
 .command-palette-back-button {
   background: none;
   border: none;
-  color: #666;
+  color: var(--command-palette-secondary);
   cursor: pointer;
   font-size: 14px;
   padding: 4px 8px;
@@ -174,29 +141,13 @@
 }
 
 .command-palette-back-button:hover {
-  background: #f5f5f5;
-}
-
-@media (prefers-color-scheme: dark) {
-  .command-palette-back-button {
-    color: #999;
-  }
-
-  .command-palette-back-button:hover {
-    background: #2a2a2a;
-  }
+  background: var(--command-palette-hover);
 }
 
 .command-palette-header-title {
   font-size: 16px;
   font-weight: 600;
-  color: #000;
-}
-
-@media (prefers-color-scheme: dark) {
-  .command-palette-header-title {
-    color: #fff;
-  }
+  color: var(--command-palette-fg);
 }
 
 .command-palette-arg-form {
@@ -211,56 +162,32 @@
   display: block;
   font-size: 14px;
   font-weight: 500;
-  color: #000;
+  color: var(--command-palette-fg);
   margin-bottom: 8px;
-}
-
-@media (prefers-color-scheme: dark) {
-  .command-palette-arg-label {
-    color: #fff;
-  }
 }
 
 .command-palette-arg-description {
   display: block;
   font-size: 12px;
   font-weight: 400;
-  color: #666;
+  color: var(--command-palette-secondary);
   margin-top: 4px;
-}
-
-@media (prefers-color-scheme: dark) {
-  .command-palette-arg-description {
-    color: #999;
-  }
 }
 
 .command-palette-arg-input {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #e5e5e5;
+  border: 1px solid var(--command-palette-border);
   border-radius: 6px;
   font-size: 14px;
-  background: white;
-  color: #000;
+  background: var(--command-palette-bg);
+  color: var(--command-palette-fg);
   outline: none;
   transition: border-color 0.15s;
 }
 
 .command-palette-arg-input:focus {
-  border-color: #0066cc;
-}
-
-@media (prefers-color-scheme: dark) {
-  .command-palette-arg-input {
-    background: #2a2a2a;
-    border-color: #333;
-    color: #fff;
-  }
-
-  .command-palette-arg-input:focus {
-    border-color: #0088ff;
-  }
+  border-color: var(--command-palette-accent);
 }
 
 .command-palette-arg-actions {
@@ -281,38 +208,20 @@
 }
 
 .command-palette-arg-button-cancel {
-  background: #f5f5f5;
-  color: #000;
+  background: var(--command-palette-hover);
+  color: var(--command-palette-fg);
 }
 
 .command-palette-arg-button-cancel:hover {
-  background: #e5e5e5;
+  background: var(--command-palette-border);
 }
 
 .command-palette-arg-button-submit {
-  background: #0066cc;
-  color: white;
+  background: var(--command-palette-accent);
+  color: var(--command-palette-bg);
 }
 
 .command-palette-arg-button-submit:hover {
-  background: #0052a3;
+  background: var(--command-palette-accent-hover);
 }
-
-@media (prefers-color-scheme: dark) {
-  .command-palette-arg-button-cancel {
-    background: #2a2a2a;
-    color: #fff;
-  }
-
-  .command-palette-arg-button-cancel:hover {
-    background: #333;
-  }
-
-  .command-palette-arg-button-submit {
-    background: #0088ff;
-  }
-
-  .command-palette-arg-button-submit:hover {
-    background: #0066cc;
-  }
 }

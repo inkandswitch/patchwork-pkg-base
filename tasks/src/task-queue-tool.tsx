@@ -28,7 +28,7 @@ export const TaskQueueTool = (handle: DocHandle<unknown>, element: HTMLElement) 
   const root = createRoot(element);
   root.render(
     <RepoContext.Provider value={repo}>
-      <div className="flex flex-col items-center justify-center h-full">
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
         <Suspense fallback="...">
           <ITaskQueueBrowserTool docUrl={handle.url} />
         </Suspense>
@@ -67,28 +67,28 @@ const ITaskQueueBrowserTool: React.FC<any> = ({ docUrl }) => {
   }, [handle]);
 
   return (
-    <div className="task-browser h-full overflow-y-auto">
-      <div className="flex flex-col items-left h-full overflow-y-auto">
-        <div className="mb-4 flex flex-col">
-          <div className="grow">
+    <div className="task-browser">
+      <div className="task-browser-layout">
+        <div className="task-browser-form">
+          <div style={{ flex: 1 }}>
             <textarea
-              className="font-mono p-2 border rounded w-full h-full"
+              className="task-browser-textarea"
               rows={5}
               value={inputExpr}
               onChange={(e) => setInputExpr(e.target.value)}
             />
           </div>
-          <div className="grow">
+          <div style={{ flex: 1 }}>
             <textarea
-              className="font-mono p-2 border rounded w-full h-full"
+              className="task-browser-textarea"
               rows={5}
               value={code}
               onChange={(e) => setCode(e.target.value)}
             />
           </div>
-          <div className="mb-4">
+          <div className="task-browser-section">
             <button
-              className="px-4 py-2 bg-gray-800 text-white rounded cursor-pointer"
+              className="task-browser-submit"
               onClick={addTask}
             >
               add task
@@ -96,23 +96,23 @@ const ITaskQueueBrowserTool: React.FC<any> = ({ docUrl }) => {
           </div>
         </div>
         {activeRouter ? (
-          <div className="mb-4">
-            <div className="text-2xl">Router:</div>
+          <div className="task-browser-section">
+            <div className="task-browser-section-title">Router:</div>
             <Router key={activeRouter} docUrl={activeRouter} />
           </div>
         ) : null}
-        <div className="mb-4">
-          <div className="text-2xl">Workers:</div>
+        <div className="task-browser-section">
+          <div className="task-browser-section-title">Workers:</div>
           {workers.map((url) => (
             <Worker key={url} docUrl={url} />
           ))}
         </div>
-        <div className="mb-4">
-          <div className="text-2xl">{pending.length} pending:</div>
+        <div className="task-browser-section">
+          <div className="task-browser-section-title">{pending.length} pending:</div>
           {renderTasks(pending.toReversed().slice(0, 20))}
         </div>
-        <div className="mb-4">
-          <div className="text-2xl">{done.length} done:</div>
+        <div className="task-browser-section">
+          <div className="task-browser-section-title">{done.length} done:</div>
           {renderTasks(done.toReversed().slice(0, 20))}
         </div>
       </div>
@@ -121,7 +121,7 @@ const ITaskQueueBrowserTool: React.FC<any> = ({ docUrl }) => {
 
   function renderTasks(urls: AutomergeUrl[]) {
     return urls.length === 0 ? (
-      <div className="text-gray-400">(none)</div>
+      <div className="task-muted">(none)</div>
     ) : (
       <ul>
         {[...new Set(urls)].map((url) => (
@@ -150,7 +150,7 @@ export const Router: React.FC<any> = (props) => (
 const IRouter: React.FC<any> = ({ docUrl }: { docUrl: AutomergeUrl }) => {
   const [{ name, contactUrl }] = useDocument<RouterDoc>(docUrl, { suspense: true });
   return (
-    <div className="m-4">
+    <div className="task-router">
       <patchwork-view doc-url={contactUrl} tool-id="contact-inline" /> / {name}
     </div>
   );
@@ -165,7 +165,7 @@ export const Worker: React.FC<any> = (props) => (
 const IWorker: React.FC<any> = ({ docUrl }: { docUrl: AutomergeUrl }) => {
   const [{ name, contactUrl, currentTask }] = useDocument<WorkerDoc>(docUrl, { suspense: true });
   return (
-    <div className="m-4 p-2">
+    <div className="task-worker">
       <div>
         <patchwork-view doc-url={contactUrl} tool-id="contact-inline" /> / {name}{' '}
         {currentTask ? <Task docUrl={currentTask.taskUrl} docPath={[]} /> : '(idle)'}
@@ -194,12 +194,12 @@ const ITask: React.FC<any> = ({ docUrl }) => {
 
   return (
     <div
-      className={`m-4 p-4 border ${
-        hasntRun ? 'border-l-gray-500' : failed ? 'border-l-red-500' : 'border-l-lime-500'
-      } border-l-8 m`}
+      className={`task-item ${
+        hasntRun ? 'task-item--pending' : failed ? 'task-item--failed' : 'task-item--success'
+      }`}
     >
       {runs.map((run: RunInfo<any>, idx) => (
-        <div key={idx} className="bg-black text-white pl-2 mb-2">
+        <div key={idx} className="task-run">
           <Run input={input} run={run} />
         </div>
       ))}
@@ -215,7 +215,7 @@ const Run: React.FC<any> = ({ input, run }: { input: any; run: RunInfo<any> }) =
     suspense: true,
   });
   return (
-    <div className="align-text-top">
+    <div style={{ verticalAlign: 'top' }}>
       {JSON.stringify(input)}
       <div>
         <div>

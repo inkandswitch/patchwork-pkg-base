@@ -1,3 +1,4 @@
+@layer package {
 :root,
 :host,
 [theme] {
@@ -436,7 +437,7 @@
 
 .msm-card__meta {
   font-size: 0.75rem;
-  color: rgb(0 0 0 / 0.5);
+  color: color-mix(in oklab, var(--module-settings-manager-line), var(--module-settings-manager-widget-fill) 50%);
   font-variant-numeric: tabular-nums;
 }
 
@@ -444,7 +445,7 @@
   display: block;
   font-family: var(--studio-family-code, ui-monospace, monospace);
   font-size: 0.8125rem;
-  color: rgb(0 0 0 / 0.55);
+  color: color-mix(in oklab, var(--module-settings-manager-line), var(--module-settings-manager-widget-fill) 45%);
   word-break: break-all;
   cursor: pointer;
   background: none;
@@ -512,7 +513,7 @@
   font-size: 0.6875rem;
   text-transform: lowercase;
   letter-spacing: 0.02em;
-  color: rgb(0 0 0 / 0.5);
+  color: color-mix(in oklab, var(--module-settings-manager-line), var(--module-settings-manager-widget-fill) 50%);
 }
 .msm-plugin__type--datatype {
   color: var(--msm-text-blue-light);
@@ -524,7 +525,7 @@
 .msm-plugin__id {
   font-family: var(--studio-family-code, ui-monospace, monospace);
   font-size: 0.75rem;
-  color: rgb(0 0 0 / 0.45);
+  color: color-mix(in oklab, var(--module-settings-manager-line), var(--module-settings-manager-widget-fill) 55%);
   cursor: pointer;
   margin-left: auto;
   background: none;
@@ -574,12 +575,12 @@
   letter-spacing: 0.06em;
   font-weight: 600;
   font-size: 0.625rem;
-  color: rgb(0 0 0 / 0.4);
+  color: color-mix(in oklab, var(--module-settings-manager-line), var(--module-settings-manager-widget-fill) 60%);
 }
 
 .msm-plugin__supports-item {
   font-family: var(--studio-family-code, ui-monospace, monospace);
-  color: rgb(0 0 0 / 0.65);
+  color: color-mix(in oklab, var(--module-settings-manager-line), var(--module-settings-manager-widget-fill) 35%);
 }
 .msm-plugin__supports-item--any {
   color: var(--msm-text-blue-light);
@@ -591,7 +592,7 @@
 }
 
 .msm-plugin__supports-sep {
-  color: rgb(0 0 0 / 0.3);
+  color: color-mix(in oklab, var(--module-settings-manager-line), var(--module-settings-manager-widget-fill) 70%);
   margin-left: -0.25rem;
 }
 
@@ -625,7 +626,7 @@
   padding: 0;
   font: inherit;
   font-size: 0.8125rem;
-  color: rgb(0 0 0 / 0.6);
+  color: color-mix(in oklab, var(--module-settings-manager-line), var(--module-settings-manager-widget-fill) 40%);
   cursor: pointer;
   transition: color 0.15s ease;
 }
@@ -922,5 +923,6 @@
   font-size: 0.875rem;
   opacity: 0.6;
   font-style: italic;
+}
 }
 

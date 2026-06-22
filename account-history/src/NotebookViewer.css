@@ -1,3 +1,4 @@
+@layer package {
 /* ===== Notebook Viewer Layout ===== */
 
 .notebook-viewer {
@@ -345,20 +346,7 @@
   font-size: var(--account-history-text-md);
 }
 
-/* ===== Dark Mode ===== */
-@media (prefers-color-scheme: dark) {
-  .notebook-viewer {
-    background: #111;
-  }
 
-  .notebook-viewer-page {
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), 0 0 1px rgba(255, 255, 255, 0.05);
-  }
-
-  .notebook-viewer-arrow:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.06);
-  }
-}
 
 /* ===== Responsive ===== */
 @media (max-width: 640px) {
@@ -370,4 +358,5 @@
   .notebook-viewer-step-slider {
     width: 100px;
   }
+}
 }

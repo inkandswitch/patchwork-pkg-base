@@ -1,138 +1,110 @@
-import { createSignal, createEffect, For, Show } from "solid-js";
-import {
-  USER_COLOR_PALETTE,
-  createHslColor,
-  parseHslColor,
-} from "./userColors";
-import { Label } from "./label";
-import { Input } from "./input";
+import { createSignal, For, Show } from "solid-js";
+import { USER_COLOR_PALETTE, parseHslColor } from "./userColors";
 
 interface ColorPickerProps {
   value?: string;
   onChange: (color: string) => void;
 }
 
+function hslToHex(hsl: string): string {
+  const parsed = parseHslColor(hsl);
+  if (!parsed) return "#3b82f6";
+  const { h, s, l } = parsed;
+  const hN = h / 360;
+  const sN = s / 100;
+  const lN = l / 100;
+
+  const hue2rgb = (p: number, q: number, t: number) => {
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  };
+
+  let r: number, g: number, b: number;
+  if (sN === 0) {
+    r = g = b = lN;
+  } else {
+    const q =
+      lN < 0.5 ? lN * (1 + sN) : lN + sN - lN * sN;
+    const p = 2 * lN - q;
+    r = hue2rgb(p, q, hN + 1 / 3);
+    g = hue2rgb(p, q, hN);
+    b = hue2rgb(p, q, hN - 1 / 3);
+  }
+
+  const hex = (c: number) =>
+    Math.round(c * 255)
+      .toString(16)
+      .padStart(2, "0");
+  return `#${hex(r)}${hex(g)}${hex(b)}`;
+}
+
 export function ColorPicker(props: ColorPickerProps) {
-  const [showCustom, setShowCustom] = createSignal(false);
-  const [customHue, setCustomHue] = createSignal(200);
-  const [customSat, setCustomSat] = createSignal(70);
-  const [customLight, setCustomLight] = createSignal(50);
+  const [open, setOpen] = createSignal(false);
 
-  createEffect(() => {
-    if (props.value) {
-      const parsed = parseHslColor(props.value);
-      if (parsed) {
-        setCustomHue(parsed.h);
-        setCustomSat(parsed.s);
-        setCustomLight(parsed.l);
-      }
-    }
-  });
+  const currentColor = () =>
+    props.value || USER_COLOR_PALETTE[0].value;
 
-  createEffect(() => {
-    if (showCustom()) {
-      const color = createHslColor(customHue(), customSat(), customLight());
-      props.onChange(color);
-    }
-  });
+  const inputValue = () => {
+    const v = currentColor();
+    return v.startsWith("#") ? v : hslToHex(v);
+  };
 
   return (
-    <div class="color-picker">
-      <Label>Color</Label>
-
-      <div class="color-grid">
-        <For each={[...USER_COLOR_PALETTE]}>
-          {(color) => (
-            <button
-              type="button"
-              class={`color-swatch${props.value === color.value ? " selected" : ""}`}
-              style={{ "background-color": color.value }}
-              onClick={() => {
-                setShowCustom(false);
-                props.onChange(color.value);
-              }}
-              title={color.name}
-            >
-              <Show when={props.value === color.value}>
-                <svg
-                  class="icon-check"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="3"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              </Show>
-            </button>
-          )}
-        </For>
-      </div>
-
+    <>
       <button
         type="button"
-        class="color-custom-toggle"
-        onClick={() => setShowCustom(!showCustom())}
-      >
-        {showCustom() ? "Hide" : "Show"} custom color
-      </button>
-
-      <Show when={showCustom()}>
-        <div class="color-custom-panel">
-          <div class="color-custom-row">
-            <div
-              class="color-preview"
-              style={{
-                "background-color": createHslColor(
-                  customHue(),
-                  customSat(),
-                  customLight()
-                ),
-              }}
-            />
-            <div class="color-sliders">
-              <div class="color-slider-row">
-                <Label class="xs">Hue</Label>
-                <Input
-                  type="range"
-                  min="0"
-                  max="360"
-                  value={customHue()}
-                  onInput={(e) => setCustomHue(Number(e.currentTarget.value))}
-                  class="range"
-                />
-                <span class="color-slider-value">{customHue()}°</span>
-              </div>
-              <div class="color-slider-row">
-                <Label class="xs">Saturation</Label>
-                <Input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={customSat()}
-                  onInput={(e) => setCustomSat(Number(e.currentTarget.value))}
-                  class="range"
-                />
-                <span class="color-slider-value">{customSat()}%</span>
-              </div>
-              <div class="color-slider-row">
-                <Label class="xs">Lightness</Label>
-                <Input
-                  type="range"
-                  min="20"
-                  max="80"
-                  value={customLight()}
-                  onInput={(e) => setCustomLight(Number(e.currentTarget.value))}
-                  class="range"
-                />
-                <span class="color-slider-value">{customLight()}%</span>
-              </div>
-            </div>
+        class="color-trigger"
+        style={{ "background-color": currentColor() }}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen(!open());
+        }}
+      />
+      <Show when={open()}>
+        <div class="color-popup">
+          <div class="color-grid">
+            <For each={[...USER_COLOR_PALETTE]}>
+              {(color) => (
+                <button
+                  type="button"
+                  class={`color-swatch${props.value === color.value ? " selected" : ""}`}
+                  style={{ "background-color": color.value }}
+                  onClick={() => {
+                    props.onChange(color.value);
+                    setOpen(false);
+                  }}
+                  title={color.name}
+                >
+                  <Show when={props.value === color.value}>
+                    <svg
+                      class="icon-check"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="3"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  </Show>
+                </button>
+              )}
+            </For>
+            <label class="color-swatch color-swatch-custom" title="Custom color">
+              <input
+                type="color"
+                value={inputValue()}
+                onInput={(e) => props.onChange(e.currentTarget.value)}
+              />
+            </label>
           </div>
         </div>
       </Show>
-    </div>
+    </>
   );
 }

@@ -229,6 +229,7 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
 
   return (
     <div class="account-picker">
+      <Show when={!currentAccount?.contactUrl || self() !== undefined}>
       <Show when={!isLoggedIn()}>
         <Tabs
           defaultValue={AccountPickerTab.SignUp}
@@ -324,19 +325,25 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
         />
 
         <div class="profile-header">
-          <Show when={currentAccount?.contactUrl}>
-            <button
-              type="button"
-              class="avatar-button"
-              onClick={() => avatarInputRef?.click()}
-              title="Click to change avatar"
-            >
-              <patchwork-view
-                doc-url={currentAccount.contactUrl}
-                tool-id="contact"
-              />
-            </button>
-          </Show>
+          <div class="avatar-area">
+            <Show when={currentAccount?.contactUrl}>
+              <button
+                type="button"
+                class="avatar-button"
+                onClick={() => avatarInputRef?.click()}
+                title="Click to change avatar"
+              >
+                <patchwork-view
+                  doc-url={currentAccount.contactUrl}
+                  tool-id="contact"
+                />
+              </button>
+            </Show>
+            <ColorPicker
+              value={(self() as any)?.color}
+              onChange={onColorChange}
+            />
+          </div>
           <Input
             id="name"
             class="profile-name-input"
@@ -346,71 +353,31 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
           />
         </div>
 
-        <div class="section">
-          <ColorPicker
-            value={(self() as any)?.color}
-            onChange={onColorChange}
-          />
-          <p class="hint">
-            Your cursor color in collaborative editing.
-          </p>
-        </div>
-
-        <div class="section">
-          <Label for="accountUrl">Account token</Label>
-          <div class="input-row">
-            <Input
-              onFocus={(e) => e.currentTarget.select()}
-              value={currentAccountToken() || ""}
-              id="accountUrl"
-              type={showAccountUrl() ? "text" : "password"}
-              readOnly
-              autocomplete="off"
-            />
-            <Button
-              variant="ghost"
-              onClick={onToggleShowAccountUrl}
-              type="button"
+        <div class="actions">
+          <Tooltip open={isCopyTooltipOpen()}>
+            <TooltipTrigger
+              as="div"
+              onClick={onCopy}
+              onBlur={() => setIsCopyTooltipOpen(false)}
             >
-              <Show when={showAccountUrl()} fallback={<EyeOffIcon />}>
-                <EyeIcon />
-              </Show>
-            </Button>
-            <Tooltip open={isCopyTooltipOpen()}>
-              <TooltipTrigger
-                type="button"
-                onClick={onCopy}
-                onBlur={() => setIsCopyTooltipOpen(false)}
-                class="tooltip-trigger"
-              >
-                <CopyIcon />
-              </TooltipTrigger>
-              <TooltipContent class="tooltip-content">
-                <p>Copied</p>
-              </TooltipContent>
-            </Tooltip>
-          </div>
-          <p class="hint">
-            Copy this to log in on another device.
-          </p>
-          <p class="hint warning">
-            This app has limited security. Don't use it for private docs.
-          </p>
-        </div>
+              <Button variant="outline" type="button">
+                <CopyIcon class="icon-inline" />
+                Copy account token
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent class="tooltip-content">
+              <p>Copied</p>
+            </TooltipContent>
+          </Tooltip>
 
-        <Show when={props.element.hive?.active?.contactCard}>
-          <div class="section">
-            <Label>Contact card</Label>
-            <p class="hint">
-              Share this so others can send you documents.
-            </p>
+          <Show when={props.element.hive?.active?.contactCard}>
             <Tooltip open={isContactCardCopyTooltipOpen()}>
               <TooltipTrigger
                 as="div"
                 onClick={onCopyContactCard}
                 onBlur={() => setIsContactCardCopyTooltipOpen(false)}
               >
-                <Button variant="outline" type="button" class="wide">
+                <Button variant="outline" type="button">
                   <CopyIcon class="icon-inline" />
                   Copy contact card
                 </Button>
@@ -419,11 +386,9 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
                 <p>Copied</p>
               </TooltipContent>
             </Tooltip>
-          </div>
-        </Show>
+          </Show>
 
-        <div class="section section-footer">
-          <Button onClick={() => setShowSignOutConfirm(true)} variant="secondary" class="sign-out">
+          <Button onClick={() => setShowSignOutConfirm(true)} variant="ghost" class="sign-out">
             Sign out
           </Button>
         </div>
@@ -479,6 +444,7 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
             </div>
           </div>
         </Show>
+      </Show>
       </Show>
     </div>
   );

@@ -62,12 +62,12 @@ export function HistoryList(props: HistoryListProps) {
   });
 
   return (
-    <div class="flex-1 overflow-auto min-h-0">
+    <div class="history-list" style={{ "min-height": "0" }}>
       <For each={groupedItems()}>
         {(group) => (
           <>
             <DateHeader date={group.date} />
-            <div class="space-y-2 px-2 pb-4">
+            <div style={{ display: "flex", "flex-direction": "column", gap: "0.5rem", padding: "0 0.5rem 1rem" }}>
               <For each={group.items}>
                 {(item, index) => {
                   const isLast = () => index() === group.items.length - 1;

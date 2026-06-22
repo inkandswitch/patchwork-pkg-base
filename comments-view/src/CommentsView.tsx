@@ -146,9 +146,9 @@ export function CommentsView(props: { element: HTMLElement }) {
   });
 
   return (
-    <div class="h-full flex flex-col p-2 gap-2">
-      <div class="flex items-center justify-between text-xs text-gray-400">
-        <span class="font-medium">Comments</span>
+    <div class="comments-panel">
+      <div class="comments-panel-header">
+        <span class="comments-panel-header-title">Comments</span>
       </div>
       <For each={threadUrls()}>
         {(threadUrl) => (
@@ -374,18 +374,18 @@ function ThreadView(props: {
 
   return (
     <Show when={thread() && threadHandle()}>
-      <div class="flex flex-col gap-2">
+      <div class="comments-thread">
         <div
-          class={`card card-bordered bg-white border border-gray-300 transition-all cursor-pointer ${
+          class={`comments-thread-card ${
             isPrimary()
-              ? "shadow-xl"
+              ? "comments-thread-card--primary"
               : isSecondary()
-                ? "shadow-md"
-                : "shadow-sm"
+                ? "comments-thread-card--secondary"
+                : "comments-thread-card--inactive"
           }`}
           onClick={onClickThreadCard}
         >
-          <div class="card-body p-2 space-y-2">
+          <div class="comments-thread-card-body">
             <For each={commentIds()}>
               {(commentId) => {
                 const commentHandle = createMemo(() => {
@@ -412,20 +412,20 @@ function ThreadView(props: {
           </div>
         </div>
         <Show when={draftComment() || isPrimary()}>
-          <div class="flex gap-2 justify-end">
+          <div class="comments-thread-actions">
             <Show
               when={draftComment()}
               fallback={
                 <>
                   <button
-                    class="btn btn-ghost btn-sm"
+                    class="comment-btn"
                     onClick={onResolveThread}
                     title="Resolve comment"
                   >
                     Resolve
                   </button>
                   <button
-                    class="btn btn-ghost btn-sm"
+                    class="comment-btn"
                     onClick={onReplyToComment}
                     title="Reply to comment"
                   >
@@ -434,10 +434,10 @@ function ThreadView(props: {
                 </>
               }
             >
-              <button class="btn btn-ghost btn-sm" onClick={onCancelDraft}>
+              <button class="comment-btn" onClick={onCancelDraft}>
                 Cancel
               </button>
-              <button class="btn btn-ghost btn-sm" onClick={onSaveDraft}>
+              <button class="comment-btn" onClick={onSaveDraft}>
                 Save
               </button>
             </Show>
@@ -493,19 +493,19 @@ function CommentView(props: {
 
   return (
     <Show when={shouldRender() && comment()}>
-      <div class="space-y-2" data-id={props.commentHandle.url}>
-        <div class="flex justify-between items-center">
-          <div class="flex items-center gap-2">
+      <div class="comment-card" data-id={props.commentHandle.url}>
+        <div class="comment-header">
+          <div class="comment-author">
             <patchwork-view
               doc-url={comment()!.contactUrl}
               tool-id="contact-avatar"
             />
-            <span class="text-sm font-medium whitespace-nowrap">
+            <span class="comment-author-name">
               {contactName()}
             </span>
           </div>
           <Show when={!isDraft() && comment()!.timestamp}>
-            <span class="text-xs text-gray-400">
+            <span class="comment-timestamp">
               {relativeTime(comment()!.timestamp!)}
             </span>
           </Show>
@@ -513,13 +513,13 @@ function CommentView(props: {
         <Show
           when={isDraft()}
           fallback={
-            <div class="text-base text-gray-800 whitespace-pre-wrap">
+            <div class="comment-content">
               {comment()!.content}
             </div>
           }
         >
           <textarea
-            class="textarea w-full min-h-24 border border-gray-300 rounded-lg p-2"
+            class="comment-draft-textarea"
             value={comment()!.draftContent ?? ""}
             onInput={(e) => onChangeDraft(e.currentTarget.value)}
           />

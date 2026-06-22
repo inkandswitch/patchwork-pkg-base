@@ -55,7 +55,7 @@ export function DocHistoryView(props: DocHistoryViewProps) {
   };
 
   return (
-    <div class="flex flex-col flex-1 min-h-0" onClick={clearSelection}>
+    <div class="history-panel" style={{ flex: "1", "min-height": "0" }} onClick={clearSelection}>
       <DocHistoryHeader
         title={(props.showTitle?.() ?? true) ? title() : undefined}
         onRecompute={forceRecompute}

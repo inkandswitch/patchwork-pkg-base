@@ -91,8 +91,8 @@ export function HistoryItem(props: HistoryItemProps) {
   return (
     <div>
       <TimelineCard isSelected={props.isSelected} onClick={handleParentClick}>
-        <div class="flex items-center gap-2">
-          <div class="flex items-center shrink-0">
+        <div style={{ display: "flex", "align-items": "center", gap: "0.5rem" }}>
+          <div style={{ display: "flex", "align-items": "center", "flex-shrink": "0" }}>
             <For each={visibleAuthors()}>
               {(author, i) => (
                 <div
@@ -102,8 +102,18 @@ export function HistoryItem(props: HistoryItemProps) {
                     "margin-left": i() === 0 ? "0" : "-4px",
                     "z-index": visibleAuthors().length - i(),
                     "font-size": "9px",
+                    position: "relative",
+                    width: "18px",
+                    height: "18px",
+                    "border-radius": "50%",
+                    display: "flex",
+                    "align-items": "center",
+                    "justify-content": "center",
+                    color: "white",
+                    "font-weight": "300",
+                    "user-select": "none",
+                    "flex-shrink": "0",
                   }}
-                  class="relative w-[18px] h-[18px] rounded-full flex items-center justify-center text-white font-light select-none shrink-0"
                 >
                   {getInitials(author)}
                 </div>
@@ -111,8 +121,20 @@ export function HistoryItem(props: HistoryItemProps) {
             </For>
             <Show when={extraAuthors() > 0}>
               <div
-                style={{ "margin-left": "-4px", "font-size": "7px" }}
-                class="w-[18px] h-[18px] rounded-full bg-gray-400 flex items-center justify-center text-white relative shrink-0"
+                style={{
+                  "margin-left": "-4px",
+                  "font-size": "7px",
+                  width: "18px",
+                  height: "18px",
+                  "border-radius": "50%",
+                  background: "#9ca3af",
+                  display: "flex",
+                  "align-items": "center",
+                  "justify-content": "center",
+                  color: "white",
+                  position: "relative",
+                  "flex-shrink": "0",
+                }}
               >
                 +{extraAuthors()}
               </div>
@@ -124,11 +146,11 @@ export function HistoryItem(props: HistoryItemProps) {
             fallback={
               <>
                 <div
-                  class="group/label flex items-center gap-1 cursor-text min-w-0 overflow-hidden shrink"
+                  style={{ display: "flex", "align-items": "center", gap: "0.25rem", cursor: "text", "min-width": "0", overflow: "hidden", "flex-shrink": "1" }}
                   onDblClick={startEdit}
                   title="Double-click to rename"
                 >
-                  <span class="truncate text-gray-700">
+                  <span style={{ overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap", color: "#374151" }}>
                     <Show
                       when={props.item.isVirtual && !props.item.customLabel}
                       fallback={label()}
@@ -137,8 +159,7 @@ export function HistoryItem(props: HistoryItemProps) {
                     </Show>
                   </span>
                   <svg
-                    class="shrink-0 w-3 h-3 opacity-0 group-hover/label:opacity-40 hover:!opacity-70 transition-opacity cursor-pointer"
-                    style={{ color: "inherit" }}
+                    style={{ "flex-shrink": "0", width: "12px", height: "12px", opacity: "0", cursor: "pointer", color: "inherit", transition: "opacity 0.15s" }}
                     xmlns="http://www.w3.org/2000/svg"
                     viewBox="0 0 16 16"
                     fill="currentColor"
@@ -148,13 +169,12 @@ export function HistoryItem(props: HistoryItemProps) {
                     <path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Z" />
                   </svg>
                 </div>
-                <div class="flex-1" />
+                <div style={{ flex: "1" }} />
               </>
             }
           >
             <input
-              class="flex-1 min-w-0 bg-transparent border-0 border-b border-current outline-none p-0 leading-none"
-              style={{ font: "inherit", color: "inherit" }}
+              style={{ flex: "1", "min-width": "0", background: "transparent", border: "none", "border-bottom": "1px solid currentColor", outline: "none", padding: "0", "line-height": "1", font: "inherit", color: "inherit" }}
               value={editValue()}
               onInput={(e) => setEditValue(e.currentTarget.value)}
               onBlur={commitEdit}
@@ -164,29 +184,29 @@ export function HistoryItem(props: HistoryItemProps) {
             />
           </Show>
 
-          <div class="flex items-center gap-1.5 shrink-0">
+          <div style={{ display: "flex", "align-items": "center", gap: "0.375rem", "flex-shrink": "0" }}>
             <Show when={additions() > 0}>
-              <div class="flex items-center gap-0.5">
-                <div class="h-1.5 rounded-sm bg-green-500" style={{ width: `${barWidth(additions(), props.thresholds.large)}px` }} />
-                <span class="text-green-600 text-[11px] font-light">+{additions()}</span>
+              <div style={{ display: "flex", "align-items": "center", gap: "0.125rem" }}>
+                <div style={{ height: "6px", "border-radius": "2px", background: "#22c55e", width: `${barWidth(additions(), props.thresholds.large)}px` }} />
+                <span style={{ color: "#16a34a", "font-size": "11px", "font-weight": "300" }}>+{additions()}</span>
               </div>
             </Show>
             <Show when={deletions() > 0}>
-              <div class="flex items-center gap-0.5">
-                <div class="h-1.5 rounded-sm bg-red-400" style={{ width: `${barWidth(deletions(), props.thresholds.large)}px` }} />
-                <span class="text-red-500 text-[11px] font-light">-{deletions()}</span>
+              <div style={{ display: "flex", "align-items": "center", gap: "0.125rem" }}>
+                <div style={{ height: "6px", "border-radius": "2px", background: "#f87171", width: `${barWidth(deletions(), props.thresholds.large)}px` }} />
+                <span style={{ color: "#ef4444", "font-size": "11px", "font-weight": "300" }}>-{deletions()}</span>
               </div>
             </Show>
           </div>
 
-          <span class="text-[var(--history-muted-fg)] text-[11px] font-light shrink-0 w-14 text-right">
+          <span style={{ color: "var(--history-muted-fg)", "font-size": "11px", "font-weight": "300", "flex-shrink": "0", width: "3.5rem", "text-align": "right" }}>
             {timeDisplay()}
           </span>
         </div>
       </TimelineCard>
 
       <Show when={isExpanded()}>
-        <div class="ml-4 mt-1 space-y-1">
+        <div style={{ "margin-left": "1rem", "margin-top": "0.25rem", display: "flex", "flex-direction": "column", gap: "0.25rem" }}>
           <For each={subItems()}>
             {(subItem) => {
               const subAdd = () => subItem.additions ?? 0;
@@ -201,38 +221,47 @@ export function HistoryItem(props: HistoryItemProps) {
                     props.onSubItemClick?.(subItem, e);
                   }}
                 >
-                  <div class="flex items-center gap-2">
+                  <div style={{ display: "flex", "align-items": "center", gap: "0.5rem" }}>
                     <div
                       title={subAuthor()}
                       style={{
                         background: authorColor(subAuthor()),
                         "font-size": "9px",
+                        width: "18px",
+                        height: "18px",
+                        "border-radius": "50%",
+                        display: "flex",
+                        "align-items": "center",
+                        "justify-content": "center",
+                        color: "white",
+                        "font-weight": "300",
+                        "user-select": "none",
+                        "flex-shrink": "0",
                       }}
-                      class="w-[18px] h-[18px] rounded-full flex items-center justify-center text-white font-light select-none shrink-0"
                     >
                       {getInitials(subAuthor())}
                     </div>
 
-                    <span class="flex-1 truncate text-gray-700">
+                    <span style={{ flex: "1", overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap", color: "#374151" }}>
                       {getChangeLabel(subItem, props.thresholds)}
                     </span>
 
-                    <div class="flex items-center gap-1.5 shrink-0">
+                    <div style={{ display: "flex", "align-items": "center", gap: "0.375rem", "flex-shrink": "0" }}>
                       <Show when={subAdd() > 0}>
-                        <div class="flex items-center gap-0.5">
-                          <div class="h-1.5 rounded-sm bg-green-500" style={{ width: `${barWidth(subAdd(), props.thresholds.large)}px` }} />
-                          <span class="text-green-600 text-[11px] font-light">+{subAdd()}</span>
+                        <div style={{ display: "flex", "align-items": "center", gap: "0.125rem" }}>
+                          <div style={{ height: "6px", "border-radius": "2px", background: "#22c55e", width: `${barWidth(subAdd(), props.thresholds.large)}px` }} />
+                          <span style={{ color: "#16a34a", "font-size": "11px", "font-weight": "300" }}>+{subAdd()}</span>
                         </div>
                       </Show>
                       <Show when={subDel() > 0}>
-                        <div class="flex items-center gap-0.5">
-                          <div class="h-1.5 rounded-sm bg-red-400" style={{ width: `${barWidth(subDel(), props.thresholds.large)}px` }} />
-                          <span class="text-red-500 text-[11px] font-light">-{subDel()}</span>
+                        <div style={{ display: "flex", "align-items": "center", gap: "0.125rem" }}>
+                          <div style={{ height: "6px", "border-radius": "2px", background: "#f87171", width: `${barWidth(subDel(), props.thresholds.large)}px` }} />
+                          <span style={{ color: "#ef4444", "font-size": "11px", "font-weight": "300" }}>-{subDel()}</span>
                         </div>
                       </Show>
                     </div>
 
-                    <span class="text-[var(--history-muted-fg)] text-[11px] font-light shrink-0 w-14 text-right">
+                    <span style={{ color: "var(--history-muted-fg)", "font-size": "11px", "font-weight": "300", "flex-shrink": "0", width: "3.5rem", "text-align": "right" }}>
                       {formatTimeOnly(subItem.endTime)}
                     </span>
                   </div>

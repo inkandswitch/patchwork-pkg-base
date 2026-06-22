@@ -22,18 +22,15 @@
     "@inkandswitch/patchwork-plugins": "^0.0.6",
     "@inkandswitch/patchwork-react": "^0.0.3",
     "react": "^18.0.0",
-    "react-dom": "^18.0.0",
-    "tailwindcss": "^4.1.14"
+    "react-dom": "^18.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.37.0",
     "@inkandswitch/patchwork-bootloader": "^0.0.4",
-    "@tailwindcss/vite": "^4.1.14",
     "@types/react": "^18.3.1",
     "@types/react-dom": "^18.3.1",
     "@typescript-eslint/parser": "^8.40.0",
     "@vitejs/plugin-react": "^5.0.4",
-    "daisyui": "^5.1.29",
     "eslint": "^9.34.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "globals": "^16.4.0",

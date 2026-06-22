@@ -1,6 +1,4 @@
-@import "tailwindcss";
-@plugin "daisyui";
-
+@layer package {
 .configurator {
   padding: 1.25rem;
   display: flex;
@@ -9,8 +7,8 @@
   max-width: 28rem;
   height: 100%;
   overflow-y: auto;
-  font-family: system-ui, -apple-system, sans-serif;
-  color: var(--bc);
+  font-family: var(--studio-family-sans, system-ui, sans-serif);
+  color: var(--studio-line, black);
 }
 
 .configurator.loading {
@@ -235,7 +233,7 @@
   background: none;
   color: inherit;
   font-size: 0.8125rem;
-  font-family: ui-monospace, monospace;
+  font-family: var(--studio-family-code, ui-monospace, monospace);
   outline: none;
   transition: border-color 120ms;
 }
@@ -303,4 +301,5 @@
   font-style: italic;
   margin: 0;
   padding: 0.375rem 0.25rem;
+}
 }

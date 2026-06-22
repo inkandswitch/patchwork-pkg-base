@@ -1,4 +1,6 @@
+@layer package {
 :root,
+:host,
 [theme] {
   --contact-fg: var(--studio-line, black);
   --contact-muted-fg: var(--studio-line-offset-50, #999);
@@ -71,4 +73,5 @@
   margin: 0;
   font-size: 0.875rem;
   color: var(--contact-muted-fg);
+}
 }

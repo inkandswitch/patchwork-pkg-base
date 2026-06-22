@@ -1,6 +1,4 @@
-@import "tailwindcss";
-@plugin "daisyui";
-
+@layer package {
 .context-sidebar {
   .sidebar-close-button {
     display: flex;
@@ -19,4 +17,5 @@
   .sidebar-close-button:hover {
     opacity: 1;
   }
+}
 }

@@ -1,6 +1,6 @@
 {
   "name": "@patchwork/file",
-  "version": "0.0.2",
+  "version": "0.0.4",
   "description": "File datatype and viewer for Patchwork",
   "type": "module",
   "main": "src/index.ts",

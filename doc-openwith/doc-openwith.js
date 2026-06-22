@@ -1,24 +1,23 @@
 import {render} from "solid-js/web"
 import html from "solid-js/html"
-import {createSignal, createEffect} from "solid-js"
+import {createSignal} from "solid-js"
 import {getType} from "@inkandswitch/patchwork-filesystem"
 import {getRegistry} from "@inkandswitch/patchwork-plugins"
 
 function DocOpenWith(handle, element) {
 	const [tools, setTools] = createSignal([])
-	const [currentToolId, setCurrentToolId] = createSignal(null)
 	const [open, setOpen] = createSignal(false)
 
 	function refresh() {
 		const doc = handle.doc()
 		if (!doc) return setTools([])
 		const type = getType(doc)
-		if (!type) return setTools([])
 		const list = getRegistry("patchwork:tool").filter(t => {
 			const sd = t.supportedDatatypes
 			const matches =
 				sd === "*" ||
-				(Array.isArray(sd) && (sd.includes(type) || sd.includes("*")))
+				(Array.isArray(sd) &&
+					(sd.includes("*") || (type && sd.includes(type))))
 			return matches && !t.unlisted && !t.forTitleBar
 		})
 		list.sort((a, b) => {
@@ -49,21 +48,7 @@ function DocOpenWith(handle, element) {
 		}
 	}
 
-	createEffect(() => {
-		const list = tools()
-		if (list.length && !currentToolId()) setCurrentToolId(list[0].id)
-	})
-
-	function onOpenDoc(e) {
-		if (e.detail?.url === handle.url && e.detail?.toolId) {
-			const ids = new Set(tools().map(t => t.id))
-			if (ids.has(e.detail.toolId)) setCurrentToolId(e.detail.toolId)
-		}
-	}
-	window.addEventListener("patchwork:open-document", onOpenDoc, true)
-
 	function pickTool(toolId) {
-		setCurrentToolId(toolId)
 		menuEl.hidePopover()
 		element.dispatchEvent(
 			new CustomEvent("patchwork:open-document", {
@@ -73,13 +58,6 @@ function DocOpenWith(handle, element) {
 			}),
 		)
 	}
-
-	const currentName = () => {
-		const t = tools().find(t => t.id === currentToolId())
-		return t?.name || ""
-	}
-
-	const chevron = `<svg width="8" height="5" viewBox="0 0 8 5" fill="none" style="display:block"><path d="M1 1l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`
 
 	const style = document.createElement("style")
 	style.textContent = `
@@ -91,9 +69,8 @@ function DocOpenWith(handle, element) {
 		.doc-openwith-btn {
 			display: flex;
 			align-items: center;
-			gap: 4px;
 			height: 22px;
-			padding: 0 6px 0 8px;
+			padding: 0 8px;
 			border: 1px solid var(--color-base-300, #d0d0d0);
 			border-radius: 3px;
 			background: var(--color-base-100, #fff);
@@ -113,13 +90,6 @@ function DocOpenWith(handle, element) {
 		.doc-openwith-btn--open {
 			border-color: var(--color-base-400, #aaa);
 			background: var(--color-base-200, #f4f4f4);
-		}
-		.doc-openwith-btn .doc-openwith-chevron {
-			opacity: 0.5;
-			transition: transform 0.15s;
-		}
-		.doc-openwith-btn--open .doc-openwith-chevron {
-			transform: rotate(180deg);
 		}
 		.doc-openwith-menu[popover] {
 			position: fixed;
@@ -168,9 +138,6 @@ function DocOpenWith(handle, element) {
 		.doc-openwith-item--highlight {
 			background: var(--color-base-200, #f0f0f0);
 		}
-		.doc-openwith-item--active {
-			font-weight: 600;
-		}
 	`
 	element.appendChild(style)
 
@@ -216,8 +183,6 @@ function DocOpenWith(handle, element) {
 			filtered.forEach((t, i) => {
 				const item = document.createElement("button")
 				item.className = "doc-openwith-item"
-				if (t.id === currentToolId())
-					item.classList.add("doc-openwith-item--active")
 				if (i === highlighted)
 					item.classList.add("doc-openwith-item--highlight")
 				item.textContent = t.name
@@ -286,11 +251,7 @@ function DocOpenWith(handle, element) {
 						class=${() => `doc-openwith-btn${open() ? " doc-openwith-btn--open" : ""}`}
 						onClick=${toggleMenu}
 					>
-						${() => currentName()}
-						<span
-							class="doc-openwith-chevron"
-							innerHTML=${chevron}
-						></span>
+						Open with\u2026
 					</button>`
 				}}
 			</div>`,
@@ -300,7 +261,6 @@ function DocOpenWith(handle, element) {
 	return () => {
 		handle.off("change", refresh)
 		off()
-		window.removeEventListener("patchwork:open-document", onOpenDoc, true)
 		menuEl.remove()
 		style.remove()
 		dispose()

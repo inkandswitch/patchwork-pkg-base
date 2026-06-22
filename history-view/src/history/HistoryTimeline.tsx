@@ -24,7 +24,7 @@ export function HistoryTimeline(props: PatchworkToolProps) {
   const primaryUrl = () => selectedDocUrls()[0] as AutomergeUrl | undefined;
 
   return (
-    <div class="flex flex-col h-full">
+    <div class="history-panel">
       <Show when={primaryUrl()} keyed>
         {(url) => (
           <DocHistoryView
