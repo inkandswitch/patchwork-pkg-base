@@ -20,7 +20,7 @@ import type {
   FolderDoc,
   HasPatchworkMetadata,
 } from "@inkandswitch/patchwork-filesystem";
-import { getRegistry, type Datatype } from "@inkandswitch/patchwork-plugins";
+import { getRegistry, isLoadedPlugin, type Datatype } from "@inkandswitch/patchwork-plugins";
 import {
   createEffect,
   createSignal,
@@ -180,8 +180,9 @@ export function DocumentList(props: DocumentListProps) {
 
                   await datatypes.load(datatype.id);
                   if (cancelled) return;
+                  if (!isLoadedPlugin(datatype)) return;
 
-                  const title = (datatype as any).module.getTitle(docData);
+                  const title = datatype.module.getTitle(docData);
                   if (!title) return;
 
                   // Update folder docref name if different

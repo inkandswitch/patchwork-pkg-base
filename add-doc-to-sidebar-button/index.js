@@ -6,7 +6,7 @@ export const plugins = [
     name: "Add doc to sidebar button",
     icon: "Plus",
     supportedDatatypes: "*",
-    load: () => import("./button.js"),
+    load: () => import("./button.js").then(mod => mod.default),
     unlisted: true,
     forTitleBar: true,
   },
