@@ -14,14 +14,14 @@ export function generateThemeCss(name: string, mode: "light" | "dark", vars: Rec
 		css += `\t${key}: ${value};\n`
 	}
 
-	// Derive fill offsets
+	// Derive fill offsets, tinted toward the secondary (see theme.css)
 	for (const pct of [10, 20, 30, 40, 50]) {
-		css += `\t--studio-fill-offset-${pct}: color-mix(in oklch, var(--studio-fill), var(--studio-line) ${pct}%);\n`
+		css += `\t--studio-fill-offset-${pct}: color-mix(in oklch, color-mix(in oklch, var(--studio-fill), var(--studio-line) ${pct}%), var(--studio-offset-tint, var(--studio-secondary)) var(--studio-offset-tint-amount, 10%));\n`
 	}
 
-	// Derive line offsets
+	// Derive line offsets, tinted toward the secondary (see theme.css)
 	for (const pct of [10, 20, 30, 40, 50]) {
-		css += `\t--studio-line-offset-${pct}: color-mix(in oklch, var(--studio-line), var(--studio-fill) ${pct}%);\n`
+		css += `\t--studio-line-offset-${pct}: color-mix(in oklch, color-mix(in oklch, var(--studio-line), var(--studio-fill) ${pct}%), var(--studio-offset-tint, var(--studio-secondary)) var(--studio-offset-tint-amount, 10%));\n`
 	}
 
 	css += "}\n"
@@ -97,11 +97,11 @@ export function ThemeEditorTool(handle: any, element: HTMLElement) {
 		for (const pct of [10, 20, 30, 40, 50]) {
 			root.style.setProperty(
 				`--studio-fill-offset-${pct}`,
-				`color-mix(in oklch, var(--studio-fill), var(--studio-line) ${pct}%)`
+				`color-mix(in oklch, color-mix(in oklch, var(--studio-fill), var(--studio-line) ${pct}%), var(--studio-offset-tint, var(--studio-secondary)) var(--studio-offset-tint-amount, 10%))`
 			)
 			root.style.setProperty(
 				`--studio-line-offset-${pct}`,
-				`color-mix(in oklch, var(--studio-line), var(--studio-fill) ${pct}%)`
+				`color-mix(in oklch, color-mix(in oklch, var(--studio-line), var(--studio-fill) ${pct}%), var(--studio-offset-tint, var(--studio-secondary)) var(--studio-offset-tint-amount, 10%))`
 			)
 		}
 	})
