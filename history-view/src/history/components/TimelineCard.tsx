@@ -16,13 +16,16 @@ export function TimelineCard(props: TimelineCardProps) {
       role="button"
       tabIndex={0}
       aria-selected={props.isSelected}
+      data-selected={props.isSelected ? "" : undefined}
       onClick={(e) => { e.stopPropagation(); props.onClick(e); }}
-      class={
-        "relative text-xs py-1.5 px-3 rounded cursor-pointer " +
-        (props.isSelected
-          ? "bg-[var(--history-accent)] border-[var(--history-accent)] text-[var(--history-accent-fg)] [&_*]:text-[var(--history-accent-fg)]"
-          : "bg-[var(--history-card-bg)] hover:bg-[var(--history-card-hover-bg)]")
-      }
+      class="timeline-card"
+      style={{
+        "font-size": "0.75rem",
+        cursor: "pointer",
+        ...(props.isSelected
+          ? { background: "var(--history-accent)", "border-color": "var(--history-accent)", color: "var(--history-accent-fg)" }
+          : {})
+      }}
     >
       {props.children}
     </div>

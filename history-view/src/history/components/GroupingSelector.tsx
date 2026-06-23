@@ -22,9 +22,9 @@ export function GroupingSelector(props: GroupingSelectorProps) {
   };
 
   return (
-    <div class="flex gap-2">
+    <div class="history-grouping-selector">
       <select
-        class="select select-sm select-bordered flex-1"
+        style={{ flex: "1", padding: "2px 6px", "border-radius": "4px", border: "1px solid var(--studio-fill-offset-20, #ccc)", "font-size": "0.75rem", background: "none" }}
         value={props.selectedConfig.name}
         onChange={(e) => handleStrategyChange(e.currentTarget.value)}
       >

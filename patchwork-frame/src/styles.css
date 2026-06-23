@@ -1,25 +1,35 @@
-:root {
-  --color-base-100: #ffffff;
-  --color-base-200: #f2f2f2;
-  --color-base-300: #e5e6e6;
-  --color-base-content: #1f2937;
-}
-
 /* Layout */
+
+:root,
+:host,
+[theme] {
+  --patchwork-frame-bg: var(--studio-fill, white);
+  --patchwork-frame-fg: var(--studio-line, black);
+  --patchwork-frame-muted: var(--studio-line-offset-50, #999);
+  --patchwork-frame-family: var(--studio-family-sans, system-ui, sans-serif);
+  --patchwork-frame-family-code: var(--studio-family-code, ui-monospace, monospace);
+  --patchwork-frame-toolbar: var(--studio-fill, white);
+  --patchwork-frame-toolbar-border: var(--studio-fill-offset-20, #ccc);
+  --patchwork-frame-sidebar-toggle-hover: var(--studio-line, black);
+  --patchwork-frame-resize-accent: color-mix(in oklch, var(--studio-secondary, #33ccf8), transparent 50%);
+  --patchwork-frame-resize-indicator: var(--studio-line-offset-50, #999);
+}
 
 .frame {
   position: relative;
   display: flex;
   width: 100%;
   height: 100%;
-}
+  font-family: var(--patchwork-frame-family);
+  color: var(--patchwork-frame-fg);
+  background: var(--patchwork-frame-bg);
 
 .frame__version {
   position: absolute;
   top: 4px;
   right: 8px;
   z-index: 10;
-  color: #9ca3af;
+  color: var(--patchwork-frame-muted);
   font-size: 0.75rem;
   font-weight: 500;
   pointer-events: none;
@@ -38,11 +48,11 @@
 }
 
 .sidebar[data-side="left"] {
-  background: var(--color-base-100);
+  background: var(--patchwork-frame-bg);
 }
 
 .sidebar[data-side="right"] {
-  background: var(--color-base-100);
+  background: var(--patchwork-frame-bg);
 }
 
 .main-area {
@@ -59,15 +69,21 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem;
-  background: var(--color-base-200);
-  border-bottom: 1px solid var(--color-base-300);
+  background: var(--patchwork-frame-toolbar);
+  border-bottom: 1px solid var(--patchwork-frame-toolbar-border);
 }
 
 .toolbar patchwork-view {
   display: flex;
-  width: fit-content;
   height: 2rem;
   overflow: hidden;
+  width: auto;
+}
+
+.toolbar patchwork-view[tool-id="document-title"],
+.toolbar patchwork-view[tool-id="spacer"] {
+  flex: 1;
+  min-width: 0;
 }
 
 .document-view {
@@ -87,7 +103,7 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: var(--color-base-content);
+  color: var(--patchwork-frame-fg);
 }
 
 .sidebar patchwork-view {
@@ -184,7 +200,7 @@
   right: 1rem;
   z-index: 9999;
   max-width: 360px;
-  font-family: "JetBrains Mono", "SF Mono", "Monaco", monospace;
+  font-family: var(--patchwork-frame-family-code);
   font-size: 0.75rem;
   background: oklch(0.15 0.01 270);
   border: 1px solid oklch(0.35 0.03 270);
@@ -242,17 +258,6 @@
   animation: toast-slide-in 0.2s ease-out;
 }
 
-@keyframes toast-slide-in {
-  from {
-    opacity: 0;
-    transform: translateX(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
 .debug-registry-toast__item:hover {
   background: oklch(0.2 0.01 270);
 }
@@ -294,15 +299,30 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-/* Custom colors for event types */
-:root {
-  --debug-toast-registered: oklch(0.65 0.2 250);
-  --debug-toast-loaded: oklch(0.7 0.2 150);
-  --debug-toast-removed: oklch(0.65 0.25 25);
-  --debug-toast-changed: oklch(0.75 0.2 80);
+}
+@keyframes toast-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
+
+/* Custom colors for event types */
+:root,
+:host,
+[theme] {
+  --debug-toast-registered: color-mix(in oklch, var(--studio-secondary, #33ccf8), var(--studio-line, black) 20%);
+  --debug-toast-loaded: color-mix(in oklch, var(--studio-added, #35f7ca), var(--studio-line, black) 10%);
+  --debug-toast-removed: color-mix(in oklch, var(--studio-danger, #ff6a90), var(--studio-line, black) 20%);
+  --debug-toast-changed: color-mix(in oklch, var(--studio-warning, #f8c43b), var(--studio-line, black) 10%);
+}
+
+.frame {
 .sidebar-toggle {
   height: 100%;
   padding: 0;
@@ -320,7 +340,7 @@
     margin-left: -10px;
   }
   &:hover {
-    background: var(--color-base-content);
+    background: var(--patchwork-frame-sidebar-toggle-hover);
   }
 }
 
@@ -348,7 +368,7 @@
 
 .sidebar-resize-handle:hover,
 .sidebar-resize-handle:active {
-  background-color: oklch(0.6 0.15 250 / 0.5);
+  background-color: var(--patchwork-frame-resize-accent);
 }
 
 .sidebar-resize-handle::after {
@@ -359,7 +379,7 @@
   transform: translate(-50%, -50%);
   width: 2px;
   height: 32px;
-  background-color: oklch(0.5 0.05 270);
+  background-color: var(--patchwork-frame-resize-indicator);
   border-radius: 1px;
   opacity: 0;
   transition: opacity 0.15s ease;
@@ -375,4 +395,6 @@
 
 .sidebar-resize-handle--left {
   left: 0;
+}
+
 }

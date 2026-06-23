@@ -1,17 +1,18 @@
 import { defineConfig } from "vite";
-import tailwindcss from "@tailwindcss/vite";
-import react from "@vitejs/plugin-react";
+import solid from "vite-plugin-solid";
 import cssInjectedByJsPlugin from "vite-plugin-css-injected-by-js";
 import externals from "@inkandswitch/patchwork-bootloader/externals";
 
 export default defineConfig({
   base: "./",
-  plugins: [react(), tailwindcss(), cssInjectedByJsPlugin()],
+  plugins: [solid(), cssInjectedByJsPlugin()],
 
   build: {
     emptyOutDir: true,
     rollupOptions: {
-      external: externals,
+      external: (id) =>
+        externals.some((e: string) => id === e || id.startsWith(e + "/")) ||
+        id === "@inkandswitch/patchwork-providers",
       input: "./src/index.ts",
       output: {
         format: "es",

@@ -8,17 +8,17 @@ export interface DocHistoryHeaderProps {
 
 export function DocHistoryHeader(props: DocHistoryHeaderProps) {
   return (
-    <div class="py-2 px-5 flex justify-between items-center gap-2">
-      <div class="flex flex-col min-w-0">
-        <div class="font-medium">Version History</div>
+    <div class="history-header">
+      <div style={{ display: "flex", "flex-direction": "column", "min-width": "0" }}>
+        <div class="history-header-title">Version History</div>
         <Show when={props.title !== undefined}>
-          <div class="text-[10px] text-gray-400 truncate mt-0.5">{props.title}</div>
+          <div style={{ "font-size": "10px", color: "var(--history-muted-fg)", overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap", "margin-top": "2px" }}>{props.title}</div>
         </Show>
       </div>
 
-      <div class="flex items-center gap-1 shrink-0">
+      <div class="history-header-actions">
         <button
-          class="btn btn-sm btn-ghost btn-square"
+          style={{ background: "none", border: "none", cursor: "pointer", padding: "4px", "border-radius": "4px", display: "flex", "align-items": "center", "justify-content": "center" }}
           disabled={props.isRecalculating}
           title={props.isRecalculating ? "Recalculating history..." : "Recompute"}
           onClick={(e) => { e.stopPropagation(); props.onRecompute(); }}
@@ -33,7 +33,7 @@ export function DocHistoryHeader(props: DocHistoryHeaderProps) {
             stroke-width="2"
             stroke-linecap="round"
             stroke-linejoin="round"
-            class={props.isRecalculating ? "animate-spin [animation-direction:reverse]" : ""}
+            style={props.isRecalculating ? { animation: "spin 1s linear infinite reverse" } : {}}
           >
             <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
             <path d="M3 3v5h5" />

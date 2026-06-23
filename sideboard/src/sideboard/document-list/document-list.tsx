@@ -20,8 +20,17 @@ import type {
   FolderDoc,
   HasPatchworkMetadata,
 } from "@inkandswitch/patchwork-filesystem";
-import { getRegistry, type Datatype } from "@inkandswitch/patchwork-plugins";
-import { createSignal, For, Match, Show, Suspense, Switch } from "solid-js";
+import { getRegistry, isLoadedPlugin, type Datatype } from "@inkandswitch/patchwork-plugins";
+import {
+  createEffect,
+  createSignal,
+  For,
+  Match,
+  onCleanup,
+  Show,
+  Suspense,
+  Switch,
+} from "solid-js";
 import { filter, filterMatches, setRenaming } from "../state.ts";
 import Folder from "./folder.tsx";
 import Item from "./item.tsx";
@@ -116,7 +125,7 @@ export function DocumentList(props: DocumentListProps) {
     });
   }
   return (
-    <Suspense>
+    <>
       <For each={props.docs}>
         {(doc, index) => {
           const visible = () => !filter().length || filterMatches(doc.name);
@@ -144,6 +153,70 @@ export function DocumentList(props: DocumentListProps) {
                 }
               });
           };
+
+          // Sync title from doc content → folder docref + @patchwork.title
+          createEffect(() => {
+            if (!props.selectedDocUrls.includes(doc.url)) return;
+
+            let cancelled = false;
+            let removeListener: (() => void) | undefined;
+
+            props.repo
+              .find<Partial<HasPatchworkMetadata>>(doc.url)
+              .then(async (docHandle) => {
+                if (cancelled) return;
+
+                const datatypes = getRegistry<Datatype>("patchwork:datatype");
+
+                async function syncTitle() {
+                  const docData = docHandle.doc();
+                  if (!docData) return;
+
+                  const metadata = (docData as any)["@patchwork"];
+                  if (!metadata?.type) return;
+
+                  const datatype = datatypes.get(metadata.type) as Datatype;
+                  if (!datatype) return;
+
+                  await datatypes.load(datatype.id);
+                  if (cancelled) return;
+                  if (!isLoadedPlugin(datatype)) return;
+
+                  const title = datatype.module.getTitle(docData);
+                  if (!title) return;
+
+                  // Update folder docref name if different
+                  const currentFolder = props.handle.doc();
+                  const currentName = currentFolder?.docs?.[index()]?.name;
+                  if (currentName !== title) {
+                    props.handle.change((folder) => {
+                      updateText(folder, ["docs", index(), "name"], title);
+                    });
+                  }
+
+                  // Set @patchwork.title on the doc if different
+                  if (metadata.title !== title) {
+                    docHandle.change((d: any) => {
+                      if (d["@patchwork"]) {
+                        d["@patchwork"].title = title;
+                      }
+                    });
+                  }
+                }
+
+                await syncTitle();
+                if (cancelled) return;
+
+                const onChange = () => syncTitle();
+                docHandle.on("change", onChange);
+                removeListener = () => docHandle.off("change", onChange);
+              });
+
+            onCleanup(() => {
+              cancelled = true;
+              removeListener?.();
+            });
+          });
 
           return (
             <div
@@ -239,6 +312,6 @@ export function DocumentList(props: DocumentListProps) {
           onClose={() => setShareModalUrl(null)}
         />
       </Show>
-    </Suspense>
+  </>
   );
 }

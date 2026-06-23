@@ -20,7 +20,8 @@ export function CopyHashButton(props: CopyHashButtonProps) {
 
   return (
     <div
-      class="flex items-center gap-1 font-mono text-[10px] text-base-content/60 hover:text-base-content hover:bg-base-200 px-2 py-1 rounded cursor-pointer ml-2 shrink-0"
+      class="history-copy-btn"
+      style={{ "margin-left": "0.5rem", "flex-shrink": "0" }}
       onClick={copyHash}
       title="Click to copy full hash"
     >
@@ -29,7 +30,7 @@ export function CopyHashButton(props: CopyHashButtonProps) {
         when={copied()}
         fallback={
           <svg
-            class="w-3 h-3"
+            style={{ width: "12px", height: "12px" }}
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -44,7 +45,7 @@ export function CopyHashButton(props: CopyHashButtonProps) {
         }
       >
         <svg
-          class="w-3 h-3 text-success"
+          style={{ width: "12px", height: "12px", color: "var(--history-addition)" }}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"

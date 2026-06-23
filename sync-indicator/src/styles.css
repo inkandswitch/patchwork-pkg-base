@@ -1,7 +1,22 @@
+@layer package {
+:root,
+:host,
+[theme] {
+  --sync-fg: var(--studio-line, black);
+  --sync-muted: var(--studio-line-offset-40, #666);
+  --sync-subtle: var(--studio-line-offset-50, #999);
+  --sync-dim: var(--studio-line-offset-30, #4d4d4d);
+  --sync-bg: var(--studio-fill, white);
+  --sync-border: var(--studio-fill-offset-20, #ccc);
+  --sync-hover: var(--studio-fill-offset-10, #e5e5e5);
+  --sync-family-code: var(--studio-family-code, ui-monospace, monospace);
+}
+}
+
 .sync-trigger {
   padding: 4px;
   border-radius: 6px;
-  color: #6b7280;
+  color: var(--sync-muted);
   vertical-align: top;
   background: none;
   border: none;
@@ -9,20 +24,20 @@
 }
 
 .sync-trigger:hover {
-  color: #111827;
+  color: var(--sync-fg);
 }
 
 .sync-trigger-offline {
   padding: 8px;
   border-radius: 6px;
-  color: #6b7280;
+  color: var(--sync-muted);
   background: none;
   border: none;
   cursor: pointer;
 }
 
 .sync-trigger-offline:hover {
-  background: #f3f4f6;
+  background: var(--sync-hover);
 }
 
 .sync-popover-wrapper {
@@ -34,8 +49,8 @@
   z-index: 2147483647;
   width: 288px;
   border-radius: 6px;
-  border: 1px solid #e5e7eb;
-  background: white;
+  border: 1px solid var(--sync-border);
+  background: var(--sync-bg);
   padding: 16px;
   box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
   outline: none;
@@ -50,7 +65,7 @@
 .sync-status-header {
   font-size: 14px;
   font-weight: 600;
-  color: #111827;
+  color: var(--sync-fg);
 }
 
 
@@ -61,11 +76,11 @@
 }
 
 .sync-peer {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--sync-border);
   border-radius: 4px;
   padding: 6px 8px;
   font-size: 12px;
-  color: #4b5563;
+  color: var(--sync-dim);
 }
 
 .sync-peer-clickable {
@@ -73,12 +88,12 @@
 }
 
 .sync-peer-clickable:hover {
-  background: #f9fafb;
+  background: var(--sync-hover);
 }
 
 .sync-arrow {
   text-align: center;
-  color: #111827;
+  color: var(--sync-fg);
   font-size: 12px;
   line-height: 1;
   margin: 0.5em 0;
@@ -93,19 +108,19 @@
 
 .sync-peer-name {
   font-weight: 600;
-  color: #111827;
+  color: var(--sync-fg);
 }
 
 .sync-peer-status {
   font-size: 11px;
-  color: #6b7280;
+  color: var(--sync-muted);
 }
 
 
 .sync-peer-detail {
   font-size: 11px;
-  color: #9ca3af;
-  font-family: monospace;
+  color: var(--sync-subtle);
+  font-family: var(--sync-family-code);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -113,7 +128,7 @@
 
 .sync-no-peers {
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--sync-subtle);
   text-align: center;
   padding: 8px 0;
 }
@@ -122,7 +137,7 @@
   display: flex;
   justify-content: flex-end;
   padding-top: 4px;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--sync-border);
 }
 
 .sync-copy-btn {
@@ -139,6 +154,6 @@
 }
 
 .sync-copy-btn:hover {
-  background: #f3f4f6;
-  color: #111827;
+  background: var(--sync-hover);
+  color: var(--sync-fg);
 }

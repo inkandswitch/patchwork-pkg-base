@@ -1,2 +1,150 @@
-@import "tailwindcss";
-@plugin "daisyui";
+@layer package {
+:root,
+:host,
+[theme] {
+  --comments-fg: var(--studio-line, black);
+  --comments-muted-fg: var(--studio-line-offset-50, #999);
+  --comments-bg: var(--studio-fill, white);
+  --comments-border: var(--studio-fill-offset-20, #ccc);
+  --comments-hover-bg: var(--studio-fill-offset-10, #f5f5f5);
+  --comments-font: var(--studio-family-sans, system-ui, sans-serif);
+  --comments-accent: var(--studio-secondary, #33ccf8);
+}
+}
+
+.comments-panel {
+  height: 100%;
+  width: 100%;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem;
+  gap: 0.5rem;
+  font-family: var(--comments-font);
+  color: var(--comments-fg);
+}
+
+.comments-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.comments-thread-card {
+  background: var(--comments-bg);
+  border: 1px solid var(--comments-border);
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: box-shadow 0.15s ease;
+}
+
+.comments-thread-card--primary {
+  box-shadow:
+    0 10px 15px -3px rgb(0 0 0 / 0.1),
+    0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+.comments-thread-card--secondary {
+  box-shadow:
+    0 4px 6px -1px rgb(0 0 0 / 0.1),
+    0 2px 4px -2px rgb(0 0 0 / 0.1);
+}
+
+.comments-thread-card--inactive {
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+
+.comments-thread-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.comments-thread-header {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.comments-thread-actions {
+  display: flex;
+  flex-direction: row;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.comment-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.comment-header {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.comment-author {
+  display: flex;
+  flex-direction: row;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.comment-author-name {
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--comments-fg);
+}
+
+.comment-timestamp {
+  font-size: 0.75rem;
+  color: var(--comments-muted-fg);
+}
+
+.comment-content {
+  font-size: 1rem;
+  color: var(--comments-fg);
+  white-space: pre-wrap;
+}
+
+.comment-draft-textarea {
+  width: 100%;
+  min-height: 6rem;
+  border: 1px solid var(--comments-border);
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+  font-family: var(--comments-font);
+  font-size: 0.875rem;
+  color: var(--comments-fg);
+  background: var(--comments-bg);
+  resize: vertical;
+}
+
+.comment-draft-textarea:focus {
+  outline: 2px solid var(--comments-accent);
+  outline-offset: 1px;
+}
+
+.comment-btn {
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-family: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: var(--comments-fg);
+}
+
+.comment-btn:hover {
+  background: var(--comments-hover-bg);
+}

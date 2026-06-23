@@ -1,17 +1,22 @@
-:root {
-  /* Light mode colors */
-  --account-history-primary: #1a73e8;
-  --account-history-bg: #ffffff;
-  --account-history-text: #202124;
-  --account-history-text-secondary: #5f6368;
-  --account-history-text-tertiary: #80868b;
-  --account-history-border: #e0e0e0;
-  --account-history-hover: #f1f3f4;
+@layer package {
+:root,
+:host,
+[theme] {
+  /* Colors derived from studio variables */
+  --account-history-primary: var(--studio-secondary, #33ccf8);
+  --account-history-bg: var(--studio-fill, white);
+  --account-history-text: var(--studio-line, black);
+  --account-history-text-secondary: var(--studio-line-offset-40, #666);
+  --account-history-text-tertiary: var(--studio-line-offset-50, #999);
+  --account-history-border: var(--studio-fill-offset-20, #ccc);
+  --account-history-hover: var(--studio-fill-offset-10, #e5e5e5);
+  --account-history-family: var(--studio-family-sans, system-ui, sans-serif);
+  --account-history-family-code: var(--studio-family-code, ui-monospace, monospace);
   --account-history-radius: 4px;
 
   /* Danger/delete colors */
-  --account-history-danger: #d93025;
-  --account-history-danger-bg: rgba(217, 48, 37, 0.1);
+  --account-history-danger: var(--studio-danger, #ff6a90);
+  --account-history-danger-bg: color-mix(in oklch, var(--studio-danger, #ff6a90), transparent 90%);
 
   /* Fluid spacing scale - scales smoothly from mobile to desktop */
   --account-history-space-2xs: 0.25rem;                        /* 4px - fixed minimal spacing */
@@ -54,19 +59,8 @@
   --account-history-z-sticky-date: 5;
   --account-history-z-sticky-header: 10;
 }
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) {
-    /* Dark mode colors */
-    --account-history-primary: #8ab4f8;
-    --account-history-bg: #1a1a1a;
-    --account-history-text: #e8eaed;
-    --account-history-text-secondary: #9aa0a6;
-    --account-history-text-tertiary: #6e6e6e;
-    --account-history-border: #3a3a3a;
-    --account-history-hover: #2a2a2a;
-  }
 }
+
 
 /* History Recorder (toolbar button) */
 .account-history-toolbar-button {
@@ -91,7 +85,7 @@
   width: 100%;
   height: 100%;
   margin: 0 auto;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--account-history-family);
   color: var(--account-history-text);
   background: var(--account-history-bg);
   display: flex;
@@ -379,7 +373,7 @@
   font-size: var(--account-history-text-xs);
   color: var(--account-history-text-tertiary);
   opacity: 0.6;
-  font-family: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, Courier, monospace;
+  font-family: var(--account-history-family-code);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

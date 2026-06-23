@@ -1,0 +1,5 @@
+{
+  "name": "document open with",
+  "type": "module",
+  "main": "doc-openwith.js"
+}
