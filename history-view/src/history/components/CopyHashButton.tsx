@@ -45,7 +45,7 @@ export function CopyHashButton(props: CopyHashButtonProps) {
         }
       >
         <svg
-          style={{ width: "12px", height: "12px", color: "#22c55e" }}
+          style={{ width: "12px", height: "12px", color: "var(--history-addition)" }}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"

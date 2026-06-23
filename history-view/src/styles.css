@@ -29,6 +29,12 @@
   --history-family: var(--studio-family-sans, system-ui, sans-serif);
   --history-family-code: var(--studio-family-code, ui-monospace, monospace);
 
+  /* Diff indicators */
+  --history-addition: #22c55e;
+  --history-addition-fg: #16a34a;
+  --history-deletion: #f87171;
+  --history-deletion-fg: #ef4444;
+
   /* Borders & interactive */
   --history-border: var(--studio-fill-offset-20, #ccc);
   --history-hover: var(--studio-fill-offset-10, #e5e5e5);

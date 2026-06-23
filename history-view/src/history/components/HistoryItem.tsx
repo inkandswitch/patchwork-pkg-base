@@ -127,7 +127,7 @@ export function HistoryItem(props: HistoryItemProps) {
                   width: "18px",
                   height: "18px",
                   "border-radius": "50%",
-                  background: "#9ca3af",
+                  background: "var(--history-muted-fg)",
                   display: "flex",
                   "align-items": "center",
                   "justify-content": "center",
@@ -150,7 +150,7 @@ export function HistoryItem(props: HistoryItemProps) {
                   onDblClick={startEdit}
                   title="Double-click to rename"
                 >
-                  <span style={{ overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap", color: "#374151" }}>
+                  <span style={{ overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap", color: "var(--history-secondary-fg)" }}>
                     <Show
                       when={props.item.isVirtual && !props.item.customLabel}
                       fallback={label()}
@@ -187,14 +187,14 @@ export function HistoryItem(props: HistoryItemProps) {
           <div style={{ display: "flex", "align-items": "center", gap: "0.375rem", "flex-shrink": "0" }}>
             <Show when={additions() > 0}>
               <div style={{ display: "flex", "align-items": "center", gap: "0.125rem" }}>
-                <div style={{ height: "6px", "border-radius": "2px", background: "#22c55e", width: `${barWidth(additions(), props.thresholds.large)}px` }} />
-                <span style={{ color: "#16a34a", "font-size": "11px", "font-weight": "300" }}>+{additions()}</span>
+                <div style={{ height: "6px", "border-radius": "2px", background: "var(--history-addition)", width: `${barWidth(additions(), props.thresholds.large)}px` }} />
+                <span style={{ color: "var(--history-addition-fg)", "font-size": "11px", "font-weight": "300" }}>+{additions()}</span>
               </div>
             </Show>
             <Show when={deletions() > 0}>
               <div style={{ display: "flex", "align-items": "center", gap: "0.125rem" }}>
-                <div style={{ height: "6px", "border-radius": "2px", background: "#f87171", width: `${barWidth(deletions(), props.thresholds.large)}px` }} />
-                <span style={{ color: "#ef4444", "font-size": "11px", "font-weight": "300" }}>-{deletions()}</span>
+                <div style={{ height: "6px", "border-radius": "2px", background: "var(--history-deletion)", width: `${barWidth(deletions(), props.thresholds.large)}px` }} />
+                <span style={{ color: "var(--history-deletion-fg)", "font-size": "11px", "font-weight": "300" }}>-{deletions()}</span>
               </div>
             </Show>
           </div>
@@ -242,21 +242,21 @@ export function HistoryItem(props: HistoryItemProps) {
                       {getInitials(subAuthor())}
                     </div>
 
-                    <span style={{ flex: "1", overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap", color: "#374151" }}>
+                    <span style={{ flex: "1", overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap", color: "var(--history-secondary-fg)" }}>
                       {getChangeLabel(subItem, props.thresholds)}
                     </span>
 
                     <div style={{ display: "flex", "align-items": "center", gap: "0.375rem", "flex-shrink": "0" }}>
                       <Show when={subAdd() > 0}>
                         <div style={{ display: "flex", "align-items": "center", gap: "0.125rem" }}>
-                          <div style={{ height: "6px", "border-radius": "2px", background: "#22c55e", width: `${barWidth(subAdd(), props.thresholds.large)}px` }} />
-                          <span style={{ color: "#16a34a", "font-size": "11px", "font-weight": "300" }}>+{subAdd()}</span>
+                          <div style={{ height: "6px", "border-radius": "2px", background: "var(--history-addition)", width: `${barWidth(subAdd(), props.thresholds.large)}px` }} />
+                          <span style={{ color: "var(--history-addition-fg)", "font-size": "11px", "font-weight": "300" }}>+{subAdd()}</span>
                         </div>
                       </Show>
                       <Show when={subDel() > 0}>
                         <div style={{ display: "flex", "align-items": "center", gap: "0.125rem" }}>
-                          <div style={{ height: "6px", "border-radius": "2px", background: "#f87171", width: `${barWidth(subDel(), props.thresholds.large)}px` }} />
-                          <span style={{ color: "#ef4444", "font-size": "11px", "font-weight": "300" }}>-{subDel()}</span>
+                          <div style={{ height: "6px", "border-radius": "2px", background: "var(--history-deletion)", width: `${barWidth(subDel(), props.thresholds.large)}px` }} />
+                          <span style={{ color: "var(--history-deletion-fg)", "font-size": "11px", "font-weight": "300" }}>-{subDel()}</span>
                         </div>
                       </Show>
                     </div>

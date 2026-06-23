@@ -12,7 +12,7 @@ export function DocHistoryHeader(props: DocHistoryHeaderProps) {
       <div style={{ display: "flex", "flex-direction": "column", "min-width": "0" }}>
         <div class="history-header-title">Version History</div>
         <Show when={props.title !== undefined}>
-          <div style={{ "font-size": "10px", color: "#9ca3af", overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap", "margin-top": "2px" }}>{props.title}</div>
+          <div style={{ "font-size": "10px", color: "var(--history-muted-fg)", overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap", "margin-top": "2px" }}>{props.title}</div>
         </Show>
       </div>
 
