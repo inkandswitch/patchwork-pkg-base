@@ -5,6 +5,7 @@
   "main": "./dist/index.js",
   "scripts": {
     "dev": "vite build --watch",
+    "watch": "vite --port 4444",
     "build": "vite build",
     "sync": "vite build && pushwork sync",
     "register": "pw-modules add \"$MODULE_SETTINGS_DOC_URL\" \"$(pushwork url)\""

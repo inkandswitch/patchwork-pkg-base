@@ -94,6 +94,25 @@ function main() {
   rmSync(outDir, { recursive: true, force: true });
   mkdirSync(toolsOutDir, { recursive: true });
 
+  // Install & build in parallel across all workspace packages.
+  if (install) {
+    console.log("[install] pnpm install");
+    execSync("pnpm install --prefer-offline", { cwd: ROOT, stdio: "inherit" });
+  }
+
+  if (build) {
+    console.log("[build] pnpm -r run --no-bail --if-present build");
+    try {
+      execSync("pnpm -r run --no-bail --if-present build", {
+        cwd: ROOT,
+        stdio: "inherit",
+      });
+    } catch {
+      console.warn("[build] some tools failed to build (see above)");
+    }
+  }
+
+  // Copy dists and build manifest.
   const modules = [];
   const skipped = [];
 
@@ -109,19 +128,6 @@ function main() {
     }
 
     const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
-
-    if (install) {
-      console.log(`[install] ${name}: pnpm install`);
-      execSync("pnpm install --prefer-offline", {
-        cwd: toolDir,
-        stdio: "inherit",
-      });
-    }
-
-    if (build && pkg.scripts?.build) {
-      console.log(`[build] ${name}: pnpm build`);
-      execSync("pnpm build", { cwd: toolDir, stdio: "inherit" });
-    }
 
     const distDir = join(toolDir, "dist");
     if (!existsSync(distDir)) {
