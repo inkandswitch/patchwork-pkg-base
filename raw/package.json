@@ -1,0 +1,17 @@
+{
+  "name": "@patchwork/raw-editor",
+  "version": "0.1.0",
+  "description": "A raw view and editor for any Automerge document",
+  "pushwork": {
+    "url": "automerge:2c1R47RtNU6rmWMZ6LePNfC7FUe2"
+  },
+  "type": "module",
+  "exports": "./index.js",
+  "scripts": {
+    "build": "echo 'bundleless — nothing to build'",
+    "push": "pushwork sync",
+    "register": "pw-modules add \"$MODULE_SETTINGS_DOC_URL\" \"$(pushwork url)\""
+  },
+  "keywords": [],
+  "author": "Ink & Switch"
+}
