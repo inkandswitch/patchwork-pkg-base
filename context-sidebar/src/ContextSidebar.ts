@@ -19,27 +19,27 @@ export function renderContextSidebar(
 	)
 
 	const container = document.createElement("div")
-	container.className = "w-full h-full flex flex-col bg-base-300 context-sidebar"
+	container.className = "context-sidebar"
 	element.appendChild(container)
 
 	const tabBar = document.createElement("div")
-	tabBar.className = "flex place-content-center place-items-start"
+	tabBar.className = "context-sidebar-tabbar"
 	container.appendChild(tabBar)
 
 	const tabList = document.createElement("div")
 	tabList.role = "tablist"
-	tabList.className = "tabs tabs-lifted flex-1"
+	tabList.className = "context-sidebar-tablist"
 	tabBar.appendChild(tabList)
 
 	const closeButton = document.createElement("button")
-	closeButton.className = "sidebar-close-button"
+	closeButton.className = "context-sidebar-close"
 	closeButton.title = "Close context sidebar"
 	closeButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M15 3v18" /></svg>`
 	closeButton.addEventListener("click", closeSidebar)
 	tabBar.appendChild(closeButton)
 
 	const content = document.createElement("div")
-	content.className = "flex-1 bg-base-300 min-h-0 overflow-auto"
+	content.className = "context-sidebar-content"
 	container.appendChild(content)
 
 	function closeSidebar() {
@@ -64,7 +64,8 @@ export function renderContextSidebar(
 
 			const tab = document.createElement("a")
 			tab.role = "tab"
-			tab.className = `tab ${i === selectedToolIndex ? "tab-active" : ""}`
+			tab.className = "context-sidebar-tab"
+			if (i === selectedToolIndex) tab.setAttribute("data-active", "")
 			const index = i
 			tab.addEventListener("click", () => {
 				selectedToolIndex = index
@@ -72,7 +73,7 @@ export function renderContextSidebar(
 			})
 
 			const name = document.createElement("span")
-			name.className = "text-sm"
+			name.className = "context-sidebar-tab-label"
 			name.textContent = tool.name
 			tab.appendChild(name)
 			tabList.appendChild(tab)
