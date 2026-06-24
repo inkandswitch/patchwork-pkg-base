@@ -2,6 +2,11 @@ import {render} from "solid-js/web"
 import {createSignal, createEffect, For, onCleanup, Show} from "solid-js"
 import {EDITABLE_VARIABLES, DEFAULT_VALUES, type CustomThemeDoc} from "./theme-editor-datatype.ts"
 
+// Fill offsets keep linear labels (10..50) but the actual mix amount curves:
+// finer steps near the fill where the eye is most sensitive, so subtle tints
+// (active line, gutter) stay distinct. 10 starts at the fill itself. See theme.css.
+const FILL_OFFSET_RAMP: [number, number][] = [[10, 0], [20, 7], [30, 18], [40, 32], [50, 50]]
+
 /**
  * Generates the full CSS for a custom theme, including derived offset variables.
  */
@@ -14,14 +19,14 @@ export function generateThemeCss(name: string, mode: "light" | "dark", vars: Rec
 		css += `\t${key}: ${value};\n`
 	}
 
-	// Derive fill offsets
-	for (const pct of [10, 20, 30, 40, 50]) {
-		css += `\t--studio-fill-offset-${pct}: color-mix(in oklch, var(--studio-fill), var(--studio-line) ${pct}%);\n`
+	// Derive fill offsets, tinted toward the secondary (see theme.css)
+	for (const [label, amount] of FILL_OFFSET_RAMP) {
+		css += `\t--studio-fill-offset-${label}: color-mix(in oklch, color-mix(in oklch, var(--studio-fill), var(--studio-line) ${amount}%), var(--studio-offset-tint, var(--studio-secondary)) var(--studio-offset-tint-amount, 10%));\n`
 	}
 
-	// Derive line offsets
+	// Derive line offsets, tinted toward the secondary (see theme.css)
 	for (const pct of [10, 20, 30, 40, 50]) {
-		css += `\t--studio-line-offset-${pct}: color-mix(in oklch, var(--studio-line), var(--studio-fill) ${pct}%);\n`
+		css += `\t--studio-line-offset-${pct}: color-mix(in oklch, color-mix(in oklch, var(--studio-line), var(--studio-fill) ${pct}%), var(--studio-offset-tint, var(--studio-secondary)) var(--studio-offset-tint-amount, 10%));\n`
 	}
 
 	css += "}\n"
@@ -94,14 +99,16 @@ export function ThemeEditorTool(handle: any, element: HTMLElement) {
 			root.style.setProperty(key, value)
 		}
 		// Also set derived offsets live
+		for (const [label, amount] of FILL_OFFSET_RAMP) {
+			root.style.setProperty(
+				`--studio-fill-offset-${label}`,
+				`color-mix(in oklch, color-mix(in oklch, var(--studio-fill), var(--studio-line) ${amount}%), var(--studio-offset-tint, var(--studio-secondary)) var(--studio-offset-tint-amount, 10%))`
+			)
+		}
 		for (const pct of [10, 20, 30, 40, 50]) {
 			root.style.setProperty(
-				`--studio-fill-offset-${pct}`,
-				`color-mix(in oklch, var(--studio-fill), var(--studio-line) ${pct}%)`
-			)
-			root.style.setProperty(
 				`--studio-line-offset-${pct}`,
-				`color-mix(in oklch, var(--studio-line), var(--studio-fill) ${pct}%)`
+				`color-mix(in oklch, color-mix(in oklch, var(--studio-line), var(--studio-fill) ${pct}%), var(--studio-offset-tint, var(--studio-secondary)) var(--studio-offset-tint-amount, 10%))`
 			)
 		}
 	})
