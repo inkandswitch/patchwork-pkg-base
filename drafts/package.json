@@ -18,15 +18,12 @@
     "@inkandswitch/patchwork-plugins": "^0.0.11",
     "@inkandswitch/patchwork-providers": "0.2.2",
     "@inkandswitch/patchwork-providers-solid": "0.2.3",
-    "solid-js": "^1.9.9",
-    "tailwindcss": "^4.1.14"
+    "solid-js": "^1.9.9"
   },
   "devDependencies": {
     "@eslint/js": "^9.37.0",
     "@inkandswitch/patchwork-bootloader": "^0.2.8",
-    "@tailwindcss/vite": "^4.1.14",
     "@typescript-eslint/parser": "^8.40.0",
-    "daisyui": "^5.1.29",
     "eslint": "^9.34.0",
     "globals": "^16.4.0",
     "typescript-eslint": "^8.41.0",

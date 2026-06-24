@@ -90,14 +90,12 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
   };
 
   return (
-    <div class="h-full flex flex-col p-2 gap-2">
+    <div class="drafts-panel">
       <Show
         when={hostDoc()}
-        fallback={
-          <div class="text-xs text-gray-400">No document selected.</div>
-        }
+        fallback={<div class="drafts-empty">No document selected.</div>}
       >
-        <div class="flex flex-col gap-1">
+        <div class="drafts-list">
           <MainCard
             hostDocUrl={hostDocHandle()?.url}
             isSelected={isMainSelected()}
@@ -114,11 +112,10 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
           </For>
         </div>
 
-        <div class="flex flex-col items-end gap-1">
+        <div class="drafts-actions">
           <Show when={isMainSelected()}>
             <button
-              class="btn btn-sm btn-primary"
-              classList={{ "btn-disabled": isFolder() }}
+              class="drafts-btn drafts-btn--primary"
               disabled={isFolder()}
               onClick={onCreateDraft}
               title={
@@ -130,14 +127,14 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
               New draft
             </button>
             <Show when={isFolder()}>
-              <span class="text-xs text-gray-400 italic">
+              <span class="drafts-hint">
                 Drafts aren't supported for folders yet.
               </span>
             </Show>
           </Show>
           <Show when={!isMainSelected()}>
             <button
-              class="btn btn-sm btn-warning"
+              class="drafts-btn drafts-btn--warning"
               onClick={onMergeDraft}
               title="Merge this draft into Main"
             >
@@ -186,22 +183,19 @@ function MainCard(props: {
   return (
     <button
       type="button"
-      class="text-left card card-bordered shadow-sm border hover:bg-gray-50"
-      classList={{
-        "bg-base-200 border-primary ring-1 ring-primary": props.isSelected,
-        "bg-white border-gray-200": !props.isSelected,
-      }}
+      class="draft-card"
+      data-selected={props.isSelected ? "" : undefined}
       onClick={props.onSelect}
       title="Main version (host document)"
     >
-      <div class="card-body p-2 space-y-1">
-        <div class="text-sm font-medium flex items-center gap-2">
+      <div class="draft-card-body">
+        <div class="draft-card-title">
           <span>Main</span>
           <Show when={props.isSelected}>
-            <span class="badge badge-xs badge-primary">current</span>
+            <span class="draft-badge">current</span>
           </Show>
         </div>
-        <div class="text-xs text-gray-500 font-mono break-all">
+        <div class="draft-card-url">
           {props.hostDocUrl ?? ""}
         </div>
       </div>
@@ -227,25 +221,22 @@ function DraftCard(props: {
     <Show when={isVisible()}>
       <button
         type="button"
-        class="text-left card card-bordered shadow-sm border hover:bg-gray-50"
-        classList={{
-          "bg-base-200 border-primary ring-1 ring-primary": props.isSelected,
-          "bg-white border-gray-200": !props.isSelected,
-        }}
+        class="draft-card"
+        data-selected={props.isSelected ? "" : undefined}
         onClick={() => props.onSelect(props.url)}
         title="Open draft"
       >
-        <div class="card-body p-2 space-y-1">
-          <div class="text-sm font-medium flex items-center gap-2">
+        <div class="draft-card-body">
+          <div class="draft-card-title">
             <span>Draft</span>
             <Show when={props.isSelected}>
-              <span class="badge badge-xs badge-primary">current</span>
+              <span class="draft-badge">current</span>
             </Show>
           </div>
-          <div class="text-xs text-gray-500 font-mono break-all">
+          <div class="draft-card-url">
             {props.url}
           </div>
-          <div class="text-xs text-gray-400">
+          <div class="draft-card-meta">
             {cloneCount()} cloned doc(s) · {childCount()} draft(s)
           </div>
         </div>

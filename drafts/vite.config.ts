@@ -1,12 +1,11 @@
 import { defineConfig } from "vite";
 import solid from "vite-plugin-solid";
-import tailwindcss from "@tailwindcss/vite";
 import cssInjectedByJsPlugin from "vite-plugin-css-injected-by-js";
 import externals from "@inkandswitch/patchwork-bootloader/externals";
 
 export default defineConfig({
   base: "./",
-  plugins: [solid(), tailwindcss(), cssInjectedByJsPlugin()],
+  plugins: [solid(), cssInjectedByJsPlugin()],
 
   build: {
     emptyOutDir: true,

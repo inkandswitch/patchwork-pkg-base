@@ -1,0 +1,7 @@
+# Settings-only (no `packages:`): this repo's tools are independent packages,
+# not a pnpm workspace. The root has no deps, but pnpm 11 still runs an
+# auto-install before every script and policy-checks the stale root lockfile.
+# Disable that pre-run install and the release-age cooldown so `pnpm dev:tools`
+# (pure-Node build:static + serve:tools) can run.
+verifyDepsBeforeRun: false
+minimumReleaseAge: 0
