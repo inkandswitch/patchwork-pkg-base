@@ -33,7 +33,6 @@ export const DraftListProvider = (element: HTMLElement) => {
     );
     return () => {};
   }
-  const docUrl: AutomergeUrl = rawUrl;
 
   const maybeRepo = "repo" in window ? window.repo : undefined;
   if (!maybeRepo) {
@@ -44,10 +43,22 @@ export const DraftListProvider = (element: HTMLElement) => {
   }
   const repo: Repo = maybeRepo;
 
+  // The host doc this provider currently points at. Mutable: rather than
+  // remounting on navigation, the frame swaps the `doc-url` attribute and we
+  // re-point in place (see `attrObserver` / `applyDocUrl`), keeping the same
+  // ephemeral DraftsState doc and its open subscriptions alive.
+  let docUrl: AutomergeUrl = rawUrl;
+  // Bumped on every re-point so an in-flight `repo.find` / rewalk from a
+  // superseded doc-url can detect it lost the race and bail.
+  let switchEpoch = 0;
+
   let hostDocHandle: DocHandle<HasDrafts> | null = null;
   let draftsStateHandle: DocHandle<DraftsState> | null = null;
   const trackedDrafts = new Map<AutomergeUrl, DocHandle<DraftDoc>>();
 
+  // Live `draft:root-doc` subscribers, kept so the new host-doc url can be
+  // pushed to them when `doc-url` changes (the subscription is streaming).
+  const rootDocSubscribers = new Set<(url: AutomergeUrl) => void>();
   // `draft:list` subscribers that arrived before the ephemeral
   // DraftsState doc was created; flushed once it exists.
   const pendingDraftsSubscribers = new Set<(url: AutomergeUrl) => void>();
@@ -59,10 +70,6 @@ export const DraftListProvider = (element: HTMLElement) => {
   const onHostDocChange = () => scheduleRewalk();
 
   const ready: Promise<void> = (async () => {
-    const handle = await repo.find<HasDrafts>(docUrl);
-    if (disposed) return;
-    hostDocHandle = handle;
-
     // Eagerly create the ephemeral DraftsState so the sidebar can render
     // its "Main" card and write `selectedDraft` even before any drafts
     // exist on the host doc.
@@ -70,14 +77,18 @@ export const DraftListProvider = (element: HTMLElement) => {
       drafts: [],
       selectedDraft: null,
     });
+    if (disposed) {
+      repo.delete(draftsStateHandle.url);
+      draftsStateHandle = null;
+      return;
+    }
     const draftsUrl = draftsStateHandle.url;
     for (const respond of pendingDraftsSubscribers) {
       respond(draftsUrl);
     }
     pendingDraftsSubscribers.clear();
 
-    handle.on("change", onHostDocChange);
-    scheduleRewalk();
+    await applyDocUrl(docUrl);
   })();
   ready.catch((err) => {
     console.error(`[drafts] failed to initialize draft-list provider:`, err);
@@ -88,7 +99,9 @@ export const DraftListProvider = (element: HTMLElement) => {
 
     if (type === ROOT_DOC_SELECTOR) {
       accept<AutomergeUrl>(event, (respond) => {
+        rootDocSubscribers.add(respond);
         respond(docUrl);
+        return () => rootDocSubscribers.delete(respond);
       });
       return;
     }
@@ -108,17 +121,70 @@ export const DraftListProvider = (element: HTMLElement) => {
 
   element.addEventListener("patchwork:subscribe", onSubscribe);
 
+  // Re-point at a new host doc when the frame swaps `doc-url`, instead of
+  // forcing a full remount of the provider element and its subtree.
+  const attrObserver = new MutationObserver(() => {
+    void applyDocUrl(element.getAttribute(ATTR_DOC_URL));
+  });
+  attrObserver.observe(element, {
+    attributes: true,
+    attributeFilter: [ATTR_DOC_URL],
+  });
+
   return () => {
     disposed = true;
+    attrObserver.disconnect();
     element.removeEventListener("patchwork:subscribe", onSubscribe);
     if (hostDocHandle) hostDocHandle.off("change", onHostDocChange);
     for (const [, h] of trackedDrafts) h.off("change", onTrackedChange);
     trackedDrafts.clear();
+    rootDocSubscribers.clear();
     pendingDraftsSubscribers.clear();
     if (draftsStateHandle) repo.delete(draftsStateHandle.url);
     draftsStateHandle = null;
     hostDocHandle = null;
   };
+
+  // Switch the provider to a new host doc in place: detach the old doc's
+  // listeners, reset the (reused) DraftsState so the UI clears immediately,
+  // notify `draft:root-doc` subscribers, then re-walk against the new doc.
+  async function applyDocUrl(rawNext: string | null): Promise<void> {
+    if (disposed) return;
+    if (!rawNext || !isValidAutomergeUrl(rawNext)) {
+      console.warn(
+        `[drafts] draft-list provider got an invalid ${ATTR_DOC_URL} ` +
+          `(got ${JSON.stringify(rawNext)}); ignoring`
+      );
+      return;
+    }
+    const next: AutomergeUrl = rawNext;
+    // No-op if we're already settled on this doc.
+    if (next === docUrl && hostDocHandle) return;
+
+    docUrl = next;
+    const epoch = ++switchEpoch;
+
+    for (const respond of rootDocSubscribers) respond(docUrl);
+
+    if (hostDocHandle) hostDocHandle.off("change", onHostDocChange);
+    hostDocHandle = null;
+    for (const [, h] of trackedDrafts) h.off("change", onTrackedChange);
+    trackedDrafts.clear();
+
+    // Clear the draft list up front so the sidebar reflects the new doc
+    // before the async re-walk lands.
+    draftsStateHandle?.change((d) => {
+      d.drafts = [];
+      d.selectedDraft = null;
+    });
+
+    const handle = await repo.find<HasDrafts>(docUrl);
+    // A newer re-point (or disposal) superseded us while finding.
+    if (disposed || epoch !== switchEpoch) return;
+    hostDocHandle = handle;
+    handle.on("change", onHostDocChange);
+    scheduleRewalk();
+  }
 
   function scheduleRewalk(): void {
     if (disposed) return;

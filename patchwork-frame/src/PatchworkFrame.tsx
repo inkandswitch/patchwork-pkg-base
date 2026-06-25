@@ -172,10 +172,12 @@ function PatchworkFrameInner(props: {
   const selectedDocUrl = () => selectedView()?.url;
   const selectedToolId = () => selectedView()?.toolId ?? undefined;
 
-  // Per-document draft scope. Keyed on the selected doc URL so the whole
-  // draft tree remounts when the user switches docs. When no doc is selected
-  // we still render the sidebars (so the drafts sidebar can show its
-  // "no doc selected" empty state), just without a draft-root scope.
+  // Per-document draft scope. The provider element persists across navigation:
+  // we feed it a reactive `doc-url` and it re-points in place (it watches the
+  // attribute), rather than remounting the whole draft subtree on every doc
+  // switch. When no doc is selected we still render the sidebars (so the drafts
+  // sidebar can show its "no doc selected" empty state), just without a
+  // draft-root scope.
   const [draftListProviderHost, setDraftListProviderHost] =
     createSignal<HTMLElement>();
   const isDraftListProviderReady = useProviderReady(
@@ -195,7 +197,6 @@ function PatchworkFrameInner(props: {
 
       <Show
         when={selectedDocUrl()}
-        keyed
         fallback={
           <FrameLayout
             accountDoc={accountDoc}
@@ -213,36 +214,40 @@ function PatchworkFrameInner(props: {
           </FrameLayout>
         }
       >
-        {(docUrl) => (
-          <patchwork-view
-            component="patchwork-draft-list-provider"
-            doc-url={docUrl}
-            ref={setDraftListProviderHost}
-          >
-            <Show when={readyDraftListHost()}>
-              {(host) => (
-                <FrameLayout
+        {/*
+          Not keyed: the provider element stays mounted across navigation and
+          re-points itself when `doc-url` changes, so we don't tear down and
+          rebuild the whole draft subtree (and its ephemeral DraftsState doc)
+          on every doc switch.
+        */}
+        <patchwork-view
+          component="patchwork-draft-list-provider"
+          doc-url={selectedDocUrl()}
+          ref={setDraftListProviderHost}
+        >
+          <Show when={readyDraftListHost()}>
+            {(host) => (
+              <FrameLayout
+                accountDoc={accountDoc}
+                accountDocUrl={accountDocUrl}
+                sidebarState={sidebarState}
+                sidebarResize={sidebarResize}
+              >
+                <DraftDocumentArea
+                  host={host()}
                   accountDoc={accountDoc}
                   accountDocUrl={accountDocUrl}
+                  selectedDocUrl={selectedDocUrl}
+                  selectedToolId={selectedToolId}
                   sidebarState={sidebarState}
                   sidebarResize={sidebarResize}
-                >
-                  <DraftDocumentArea
-                    host={host()}
-                    accountDoc={accountDoc}
-                    accountDocUrl={accountDocUrl}
-                    selectedDocUrl={selectedDocUrl}
-                    selectedToolId={selectedToolId}
-                    sidebarState={sidebarState}
-                    sidebarResize={sidebarResize}
-                    selectedContextToolId={selectedContextToolId}
-                    setSelectedContextToolId={setSelectedContextToolId}
-                  />
-                </FrameLayout>
-              )}
-            </Show>
-          </patchwork-view>
-        )}
+                  selectedContextToolId={selectedContextToolId}
+                  setSelectedContextToolId={setSelectedContextToolId}
+                />
+              </FrameLayout>
+            )}
+          </Show>
+        </patchwork-view>
       </Show>
     </div>
   );
