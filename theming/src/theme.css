@@ -71,13 +71,11 @@
 	);
 
 	/* chrome: the surface for app chrome (sideboard, context sidebar, toolbar).
-	   a light theme gets a faint secondary-tinted fill; dark themes go flat
-	   black. the offset ramp mirrors --studio-fill-offset, curving the same way,
-	   so chrome surfaces get borders/hovers that track the palette. */
-	--studio-chrome: light-dark(
-		color-mix(in oklch, var(--studio-secondary, #33ccf8), var(--studio-fill, white) 80%),
-		black
-	);
+	   a faint secondary-tinted fill: light themes get a light tinted surface,
+	   dark themes a dark tinted one, because both fill and secondary come from
+	   the palette. the offset ramp mirrors --studio-fill-offset, curving the
+	   same way, so chrome surfaces get borders/hovers that track the palette. */
+	--studio-chrome: color-mix(in oklch, var(--studio-secondary), var(--studio-fill) 80%);
 	--studio-chrome-offset-10: color-mix(
 		in oklch,
 		color-mix(in oklch, var(--studio-chrome), var(--studio-line) 0%),

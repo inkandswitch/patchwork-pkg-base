@@ -846,6 +846,11 @@ function RawEditorApp(props) {
     setAdding({pk: row.id, path: row.path, isArray: row.isArr})
   }
 
+  function startAddRoot() {
+    setEditing(null)
+    setAdding({pk: "\x00root", path: [], isArray: Array.isArray(doc())})
+  }
+
   function confirmAdd(parentPath, isArray, key, value) {
     let fullPath
     if (isArray) {
@@ -1022,6 +1027,9 @@ function RawEditorApp(props) {
         ${() => urlCopied() ? "Copied!" : docUrl}
       </span>
       <div class="re-toolbar-actions">
+        <button class="re-btn" onClick=${startAddRoot} title="Add field at root">
+          <span class="re-icon" innerHTML=${ICONS.plus} /> Field
+        </button>
         <button class="re-btn" onClick=${downloadJson} title="Download JSON">
           <span class="re-icon" innerHTML=${ICONS.download} /> JSON
         </button>
@@ -1030,6 +1038,16 @@ function RawEditorApp(props) {
         </button>
       </div>
     </div>
+    ${() => {
+      let ad = adding()
+      return ad && ad.pk === "\x00root" ? html`<div style="padding-left:${INDENT}px;flex-shrink:0">
+        <${AddFieldEditor}
+          isArray=${ad.isArray}
+          confirm=${(k, v) => confirmAdd([], ad.isArray, k, v)}
+          cancel=${(_) => setAdding(null)}
+        />
+      </div>` : ""
+    }}
     ${() => !doc() ? html`<div class="re-loading">Loading...</div>` : html`
       <div class="re-scroll" onScroll=${onScroll} ref=${setupScroll}>
         <div style=${() => `height:${totalH()}px;position:relative`}>
