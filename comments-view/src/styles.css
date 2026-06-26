@@ -76,6 +76,13 @@
   gap: 0.5rem;
 }
 
+.comments-thread-doc-level {
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--comments-muted-fg);
+}
+
 .comments-thread-header {
   display: flex;
   flex-direction: row;
