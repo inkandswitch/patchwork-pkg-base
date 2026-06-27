@@ -24,7 +24,9 @@ import {
   clearDropTarget,
   copyMode,
   setCopyMode,
+  isNewDocDrag,
 } from "../dnd/dnd.ts";
+import { setPendingNewDoc } from "../state.ts";
 import {
   parseAutomergeUrl,
   type AutomergeUrl,
@@ -54,8 +56,8 @@ export default function Item(props: {
   element: PatchworkViewElement;
   repo: Repo;
   rootFolderHandle: DocHandle<FolderDoc>;
-  parentFolderHandle: DocHandle<FolderDoc>;
-  itemIndex: number;
+  parentFolderHandle?: DocHandle<FolderDoc>;
+  itemIndex?: number;
   isExpanded?: boolean;
   onToggleExpand?: () => void;
 }) {
@@ -299,6 +301,23 @@ export default function Item(props: {
 
           if (!target) {
             log("No drop target set");
+            return;
+          }
+
+          // New-doc drag: open a pending placeholder next to this item instead
+          // of moving a document.
+          if (isNewDocDrag(event)) {
+            if (props.parentFolderHandle && props.itemIndex != null) {
+              const index =
+                target.position === "above"
+                  ? props.itemIndex
+                  : props.itemIndex + 1;
+              setPendingNewDoc({
+                containerUrl: props.parentFolderHandle.url,
+                index,
+              });
+            }
+            clearDropTarget();
             return;
           }
 
