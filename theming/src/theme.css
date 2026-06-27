@@ -150,12 +150,6 @@
 
 	--sideboard-primary: var(--studio-primary);
 	--sideboard-fill: var(--studio-chrome-fill);
-	/* the footer sits a touch darker than the sideboard surface. */
-	--sideboard-footer-fill: color-mix(
-		in oklch,
-		var(--sideboard-fill),
-		var(--studio-line) 5%
-	);
 
 	--studio-primary: #35f7ca;
 	--studio-added: #35f7ca;

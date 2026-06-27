@@ -14,6 +14,8 @@
     var(--sideboard-fill),
     oklch(1 0 0 / 1) 10%
   );
+  /* the footer sits a touch darker than the sideboard surface. */
+  --sideboard-footer-fill: var(--studio-chrome-fill-offset-10);
 
   --sideboard-line: var(--studio-line, black);
   --sideboard-widget-fill: var(--studio-fill, white);
