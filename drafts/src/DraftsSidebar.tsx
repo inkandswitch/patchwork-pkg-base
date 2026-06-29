@@ -17,7 +17,6 @@ import type {
 } from "@automerge/automerge-repo";
 import { decodeHeads, encodeHeads } from "@automerge/automerge-repo";
 import * as Automerge from "@automerge/automerge";
-import { OpenDocumentEvent } from "@inkandswitch/patchwork-elements";
 import { getRegistry, isLoadedPlugin } from "@inkandswitch/patchwork-plugins";
 import {
   subscribe,
@@ -39,9 +38,6 @@ const EMPTY_DRAFT_LIST: DraftList = {
   main: { url: "" as AutomergeUrl, members: [], childCount: 0 },
   drafts: [],
 };
-
-// Tool a history entry's document opens in when its title is clicked.
-const RAW_TOOL_ID = "raw";
 
 // Bump on each deploy to eyeball whether the latest build has synced.
 const DRAFTS_VERSION = "0.0.1";
@@ -92,14 +88,6 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
 
   const getRepo = (): Repo | undefined =>
     "repo" in window ? window.repo : undefined;
-
-  // Open a document in the raw view. The event bubbles up to the selected-doc
-  // provider, which swaps the main view to this url + tool.
-  const openInRaw = (url: AutomergeUrl) => {
-    props.element.dispatchEvent(
-      new OpenDocumentEvent({ url, toolId: RAW_TOOL_ID })
-    );
-  };
 
   // Pin the checkout to a history entry: resolve every member doc's heads as of
   // the clicked entry's timestamp and store them alongside the selection, so the
@@ -212,7 +200,6 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
             onSelectEntry={(entry) =>
               onSelectEntry(null, list().main.members, entry)
             }
-            onOpenDocument={openInRaw}
             activeCheckpoint={() =>
               isMainSelected() ? (checkedOut()?.at ?? null) : null
             }
@@ -228,7 +215,6 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
                 onSelectEntry={(entry) =>
                   onSelectEntry(summary.url, summary.members, entry)
                 }
-                onOpenDocument={openInRaw}
                 activeCheckpoint={() =>
                   selected() === summary.url
                     ? (checkedOut()?.at ?? null)
@@ -317,7 +303,6 @@ function MainCard(props: {
   members: Accessor<DraftMemberDoc[]>;
   onSelect: () => void;
   onSelectEntry: (entry: ClickedEntry) => void;
-  onOpenDocument: (url: AutomergeUrl) => void;
   activeCheckpoint: Accessor<DraftCheckpoint | null>;
 }) {
   return (
@@ -339,7 +324,6 @@ function MainCard(props: {
       <DraftChangesList
         members={props.members}
         onSelectEntry={props.onSelectEntry}
-        onOpenDocument={props.onOpenDocument}
         activeCheckpoint={props.activeCheckpoint}
       />
     </div>
@@ -353,7 +337,6 @@ function DraftCard(props: {
   isSelected: boolean;
   onSelect: (url: AutomergeUrl) => void;
   onSelectEntry: (entry: ClickedEntry) => void;
-  onOpenDocument: (url: AutomergeUrl) => void;
   activeCheckpoint: Accessor<DraftCheckpoint | null>;
 }) {
   return (
@@ -378,23 +361,26 @@ function DraftCard(props: {
       <DraftChangesList
         members={() => props.members}
         onSelectEntry={props.onSelectEntry}
-        onOpenDocument={props.onOpenDocument}
         activeCheckpoint={props.activeCheckpoint}
       />
     </div>
   );
 }
 
-// One change in a document's history. `docUrl` is the original member url (used
-// for labelling and as the checkpoint anchor), never the per-draft clone the
-// change was read from.
+// One change in the interleaved timeline. `docUrl` is the original member url
+// (used for labelling and as the checkpoint anchor), never the per-draft clone
+// the change was read from. `title` is the source document's display title,
+// shown as a per-row label. `seq` is the change's per-document causal index,
+// used only to break timestamp ties (see `collectInterleavedChanges`).
 type DraftChange = {
   docUrl: AutomergeUrl;
+  title: string;
   hash: string;
   // Automerge change time, in SECONDS (multiply by 1000 for a JS Date).
   time: number;
   actor: string;
   message: string | null;
+  seq: number;
 };
 
 // The timeline entry the user clicked, fed to `computeCheckpoint`. `time`
@@ -406,30 +392,19 @@ type ClickedEntry = {
   time: number;
 };
 
-// A member document's changes in topological (oldest-first) order. The card
-// lists one of these per member rather than interleaving every doc's changes
-// into one timeline. `title` is the document's datatype-resolved title (falling
-// back to a short url), shown as the group's clickable header.
-type DraftChangeGroup = {
-  docUrl: AutomergeUrl;
-  title: string;
-  changes: DraftChange[];
-};
-
-// Renders a draft's (or main's) changes grouped per member document, each
-// group in topological (oldest-first) order. The member set is passed in (from
-// the card's `DraftSummary`); the effect below keeps the groups live as those
-// docs edit.
+// Renders a draft's (or main's) changes as a single timeline that interleaves
+// every member doc's changes, newest first (see `collectInterleavedChanges`).
+// The member set is passed in (from the card's `DraftSummary`); the effect
+// below keeps the timeline live as those docs edit.
 function DraftChangesList(props: {
   members: Accessor<DraftMemberDoc[]>;
   onSelectEntry: (entry: ClickedEntry) => void;
-  onOpenDocument: (url: AutomergeUrl) => void;
   activeCheckpoint: Accessor<DraftCheckpoint | null>;
 }) {
-  const [groups, setGroups] = createSignal<DraftChangeGroup[]>([]);
+  const [changes, setChanges] = createSignal<DraftChange[]>([]);
 
   // Whenever the member set changes, resolve a handle per member, listen for
-  // edits so the groups stay live, and recompute. A `disposed` flag guards
+  // edits so the timeline stays live, and recompute. A `disposed` flag guards
   // against the async resolution landing after the effect was torn down.
   createEffect(() => {
     const list = props.members();
@@ -441,8 +416,8 @@ function DraftChangesList(props: {
       [];
 
     const recompute = async () => {
-      const next = await collectChangesByDocument(repo, list);
-      if (!disposed) setGroups(next);
+      const next = await collectInterleavedChanges(repo, list);
+      if (!disposed) setChanges(next);
     };
 
     void (async () => {
@@ -467,63 +442,49 @@ function DraftChangesList(props: {
   return (
     <div class="draft-card-changes">
       <Show
-        when={groups().length > 0}
+        when={changes().length > 0}
         fallback={<div class="draft-changes-empty">No changes yet.</div>}
       >
-        <For each={groups()}>
-          {(group) => (
-            <div class="draft-change-group">
+        <For each={changes()}>
+          {(change) => {
+            // A row is the pinned point for its doc when the checkpoint's `to`
+            // for that doc equals this change's (encoded) heads.
+            const isActive = () => {
+              const entry = props.activeCheckpoint()?.[change.docUrl];
+              return (
+                !!entry?.to && entry.to[0] === encodeHeads([change.hash])[0]
+              );
+            };
+            return (
               <button
                 type="button"
-                class="draft-change-group-header"
-                title="Open in raw view"
-                onClick={() => props.onOpenDocument(group.docUrl)}
-              >
-                {group.title}
-              </button>
-              <For each={group.changes}>
-                {(change) => {
-                  // A row is the pinned point for its doc when the checkpoint's
-                  // `to` for that doc equals this change's (encoded) heads.
-                  const isActive = () => {
-                    const entry = props.activeCheckpoint()?.[change.docUrl];
-                    return (
-                      !!entry?.to &&
-                      entry.to[0] === encodeHeads([change.hash])[0]
-                    );
-                  };
-                  return (
-                    <button
-                      type="button"
-                      class="draft-change-row"
-                      data-selected={isActive() ? "" : undefined}
-                      title="View the draft at this point"
-                      onClick={() => {
-                        console.log("[drafts] change clicked", change);
-                        props.onSelectEntry({
-                          docUrl: change.docUrl,
-                          hash: change.hash,
-                          time: change.time,
-                        });
-                      }}
-                    >
-                      <div class="draft-change-line">
-                        <span class="draft-change-time">
-                          {formatTime(change.time)}
-                        </span>
-                        <Show when={change.message}>
-                          <span class="draft-change-msg">{change.message}</span>
-                        </Show>
-                      </div>
-                      <span class="draft-change-hash">
-                        {encodeHeads([change.hash])[0]}
-                      </span>
-                    </button>
-                  );
+                class="draft-change-row"
+                data-selected={isActive() ? "" : undefined}
+                title="View the draft at this point"
+                onClick={() => {
+                  console.log("[drafts] change clicked", change);
+                  props.onSelectEntry({
+                    docUrl: change.docUrl,
+                    hash: change.hash,
+                    time: change.time,
+                  });
                 }}
-              </For>
-            </div>
-          )}
+              >
+                <div class="draft-change-line">
+                  <span class="draft-change-time">
+                    {formatTime(change.time)}
+                  </span>
+                  <span class="draft-change-doc">{change.title}</span>
+                  <Show when={change.message}>
+                    <span class="draft-change-msg">{change.message}</span>
+                  </Show>
+                </div>
+                <span class="draft-change-hash">
+                  {encodeHeads([change.hash])[0]}
+                </span>
+              </button>
+            );
+          }}
         </For>
       </Show>
     </div>
@@ -587,42 +548,53 @@ async function computeCheckpoint(
   return checkpoint;
 }
 
-// Collect each member doc's post-fork changes as its own group, in topological
-// (causal, oldest-first) order as returned by `getChangesMetaSince` — no time
-// sort, since `meta.time` is only second-resolution and reorders sub-second
-// changes. Groups follow member order (no cross-document interleave). On a draft
-// `clonedAt` is set, so reading the clone since that fork point yields exactly
-// the draft's own changes; on main both clone fields are null, so we read the
-// original doc since `[]` for its full history. Members with no changes are
-// omitted.
-async function collectChangesByDocument(
+// Collect every member doc's post-fork changes into one interleaved timeline,
+// newest first. `getChangesMetaSince` returns each doc's changes in topological
+// (causal, oldest-first) order, so we stamp each change with its per-document
+// `seq` index and sort by time with `seq` as the tie-break: `meta.time` is only
+// second-resolution, so changes sharing a timestamp fall back to their
+// document's own change order rather than being shuffled. On a draft `clonedAt`
+// is set, so reading the clone since that fork point yields exactly the draft's
+// own changes; on main both clone fields are null, so we read the original doc
+// since `[]` for its full history. Members with no changes are omitted.
+async function collectInterleavedChanges(
   repo: Repo,
   members: DraftMemberDoc[]
-): Promise<DraftChangeGroup[]> {
-  const groups: DraftChangeGroup[] = [];
+): Promise<DraftChange[]> {
+  const rows: DraftChange[] = [];
   for (const member of members) {
     try {
       const handle = await repo.find<unknown>(member.cloneUrl ?? member.url);
       const doc = handle.doc();
       if (!doc) continue;
       const since = member.clonedAt ? decodeHeads(member.clonedAt) : [];
-      const changes = Automerge.getChangesMetaSince(doc, since).map((meta) => ({
-        docUrl: member.url,
-        hash: meta.hash,
-        time: meta.time,
-        actor: meta.actor,
-        message: meta.message,
-      }));
-      if (changes.length === 0) continue;
+      const metas = Automerge.getChangesMetaSince(doc, since);
+      if (metas.length === 0) continue;
       const title = await resolveDocTitle(doc, member.url);
-      groups.push({ docUrl: member.url, title, changes });
+      metas.forEach((meta, seq) => {
+        rows.push({
+          docUrl: member.url,
+          title,
+          hash: meta.hash,
+          time: meta.time,
+          actor: meta.actor,
+          message: meta.message,
+          seq,
+        });
+      });
     } catch (err) {
       // A member doc that can't be resolved (or whose fork point is missing)
       // is simply omitted rather than failing the whole list.
       console.warn("[drafts] failed to read changes for member:", member, err);
     }
   }
-  return groups;
+  // Newest first by timestamp. On a tie (meta.time is only second-resolution),
+  // fall back to each document's own change order, also newest-first: `seq` is
+  // the per-document causal index (oldest = 0), so the higher (later) seq sorts
+  // first. This keeps same-second changes consistent with the newest-first
+  // intent instead of flipping that run to oldest-first.
+  rows.sort((a, b) => b.time - a.time || b.seq - a.seq);
+  return rows;
 }
 
 // Resolve a document's display title: prefer its cached `@patchwork.title`,
