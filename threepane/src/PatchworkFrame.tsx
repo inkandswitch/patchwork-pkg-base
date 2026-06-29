@@ -6,7 +6,7 @@ import {
 import type { AutomergeUrl, DocHandle, Repo } from "@automerge/automerge-repo";
 import { subscribe } from "@inkandswitch/patchwork-providers";
 import { subscribeDoc } from "@inkandswitch/patchwork-providers-solid";
-import type { AccountDoc, ThreepaneConfigDoc, ToolRef, ToolSlot } from "./types";
+import type { AccountDoc, ThreepaneConfigDoc, ToolSlot } from "./types";
 import {
   useSidebarState,
   useSidebarResize,
@@ -192,7 +192,7 @@ function PatchworkFrameInner(props: {
   const contextTabSlots = () => threepaneConfig()?.contextbar?.tabs;
   const contextTabIds = () =>
     threepaneConfig()?.contextbar?.tabs?.map(slotId);
-  const sidebarWidgets = (): ToolRef[] =>
+  const sidebarWidgets = (): ToolSlot[] =>
     threepaneConfig()?.sidebar?.widgets ?? [];
   const rootFolderUrl = () => accountDoc()?.rootFolderUrl;
 
@@ -342,7 +342,7 @@ function FrameLayout(props: {
   accountDocUrl: AutomergeUrl;
   sidebarState: SidebarState;
   sidebarResize: SidebarResize;
-  sidebarWidgets: Accessor<ToolRef[]>;
+  sidebarWidgets: Accessor<ToolSlot[]>;
   configHandle: Accessor<DocHandle<ThreepaneConfigDoc> | undefined>;
   rootFolderUrl: Accessor<AutomergeUrl | undefined>;
   children: JSX.Element;
@@ -536,7 +536,6 @@ function DraftDocumentArea(props: {
                         contextToolIds={props.contextTabIds}
                         contextToolSlots={props.contextTabSlots}
                         traySlots={props.traySlots}
-                        docUrl={props.accountDocUrl}
                         selectedToolId={props.selectedContextToolId}
                         isCollapsed={props.sidebarState.isRightSidebarCollapsed}
                         width={props.sidebarState.rightSidebarWidth}

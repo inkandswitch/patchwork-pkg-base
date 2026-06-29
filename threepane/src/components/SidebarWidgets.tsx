@@ -1,17 +1,19 @@
 import type { AutomergeUrl, DocHandle } from "@automerge/automerge-repo";
 import { For, Show, type Accessor } from "solid-js";
-import type { ThreepaneConfigDoc, ToolRef } from "../types";
+import type { ThreepaneConfigDoc, ToolSlot } from "../types";
+import { SlotView } from "./SlotView";
 
 const DOCUMENT_LIST_TOOL = "chee/document-list";
 
 /**
- * The left pane: a stack of configured widgets (`[toolId, docId]`), each
- * rendered against its pinned doc. Normally seeded with a document list on the
- * account's root folder; the empty-state add button is a fallback for when no
- * widgets are configured (there's no add/remove UI yet).
+ * The left pane: a stack of configured widgets, each rendered via SlotView — a
+ * `[toolId, docId]` tuple renders that tool against its pinned doc, a bare
+ * string renders a `patchwork:component`. Normally seeded with a document list
+ * on the account's root folder; the empty-state add button is a fallback for
+ * when no widgets are configured (there's no add/remove UI yet).
  */
 export function SidebarWidgets(props: {
-  widgets: Accessor<ToolRef[]>;
+  widgets: Accessor<ToolSlot[]>;
   configHandle: Accessor<DocHandle<ThreepaneConfigDoc> | undefined>;
   rootFolderUrl: Accessor<AutomergeUrl | undefined>;
 }) {
@@ -47,7 +49,7 @@ export function SidebarWidgets(props: {
         <For each={props.widgets()}>
           {(widget) => (
             <div class="threepane-widget">
-              <patchwork-view doc-url={widget[1]} tool-id={widget[0]} />
+              <SlotView slot={widget} />
             </div>
           )}
         </For>

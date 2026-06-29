@@ -1,4 +1,3 @@
-import type { AutomergeUrl } from "@automerge/automerge-repo";
 import { Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import type { ToolSlot } from "../types";
@@ -9,10 +8,9 @@ import { Tray } from "./Tray";
 type ContextSidebarProps = {
   contextToolIds: Accessor<string[] | undefined>;
   /** Full slots for the context tabs; the active one is rendered via SlotView
-   *  (a tool tuple against `docUrl`, or a bare component id). */
+   *  (a tool tuple against the doc it names, or a bare component id). */
   contextToolSlots: Accessor<ToolSlot[] | undefined>;
   traySlots: Accessor<ToolSlot[] | undefined>;
-  docUrl: AutomergeUrl;
   /**
    * Selected tab, owned by the frame *above* the branch-switch boundary so it
    * survives document and branch switches. The tab bar itself now lives in the
@@ -65,13 +63,13 @@ export function ContextSidebar(props: ContextSidebarProps) {
             <Show when={activeToolId()} keyed>
               {() => (
                 <Show when={activeSlot()}>
-                  {(slot) => <SlotView slot={slot()} docUrl={props.docUrl} />}
+                  {(slot) => <SlotView slot={slot()} />}
                 </Show>
               )}
             </Show>
           </div>
         </Show>
-        <Tray docUrl={props.docUrl} slots={props.traySlots} />
+        <Tray slots={props.traySlots} />
       </div>
     </Sidebar>
   );

@@ -53,7 +53,7 @@ export function FrameTopBar(props: FrameTopBarProps) {
       <Show when={props.docUrl() && docToolSlots().length}>
         <div class="threepane__doctitle-tools">
           <For each={docToolSlots()}>
-            {(slot) => <SlotView slot={slot} docUrl={props.docUrl()} />}
+            {(slot) => <SlotView slot={slot} />}
           </For>
         </div>
       </Show>

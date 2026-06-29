@@ -1,4 +1,3 @@
-import type { AutomergeUrl } from "@automerge/automerge-repo";
 import { For, Show, type Accessor } from "solid-js";
 import type { ToolSlot } from "../types";
 import { SlotView } from "./SlotView";
@@ -6,11 +5,10 @@ import { SlotView } from "./SlotView";
 /**
  * A horizontal row of configured tools, pinned to the bottom of the right
  * context sidebar. Like the doctitle, its entries come from the threepane
- * config doc: a `[toolId, docId]` tuple renders that tool against the account
- * document (`docUrl`), while a bare string renders a `patchwork:component`.
+ * config doc: a `[toolId, docId]` tuple renders that tool against the document
+ * the tuple names, while a bare string renders a `patchwork:component`.
  */
 export function Tray(props: {
-  docUrl: AutomergeUrl;
   slots: Accessor<ToolSlot[] | undefined>;
 }) {
   const slots = () => props.slots() ?? [];
@@ -19,7 +17,7 @@ export function Tray(props: {
     <Show when={slots().length}>
       <div class="frame-tray">
         <For each={slots()}>
-          {(slot) => <SlotView slot={slot} docUrl={props.docUrl} />}
+          {(slot) => <SlotView slot={slot} />}
         </For>
       </div>
     </Show>
