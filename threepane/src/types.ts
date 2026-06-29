@@ -51,7 +51,7 @@ export type ToolSlot = ToolRef | string;
  */
 export type ThreepaneConfigDoc = {
   sidebar: { widgets: ToolRef[] };
-  contextbar: { tabs: ToolRef[] };
+  contextbar: { tabs: ToolSlot[] };
   doctitle: { tools: ToolSlot[] };
   tray: { tools: ToolSlot[] };
 };

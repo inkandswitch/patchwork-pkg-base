@@ -18,15 +18,20 @@ type ContextTabsProps = {
  */
 export function ContextTabs(props: ContextTabsProps) {
   const toolRegistry = getRegistry<ToolDescription>("patchwork:tool");
+  // Context tabs can be tools or components, so labels come from either registry.
+  const componentRegistry = getRegistry<ToolDescription>("patchwork:component");
 
-  // Tool descriptions can register/load late; bump a version so tab labels
-  // recompute when the registry changes.
+  // Descriptions can register/load late; bump a version so tab labels recompute
+  // when either registry changes.
   const [registryVersion, setRegistryVersion] = createSignal(0);
   onMount(() => {
-    const off = toolRegistry.on("changed", () => {
-      setRegistryVersion((v) => v + 1);
+    const bump = () => setRegistryVersion((v) => v + 1);
+    const offTool = toolRegistry.on("changed", bump);
+    const offComponent = componentRegistry.on("changed", bump);
+    onCleanup(() => {
+      offTool();
+      offComponent();
     });
-    onCleanup(off);
   });
 
   const toolIds = () => props.contextToolIds() ?? [];
@@ -39,7 +44,7 @@ export function ContextTabs(props: ContextTabsProps) {
 
   const toolName = (id: string) => {
     registryVersion();
-    return toolRegistry.get(id)?.name ?? id;
+    return toolRegistry.get(id)?.name ?? componentRegistry.get(id)?.name ?? id;
   };
 
   return (

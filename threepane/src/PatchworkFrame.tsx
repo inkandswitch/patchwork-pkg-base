@@ -19,6 +19,7 @@ import { ContextSidebar } from "./components/ContextSidebar";
 import { FrameTopBar } from "./components/FrameTopBar";
 import { SidebarWidgets } from "./components/SidebarWidgets";
 import { MainDocumentView } from "./components/MainDocumentView";
+import { slotId } from "./components/SlotView";
 import {
   createEffect,
   createMemo,
@@ -182,13 +183,15 @@ function PatchworkFrameInner(props: {
   // seeds it from the legacy account fields (dropping the intrinsic title +
   // spacer); older builds read those fields directly, so branch-flipping stays
   // safe without a fallback here.
-  // doctitle + tray lanes keep their full slots (a [toolId, docId] tuple or a
-  // bare component-id string); SlotView decides how to render each. contextbar
-  // tabs are still flattened to ids (no component support there yet).
+  // doctitle / tray / contextbar lanes keep their full slots (a [toolId, docId]
+  // tuple or a bare component-id string); SlotView decides how to render each.
+  // The context tab bar + selection work in ids, so contextbar also exposes a
+  // flattened id list.
   const doctitleSlots = () => threepaneConfig()?.doctitle?.tools;
   const traySlots = () => threepaneConfig()?.tray?.tools;
+  const contextTabSlots = () => threepaneConfig()?.contextbar?.tabs;
   const contextTabIds = () =>
-    threepaneConfig()?.contextbar?.tabs?.map((ref) => ref[0]);
+    threepaneConfig()?.contextbar?.tabs?.map(slotId);
   const sidebarWidgets = (): ToolRef[] =>
     threepaneConfig()?.sidebar?.widgets ?? [];
   const rootFolderUrl = () => accountDoc()?.rootFolderUrl;
@@ -314,6 +317,7 @@ function PatchworkFrameInner(props: {
                   doctitleSlots={doctitleSlots}
                   traySlots={traySlots}
                   contextTabIds={contextTabIds}
+                  contextTabSlots={contextTabSlots}
                   sidebarState={sidebarState}
                   sidebarResize={sidebarResize}
                   selectedContextToolId={selectedContextToolId}
@@ -438,6 +442,7 @@ function DraftDocumentArea(props: {
   doctitleSlots: Accessor<ToolSlot[] | undefined>;
   traySlots: Accessor<ToolSlot[] | undefined>;
   contextTabIds: Accessor<string[] | undefined>;
+  contextTabSlots: Accessor<ToolSlot[] | undefined>;
   sidebarState: SidebarState;
   sidebarResize: SidebarResize;
   selectedContextToolId: Accessor<string | undefined>;
@@ -529,6 +534,7 @@ function DraftDocumentArea(props: {
                     >
                       <ContextSidebar
                         contextToolIds={props.contextTabIds}
+                        contextToolSlots={props.contextTabSlots}
                         traySlots={props.traySlots}
                         docUrl={props.accountDocUrl}
                         selectedToolId={props.selectedContextToolId}

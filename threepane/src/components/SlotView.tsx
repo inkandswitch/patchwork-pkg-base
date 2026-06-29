@@ -1,6 +1,10 @@
 import type { AutomergeUrl } from "@automerge/automerge-repo";
 import type { ToolSlot } from "../types";
 
+/** The id that identifies a slot regardless of its kind (tool tuple or component string). */
+export const slotId = (slot: ToolSlot): string =>
+  typeof slot === "string" ? slot : slot[0];
+
 /**
  * Render one configured tool-lane slot (doctitle / tray).
  *

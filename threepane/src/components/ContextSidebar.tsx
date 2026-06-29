@@ -3,10 +3,14 @@ import { Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import type { ToolSlot } from "../types";
 import { Sidebar } from "./Sidebar";
+import { SlotView, slotId } from "./SlotView";
 import { Tray } from "./Tray";
 
 type ContextSidebarProps = {
   contextToolIds: Accessor<string[] | undefined>;
+  /** Full slots for the context tabs; the active one is rendered via SlotView
+   *  (a tool tuple against `docUrl`, or a bare component id). */
+  contextToolSlots: Accessor<ToolSlot[] | undefined>;
   traySlots: Accessor<ToolSlot[] | undefined>;
   docUrl: AutomergeUrl;
   /**
@@ -37,6 +41,12 @@ export function ContextSidebar(props: ContextSidebarProps) {
     return selected && ids.includes(selected) ? selected : ids[0];
   };
 
+  // The slot backing the active tab, used to render it as a tool or component.
+  const activeSlot = (): ToolSlot | undefined => {
+    const id = activeToolId();
+    return props.contextToolSlots()?.find((slot) => slotId(slot) === id);
+  };
+
   return (
     <Sidebar
       side="right"
@@ -53,8 +63,10 @@ export function ContextSidebar(props: ContextSidebarProps) {
         <Show when={!props.isCollapsed()}>
           <div class="context-sidebar__content">
             <Show when={activeToolId()} keyed>
-              {(toolId) => (
-                <patchwork-view doc-url={props.docUrl} tool-id={toolId} />
+              {() => (
+                <Show when={activeSlot()}>
+                  {(slot) => <SlotView slot={slot()} docUrl={props.docUrl} />}
+                </Show>
               )}
             </Show>
           </div>
