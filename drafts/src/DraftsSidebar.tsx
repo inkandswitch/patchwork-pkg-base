@@ -61,6 +61,13 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     () => checkedOut()?.checkedOut ?? null
   );
 
+  // Which single history row is highlighted. Ephemeral, client-only state: the
+  // stored checkpoint (`checkedOut.at`) pins every member doc for the frozen
+  // view, but we only ever highlight the one entry the user actually clicked.
+  // Not persisted, so it resets on reload (the frozen view itself survives).
+  const [selectedEntry, setSelectedEntry] =
+    createSignal<HighlightEntry | null>(null);
+
   // The derived drafts list (read-only): main plus each draft with its member
   // docs, recomputed and pushed by the provider.
   const list = subscribe<DraftList>(
@@ -79,6 +86,7 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
   const selectDraft = (url: AutomergeUrl | null) => {
     const handle = checkedOutHandle();
     if (!handle) return;
+    setSelectedEntry(null);
     handle.change((d) => {
       d.checkedOut = url;
       // Switching drafts (or to main) returns to the live latest heads.
@@ -100,6 +108,8 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     const handle = checkedOutHandle();
     const repo = getRepo();
     if (!handle || !repo) return;
+    // Highlight the clicked row immediately, independent of the async checkpoint.
+    setSelectedEntry({ docUrl: entry.docUrl, hash: entry.hash });
     void (async () => {
       const checkpoint = await computeCheckpoint(repo, members, entry);
       handle.change((d) => {
@@ -113,6 +123,7 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
   const clearCheckpoint = () => {
     const handle = checkedOutHandle();
     if (!handle) return;
+    setSelectedEntry(null);
     handle.change((d) => {
       d.at = null;
     });
@@ -200,25 +211,22 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
             onSelectEntry={(entry) =>
               onSelectEntry(null, list().main.members, entry)
             }
-            activeCheckpoint={() =>
-              isMainSelected() ? (checkedOut()?.at ?? null) : null
-            }
+            activeAnchor={() => (isMainSelected() ? selectedEntry() : null)}
           />
           <For each={list().drafts}>
             {(summary) => (
               <DraftCard
                 url={summary.url}
                 members={summary.members}
+                mainDocUrl={hostDocHandle()?.url}
                 childCount={summary.childCount}
                 isSelected={selected() === summary.url}
                 onSelect={selectDraft}
                 onSelectEntry={(entry) =>
                   onSelectEntry(summary.url, summary.members, entry)
                 }
-                activeCheckpoint={() =>
-                  selected() === summary.url
-                    ? (checkedOut()?.at ?? null)
-                    : null
+                activeAnchor={() =>
+                  selected() === summary.url ? selectedEntry() : null
                 }
               />
             )}
@@ -303,7 +311,7 @@ function MainCard(props: {
   members: Accessor<DraftMemberDoc[]>;
   onSelect: () => void;
   onSelectEntry: (entry: ClickedEntry) => void;
-  activeCheckpoint: Accessor<DraftCheckpoint | null>;
+  activeAnchor: Accessor<HighlightEntry | null>;
 }) {
   return (
     <div class="draft-card" data-selected={props.isSelected ? "" : undefined}>
@@ -323,8 +331,9 @@ function MainCard(props: {
       </button>
       <DraftChangesList
         members={props.members}
+        mainDocUrl={props.hostDocUrl}
         onSelectEntry={props.onSelectEntry}
-        activeCheckpoint={props.activeCheckpoint}
+        activeAnchor={props.activeAnchor}
       />
     </div>
   );
@@ -333,11 +342,12 @@ function MainCard(props: {
 function DraftCard(props: {
   url: AutomergeUrl;
   members: DraftMemberDoc[];
+  mainDocUrl: AutomergeUrl | undefined;
   childCount: number;
   isSelected: boolean;
   onSelect: (url: AutomergeUrl) => void;
   onSelectEntry: (entry: ClickedEntry) => void;
-  activeCheckpoint: Accessor<DraftCheckpoint | null>;
+  activeAnchor: Accessor<HighlightEntry | null>;
 }) {
   return (
     <div class="draft-card" data-selected={props.isSelected ? "" : undefined}>
@@ -360,8 +370,9 @@ function DraftCard(props: {
       </button>
       <DraftChangesList
         members={() => props.members}
+        mainDocUrl={props.mainDocUrl}
         onSelectEntry={props.onSelectEntry}
-        activeCheckpoint={props.activeCheckpoint}
+        activeAnchor={props.activeAnchor}
       />
     </div>
   );
@@ -392,14 +403,22 @@ type ClickedEntry = {
   time: number;
 };
 
+// Identifies the single highlighted history row. Ephemeral UI state, not
+// persisted — used only to render the one entry the user clicked as active.
+type HighlightEntry = {
+  docUrl: AutomergeUrl;
+  hash: string;
+};
+
 // Renders a draft's (or main's) changes as a single timeline that interleaves
 // every member doc's changes, newest first (see `collectInterleavedChanges`).
 // The member set is passed in (from the card's `DraftSummary`); the effect
 // below keeps the timeline live as those docs edit.
 function DraftChangesList(props: {
   members: Accessor<DraftMemberDoc[]>;
+  mainDocUrl: AutomergeUrl | undefined;
   onSelectEntry: (entry: ClickedEntry) => void;
-  activeCheckpoint: Accessor<DraftCheckpoint | null>;
+  activeAnchor: Accessor<HighlightEntry | null>;
 }) {
   const [changes, setChanges] = createSignal<DraftChange[]>([]);
 
@@ -408,6 +427,7 @@ function DraftChangesList(props: {
   // against the async resolution landing after the effect was torn down.
   createEffect(() => {
     const list = props.members();
+    const mainDocUrl = props.mainDocUrl;
     const repo = "repo" in window ? window.repo : undefined;
     if (!repo) return;
 
@@ -416,7 +436,7 @@ function DraftChangesList(props: {
       [];
 
     const recompute = async () => {
-      const next = await collectInterleavedChanges(repo, list);
+      const next = await collectInterleavedChanges(repo, list, mainDocUrl);
       if (!disposed) setChanges(next);
     };
 
@@ -447,12 +467,14 @@ function DraftChangesList(props: {
       >
         <For each={changes()}>
           {(change) => {
-            // A row is the pinned point for its doc when the checkpoint's `to`
-            // for that doc equals this change's (encoded) heads.
+            // Only the single entry the user clicked is highlighted, even
+            // though the stored checkpoint pins one change per member doc.
             const isActive = () => {
-              const entry = props.activeCheckpoint()?.[change.docUrl];
+              const anchor = props.activeAnchor();
               return (
-                !!entry?.to && entry.to[0] === encodeHeads([change.hash])[0]
+                !!anchor &&
+                anchor.docUrl === change.docUrl &&
+                anchor.hash === change.hash
               );
             };
             return (
@@ -557,11 +579,18 @@ async function computeCheckpoint(
 // is set, so reading the clone since that fork point yields exactly the draft's
 // own changes; on main both clone fields are null, so we read the original doc
 // since `[]` for its full history. Members with no changes are omitted.
+//
+// Changes that predate the root document's creation are dropped: a member doc
+// dragged in after the fact (e.g. a tldraw with its own prior edit history)
+// would otherwise contribute changes from before this document even existed,
+// which reads as noise. When the cutoff can't be resolved we keep everything.
 async function collectInterleavedChanges(
   repo: Repo,
-  members: DraftMemberDoc[]
+  members: DraftMemberDoc[],
+  mainDocUrl: AutomergeUrl | undefined
 ): Promise<DraftChange[]> {
   const rows: DraftChange[] = [];
+  const createdAt = await getDocCreationTime(repo, mainDocUrl);
   for (const member of members) {
     try {
       const handle = await repo.find<unknown>(member.cloneUrl ?? member.url);
@@ -572,6 +601,12 @@ async function collectInterleavedChanges(
       if (metas.length === 0) continue;
       const title = await resolveDocTitle(doc, member.url);
       metas.forEach((meta, seq) => {
+        // Hide anything from before the root document was created. `seq` still
+        // reflects the change's true per-document position, so dropping rows
+        // here doesn't disturb the tie-break ordering.
+        if (createdAt !== undefined && meta.time && meta.time < createdAt) {
+          return;
+        }
         rows.push({
           docUrl: member.url,
           title,
@@ -595,6 +630,28 @@ async function collectInterleavedChanges(
   // intent instead of flipping that run to oldest-first.
   rows.sort((a, b) => b.time - a.time || b.seq - a.seq);
   return rows;
+}
+
+// When was a document created, as a Unix SECONDS timestamp? Reads the doc's
+// full history and returns its first change's time (the creation change).
+// Returns undefined when the doc, its history, or that time can't be resolved,
+// in which case callers skip the "before creation" filter rather than hiding
+// everything.
+async function getDocCreationTime(
+  repo: Repo,
+  url: AutomergeUrl | undefined
+): Promise<number | undefined> {
+  if (!url) return undefined;
+  try {
+    const handle = await repo.find<unknown>(url);
+    const doc = handle.doc();
+    if (!doc) return undefined;
+    const metas = Automerge.getChangesMetaSince(doc, []);
+    return metas[0]?.time || undefined;
+  } catch (err) {
+    console.warn("[drafts] failed to resolve creation time for:", url, err);
+    return undefined;
+  }
 }
 
 // Resolve a document's display title: prefer its cached `@patchwork.title`,
