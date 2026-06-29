@@ -35,14 +35,16 @@ export async function ensureThreepaneConfig(
   const rootFolderUrl = accountHandle.doc()?.rootFolderUrl;
   const existingConfigUrl = accountHandle.doc()?.tools?.["threepane"];
 
-  // Already migrated. Backfill the default document-list widget for accounts
-  // migrated by an earlier build of this branch that seeded an empty sidebar.
+  // Already migrated. Backfill lanes added by later builds of this branch:
+  // the `tray` lane (absent in the first cut) and the default document-list
+  // widget (some early builds seeded an empty sidebar).
   if (existingConfigUrl) {
-    if (!rootFolderUrl) return;
     const configHandle = await repo.find<ThreepaneConfigDoc>(existingConfigUrl);
-    if (configHandle.doc()?.sidebar?.widgets?.length) return;
     configHandle.change((doc) => {
-      doc.sidebar.widgets = defaultSidebarWidgets(rootFolderUrl);
+      if (!doc.tray) doc.tray = { tools: [] };
+      if (rootFolderUrl && !doc.sidebar?.widgets?.length) {
+        doc.sidebar.widgets = defaultSidebarWidgets(rootFolderUrl);
+      }
     });
     return;
   }

@@ -1,12 +1,14 @@
 import type { AutomergeUrl, Repo } from "@automerge/automerge-repo";
 import { For, Show, type Accessor } from "solid-js";
+import type { ToolSlot } from "../types";
 import { ContextTabs } from "./ContextTabs";
 import { DocumentTitle } from "./DocumentTitle";
+import { SlotView } from "./SlotView";
 
 type FrameTopBarProps = {
   repo: Repo;
   docUrl: Accessor<AutomergeUrl | undefined>;
-  toolIds: Accessor<string[] | undefined>;
+  toolSlots: Accessor<ToolSlot[] | undefined>;
 
   isLeftCollapsed: Accessor<boolean>;
 
@@ -29,7 +31,7 @@ export function FrameTopBar(props: FrameTopBarProps) {
   const hasRight = () => !!props.contextToolIds()?.length;
   // Title + spacer are intrinsic to the bar and never in the config (the
   // migration drops them), so the configured doctitle tools render as-is.
-  const docToolIds = () => props.toolIds() ?? [];
+  const docToolSlots = () => props.toolSlots() ?? [];
 
   return (
     <div
@@ -48,10 +50,10 @@ export function FrameTopBar(props: FrameTopBarProps) {
       <div class="threepane__spacer" />
 
       {/* configured doctitle tools, at the end on the right, scrollable */}
-      <Show when={props.docUrl() && docToolIds().length}>
+      <Show when={props.docUrl() && docToolSlots().length}>
         <div class="threepane__doctitle-tools">
-          <For each={docToolIds()}>
-            {(id) => <patchwork-view doc-url={props.docUrl()!} tool-id={id} />}
+          <For each={docToolSlots()}>
+            {(slot) => <SlotView slot={slot} docUrl={props.docUrl()} />}
           </For>
         </div>
       </Show>

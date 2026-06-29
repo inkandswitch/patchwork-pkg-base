@@ -235,6 +235,27 @@
   text-overflow: ellipsis;
 }
 
+.threepane__title-text--editable {
+  cursor: text;
+}
+
+.threepane__title-text--editable:hover {
+  opacity: 0.7;
+}
+
+.threepane__title-input {
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+  min-width: 0;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+}
+
 /* built-in spacer between the title and the right-hand tools */
 .threepane__spacer {
   flex: 1;
@@ -320,6 +341,14 @@
   font-family: var(--context-sidebar-family);
   color: var(--context-sidebar-fg);
   background: var(--context-sidebar-bg);
+}
+
+/* The right sidebar persists its content while collapsed so the system tray's
+   tools keep running. The shell is 0px with visible overflow, so hide the
+   content here — `display: none` keeps the tray's elements mounted (and alive)
+   without letting them spill into the main area. */
+.sidebar[data-side="right"][data-collapsed] .context-sidebar {
+  display: none;
 }
 
 /* Tab bar: the row holding the tab list and the close button. */

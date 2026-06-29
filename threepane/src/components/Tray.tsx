@@ -1,36 +1,25 @@
 import type { AutomergeUrl } from "@automerge/automerge-repo";
-import {
-  getRegistry,
-  type ToolDescription,
-} from "@inkandswitch/patchwork-plugins";
-import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { For, Show, type Accessor } from "solid-js";
+import type { ToolSlot } from "../types";
+import { SlotView } from "./SlotView";
 
 /**
- * A horizontal row of every tool tagged `"tray"`, pinned to the bottom of the
- * right context sidebar. Tray tools render against the account document.
+ * A horizontal row of configured tools, pinned to the bottom of the right
+ * context sidebar. Like the doctitle, its entries come from the threepane
+ * config doc: a `[toolId, docId]` tuple renders that tool against the account
+ * document (`docUrl`), while a bare string renders a `patchwork:component`.
  */
-export function Tray(props: { docUrl: AutomergeUrl }) {
-  const toolRegistry = getRegistry<ToolDescription>("patchwork:tool");
-
-  // Tools can register/load late; recompute the tray when the registry changes.
-  const [registryVersion, setRegistryVersion] = createSignal(0);
-  onMount(() => {
-    const off = toolRegistry.on("changed", () => {
-      setRegistryVersion((v) => v + 1);
-    });
-    onCleanup(off);
-  });
-
-  const trayTools = () => {
-    registryVersion();
-    return toolRegistry.filter((t) => (t.tags ?? []).includes("tray"));
-  };
+export function Tray(props: {
+  docUrl: AutomergeUrl;
+  slots: Accessor<ToolSlot[] | undefined>;
+}) {
+  const slots = () => props.slots() ?? [];
 
   return (
-    <Show when={trayTools().length}>
+    <Show when={slots().length}>
       <div class="frame-tray">
-        <For each={trayTools()}>
-          {(tool) => <patchwork-view doc-url={props.docUrl} tool-id={tool.id} />}
+        <For each={slots()}>
+          {(slot) => <SlotView slot={slot} docUrl={props.docUrl} />}
         </For>
       </div>
     </Show>

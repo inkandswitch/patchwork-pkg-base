@@ -39,11 +39,19 @@ export type TinyPatchworkConfigDoc = AccountDoc;
 export type ToolRef = [toolId: string, docId: AutomergeUrl];
 
 /**
+ * One entry in a tool lane (doctitle / tray). Either a `[toolId, docId]` tuple
+ * rendered as a `patchwork:tool` against the lane's fed document, or a bare
+ * component id rendered as a `patchwork:component` (with no document).
+ */
+export type ToolSlot = ToolRef | string;
+
+/**
  * The threepane layout config (its own document, referenced from
  * `AccountDoc.tools["threepane"]`).
  */
 export type ThreepaneConfigDoc = {
   sidebar: { widgets: ToolRef[] };
   contextbar: { tabs: ToolRef[] };
-  doctitle: { tools: ToolRef[] };
+  doctitle: { tools: ToolSlot[] };
+  tray: { tools: ToolSlot[] };
 };

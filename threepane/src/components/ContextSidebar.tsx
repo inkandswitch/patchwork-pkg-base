@@ -1,11 +1,13 @@
 import type { AutomergeUrl } from "@automerge/automerge-repo";
 import { Show } from "solid-js";
 import type { Accessor } from "solid-js";
+import type { ToolSlot } from "../types";
 import { Sidebar } from "./Sidebar";
 import { Tray } from "./Tray";
 
 type ContextSidebarProps = {
   contextToolIds: Accessor<string[] | undefined>;
+  traySlots: Accessor<ToolSlot[] | undefined>;
   docUrl: AutomergeUrl;
   /**
    * Selected tab, owned by the frame *above* the branch-switch boundary so it
@@ -42,16 +44,22 @@ export function ContextSidebar(props: ContextSidebarProps) {
       width={props.width}
       onMouseDown={props.onMouseDown}
       onToggleClick={props.onToggleClick}
+      persistContent
     >
+      {/* Persisted while collapsed (hidden via CSS) so the tray keeps running.
+          The active context tool itself still tears down on collapse — only the
+          system tray needs to stay alive secretly. */}
       <div class="context-sidebar">
-        <div class="context-sidebar__content">
-          <Show when={activeToolId()} keyed>
-            {(toolId) => (
-              <patchwork-view doc-url={props.docUrl} tool-id={toolId} />
-            )}
-          </Show>
-        </div>
-        <Tray docUrl={props.docUrl} />
+        <Show when={!props.isCollapsed()}>
+          <div class="context-sidebar__content">
+            <Show when={activeToolId()} keyed>
+              {(toolId) => (
+                <patchwork-view doc-url={props.docUrl} tool-id={toolId} />
+              )}
+            </Show>
+          </div>
+        </Show>
+        <Tray docUrl={props.docUrl} slots={props.traySlots} />
       </div>
     </Sidebar>
   );

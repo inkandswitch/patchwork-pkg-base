@@ -30,6 +30,7 @@ export const ThreepaneConfigDatatype: DatatypeImplementation<ThreepaneConfigDoc>
       doc.sidebar = { widgets: [] };
       doc.contextbar = { tabs: [] };
       doc.doctitle = { tools: [] };
+      doc.tray = { tools: [] };
     },
     getTitle: () => "Threepane Config",
   };

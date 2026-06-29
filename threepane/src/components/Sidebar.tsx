@@ -15,6 +15,13 @@ type SidebarProps = {
    * content inside the shared sidebar chrome (collapse/resize/toggle).
    */
   children?: JSX.Element;
+  /**
+   * Keep the content mounted while collapsed instead of tearing it down. The
+   * shell still shrinks to 0px; callers must hide the persisted content via CSS
+   * (it would otherwise spill out, since the shell's overflow is visible). Used
+   * by the context sidebar so the system tray's tools stay alive when closed.
+   */
+  persistContent?: boolean;
 };
 
 /**
@@ -91,8 +98,11 @@ export function Sidebar(props: SidebarProps) {
         />
       )}
 
-      {/* Sidebar content when expanded - right side */}
-      {props.side === "right" && !props.isCollapsed() && content()}
+      {/* Sidebar content - right side. With persistContent it stays mounted
+          while collapsed (hidden via CSS) so e.g. the system tray keeps running. */}
+      {props.side === "right" &&
+        (props.persistContent || !props.isCollapsed()) &&
+        content()}
     </div>
   );
 }
