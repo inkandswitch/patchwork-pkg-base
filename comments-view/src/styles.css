@@ -64,6 +64,15 @@
   gap: 0.5rem;
 }
 
+/* The thread's card + actions are rendered by the `comment-thread` tool into
+   its <patchwork-view> host, so that host is the flex column that lays them
+   out (a custom element is `display: inline` by default). */
+.comments-thread > patchwork-view {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
 .comments-thread-card {
   background: var(--comments-bg);
   border: 1px solid var(--comments-border);

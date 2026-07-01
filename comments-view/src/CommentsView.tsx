@@ -10,11 +10,7 @@ import {
   For,
 } from "solid-js";
 
-import { relativeTime } from "./relative-time";
-import {
-  useDocument,
-  useRepo,
-} from "@automerge/automerge-repo-solid-primitives";
+import { useRepo } from "@automerge/automerge-repo-solid-primitives";
 import {
   type AutomergeUrl,
   type DocHandle,
@@ -27,9 +23,6 @@ import {
 } from "@inkandswitch/patchwork-providers-solid";
 import {
   createDocumentThread,
-  createReply,
-  type Comment,
-  type CommentThread,
   type DocWithComments,
 } from "./comments";
 
@@ -191,6 +184,22 @@ export function CommentsView(props: { element: HTMLElement }) {
     });
   };
 
+  // Card clicks bubble up from the thread tool. Ignore clicks on interactive
+  // controls (its buttons / draft textarea) so they don't also select.
+  const onClickThreadCard = (e: MouseEvent, threadUrl: AutomergeUrl) => {
+    const target = e.target as HTMLElement | null;
+    if (target?.closest("textarea, button, input, a, select")) return;
+    onSelectThread(threadUrl, threadTargetUrlMap().get(threadUrl) ?? []);
+  };
+
+  // The selection state we hand each thread tool via `data-thread-state`.
+  const threadState = (threadUrl: AutomergeUrl): string =>
+    primaryThreadUrl() === threadUrl
+      ? "primary"
+      : secondaryThreadUrls().has(threadUrl)
+        ? "secondary"
+        : "inactive";
+
   onCleanup(() => {
     const handle = focusHandle();
     if (!handle) return;
@@ -230,14 +239,16 @@ export function CommentsView(props: { element: HTMLElement }) {
       >
         <For each={displayedThreadUrls()}>
           {(threadUrl) => (
-            <ThreadView
-              threadUrl={threadUrl}
-              repo={repo}
-              primaryThreadUrl={primaryThreadUrl}
-              secondaryThreadUrls={secondaryThreadUrls}
-              onSelectThread={onSelectThread}
-              currentContactUrl={currentContactUrl}
-            />
+            <div
+              class="comments-thread"
+              onClick={(e) => onClickThreadCard(e, threadUrl)}
+            >
+              <patchwork-view
+                doc-url={threadUrl}
+                tool-id="comment-thread"
+                data-thread-state={threadState(threadUrl)}
+              />
+            </div>
           )}
         </For>
       </Show>
@@ -375,316 +386,3 @@ function threadOverlapsSelection(
   return targets.some((t) => selection.some((s) => s.overlaps(t)));
 }
 
-function ThreadView(props: {
-  threadUrl: AutomergeUrl;
-  repo: Repo;
-  primaryThreadUrl: () => AutomergeUrl | undefined;
-  secondaryThreadUrls: () => Set<AutomergeUrl>;
-  onSelectThread: (threadUrl: AutomergeUrl, targetUrls: AutomergeUrl[]) => void;
-  currentContactUrl: () => AutomergeUrl | undefined;
-}) {
-  // Subdoc handles resolve asynchronously via `repo.find`, so drive the
-  // handle through a signal seeded once the find resolves.
-  const [threadHandle, setThreadHandle] = createSignal<
-    DocHandle<CommentThread> | undefined
-  >(undefined);
-
-  createEffect(() => {
-    let cancelled = false;
-    setThreadHandle(() => undefined);
-    props.repo
-      .find<CommentThread>(props.threadUrl)
-      .then((handle) => {
-        if (cancelled) return;
-        setThreadHandle(() => handle);
-      })
-      .catch((error) => {
-        console.error(
-          `[comments-view] failed to resolve thread ${props.threadUrl}`,
-          error
-        );
-      });
-    onCleanup(() => {
-      cancelled = true;
-    });
-  });
-
-  const [thread, setThread] = createSignal<CommentThread | undefined>(
-    undefined
-  );
-  createEffect(() => {
-    const h = threadHandle();
-    if (!h) {
-      setThread(() => undefined);
-      return;
-    }
-    setThread(() => h.doc());
-    const onChange = () => setThread(() => h.doc());
-    h.on("change", onChange);
-    onCleanup(() => h.off("change", onChange));
-  });
-
-  // A document-level thread targets the whole document: its ref is a bare
-  // document url (no `/` path or `#` heads pointing at a range within it).
-  const isDocLevel = createMemo(() => {
-    const refs = thread()?.refs ?? [];
-    return (
-      refs.length > 0 &&
-      refs.every((ref) => !ref.includes("/") && !ref.includes("#"))
-    );
-  });
-
-  const isPrimary = createMemo(
-    () => props.primaryThreadUrl() === props.threadUrl
-  );
-  const isSecondary = createMemo(() =>
-    props.secondaryThreadUrls().has(props.threadUrl)
-  );
-
-  const onClickThreadCard = (e: MouseEvent) => {
-    const target = e.target as HTMLElement | null;
-    if (target?.closest("textarea, button, input, a, select")) return;
-    const t = thread();
-    if (!t) return;
-    props.onSelectThread(props.threadUrl, t.refs as AutomergeUrl[]);
-  };
-
-  // `thread().comments` is a fresh Automerge proxy every change; returning
-  // the previous array when the id sequence is unchanged keeps <For> from
-  // tearing down focused draft textareas on each keystroke.
-  const commentIds = createMemo<string[]>((prev) => {
-    const t = thread();
-    if (!t) return [];
-    const next: string[] = [];
-    for (const c of t.comments) next.push(c.id);
-    if (
-      prev &&
-      prev.length === next.length &&
-      next.every((id, i) => id === prev[i])
-    ) {
-      return prev;
-    }
-    return next;
-  }, []);
-
-  const draftComment = createMemo(() => {
-    const t = thread();
-    if (!t) return undefined;
-    return t.comments.find(
-      (c) => c.draftContent !== undefined || c.content === undefined
-    );
-  });
-
-  const draftCommentHandle = createMemo(() => {
-    const h = threadHandle();
-    const t = thread();
-    const d = draftComment();
-    if (!h || !t || !d) return undefined;
-    return h.sub("comments", { id: d.id }) as DocHandle<Comment>;
-  });
-
-  const onResolveThread = () => {
-    const h = threadHandle();
-    if (!h) return;
-    h.change((t) => {
-      t.isResolved = true;
-    });
-  };
-
-  const onReplyToComment = () => {
-    const handle = threadHandle();
-    const contactUrl = props.currentContactUrl();
-    if (!handle || !contactUrl) return;
-    createReply({ threadHandle: handle, content: "", contactUrl });
-  };
-
-  const onDeleteComment = (commentHandle: DocHandle<Comment>) => {
-    const h = threadHandle();
-    commentHandle.remove();
-    if (h?.doc()?.comments.length === 0) {
-      h.remove();
-    }
-  };
-
-  const onSaveDraft = () => {
-    const h = draftCommentHandle();
-    if (!h) return;
-    h.change((comment: Comment) => {
-      comment.content = comment.draftContent;
-      comment.timestamp = Date.now();
-      delete comment.draftContent;
-    });
-  };
-
-  const onCancelDraft = () => {
-    const h = draftCommentHandle();
-    if (!h) return;
-    const commentValue = h.doc() as Comment | undefined;
-    if (commentValue?.content === undefined) {
-      onDeleteComment(h);
-      return;
-    }
-    h.change((comment: Comment) => {
-      delete comment.draftContent;
-    });
-  };
-
-  return (
-    <Show when={thread() && threadHandle()}>
-      <div class="comments-thread">
-        <div
-          class={`comments-thread-card ${
-            isPrimary()
-              ? "comments-thread-card--primary"
-              : isSecondary()
-                ? "comments-thread-card--secondary"
-                : "comments-thread-card--inactive"
-          }`}
-          onClick={onClickThreadCard}
-        >
-          <div class="comments-thread-card-body">
-            <Show when={isDocLevel()}>
-              <span class="comments-thread-doc-level">On this document</span>
-            </Show>
-            <For each={commentIds()}>
-              {(commentId) => {
-                const commentHandle = createMemo(() => {
-                  const handle = threadHandle();
-                  const t = thread();
-                  if (!handle || !t) return undefined;
-                  return handle.sub("comments", {
-                    id: commentId,
-                  }) as DocHandle<Comment>;
-                });
-                return (
-                  <Show when={commentHandle()}>
-                    {(handle) => (
-                      <CommentView
-                        commentHandle={handle()}
-                        currentContactUrl={props.currentContactUrl()}
-                        repo={props.repo}
-                      />
-                    )}
-                  </Show>
-                );
-              }}
-            </For>
-          </div>
-        </div>
-        <Show when={draftComment() || isPrimary()}>
-          <div class="comments-thread-actions">
-            <Show
-              when={draftComment()}
-              fallback={
-                <>
-                  <button
-                    class="comment-btn"
-                    onClick={onResolveThread}
-                    title="Resolve comment"
-                  >
-                    Resolve
-                  </button>
-                  <button
-                    class="comment-btn"
-                    onClick={onReplyToComment}
-                    title="Reply to comment"
-                  >
-                    Reply
-                  </button>
-                </>
-              }
-            >
-              <button class="comment-btn" onClick={onCancelDraft}>
-                Cancel
-              </button>
-              <button class="comment-btn" onClick={onSaveDraft}>
-                Save
-              </button>
-            </Show>
-          </div>
-        </Show>
-      </div>
-    </Show>
-  );
-}
-
-type ContactDoc = { type: "anonymous" } | { type: "registered"; name: string };
-
-function CommentView(props: {
-  commentHandle: DocHandle<Comment>;
-  currentContactUrl?: string;
-  repo: Repo;
-}) {
-  const [comment, setComment] = createSignal<Comment | undefined>(undefined);
-  createEffect(() => {
-    const h = props.commentHandle;
-    setComment(() => h.doc() as Comment | undefined);
-    const onChange = () => setComment(() => h.doc() as Comment | undefined);
-    h.on("change", onChange);
-    onCleanup(() => h.off("change", onChange));
-  });
-
-  const contactUrl = () => comment()?.contactUrl as AutomergeUrl | undefined;
-  const [contact] = useDocument<ContactDoc>(contactUrl, { repo: props.repo });
-
-  const isDraft = () => {
-    const c = comment();
-    if (!c) return false;
-    return c.draftContent !== undefined || c.content === undefined;
-  };
-
-  const shouldRender = () => {
-    const c = comment();
-    if (!c) return false;
-    if (isDraft() && c.contactUrl !== props.currentContactUrl) return false;
-    return true;
-  };
-
-  const contactName = () => {
-    const ct = contact();
-    return ct?.type === "registered" ? ct.name : "Anonymous";
-  };
-
-  const onChangeDraft = (newDraftContent: string) => {
-    props.commentHandle.change((c: Comment) => {
-      c.draftContent = newDraftContent;
-    });
-  };
-
-  return (
-    <Show when={shouldRender() && comment()}>
-      <div class="comment-card" data-id={props.commentHandle.url}>
-        <div class="comment-header">
-          <div class="comment-author">
-            <patchwork-view
-              doc-url={comment()!.contactUrl}
-              tool-id="contact-avatar"
-            />
-            <span class="comment-author-name">
-              {contactName()}
-            </span>
-          </div>
-          <Show when={!isDraft() && comment()!.timestamp}>
-            <span class="comment-timestamp">
-              {relativeTime(comment()!.timestamp!)}
-            </span>
-          </Show>
-        </div>
-        <Show
-          when={isDraft()}
-          fallback={
-            <div class="comment-content">
-              {comment()!.content}
-            </div>
-          }
-        >
-          <textarea
-            class="comment-draft-textarea"
-            value={comment()!.draftContent ?? ""}
-            onInput={(e) => onChangeDraft(e.currentTarget.value)}
-          />
-        </Show>
-      </div>
-    </Show>
-  );
-}

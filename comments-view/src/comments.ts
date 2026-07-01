@@ -1,5 +1,12 @@
 import type { AutomergeUrl, DocHandle } from "@automerge/automerge-repo";
 
+/**
+ * The `@patchwork.type` stamped on a comment thread so a datatype (and thus a
+ * relevant tool, e.g. `comment-thread`) can be resolved when the thread's
+ * subdocument is opened on its own — for instance in a tiling-frame panel.
+ */
+export const COMMENT_THREAD_TYPE = "comment-thread";
+
 export type DocWithComments = {
   "@comments"?: {
     threads: CommentThread[];
@@ -11,6 +18,7 @@ export type CommentThread = {
   refs: AutomergeUrl[];
   isResolved: boolean;
   comments: Comment[];
+  "@patchwork"?: { type: string; title?: string };
 };
 
 export type Comment = {
@@ -52,6 +60,7 @@ export function createDocumentThread({
       refs: [docHandle.url],
       isResolved: false,
       comments: [comment],
+      "@patchwork": { type: COMMENT_THREAD_TYPE },
     });
   });
 
