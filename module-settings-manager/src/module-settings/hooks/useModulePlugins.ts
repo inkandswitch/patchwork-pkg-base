@@ -252,8 +252,8 @@ export function useModulePlugins(params: UseModulePluginsParams) {
     return plugins.filter((plugin) => {
       if (query) {
         const matchesQuery =
-          plugin.name.toLowerCase().includes(query) ||
-          plugin.type.toLowerCase().includes(query) ||
+          plugin.name?.toLowerCase().includes(query) ||
+          plugin.type?.toLowerCase().includes(query) ||
           plugin.id?.toLowerCase().includes(query) ||
           plugin.packageName?.toLowerCase().includes(query) ||
           plugin.packageTitle?.toLowerCase().includes(query) ||
