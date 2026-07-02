@@ -51,11 +51,15 @@ export function CommentThreadView(props: {
 
   // The host tags us with our current selection state; it alone can pick a
   // single primary among several overlapping threads (and honour the pin
-  // tiebreaker), so we just reflect what it decided.
+  // tiebreaker), so we just reflect what it decided. `CommentsView` always
+  // sets this attribute explicitly, so its absence means we're mounted
+  // without a host orchestrating multiple threads (e.g. a thread opened on
+  // its own as a standalone tool) — in which case we're inherently the only
+  // (and therefore primary) thread.
   const state = createElementAttribute(
     props.element,
     "data-thread-state",
-    "inactive"
+    "primary"
   );
   const isPrimary = () => state() === "primary";
   const stateClass = () =>

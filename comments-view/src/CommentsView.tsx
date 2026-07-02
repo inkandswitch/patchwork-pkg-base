@@ -21,26 +21,31 @@ import {
   subscribeDoc,
   subscribe,
 } from "@inkandswitch/patchwork-providers-solid";
+import { subscribe as subscribeProvider } from "@inkandswitch/patchwork-providers";
 import {
   createDocumentThread,
   type DocWithComments,
 } from "./comments";
 
+type CommentEntry = { targetUrl: AutomergeUrl; threadUrl: AutomergeUrl };
+
 export function CommentsView(props: { element: HTMLElement }) {
   const repo = useRepo();
 
-  const commentEntries = subscribe<
-    { targetUrl: AutomergeUrl; threadUrl: AutomergeUrl }[]
-  >(props.element, { type: "patchwork:comments" }, []);
-
-  // The doc to attach untargeted (document-level) comments to: whatever is
-  // currently selected in the main view.
+  // The doc the panel is about: whatever is currently selected in the main
+  // view. Both the comment list and document-level "Add comment" target it.
   const selectedDocUrls = subscribe<AutomergeUrl[]>(
     props.element,
     { type: "patchwork:selected-doc" },
     []
   );
   const targetDocUrl = () => selectedDocUrls()[0] as AutomergeUrl | undefined;
+
+  // Scope the comments subscription to the selected doc and re-open it when
+  // that changes. A single global (url-less) subscription would accumulate
+  // every mounted doc's threads and never drop the previous document's
+  // comments as you navigate.
+  const commentEntries = useScopedCommentEntries(props.element, targetDocUrl);
 
   // `selection` is read-only input (driven by the active editor), `highlight`
   // is our output. Splitting them avoids the feedback loop a single shared
@@ -143,9 +148,14 @@ export function CommentsView(props: { element: HTMLElement }) {
   >();
 
   const primaryThreadUrl = createMemo<AutomergeUrl | undefined>(() => {
+    const pinned = pinnedThread();
+    // Document-level threads target the whole doc, so they have no range to
+    // overlap the selection and never appear in `overlappingThreads`. The
+    // only way for one to become primary is by being explicitly pinned
+    // (clicked).
+    if (pinned && docLevelThreadUrls().has(pinned)) return pinned;
     const overlaps = overlappingThreads();
     if (overlaps.length === 0) return undefined;
-    const pinned = pinnedThread();
     if (pinned && overlaps.includes(pinned)) return pinned;
     return overlaps[0];
   });
@@ -254,6 +264,29 @@ export function CommentsView(props: { element: HTMLElement }) {
       </Show>
     </div>
   );
+}
+
+// Open a `patchwork:comments` subscription scoped to `docUrl()` and re-open
+// it whenever the selected doc changes, clearing entries in between so the
+// previous document's comments don't linger. Returns the current doc's
+// entries (empty when nothing is selected).
+function useScopedCommentEntries(
+  element: HTMLElement,
+  docUrl: () => AutomergeUrl | undefined
+): () => CommentEntry[] {
+  const [entries, setEntries] = createSignal<CommentEntry[]>([]);
+  createEffect(() => {
+    const url = docUrl();
+    setEntries([]);
+    if (!url) return;
+    const unsubscribe = subscribeProvider<CommentEntry[]>(
+      element,
+      { type: "patchwork:comments", url },
+      (value) => setEntries(value ?? [])
+    );
+    onCleanup(unsubscribe);
+  });
+  return entries;
 }
 
 // Reactively resolve a list of urls into live sub-handles. Re-resolves
