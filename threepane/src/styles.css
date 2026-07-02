@@ -451,6 +451,7 @@
   min-height: 0;
   overflow: auto;
   background: var(--context-sidebar-content-bg);
+  contain: content;
 }
 
 .context-sidebar__content patchwork-view {
