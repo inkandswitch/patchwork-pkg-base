@@ -5,6 +5,10 @@ import {
 } from "@automerge/automerge-repo-solid-primitives";
 import type { AutomergeUrl, DocHandle, Repo } from "@automerge/automerge-repo";
 import { subscribe } from "@inkandswitch/patchwork-providers";
+import type {
+  OpenDocumentEvent,
+  OpenDocumentEventDetail,
+} from "@inkandswitch/patchwork-elements";
 import type { AccountDoc, ThreepaneConfigDoc, ToolSlot } from "./types";
 import {
   useSidebarState,
@@ -51,6 +55,19 @@ const MAX_SIDEBAR_WIDTH = 720;
 // Drag a sidebar narrower than this and it snaps closed (Things-3 style).
 const AUTO_CLOSE_WIDTH = 120;
 const DRAG_THRESHOLD = 3;
+
+// Fire a `patchwork:open-document` request from an account-bar button. Bubbles +
+// composed so it reaches the footer intercept (isolation → popover) or the
+// selected-doc provider (otherwise → main frame), matching the sideboard tool.
+function dispatchOpen(el: HTMLElement, detail: OpenDocumentEventDetail) {
+  el.dispatchEvent(
+    new CustomEvent("patchwork:open-document", {
+      detail,
+      bubbles: true,
+      composed: true,
+    })
+  );
+}
 
 export const PatchworkFrame = ({
   handle,
@@ -214,6 +231,16 @@ function PatchworkFrameInner(props: {
     null
   );
 
+  // Under isolation the main document area lives inside a sandboxed iframe, so
+  // host-realm chrome tools opened from the account bar (account picker /
+  // Packages / Settings) must NOT be routed into it as a `selected-view` — they
+  // need host repo access the iframe is denied. FrameLayout intercepts their
+  // `patchwork:open-document` events (stopping them before they reach the
+  // selected-doc provider) and surfaces them here, floating in a popover over
+  // the frame instead. Off-isolation this stays null and the events open in the
+  // main frame as usual.
+  const [popoverView, setPopoverView] = createSignal<SelectedView | null>(null);
+
   onMount(() => {
     const unsubscribeSelectedView = subscribe<SelectedView | null>(
       element,
@@ -276,6 +303,10 @@ function PatchworkFrameInner(props: {
         configHandle={threepaneConfigHandle}
         rootFolderUrl={rootFolderUrl}
         widgetsReady={widgetsReady}
+        contactUrl={() => accountDoc()?.contactUrl}
+        moduleSettingsUrl={() => accountDoc()?.moduleSettingsUrl}
+        isolation={props.isolation}
+        onInterceptOpen={setPopoverView}
       >
         <Show
           when={selectedDocUrl()}
@@ -329,6 +360,42 @@ function PatchworkFrameInner(props: {
           </Show>
         </Show>
       </FrameLayout>
+
+      <Show when={popoverView()}>
+        {(view) => (
+          <FramePopover view={view()} onClose={() => setPopoverView(null)} />
+        )}
+      </Show>
+    </div>
+  );
+}
+
+// The isolation-mode chrome popover: floats a host-realm tool (account picker /
+// Packages / Settings) over the frame on a dimmed, theme-tinted wash so it can
+// run in the host realm instead of being routed into the isolated main frame.
+// Click the backdrop or press Escape to dismiss.
+function FramePopover(props: { view: SelectedView; onClose: () => void }) {
+  onMount(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") props.onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    onCleanup(() => window.removeEventListener("keydown", onKey));
+  });
+
+  return (
+    <div class="frame__popover-backdrop" onClick={() => props.onClose()}>
+      <div
+        class="frame__popover"
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <patchwork-view
+          doc-url={props.view.url}
+          tool-id={props.view.toolId ?? undefined}
+        />
+      </div>
     </div>
   );
 }
@@ -345,9 +412,36 @@ function FrameLayout(props: {
   configHandle: Accessor<DocHandle<ThreepaneConfigDoc> | undefined>;
   rootFolderUrl: Accessor<AutomergeUrl | undefined>;
   widgetsReady: Accessor<boolean>;
+  /** Account subdocs for the inlined account bar (avatar + Packages buttons). */
+  contactUrl: Accessor<AutomergeUrl | undefined>;
+  moduleSettingsUrl: Accessor<AutomergeUrl | undefined>;
+  /** Fixed per tool instance: whether the main document area is isolated. */
+  isolation?: boolean;
+  /** Isolation only: called with an account-bar tool to open in the popover. */
+  onInterceptOpen?: (view: SelectedView) => void;
   children: JSX.Element;
 }) {
   const isCollapsed = props.sidebarState.isSidebarCollapsed;
+
+  // Under isolation, intercept `patchwork:open-document` events fired by the
+  // account bar (account picker / Packages / Settings) at the footer, before
+  // they bubble to the selected-doc provider. Left to propagate they'd select a
+  // view for the isolated main frame — the sandboxed iframe — where these
+  // host-realm chrome tools can't run. We stop them here and hand them to the
+  // host-side popover instead. Off-isolation the events pass straight through.
+  let footerEl: HTMLDivElement | undefined;
+  onMount(() => {
+    if (!props.isolation || !footerEl) return;
+    const el = footerEl;
+    const onOpen = (event: OpenDocumentEvent) => {
+      const { url, toolId } = event.detail;
+      if (!url) return;
+      event.stopPropagation();
+      props.onInterceptOpen?.({ url, toolId: toolId ?? null });
+    };
+    el.addEventListener("patchwork:open-document", onOpen);
+    onCleanup(() => el.removeEventListener("patchwork:open-document", onOpen));
+  });
   return (
     <>
       {/*
@@ -381,12 +475,66 @@ function FrameLayout(props: {
             rootFolderUrl={props.rootFolderUrl}
             ready={props.widgetsReady}
           />
-          {/* account / packages / settings, pinned to the sidebar's bottom */}
-          <div class="threepane-sidebar__footer">
-            <patchwork-view
-              doc-url={props.accountDocUrl}
-              tool-id="chee/account-bar"
-            />
+          {/*
+            The account bar — avatar (account picker) + Packages + Settings —
+            pinned to the sidebar's bottom. Inlined here directly rather than
+            mounted as the `chee/account-bar` sideboard tool, so the frame owns
+            the markup. Each button dispatches a `patchwork:open-document` event
+            (bubbles + composed), which the footer intercepts into the popover
+            under isolation, or lets bubble to the selected-doc provider
+            otherwise — exactly the flow the sideboard tool had.
+          */}
+          <div class="threepane-sidebar__footer" ref={footerEl}>
+            <footer class="threepane-account-bar">
+              <Show when={props.contactUrl()}>
+                {(contactUrl) => (
+                  <button
+                    type="button"
+                    class="threepane-account-bar__button threepane-account-bar__avatar"
+                    title="Account"
+                    aria-label="Account"
+                    onClick={(e) =>
+                      dispatchOpen(e.currentTarget, {
+                        url: props.accountDocUrl,
+                        toolId: "account-picker",
+                      })
+                    }
+                  >
+                    <patchwork-view
+                      doc-url={contactUrl()}
+                      tool-id="contact-avatar"
+                    />
+                  </button>
+                )}
+              </Show>
+
+              <Show when={props.moduleSettingsUrl()}>
+                {(moduleSettingsUrl) => (
+                  <button
+                    type="button"
+                    class="threepane-account-bar__button"
+                    onClick={(e) =>
+                      dispatchOpen(e.currentTarget, { url: moduleSettingsUrl() })
+                    }
+                  >
+                    Packages
+                  </button>
+                )}
+              </Show>
+
+              <button
+                type="button"
+                class="threepane-account-bar__button"
+                onClick={(e) =>
+                  dispatchOpen(e.currentTarget, {
+                    url: props.accountDocUrl,
+                    toolId: "frame-configurator",
+                  })
+                }
+              >
+                Settings
+              </button>
+            </footer>
           </div>
         </div>
       </Sidebar>

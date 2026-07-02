@@ -481,10 +481,52 @@
   flex: none;
 }
 
-.threepane-sidebar__footer patchwork-view {
+/* The inlined account bar: avatar (account picker) + Packages + Settings. Ported
+   from the sideboard `account-bar` tool onto threepane tokens so the frame owns
+   the markup directly. */
+.threepane-account-bar {
+  container-type: inline-size;
+  display: flex;
+  align-items: center;
+  gap: var(--threepane-space-md);
+  min-height: var(--threepane-space-2xl);
+  box-sizing: border-box;
+  background: var(--threepane-sidebar-fill);
+  color: var(--threepane-fg);
+  border-top: 1px solid var(--threepane-sidebar-divider);
+  padding-block: var(--threepane-space-2xs);
+  padding-bottom: calc(var(--threepane-space-2xs) + env(safe-area-inset-bottom));
+  padding-left: calc(env(safe-area-inset-left) + var(--threepane-space-sm));
+  padding-right: calc(env(safe-area-inset-right) + var(--threepane-space-sm));
+  justify-content: space-between;
+}
+
+.threepane-account-bar__button {
+  display: flex;
+  align-items: center;
+  border: 1px solid transparent;
+  padding-inline: var(--threepane-space-2xs);
+  padding-block: var(--threepane-space-3xs);
+  border-radius: var(--threepane-radius-xs);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.threepane-account-bar__button:hover {
+  border-color: var(--threepane-sidebar-divider);
+}
+
+.threepane-account-bar__avatar {
+  padding: 0;
+}
+
+.threepane-account-bar__avatar patchwork-view {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
 }
 
 /* Left sidebar: a stack of configured widgets. The widgets start below the
@@ -677,6 +719,69 @@
   }
 }
 
+
+/* Isolation-mode chrome popover.
+   In isolation the main document area is a sandboxed iframe, so host-realm tools
+   opened from the account bar (account picker / Packages / Settings) are floated
+   over the frame here instead of being routed into the iframe. The backdrop is a
+   lowish-opacity, theme-tinted ink wash (dims the frame + picks up the theme's
+   ink hue); the panel carries a soft drop shadow so it reads as lifted. Absolute
+   inset:0 resolves to the `.frame` (its nearest positioned ancestor). */
+.frame__popover-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--threepane-space-2xl);
+  background: color-mix(in oklch, var(--threepane-fg), transparent 82%);
+  animation: frame-popover-fade var(--studio-transition, 0.15s ease);
+}
+
+.frame__popover {
+  display: flex;
+  flex-direction: column;
+  width: min(1100px, 100%);
+  height: min(900px, 100%);
+  overflow: hidden;
+  background: var(--threepane-bg);
+  color: var(--threepane-fg);
+  border: 1px solid var(--threepane-toolbar-border);
+  border-radius: var(--threepane-radius-md);
+  box-shadow:
+    0 32px 80px color-mix(in oklch, var(--threepane-fg), transparent 45%),
+    0 12px 32px color-mix(in oklch, var(--threepane-fg), transparent 60%),
+    0 2px 8px color-mix(in oklch, var(--threepane-fg), transparent 70%);
+  animation: frame-popover-pop var(--studio-transition, 0.15s ease);
+}
+
+.frame__popover patchwork-view {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+}
+
+@keyframes frame-popover-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes frame-popover-pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
 
 /* Custom colors for event types */
 :root,

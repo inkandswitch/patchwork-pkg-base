@@ -10,7 +10,14 @@ import frameStyles from "./styles.css?inline";
  */
 export function ensureFrameStyles() {
   const id = "patchwork-frame-styles";
-  if (document.getElementById(id)) return;
+  const existing = document.getElementById(id);
+  if (existing) {
+    // Already injected in this realm. Refresh its contents if the bundled CSS
+    // has changed (a remount after a rebuild) so a stale stylesheet from an
+    // earlier mount can't shadow newer rules; otherwise leave it untouched.
+    if (existing.textContent !== frameStyles) existing.textContent = frameStyles;
+    return;
+  }
   const el = document.createElement("style");
   el.id = id;
   el.textContent = frameStyles;
