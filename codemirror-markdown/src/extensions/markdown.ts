@@ -11,6 +11,7 @@ import { foldKeymap, indentOnInput, indentUnit } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { searchKeymap } from "@codemirror/search";
 import { EditorView, keymap } from "@codemirror/view";
+import { GFM } from "@lezer/markdown";
 
 /** Styles */
 import { theme } from "../themes/markdown.ts";
@@ -29,7 +30,7 @@ export function markdownExtensions() {
       indentWithTab,
     ]),
     EditorView.lineWrapping,
-    markdown({ codeLanguages: languages }),
+    markdown({ codeLanguages: languages, extensions: GFM }),
     indentUnit.of("    "),
   ];
 }
