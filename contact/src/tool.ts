@@ -19,6 +19,7 @@ export const plugins = [
     id: "contact",
     name: "Contact",
     icon: "User",
+    unlisted: true,
     async load() {
       const { ContactDatatype } = await import("./datatype");
       return ContactDatatype;

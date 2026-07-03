@@ -34,6 +34,7 @@ export const plugins: Plugin<any>[] = [
     id: "comment-thread",
     name: "Comment Thread",
     icon: "MessageSquare",
+    unlisted: true,
     async load() {
       const { CommentThreadDatatype } = await import("./datatype");
       return CommentThreadDatatype;
