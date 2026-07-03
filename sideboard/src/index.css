@@ -465,6 +465,17 @@ button {
   color: var(--placeholder-line);
 }
 
+/* The menu content is portalled to document.body, so it misses the
+   .document-list border-box rule. Without it, width:100% + padding makes
+   sub-triggers overflow the menu horizontally, and hover-focus then scrolls
+   the (overflow:auto) menu sideways, shifting its content to the left. */
+.popmenu__content,
+.popmenu__sub-content,
+.popmenu__content *,
+.popmenu__sub-content * {
+  box-sizing: border-box;
+}
+
 .popmenu__trigger,
 .popmenu__sub-trigger {
   cursor: default;
@@ -887,6 +898,25 @@ button {
 
 .account-bar__button:hover {
   border-color: var(--document-list-divider);
+}
+
+.account-bar__version,
+.document-list__version {
+  font-size: 0.7rem;
+  color: var(--document-list-muted);
+  user-select: none;
+}
+
+/* pin the panel's version label under the doclist, out of the way */
+.document-list__version {
+  flex-shrink: 0;
+  align-self: flex-end;
+  padding-inline: 0.25rem;
+}
+
+/* in the combined sideboard the account bar already shows the version */
+.sideboard .document-list__version {
+  display: none;
 }
 
 .account-bar__avatar patchwork-view {

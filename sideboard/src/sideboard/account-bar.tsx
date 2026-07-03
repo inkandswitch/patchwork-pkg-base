@@ -4,6 +4,7 @@ import type { OpenDocumentEventDetail } from "@inkandswitch/patchwork-elements";
 
 import type { PatchworkToolProps, SideboardAccountDoc } from "../types.ts";
 import { createOpenEvent } from "./events.ts";
+import { VERSION } from "./version.ts";
 
 /**
  * The account bar: the contact avatar (opens the account picker), Packages
@@ -51,6 +52,8 @@ export function AccountBar(props: PatchworkToolProps<SideboardAccountDoc>) {
       >
         Settings
       </button>
+
+      <span class="account-bar__version">{VERSION}</span>
     </footer>
   );
 }
