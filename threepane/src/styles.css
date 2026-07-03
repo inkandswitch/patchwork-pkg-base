@@ -794,11 +794,12 @@
   align-self: stretch;
   height: 100%;
   padding: 0;
-  /* 2px wide but pulled in 1px each side, so it reserves *no* layout column
-     (content stays flush against the view's border - no offset-bg seam) yet
-     still paints a full-height glow line straddling the boundary on hover. */
-  width: 2px;
-  margin-inline: -1px;
+  /* 1px wide, overlapping the divider border while reserving no layout column
+     (content stays flush against the view's border - no offset-bg seam). The
+     divider border is painted inside the following column, so a centered 2px
+     strip reads half a pixel left of the line. */
+  width: 1px;
+  margin-inline: 0 -1px;
   margin-block: 0;
   border: 0;
   z-index: 1;
