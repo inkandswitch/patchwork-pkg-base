@@ -176,24 +176,26 @@ function PackageCard(props: PackageCardProps) {
     >
       <header class="msm-card__heading">
         <h3 class="msm-card__name">{displayName()}</h3>
-        <code
-          class="msm-card__url"
-          classList={{ "msm-card__url--copied": copiedUrl() === url() }}
-          onClick={() => copyUrl(url())}
-          title="Click to copy URL"
-        >
-          {copiedUrl() === url() ? "copied" : url()}
-        </code>
-        <Show when={heads().length > 0}>
+        <div class="msm-card__url-col">
           <code
-            class="msm-card__heads"
-            title={`Heads:\n${heads().join("\n")}`}
+            class="msm-card__url"
+            classList={{ "msm-card__url--copied": copiedUrl() === url() }}
+            onClick={() => copyUrl(url())}
+            title="Click to copy URL"
           >
-            <For each={heads()}>
-              {(head) => <span class="msm-card__head">{head}</span>}
-            </For>
+            {copiedUrl() === url() ? "copied" : url()}
           </code>
-        </Show>
+          <Show when={heads().length > 0}>
+            <code
+              class="msm-card__heads"
+              title={`Heads:\n${heads().join("\n")}`}
+            >
+              <For each={heads()}>
+                {(head) => <span class="msm-card__head">{head}</span>}
+              </For>
+            </code>
+          </Show>
+        </div>
       </header>
 
       <Show when={pkgInfo()?.version}>

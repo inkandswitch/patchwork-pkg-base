@@ -443,6 +443,15 @@
   font-variant-numeric: tabular-nums;
 }
 
+.msm-card__url-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+  min-width: 0;
+  text-align: right;
+}
+
 .msm-card__url {
   display: block;
   font-family: var(--module-settings-manager-family-code);
@@ -465,9 +474,9 @@
 }
 
 .msm-card__heads {
-  flex: 1 1 100%;
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 0.25rem;
   font-family: var(--module-settings-manager-family-code);
   font-size: 0.6875rem;
