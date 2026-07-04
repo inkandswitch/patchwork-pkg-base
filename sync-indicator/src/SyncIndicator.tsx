@@ -20,7 +20,11 @@ import {
   For,
 } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
-import type { SyncStateDocMessage } from "@inkandswitch/patchwork-bootloader/types";
+import {
+  SYNCSTATE_CHANNEL,
+  type SyncStateDocMessage,
+  type SyncStateBroadcast,
+} from "@inkandswitch/patchwork-bootloader/types";
 import { getRelativeTimeString } from "./lib/relative-time";
 import { Button, Popover, PopoverTrigger, PopoverContent } from "./lib/ui";
 import { SyncIcon } from "./SyncIcon";
@@ -74,7 +78,16 @@ export function SyncIndicator(props: { handle: DocHandle<unknown> }) {
   const [isPopoverOpen, setIsPopoverOpen] = createSignal(false);
   const [now, setNow] = createSignal(Date.now());
   const [ownHeads, setOwnHeads] = createSignal<UrlHeads | undefined>();
-  const [isOnline, setIsOnline] = createSignal(navigator.onLine);
+
+  // Global sync signals from the shared worker's @patchwork/syncstate channel.
+  // `connected` is the real Subduction link to the sync server — authoritative,
+  // unlike navigator.onLine which only knows the OS network is up. `serverPeerIds`
+  // are the sync server's storage ids and `workerPeerId` is the shared worker's
+  // id; together they let us tell the server's heads apart from the worker's own
+  // (which are identical to ours) instead of guessing "unknown ⇒ server".
+  const [connected, setConnected] = createSignal(false);
+  const [serverPeerIds, setServerPeerIds] = createSignal<string[]>([]);
+  const [workerPeerId, setWorkerPeerId] = createSignal<string | undefined>();
 
   // sync server state — driven by the shared worker's BroadcastChannel
   const [syncServerHeads, setSyncServerHeads] = createSignal<
@@ -90,28 +103,65 @@ export function SyncIndicator(props: { handle: DocHandle<unknown> }) {
   // connected peers (shared worker, etc)
   const [peers, setPeers] = createStore<PeerSyncInfo[]>([]);
 
-  // tick every second while popover is open (for relative times)
+  // "Up to date with the sync server". The server advertises Subduction
+  // *sedimentree* heads (loose-commit + fragment-boundary ids), NOT the Automerge
+  // frontier, so they can't be compared to our heads with A.equals — that's why
+  // the row only ever read "synced" off the (mis-attributed) worker's automerge
+  // heads. Ask the handle whether we already hold everything the server
+  // advertises instead, exactly like the worker's own resync check.
+  const containsServerHeads = (heads: UrlHeads | undefined): boolean => {
+    if (!heads || heads.length === 0) return false;
+    try {
+      return props.handle.containsHeads(heads);
+    } catch {
+      return false; // doc not ready, or an undecodable head
+    }
+  };
+
+  // tick every second while popover is open (for relative times), and rebuild
+  // the peer list from repo.peers each time it opens so every currently
+  // connected peer shows up (the repo has no peer connect/disconnect event to
+  // subscribe to, so we refresh on open rather than trying to track it live).
   createEffect(
     on(isPopoverOpen, (open) => {
       if (!open) return;
+      untrack(refreshPeers);
       const interval = setInterval(() => setNow(Date.now()), 1000);
       onCleanup(() => clearInterval(interval));
     })
   );
 
-  // online/offline
-  {
-    const onOnline = () => setIsOnline(true);
-    const onOffline = () => setIsOnline(false);
-    window.addEventListener("online", onOnline);
-    window.addEventListener("offline", onOffline);
+  // Global connection + whoami signals arrive over the worker's
+  // @patchwork/syncstate BroadcastChannel (per-doc heads do NOT — those are the
+  // addressed subscribeSyncState pushes below). Open it once, ask the worker to
+  // replay the current snapshot, and keep our signals live.
+  createEffect(() => {
+    let channel: BroadcastChannel;
+    try {
+      channel = new BroadcastChannel(SYNCSTATE_CHANNEL);
+    } catch {
+      return; // no BroadcastChannel available — degrade gracefully
+    }
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data as SyncStateBroadcast | undefined;
+      if (!data) return;
+      if (data.type === "connection") {
+        setConnected(data.connected);
+        setServerPeerIds(data.serverPeerIds ?? []);
+      } else if (data.type === "whoami") {
+        setWorkerPeerId(data.peerId);
+      }
+    };
+    channel.addEventListener("message", onMessage);
+    // Replay the current global snapshot to this freshly-opened tab.
+    channel.postMessage({ type: "request" });
     onCleanup(() => {
-      window.removeEventListener("online", onOnline);
-      window.removeEventListener("offline", onOffline);
+      channel.removeEventListener("message", onMessage);
+      channel.close();
     });
-  }
+  });
 
-  /** Update sync-server signals and the matching peer-list entry. */
+  /** Update sync-server signals and the "Sync Server" peer-list entry. */
   function applySyncServerUpdate(
     storageId: StorageId,
     heads: UrlHeads,
@@ -123,12 +173,11 @@ export function SyncIndicator(props: { handle: DocHandle<unknown> }) {
 
     const idx = peers.findIndex((p) => p.name === "Sync Server");
     if (idx >= 0) {
-      const currentHeads = ownHeads();
       setPeers(idx, {
         storageId,
         heads,
         lastSyncTimestamp: timestamp,
-        inSync: currentHeads ? A.equals(currentHeads, heads) : false,
+        inSync: containsServerHeads(heads),
       });
     }
   }
@@ -169,31 +218,54 @@ export function SyncIndicator(props: { handle: DocHandle<unknown> }) {
     h.on("change", onChange);
     h.on("remote-heads", onRemoteHeads);
 
+    // Update one repo-peer row (another tab, storage server): those advertise
+    // Automerge frontier heads, so A.equals is the right "in sync" test here.
+    const updatePeerRow = (idx: number, heads: UrlHeads, timestamp: number) => {
+      const currentHeads = ownHeads();
+      setPeers(idx, {
+        heads,
+        lastSyncTimestamp: timestamp,
+        inSync: currentHeads ? A.equals(currentHeads, heads) : false,
+      });
+    };
+
     // Subscribe to this doc's sync heads from the automerge worker. It replays
-    // the current state on subscribe and pushes every update, keyed by peer
-    // storageId, so there's no need to seed from IndexedDB or listen on a
-    // broadcast channel. Updates for a known peer refresh that peer's row;
-    // anything else (the sync server, which the tab doesn't talk to directly)
-    // drives the sync-server slot.
+    // the current state on subscribe and pushes every update, keyed by the
+    // sender's storage id. Attribute each update by *who* sent it, using the
+    // identities the worker announces on the syncstate channel — NEVER "unknown
+    // ⇒ must be the server", which funnels the worker's OWN heads (identical to
+    // ours) into the server row so it looks perpetually "synced".
     const onSyncState = (update: SyncStateDocMessage) => {
       if (update.documentId !== h.documentId) return;
       log("sync-state", update);
 
       const heads = update.heads as UrlHeads;
-      const idx = peers.findIndex((p) => p.storageId === update.storageId);
+      const sid = update.storageId;
+
+      // The real sync server (definitive: it told us its ids over `connection`).
+      if (serverPeerIds().includes(sid)) {
+        applySyncServerUpdate(sid as StorageId, heads, update.timestamp);
+        return;
+      }
+      // The shared worker's own heads (keyed by its whoami peerId). Its row is
+      // hidden outside debug; update it if present, otherwise ignore — it must
+      // never fall through to the sync-server slot.
+      if (workerPeerId() && sid === workerPeerId()) {
+        const idx = peers.findIndex((p) => p.storageId === sid);
+        if (idx >= 0) updatePeerRow(idx, heads, update.timestamp);
+        return;
+      }
+      // A known repo peer, matched by storage id.
+      const idx = peers.findIndex((p) => p.storageId === sid);
       if (idx >= 0) {
-        const currentHeads = ownHeads();
-        setPeers(idx, {
-          heads,
-          lastSyncTimestamp: update.timestamp,
-          inSync: currentHeads ? A.equals(currentHeads, heads) : false,
-        });
-      } else {
-        applySyncServerUpdate(
-          update.storageId as StorageId,
-          heads,
-          update.timestamp,
-        );
+        updatePeerRow(idx, heads, update.timestamp);
+        return;
+      }
+      // Unknown sender that isn't the worker: once whoami has arrived the only
+      // remaining Subduction sender is the sync server, so attribute it there.
+      // Before whoami lands, drop it rather than risk mislabeling worker heads.
+      if (workerPeerId()) {
+        applySyncServerUpdate(sid as StorageId, heads, update.timestamp);
       }
     };
 
@@ -248,10 +320,8 @@ export function SyncIndicator(props: { handle: DocHandle<unknown> }) {
         storageId: syncServerStorageId(),
         heads: serverHeads,
         lastSyncTimestamp: serverTs,
-        inSync:
-          serverHeads && currentHeads
-            ? A.equals(currentHeads, serverHeads)
-            : false,
+        // sedimentree heads — use containsHeads, not A.equals (see helper).
+        inSync: containsServerHeads(serverHeads),
       });
     }
 
@@ -273,9 +343,16 @@ export function SyncIndicator(props: { handle: DocHandle<unknown> }) {
     const currentHeads = ownHeads();
     if (!currentHeads) return;
     for (let i = 0; i < peers.length; i++) {
-      const peerHeads = peers[i].heads;
-      const inSync = peerHeads ? A.equals(currentHeads, peerHeads) : false;
-      if (peers[i].inSync !== inSync) {
+      const peer = peers[i];
+      // The sync server advertises sedimentree heads → containsHeads, not
+      // A.equals (which is right for automerge-frontier peers).
+      const inSync =
+        peer.name === "Sync Server"
+          ? containsServerHeads(peer.heads)
+          : peer.heads
+            ? A.equals(currentHeads, peer.heads)
+            : false;
+      if (peer.inSync !== inSync) {
         setPeers(i, "inSync", inSync);
       }
     }
@@ -283,25 +360,22 @@ export function SyncIndicator(props: { handle: DocHandle<unknown> }) {
 
   // the icon is driven by sync server state specifically
   const syncServerInSync = () => {
-    const server = syncServerHeads();
-    const own = ownHeads();
-    if (!server || !own) return false;
-    return A.equals(own, server);
+    ownHeads(); // re-evaluate when our heads move (containsHeads reads the doc)
+    return containsServerHeads(syncServerHeads());
   };
 
   const syncServerKnown = () => !!syncServerHeads();
 
   const iconState = (): "synced" | "syncing" | "error" | "unknown" => {
-    if (!isOnline()) return syncServerInSync() ? "synced" : "error";
+    if (!connected()) return "error"; // no live link to the sync server
     if (!syncServerKnown()) return "unknown";
     return syncServerInSync() ? "synced" : "syncing";
   };
 
   const statusText = () => {
-    if (!isOnline()) return "Offline";
-    if (syncServerInSync()) return "Synced to server";
-    if (syncServerHeads()) return "Syncing...";
-    return "Sync server status unknown";
+    if (!connected()) return "Offline";
+    if (!syncServerKnown()) return "Connecting…";
+    return syncServerInSync() ? "Synced to server" : "Syncing…";
   };
 
   const onCopy = async () => {
@@ -347,7 +421,7 @@ export function SyncIndicator(props: { handle: DocHandle<unknown> }) {
   return (
     <Popover open={isPopoverOpen()} onOpenChange={setIsPopoverOpen}>
       <PopoverTrigger
-        class={isOnline() ? "sync-trigger" : "sync-trigger-offline"}
+        class={connected() ? "sync-trigger" : "sync-trigger-offline"}
       >
         <SyncIcon size={20} state={iconState()} />
       </PopoverTrigger>
