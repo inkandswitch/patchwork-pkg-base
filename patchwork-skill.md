@@ -434,8 +434,10 @@ The theme exposes two families of surface variables:
 Rule of thumb: if you're building a tool, derive fill/line/typography from `--editor-*`. Reach
 for `--studio-*` only when you're styling the studio frame itself.
 
-Accent colours (`--studio-primary` etc.), spacing, radius, shadow, and transition tokens have
-**no `--editor-*` equivalent** — use the `--studio-*` versions everywhere.
+Accent colours (`--studio-primary` etc.), spacing, radius, shadow, and transition tokens are
+**studio-global** — the accent itself has no `--editor-*` equivalent, so use `--studio-*`
+everywhere. The one exception is the accent `-text` variant (accent used *as ink on a
+surface*), which does fan out per surface — see the accent section below.
 
 ### CSS variables
 
@@ -447,9 +449,26 @@ Use these variables (with fallbacks) instead of hardcoded values:
 - `var(--editor-line-offset-10)` through `-50` — muted text (mix of line + fill)
 - `var(--editor-selection-fill)` / `var(--editor-selection-line)`, `var(--editor-cursor-fill)`
 
-**Accent colors (studio-only — no editor equivalent):**
+**Accent colors:**
 - `var(--studio-primary, #35f7ca)`, `--studio-secondary`, `--studio-danger`, `--studio-warning`
 - `var(--studio-added)`, `--studio-deleted`, `--studio-modified`, `--studio-link`
+
+Each of `primary`/`secondary`/`danger`/`warning` also ships as a **Bulma-style contrast pair**
+plus a text variant — pick by how you're using the accent:
+
+- **`--studio-{accent}-fill`** — the accent used as a *surface* (a button/pill/badge
+  background). Same value as the bare `--studio-{accent}`, but says "I'm a surface".
+- **`--studio-{accent}-line`** — the *invert*: ink (text/icons) placed **on** that fill, e.g.
+  the label inside a primary button. Legible on the accent regardless of light/dark theme.
+- **`--studio-{accent}-fill-offset-10..50`** — a hover/border ramp for the fill (like
+  `--studio-chrome-fill-offset-*`). `-10` == the fill itself; the first visible step is `-20`.
+- **`--studio-{accent}-text`** — the accent used **as ink on the ambient background** (a
+  primary-coloured heading/link on the normal page). This is the one that fans out per surface:
+  use **`--editor-{accent}-text`** on the editor surface and **`--text-editor-{accent}-text`**
+  in a text editor, since legibility depends on which background the text sits on.
+
+Rule of thumb: painting a surface the accent → `-fill` (+ `-line` for text on it, `-fill-offset-*`
+for its hover). Writing text *in* the accent on a normal background → `-text` (surface-matched).
 
 **Typography (derive from `--editor-*` in tools):**
 - `var(--editor-family-sans, system-ui, sans-serif)` — UI text
