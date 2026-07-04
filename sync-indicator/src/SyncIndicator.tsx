@@ -12,6 +12,7 @@ import {
 } from "@automerge/automerge-repo-solid-primitives";
 import { createSignal, createEffect, on, onCleanup, Show, For } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
+import type { SyncStateDocMessage } from "@inkandswitch/patchwork-bootloader/types";
 import { getRelativeTimeString } from "./lib/relative-time";
 import { Button, Popover, PopoverTrigger, PopoverContent } from "./lib/ui";
 import { SyncIcon } from "./SyncIcon";
@@ -19,19 +20,6 @@ import { CopyIcon } from "./CopyIcon";
 import "./styles.css";
 
 const log = Debug("patchwork:sync-indicator");
-
-/**
- * Worker → tab: one peer's heads for a subscribed document — the worker's own
- * or a Subduction peer's, keyed by its storageId. Mirrors the bootloader's
- * `SyncStateDocMessage`; delivered via `patchwork.sw.subscribeSyncState`.
- */
-interface SyncStateUpdate {
-  type: "sync-state";
-  documentId: string;
-  storageId: string;
-  heads: string[];
-  timestamp: number;
-}
 
 declare global {
   // eslint-disable-next-line no-var
@@ -44,7 +32,7 @@ declare global {
            */
           subscribeSyncState?: (
             documentId: string,
-            listener: (update: SyncStateUpdate) => void,
+            listener: (update: SyncStateDocMessage) => void,
           ) => () => void;
         };
       }
@@ -179,7 +167,7 @@ export function SyncIndicator(props: { handle: DocHandle<unknown> }) {
     // broadcast channel. Updates for a known peer refresh that peer's row;
     // anything else (the sync server, which the tab doesn't talk to directly)
     // drives the sync-server slot.
-    const onSyncState = (update: SyncStateUpdate) => {
+    const onSyncState = (update: SyncStateDocMessage) => {
       if (update.documentId !== h.documentId) return;
       log("sync-state", update);
 
