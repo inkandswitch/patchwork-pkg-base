@@ -68,6 +68,34 @@ const commentTooltip = (
   };
 };
 
+// Global colours are lifted into local --cm-comment-* tokens in a
+// :root/:host/[theme] block so they re-evaluate when the theme swaps. This
+// derivation can't live in the baseTheme below — CodeMirror prefixes every
+// non-"&" selector with the editor's scope class, so a `:root` key would
+// become `.cm... :root` and never match. It's injected as a plain stylesheet
+// instead, and the button reads only the derived tokens. The button is editor
+// UI, so it derives from --editor-* (not --studio-*, which is studio chrome).
+const COMMENT_BUTTON_VARS_ID = "cm-comment-button-vars";
+const ensureCommentButtonVars = (): void => {
+  if (
+    typeof document === "undefined" ||
+    document.getElementById(COMMENT_BUTTON_VARS_ID)
+  ) {
+    return;
+  }
+  const style = document.createElement("style");
+  style.id = COMMENT_BUTTON_VARS_ID;
+  style.textContent = `
+    :root, :host, [theme] {
+      --cm-comment-button-fg: var(--editor-fill, white);
+      --cm-comment-button-bg: var(--editor-line, black);
+      /* a lil tinted offset from the ink, not a jump to pure black */
+      --cm-comment-button-bg-hover: var(--editor-line-offset-10, #333);
+    }
+  `;
+  document.head.append(style);
+};
+
 const commentButtonTheme = EditorView.baseTheme({
   ".cm-tooltip:has(.cm-comment-button)": {
     border: "none",
@@ -83,8 +111,8 @@ const commentButtonTheme = EditorView.baseTheme({
     fontSize: "12px",
     fontWeight: "500",
     lineHeight: "1",
-    color: "var(--studio-fill, white)",
-    background: "var(--studio-line, #3b3b3b)",
+    color: "var(--cm-comment-button-fg)",
+    background: "var(--cm-comment-button-bg)",
     border: "none",
     borderRadius: "6px",
     boxShadow: "0 2px 8px rgba(0, 0, 0, 0.25)",
@@ -94,7 +122,7 @@ const commentButtonTheme = EditorView.baseTheme({
     transition: "background-color 0.15s",
   },
   ".cm-comment-button:hover": {
-    background: "var(--studio-line-offset-10, #555)",
+    background: "var(--cm-comment-button-bg-hover)",
   },
   ".cm-comment-button svg": {
     display: "block",
@@ -105,6 +133,8 @@ const commentButtonTheme = EditorView.baseTheme({
 export const commentButtonGutter = (
   onComment: CommentButtonCallback
 ): Extension => {
+  ensureCommentButtonVars();
+
   const field = StateField.define<Tooltip | null>({
     create: (state) => commentTooltip(state, onComment),
     update(value, tr) {
