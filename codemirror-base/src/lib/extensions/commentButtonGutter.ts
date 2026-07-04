@@ -87,12 +87,12 @@ const ensureCommentButtonVars = (): void => {
   style.id = COMMENT_BUTTON_VARS_ID;
   style.textContent = `
     :root, :host, [theme] {
-      /* the button is a primary surface: bg is the accent fill, text is its
-         invert (ink legible ON the accent), hover lifts one step up the accent
-         ramp. see --studio-primary-* in the theme. */
-      --cm-comment-button-fg: var(--studio-primary-line, #0a2b23);
-      --cm-comment-button-bg: var(--studio-primary-fill, #35f7ca);
-      --cm-comment-button-bg-hover: var(--studio-primary-fill-offset-20, #2ce0b6);
+      /* the button sits on the editor surface: bg is the plain editor fill,
+         text is the editor ink, and hover lifts a gentle one step up the fill
+         ramp. see --text-editor-* in the theme. */
+      --cm-comment-button-fg: var(--text-editor-line, #0a2b23);
+      --cm-comment-button-bg: var(--text-editor-fill, #35f7ca);
+      --cm-comment-button-bg-hover: var(--text-editor-fill-offset-10, #2ce0b6);
     }
   `;
   document.head.append(style);
