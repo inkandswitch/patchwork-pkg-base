@@ -1,5 +1,8 @@
 import { onMount, onCleanup, createEffect } from "solid-js";
+import { render } from "solid-js/web";
 import { type AutomergeUrl } from "@automerge/automerge-repo";
+import type { ToolImplementation } from "@inkandswitch/patchwork-plugins";
+import "./index.css";
 import { OpenDocumentEvent } from "@inkandswitch/patchwork-elements";
 import {
   getType,
@@ -209,3 +212,8 @@ export function HistoryRecorder(props: PatchworkToolProps<any>) {
     </button>
   );
 }
+
+export const renderHistoryRecorder: ToolImplementation<any> = (
+  handle,
+  element
+) => render(() => <HistoryRecorder handle={handle} repo={element.repo} element={element} />, element);

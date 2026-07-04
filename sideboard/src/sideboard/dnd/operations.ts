@@ -502,25 +502,35 @@ async function performAdd(
     (item) => item.url && item.url !== locations.targetFolder
   );
 
+  // Don't add items that are already present in the target folder -
+  // dropping a doc into a folder it's already in shouldn't duplicate it.
+  const targetDocs =
+    locations.targetFolder === rootFolderHandle.url
+      ? rootFolderHandle.doc()?.docs
+      : folderCache.get(locations.targetFolder)?.doc()?.docs;
+  const existingUrls = new Set(targetDocs?.map((doc) => doc.url) ?? []);
+
   const links = (
     await Promise.all(
-      candidates.map(async (item): Promise<DocLink | null> => {
-        if (item.name && item.type) {
-          return { url: item.url, name: item.name, type: item.type };
-        }
-        // Bare url (e.g. dragged link text) - resolve name/type from the doc
-        try {
-          return await docLinkFromUrl(repo, item.url);
-        } catch (error) {
-          log("Failed to resolve dropped doc:", item.url, error);
-          return null;
-        }
-      })
+      candidates
+        .filter((item) => !existingUrls.has(item.url))
+        .map(async (item): Promise<DocLink | null> => {
+          if (item.name && item.type) {
+            return { url: item.url, name: item.name, type: item.type };
+          }
+          // Bare url (e.g. dragged link text) - resolve name/type from the doc
+          try {
+            return await docLinkFromUrl(repo, item.url);
+          } catch (error) {
+            log("Failed to resolve dropped doc:", item.url, error);
+            return null;
+          }
+        })
     )
   ).filter((link): link is DocLink => link !== null);
 
   if (links.length === 0) {
-    log("No addable items in external drop");
+    log("No addable items in external drop (already present or unresolvable)");
     return;
   }
 

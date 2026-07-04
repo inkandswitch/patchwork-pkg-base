@@ -1,5 +1,4 @@
-import { render } from "solid-js/web";
-import { Plugin, type ToolElement } from "@inkandswitch/patchwork-plugins";
+import { Plugin } from "@inkandswitch/patchwork-plugins";
 import { HistoryGroupingsDoc } from "./types";
 
 export const plugins: Plugin<any>[] = [
@@ -38,12 +37,8 @@ export const plugins: Plugin<any>[] = [
     name: "History",
     icon: "History",
     async load() {
-      const { HistoryTimeline } = await import("./history/HistoryTimeline");
-      return (element: ToolElement) =>
-        render(
-          () => <HistoryTimeline repo={element.repo} element={element} />,
-          element
-        );
+      const { renderHistoryTimeline } = await import("./history/HistoryTimeline");
+      return renderHistoryTimeline;
     },
   },
 ];

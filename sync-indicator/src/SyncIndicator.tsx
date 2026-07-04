@@ -26,6 +26,8 @@ import {
   type SyncStateDocMessage,
   type SyncStateBroadcast,
 } from "@inkandswitch/patchwork-bootloader/types";
+import { render } from "solid-js/web";
+import type { ToolImplementation } from "@inkandswitch/patchwork-plugins";
 import { getRelativeTimeString } from "./lib/relative-time";
 import { Button, Popover, PopoverTrigger, PopoverContent } from "./lib/ui";
 import { SyncIcon } from "./SyncIcon";
@@ -45,7 +47,7 @@ declare global {
            */
           subscribeSyncState?: (
             documentId: string,
-            listener: (update: SyncStateDocMessage) => void,
+            listener: (update: SyncStateDocMessage) => void
           ) => () => void;
         };
       }
@@ -166,7 +168,7 @@ export function SyncIndicator(props: { handle: DocHandle<unknown> }) {
   function applySyncServerUpdate(
     storageId: StorageId,
     heads: UrlHeads,
-    timestamp: number,
+    timestamp: number
   ) {
     setSyncServerStorageId(storageId);
     setSyncServerHeads(heads);
@@ -270,10 +272,11 @@ export function SyncIndicator(props: { handle: DocHandle<unknown> }) {
       }
     };
 
-    const unsubscribeSyncState = globalThis?.patchwork?.sw?.subscribeSyncState?.(
-      h.documentId,
-      onSyncState,
-    );
+    const unsubscribeSyncState =
+      globalThis?.patchwork?.sw?.subscribeSyncState?.(
+        h.documentId,
+        onSyncState
+      );
 
     // Build the initial peer list. refreshPeers() reads the syncServer* signals,
     // and onSyncState *writes* them on every update — so tracking those reads
@@ -496,3 +499,18 @@ export function SyncIndicator(props: { handle: DocHandle<unknown> }) {
     </Popover>
   );
 }
+
+export const renderSyncIndicator: ToolImplementation = (handle, element) => {
+  element.style.width = "fit-content";
+  element.style.zIndex = "10";
+
+  const dispose = render(
+    () => (
+      <RepoContext.Provider value={element.repo}>
+        <SyncIndicator handle={handle} />
+      </RepoContext.Provider>
+    ),
+    element
+  );
+  return () => dispose();
+};

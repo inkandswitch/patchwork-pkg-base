@@ -37,6 +37,8 @@ import {
   type Accessor,
   type JSX,
 } from "solid-js";
+import { render } from "solid-js/web";
+import type { ToolImplementation } from "@inkandswitch/patchwork-plugins";
 import { ensureAccountSubdocs } from "./account/ensureSubdocs";
 import { ensureThreepaneConfig } from "./account/ensureThreepaneConfig";
 import { ensureFrameStyles } from "./ensureFrameStyles";
@@ -569,4 +571,17 @@ function PanelLeftIcon() {
       <path d="M9 3v18" />
     </svg>
   );
+}
+
+export function renderPatchworkFrame(
+  isolation?: boolean
+): ToolImplementation<AccountDoc> {
+  return (handle, element) => {
+    return render(
+      () => (
+        <PatchworkFrame handle={handle} repo={element.repo} isolation={isolation} />
+      ),
+      element
+    );
+  };
 }
