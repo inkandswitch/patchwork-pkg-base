@@ -1,5 +1,5 @@
-import { RangeSet } from "@codemirror/state";
-import { EditorView, gutter, GutterMarker, WidgetType } from "@codemirror/view";
+import { Extension, StateField } from "@codemirror/state";
+import { EditorView, showTooltip, Tooltip } from "@codemirror/view";
 
 type CommentButtonCallback = (
   from: number,
@@ -7,143 +7,110 @@ type CommentButtonCallback = (
   view: EditorView
 ) => void;
 
-// Comment button widget shown in the gutter
-class CommentButtonWidget extends WidgetType {
-  from: number;
-  to: number;
-  onComment: CommentButtonCallback | undefined;
-  view: EditorView;
+// A speech-bubble icon + "Comment" label, shown floating above the selection.
+const buildCommentButton = (
+  from: number,
+  to: number,
+  view: EditorView,
+  onComment: CommentButtonCallback
+): HTMLElement => {
+  const button = document.createElement("button");
+  button.className = "cm-comment-button";
+  button.setAttribute("aria-label", "Comment");
 
-  constructor(
-    from: number,
-    to: number,
-    view: EditorView,
-    onComment: CommentButtonCallback
-  ) {
-    super();
-    this.from = from;
-    this.to = to;
-    this.onComment = onComment;
-    this.view = view;
-  }
+  button.innerHTML = `
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+         xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"
+            fill="currentColor" stroke="none"/>
+    </svg>
+    <span>Comment</span>
+  `;
 
-  toDOM(): HTMLElement {
-    const button = document.createElement("button");
-    button.textContent = "💬";
-    button.style.cssText = `
-      background: none;
-      border: none;
-      cursor: pointer;
-      font-size: 14px;
-      padding: 2px;
-      border-radius: 3px;
-      transition: background-color 0.2s;
-      user-select: none;
-      -webkit-user-select: none;
-      -moz-user-select: none;
-      -ms-user-select: none;
-    `;
-
-    button.addEventListener("mouseenter", () => {
-      button.style.backgroundColor = "rgba(0, 0, 0, 0.1)";
-    });
-
-    button.addEventListener("mouseleave", () => {
-      button.style.backgroundColor = "transparent";
-    });
-
-    // Without this, the browser focuses the button on mousedown, the editor
-    // blurs, the selection collapses, our `markers(view)` returns
-    // RangeSet.empty, and CodeMirror tears down the button before `click`
-    // fires — so the first press silently does nothing and the user has to
-    // click twice. Swallowing mousedown keeps the editor focused and the
-    // selection (and marker) alive long enough for the click to land.
-    button.addEventListener("mousedown", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-    });
-
-    button.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (this.onComment) {
-        this.onComment(this.from, this.to, this.view);
-      } else {
-        console.log("Comment button clicked for range:", this.from, this.to);
-      }
-    });
-
-    return button;
-  }
-
-  eq(other: CommentButtonWidget) {
-    // Equal if the from/to range and callback are identical
-    return (
-      this.from === other.from &&
-      this.to === other.to &&
-      this.onComment === other.onComment
-    );
-  }
-
-  ignoreEvent() {
-    return false; // We want to handle click events
-  }
-}
-
-// Comment button gutter marker
-class CommentButtonMarker extends GutterMarker {
-  from: number;
-  to: number;
-  onComment: CommentButtonCallback;
-
-  constructor(from: number, to: number, onComment: CommentButtonCallback) {
-    super();
-    this.from = from;
-    this.to = to;
-    this.onComment = onComment;
-  }
-
-  eq(other: CommentButtonMarker) {
-    return (
-      this.from === other.from &&
-      this.to === other.to &&
-      this.onComment === other.onComment
-    );
-  }
-
-  toDOM(view: EditorView) {
-    return new CommentButtonWidget(
-      this.from,
-      this.to,
-      view,
-      this.onComment
-    ).toDOM();
-  }
-}
-
-// Factory function to create the gutter with a callback
-export const commentButtonGutter = (onComment: CommentButtonCallback) => {
-  return gutter({
-    class: "cm-comment-gutter",
-    renderEmptyElements: false,
-    side: "after", // Right side
-    markers(view) {
-      const sel = view.state.selection.main;
-      if (sel.empty) return RangeSet.empty;
-
-      // Place marker at the start of the line where the selection begins
-      const line = view.state.doc.lineAt(sel.from);
-      return RangeSet.of([
-        new (class extends CommentButtonMarker {
-          toDOM = (_: EditorView) =>
-            new CommentButtonWidget(
-              this.from,
-              this.to,
-              view,
-              onComment
-            ).toDOM();
-        })(sel.from, sel.to, onComment).range(line.from),
-      ]);
-    },
+  // Without this, the browser focuses the button on mousedown, the editor
+  // blurs, the selection collapses, our tooltip source returns null, and
+  // CodeMirror tears down the button before `click` fires — so the first
+  // press silently does nothing and the user has to click twice. Swallowing
+  // mousedown keeps the editor focused and the selection (and button) alive
+  // long enough for the click to land.
+  button.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
   });
+
+  button.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onComment(from, to, view);
+  });
+
+  return button;
+};
+
+const commentTooltip = (
+  state: EditorView["state"],
+  onComment: CommentButtonCallback
+): Tooltip | null => {
+  const sel = state.selection.main;
+  if (sel.empty) return null;
+
+  return {
+    pos: sel.from,
+    end: sel.to,
+    above: true,
+    strictSide: false,
+    arrow: false,
+    create: (view) => ({
+      dom: buildCommentButton(sel.from, sel.to, view, onComment),
+    }),
+  };
+};
+
+const commentButtonTheme = EditorView.baseTheme({
+  ".cm-tooltip:has(.cm-comment-button)": {
+    border: "none",
+    background: "transparent",
+    boxShadow: "none",
+  },
+  ".cm-comment-button": {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "5px",
+    padding: "4px 9px",
+    font: "inherit",
+    fontSize: "12px",
+    fontWeight: "500",
+    lineHeight: "1",
+    color: "white",
+    background: "#3b3b3b",
+    border: "none",
+    borderRadius: "6px",
+    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.25)",
+    cursor: "pointer",
+    userSelect: "none",
+    whiteSpace: "nowrap",
+    transition: "background-color 0.15s",
+  },
+  ".cm-comment-button:hover": {
+    background: "#000",
+  },
+  ".cm-comment-button svg": {
+    display: "block",
+  },
+});
+
+// Factory function to create the floating comment button with a callback.
+export const commentButtonGutter = (
+  onComment: CommentButtonCallback
+): Extension => {
+  const field = StateField.define<Tooltip | null>({
+    create: (state) => commentTooltip(state, onComment),
+    update(value, tr) {
+      if (!tr.docChanged && !tr.selection) return value;
+      return commentTooltip(tr.state, onComment);
+    },
+    provide: (f) => showTooltip.from(f),
+  });
+
+  return [field, commentButtonTheme];
 };
