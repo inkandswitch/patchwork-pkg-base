@@ -19,9 +19,10 @@ import { DocumentList } from "./document-list/document-list.tsx";
 import { LoadingRows } from "./document-list/loading-row.tsx";
 import { subscribe } from "@inkandswitch/patchwork-providers-solid";
 import { handleFilesDrop } from "./document-list/file-drop.ts";
-import { copyMode, isNewDocDrag } from "./dnd/dnd.ts";
+import { copyMode, isNewDocDrag, isSameDragOriginView } from "./dnd/dnd.ts";
 import { executeDrop } from "./dnd/operations.ts";
 import { getDndPayload, hasDocumentDrag } from "./dnd/payload.ts";
+import { createMarquee } from "./document-list/marquee.ts";
 
 /**
  * The document-list panel: a sticky toolbar (new-doc button + filter) over a
@@ -89,9 +90,24 @@ export function DocumentListPanel(props: {
 
   const [isDraggingFile, setIsDraggingFile] = createSignal(false);
 
+  // cmd/ctrl-drag rubber-band multi-select over the list. Attached in the
+  // capture phase because an item's own mousedown handler stops propagation for
+  // cmd-clicks, which would otherwise swallow a band that starts on a row.
+  let navEl: HTMLElement | undefined;
+  const marquee = createMarquee({
+    container: () => navEl,
+    source: () => props.element.toolId ?? "",
+  });
+  const attachMarquee = (el: HTMLElement) => {
+    navEl = el;
+    el.addEventListener("mousedown", marquee.onMouseDown, true);
+    onCleanup(() => el.removeEventListener("mousedown", marquee.onMouseDown, true));
+  };
+
   return (
     <aside class="document-list">
       <nav
+        ref={attachMarquee}
         class="document-list__doclist document-list-widget"
         classList={{
           "document-list__doclist--drag-over": isDraggingFile(),
@@ -169,7 +185,7 @@ export function DocumentListPanel(props: {
             },
             props.repo,
             folderHandle.latest!,
-            props.element.toolId!
+            isSameDragOriginView(props.element)
           );
         }}
       >
@@ -209,6 +225,19 @@ export function DocumentListPanel(props: {
           </Suspense>
         </Show>
       </nav>
+      <Show when={marquee.rect()}>
+        {(r) => (
+          <div
+            class="document-list__marquee"
+            style={{
+              left: `${r().x}px`,
+              top: `${r().y}px`,
+              width: `${r().w}px`,
+              height: `${r().h}px`,
+            }}
+          />
+        )}
+      </Show>
     </aside>
   );
 }

@@ -54,7 +54,9 @@ export async function executeDrop(
   operation: DropOperation,
   repo: Repo,
   rootFolderHandle: DocHandle<FolderDoc>,
-  toolId: string
+  // True when the drop lands in the same <patchwork-view> the drag started in.
+  // Only then can items be moved; see step 3.
+  sameOriginView: boolean
 ) {
   log("executeDrop called with:", {
     draggedIds: operation.draggedIds,
@@ -86,10 +88,18 @@ export async function executeDrop(
     return;
   }
 
-  // 3. Drops from another tool instance (or of docs that aren't in this
-  // tree) can't be moved - add links to the target folder instead
-  if (operation.sourceToolId !== toolId || locations.sourceItems.length === 0) {
-    log("External drop, adding links. Source:", operation.sourceToolId);
+  // 3. Move only when the drag started inside *this same* <patchwork-view> and
+  // the dragged docs are actually in this tree. A drag from another view, or an
+  // external / bare-url drop (neither sets the origin view), is added to the
+  // target folder as a link instead. Identity is the view element itself — not
+  // the tool id, which is null for the fallback-mounted sideboard and was what
+  // made the old check send every in-view drag down this add-link path,
+  // duplicating instead of moving.
+  if (!sameOriginView || locations.sourceItems.length === 0) {
+    log(
+      "Cross-view/external drop, adding links. sameOriginView:",
+      sameOriginView
+    );
     await performAdd(repo, rootFolderHandle, locations, operation);
     return;
   }
@@ -118,6 +128,70 @@ export async function executeDrop(
   }
 
   log("Operation complete!");
+}
+
+// Remove every doc-link matching one of `urls` from the sideboard's folder
+// tree, wherever it lives. Used by the context menu to remove a multi-selection
+// in one shot. Deletes are batched per folder and applied high-index-first so
+// earlier removals don't shift the indices of later ones.
+export async function removeItemsByUrl(
+  repo: Repo,
+  rootFolderHandle: DocHandle<FolderDoc>,
+  urls: AutomergeUrl[]
+): Promise<void> {
+  const targets = new Set(urls);
+  if (targets.size === 0) return;
+
+  const removalsByFolder = new Map<DocHandle<FolderDoc>, number[]>();
+  const visited = new Set<AutomergeUrl>();
+
+  async function traverse(
+    handle: DocHandle<FolderDoc>,
+    depth: number
+  ): Promise<void> {
+    if (depth >= MAX_FOLDER_DEPTH) return;
+    const doc = handle.doc();
+    if (!doc?.docs) return;
+    visited.add(handle.url);
+
+    for (let i = 0; i < doc.docs.length; i++) {
+      const child = doc.docs[i];
+
+      if (targets.has(child.url)) {
+        const indices = removalsByFolder.get(handle) ?? [];
+        indices.push(i);
+        removalsByFolder.set(handle, indices);
+      }
+
+      if (
+        child.type === "folder" &&
+        child.url &&
+        child.url !== handle.url &&
+        !visited.has(child.url)
+      ) {
+        let nested = folderCache.get(child.url);
+        if (!nested) {
+          try {
+            nested = await repo.find<FolderDoc>(child.url);
+            folderCache.set(child.url, nested);
+          } catch (error) {
+            log("Failed to load folder while removing:", child.url, error);
+            continue;
+          }
+        }
+        await traverse(nested, depth + 1);
+      }
+    }
+  }
+
+  await traverse(rootFolderHandle, 0);
+
+  for (const [handle, indices] of removalsByFolder) {
+    const sorted = [...indices].sort((a, b) => b - a);
+    handle.change((doc) => {
+      for (const index of sorted) deleteAt(doc.docs, index);
+    });
+  }
 }
 
 async function findItemLocations(

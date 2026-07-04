@@ -29,6 +29,8 @@ import {
   copyMode,
   setCopyMode,
   isNewDocDrag,
+  setDragOriginView,
+  isSameDragOriginView,
 } from "../dnd/dnd.ts";
 import { setPendingNewDoc } from "../state.ts";
 import {
@@ -41,7 +43,7 @@ import {
   type FolderDoc,
   getImportableUrlFromAutomergeUrl,
 } from "@inkandswitch/patchwork-filesystem";
-import { executeDrop } from "../dnd/operations.ts";
+import { executeDrop, removeItemsByUrl } from "../dnd/operations.ts";
 import { getDndPayload } from "../dnd/payload.ts";
 import { handleFilesDrop } from "./file-drop.ts";
 import { log } from "../dnd/debug.ts";
@@ -162,6 +164,22 @@ export default function Item(props: {
     source: props.element.toolId!,
   });
 
+  // Remove from the context menu. When this item is part of a multi-selection
+  // (cmd-click or cmd-drag marquee), remove the whole selection — with a
+  // confirmation prompt, since removing several at once is easy to fat-finger.
+  // A lone item removes without a prompt, matching the old behaviour.
+  async function handleRemove() {
+    const multi = dragstack.has(props.id) && dragstack.size > 1;
+    if (!multi) {
+      props.remove();
+      return;
+    }
+    const urls = [...dragstack.values()].map((item) => item.url);
+    if (!confirm(`Remove ${urls.length} items from the sidebar?`)) return;
+    clearDragstack();
+    await removeItemsByUrl(props.repo, props.rootFolderHandle, urls);
+  }
+
   async function handleDrop(
     event: DragEvent,
     targetId: string,
@@ -203,7 +221,7 @@ export default function Item(props: {
       },
       props.repo,
       props.rootFolderHandle,
-      props.element.toolId!
+      isSameDragOriginView(props.element)
     );
   }
 
@@ -262,7 +280,9 @@ export default function Item(props: {
             "text/x-patchwork-urls"
           );
 
-          // Add structured data with source tracking
+          // Add structured data with source tracking. The move-vs-copy decision
+          // keys off the origin *element* (setDragOriginView below), not this
+          // toolId, which is null for the fallback-mounted sideboard.
           event.dataTransfer?.items.add(
             JSON.stringify({
               source: props.element.toolId,
@@ -319,6 +339,7 @@ export default function Item(props: {
           setTimeout(() => preview.remove(), 0);
 
           setDragSourceItems([...dragstack.keys()]);
+          setDragOriginView(props.element);
           setDragging(true);
         }}
         ondrag={(event: DragEvent) => {
@@ -331,6 +352,7 @@ export default function Item(props: {
           clearDragSourceItems();
           clearDragstack();
           setCopyMode(false);
+          setDragOriginView(null);
           setDragging(false);
         }}
         ondragover={(event: DragEvent) => {
@@ -430,6 +452,7 @@ export default function Item(props: {
         draggable
         data-dnd-item={props.id}
         data-doc-url={props.url}
+        data-doc-type={props.type}
         aria-label={props["aria-label"]}
         aria-haspopup="menu"
         as="button"
@@ -633,9 +656,11 @@ export default function Item(props: {
           </ContextMenu.Item>
           <ContextMenu.Item
             class="popmenu__item"
-            onSelect={() => props.remove()}
+            onSelect={() => handleRemove()}
           >
-            Remove
+            {dragstack.has(props.id) && dragstack.size > 1
+              ? `Remove ${dragstack.size} items`
+              : "Remove"}
           </ContextMenu.Item>
           <Show when={props.share}>
             <ContextMenu.Item
