@@ -48,8 +48,8 @@ export const plugins = [
 		// document is focused (chat stored at focusedDoc['@patchwork'].chitchat),
 		// and the computer edits that document via universal Automerge ops.
 		type: "patchwork:component",
-		id: "chitterchatter-context",
-		name: "Chitchat",
+		id: "watercooler",
+		name: "Watercooler",
 		icon: "MessageCircle",
 		tags: ["context-tool"],
 		async load() {
