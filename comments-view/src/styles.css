@@ -195,42 +195,18 @@
   overflow-wrap: break-word;
 }
 
-.comment-content-tools {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 0.375rem;
-}
-
-.comment-content-tool-select {
-  font-family: inherit;
-  font-size: 0.75rem;
-  color: var(--comments-fg);
-  background: var(--comments-bg);
-  border: 1px solid var(--comments-border);
-  border-radius: 0.25rem;
-  padding: 0.125rem 0.375rem;
-  cursor: pointer;
-}
-
-.comment-content-embed {
-  display: block;
-  width: 100%;
-}
-
-.comment-draft-textarea {
-  width: 100%;
+/* The draft editor is a cute.txt (CodeMirror) instance; box it like the old
+   textarea. Its inner padding/font come from the injected cute.txt styles. */
+.comment-draft-editor {
   min-height: 6rem;
   border: 1px solid var(--comments-border);
   border-radius: 0.5rem;
-  padding: 0.5rem;
-  font-family: var(--comments-font);
-  font-size: 0.875rem;
   color: var(--comments-fg);
   background: var(--comments-bg);
-  resize: vertical;
+  overflow: hidden;
 }
 
-.comment-draft-textarea:focus {
+.comment-draft-editor:focus-within {
   outline: 2px solid var(--comments-accent);
   outline-offset: 1px;
 }

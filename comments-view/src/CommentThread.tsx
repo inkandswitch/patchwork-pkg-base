@@ -14,13 +14,18 @@ import {
 import { relativeTime } from "./relative-time";
 import { useDocument } from "@automerge/automerge-repo-solid-primitives";
 import {
-  isValidAutomergeUrl,
   type AutomergeUrl,
   type DocHandle,
   type Repo,
 } from "@automerge/automerge-repo";
 import { subscribeDoc } from "@inkandswitch/patchwork-providers-solid";
 import { type ToolElement } from "@inkandswitch/patchwork-plugins";
+import {
+  createCuteEditor,
+  defaultSchema,
+  defaultAutocompletes,
+} from "cute.txt";
+import { CuteText } from "cute.txt/solid";
 import { createReply, type Comment, type CommentThread } from "./comments";
 
 // A standalone tool rendering a single comment thread from its subdocument
@@ -298,25 +303,6 @@ function CommentView(props: {
     return ct?.type === "registered" ? ct.name : "Anonymous";
   };
 
-  const onChangeDraft = (newDraftContent: string) => {
-    props.commentHandle.change((c: Comment) => {
-      c.draftContent = newDraftContent;
-    });
-  };
-
-  // A comment whose `content` is itself an automerge url is a reference to
-  // another document rather than plain text: render that referenced document
-  // inline via <patchwork-view>, the same way the codemirror markdown embed
-  // does — point the view at the url and let it fall back to the datatype's
-  // default tool.
-  const embeddedUrl = () => {
-    const c = comment();
-    return c && isValidAutomergeUrl(c.content)
-      ? (c.content as AutomergeUrl)
-      : undefined;
-  };
-  const isEmbeddedDoc = () => embeddedUrl() !== undefined;
-
   return (
     <Show when={shouldRender() && comment()}>
       <div class="comment-card" data-id={props.commentHandle.url}>
@@ -338,27 +324,52 @@ function CommentView(props: {
           when={isDraft()}
           fallback={
             <div class="comment-content">
-              <Show
-                when={isEmbeddedDoc()}
-                fallback={comment()!.content}
-              >
-                <patchwork-view
-                  class="comment-content-embed"
-                  doc-url={embeddedUrl()}
-                />
-              </Show>
+              <CuteText text={() => comment()?.content ?? ""} />
             </div>
           }
         >
-          <textarea
-            class="comment-draft-textarea"
-            value={comment()!.draftContent ?? ""}
-            onInput={(e) => onChangeDraft(e.currentTarget.value)}
+          <CuteDraftEditor
+            commentHandle={props.commentHandle}
+            repo={props.repo}
           />
         </Show>
       </div>
     </Show>
   );
+}
+
+// A cute.txt editor bound to the comment's `draftContent`. Replaces the plain
+// textarea so drafts get the same rich plain-text (marks, emoji, embeds) that
+// chat and notes use — the default cute.txt schema, no comments-specific
+// plugins. The editor edits the field in place via `am.splice`, so it must
+// already be a string; a freshly-created draft has no `draftContent` yet, so we
+// seed it to "" before mounting. Lives inside the `isDraft()` branch, so Solid
+// unmounts it (and `onCleanup` destroys the editor) the moment the draft is
+// saved or cancelled.
+function CuteDraftEditor(props: {
+  commentHandle: DocHandle<Comment>;
+  repo: Repo;
+}) {
+  let parent!: HTMLDivElement;
+  onMount(() => {
+    const handle = props.commentHandle;
+    if (typeof handle.doc()?.draftContent !== "string") {
+      handle.change((c: Comment) => {
+        if (typeof c.draftContent !== "string") c.draftContent = "";
+      });
+    }
+    const editor = createCuteEditor({
+      handle,
+      path: ["draftContent"],
+      schema: defaultSchema,
+      autocompletes: defaultAutocompletes,
+      parent,
+      repo: props.repo,
+    });
+    editor.view.focus();
+    onCleanup(() => editor.destroy());
+  });
+  return <div class="cutetxt-editor comment-draft-editor" ref={parent} />;
 }
 
 // Reactively track a single attribute on `element`, seeded from its current
