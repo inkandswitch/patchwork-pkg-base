@@ -1,9 +1,8 @@
 import {Show, Index, For, Switch, Match, createMemo, createEffect, createSignal, onCleanup} from "solid-js"
 import type {ChatMessage} from "../types"
-import {parseTextSegments, isEmojiOnly} from "../lib/format-text"
-import type {TextSegment} from "../lib/format-text"
-import {resolvePlugins} from "../lib/registry"
-import {parserExtensionPlugins, toInlineRule} from "../lib/parser-extensions"
+import {isEmojiOnly} from "../lib/format-text"
+import {parseMarkup} from "cute.txt/markup"
+import type {CuteSchema} from "../lib/syntax-schema"
 import {highlightCode} from "../lib/highlighter"
 import {ensureFontLoaded} from "../lib/blob-cache"
 import {resolveNamedColor} from "../lib/named-colors"
@@ -40,6 +39,10 @@ function escapeHtml(str: string): string {
 // results by request-id, and NEVER swap back to plain once we have a highlight.
 // (shiki re-tokenizes the whole snippet per update — fine at chat-snippet size and
 //  now bounded to one call per frame.)
+//
+// This component stays MOUNTED across streaming updates because MessageBody renders
+// the parsed nodes with <Index> keyed by position — so its keep-last-good state
+// survives token-by-token growth of `props.code`.
 function CodeBlock(props: {lang: string; code: string}) {
 	const {isLightBg} = useTheme()
 	const [html, setHtml] = createSignal<string | null>(null)
@@ -77,38 +80,51 @@ function CodeBlock(props: {lang: string; code: string}) {
 	return <div class="chat-code-block" innerHTML={html() ?? plain()} />
 }
 
-function InlineHtml(props: {html: string}) {
+// Build a (non-stateful) inline DOM subtree from a cute.txt parse node: text, a
+// mark (styled element + recursive children), or an inline atom (e.g. emoticon).
+// Block atoms (code/think) are handled by TopNode as stable Solid components.
+function buildInline(node: any): Node {
+	if (node.text != null) return document.createTextNode(node.text)
+	if (node.atom) {
+		const out = node.atom.toDOM(node.attrs)
+		return out instanceof Node ? out : document.createTextNode(out == null ? "" : String(out))
+	}
+	const [tag, attrs] = node.mark.toDOM(node.attrs)
+	const el = document.createElement(tag)
+	if (attrs) for (const k in attrs) el.setAttribute(k, attrs[k])
+	for (const child of node.children || []) el.append(buildInline(child))
+	return el
+}
+
+// One top-level parse node. Code/think atoms render as stable Solid components
+// (preserving shiki streaming / think toggle); everything else is inline DOM.
+function TopNode(props: {node: () => any}) {
 	return (
-		<span
-			innerHTML={props.html}
-			on:click={(e) => {
-				const target = e.target as HTMLElement
-				if (target.classList.contains("chat-spoiler")) {
-					target.classList.toggle("revealed")
-				}
-			}}
-		/>
+		<Switch>
+			<Match when={props.node().atom?._chatKind === "codeblock"}>
+				<CodeBlock lang={props.node().attrs.lang} code={props.node().attrs.code} />
+			</Match>
+			<Match when={props.node().atom?._chatKind === "think"}>
+				<ThinkBlock content={props.node().attrs.text} />
+			</Match>
+			<Match when={true}>{buildInline(props.node())}</Match>
+		</Switch>
 	)
+}
+
+// <Index> (not <For>) so each node keeps its component instance across streaming
+// growth — the reason a code block doesn't lose its highlight mid-stream.
+function MessageNodes(props: {nodes: any[]}) {
+	return <Index each={props.nodes}>{(node) => <TopNode node={node} />}</Index>
 }
 
 export function MessageBody(props: {
 	msg: ChatMessage
-	emoticonBlobUrls: Record<string, string>
+	schema: CuteSchema
 }) {
 	const {myFonts} = useIdentity()
 	const {peerFonts} = usePresence()
 	const {isLightBg} = useTheme()
-	const {selector, hasFeature} = useChat()
-
-	// Active inline delimiter rules from the chat:parser-extension registry,
-	// filtered by this tool's feature selector (core = *bold*/_italic_ only).
-	const inlineRules = createMemo(() =>
-		resolvePlugins(
-			"chat:parser-extension",
-			parserExtensionPlugins,
-			selector()
-		).map(toInlineRule)
-	)
 
 	const resolvedColor = createMemo(() => {
 		if (!props.msg.color) return undefined
@@ -121,19 +137,19 @@ export function MessageBody(props: {
 		}
 	})
 
-	const segments = createMemo(() => {
-		if (!props.msg.text) return []
-		return parseTextSegments(props.msg.text, {
-			emoticonBlobUrls: props.emoticonBlobUrls,
-			rules: inlineRules(),
-			allowEmoticons: hasFeature("emoticons"),
-			allowThink: hasFeature("computer"),
-		})
-	})
+	const segments = createMemo(() =>
+		props.msg.text ? parseMarkup(props.msg.text, props.schema) : []
+	)
 
 	const emojiOnly = createMemo(() =>
 		props.msg.text ? isEmojiOnly(props.msg.text) : false
 	)
+
+	// Spoiler reveal: click a `.chat-spoiler` to toggle `.revealed` (was InlineHtml).
+	const onSpoilerClick = (e: MouseEvent) => {
+		const t = e.target as HTMLElement
+		if (t.classList && t.classList.contains("chat-spoiler")) t.classList.toggle("revealed")
+	}
 
 	return (
 		<>
@@ -148,18 +164,13 @@ export function MessageBody(props: {
 						...(props.msg.font ? {"font-family": props.msg.font} : {}),
 						...(resolvedColor() ? {color: resolvedColor()} : {}),
 					}}
+					on:click={onSpoilerClick}
 				>
 					<Show when={props.msg.marquee}>
-						<marquee>
-							<Index each={segments()}>
-								{(seg) => <SegmentView segment={seg()} />}
-							</Index>
-						</marquee>
+						<marquee><MessageNodes nodes={segments()} /></marquee>
 					</Show>
 					<Show when={!props.msg.marquee}>
-						<Index each={segments()}>
-							{(seg) => <SegmentView segment={seg()} />}
-						</Index>
+						<MessageNodes nodes={segments()} />
 					</Show>
 				</div>
 			</Show>
@@ -217,21 +228,5 @@ function QuickReplies(props: {options: string[]}) {
 				)}
 			</For>
 		</div>
-	)
-}
-
-function SegmentView(props: {segment: TextSegment}) {
-	return (
-		<Switch>
-			<Match when={props.segment.type === "html" && props.segment as TextSegment & {type: "html"}}>
-				{(seg) => <InlineHtml html={seg().content} />}
-			</Match>
-			<Match when={props.segment.type === "think" && props.segment as TextSegment & {type: "think"}}>
-				{(seg) => <ThinkBlock content={seg().content} />}
-			</Match>
-			<Match when={props.segment.type === "code" && props.segment as TextSegment & {type: "code"}}>
-				{(seg) => <CodeBlock lang={(seg() as any).lang} code={(seg() as any).code} />}
-			</Match>
-		</Switch>
 	)
 }

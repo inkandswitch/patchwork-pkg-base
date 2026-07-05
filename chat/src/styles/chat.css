@@ -191,6 +191,7 @@
     .chat-inverted {
       background:var(--text-primary); color:var(--bg-dark); padding:0 3px; border-radius:3px;
     }
+    .chat-underline-em { text-decoration:underline; font-style:italic; }
     .chat-msg-action {
       padding:4px 16px; font-style:italic; color:var(--text-secondary); font-size:14px;
       position:relative;
@@ -660,6 +661,14 @@
     .chat-autocomplete-item-name { color:var(--text-secondary); font-size:12px; }
     .chat-autocomplete-item-desc { color:var(--text-muted); font-size:11px; margin-left:auto; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:50%; }
     .chat-autocomplete-item-cmd { font-weight:600; font-size:14px; color:var(--text-primary); min-width:0; }
+    /* Caret-anchored popup container for the cute.txt-driven completion (appended to
+       <body>, positioned fixed at the caret). Rows reuse .chat-autocomplete-item*. */
+    .chat-autocomplete-pop {
+      position:fixed; z-index:50; min-width:200px; max-width:340px; max-height:200px;
+      overflow-y:auto; overscroll-behavior:contain; background:var(--bg-darkest);
+      border:1px solid var(--border); border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.3);
+    }
+    .chat-autocomplete-item-icon { width:20px; height:20px; flex-shrink:0; color:var(--text-muted); }
 
     .chat-reply-bar {
       display:none; padding:8px 12px; background:var(--bg-mid);

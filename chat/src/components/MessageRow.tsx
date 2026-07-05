@@ -1,6 +1,7 @@
 import {Show, Switch, Match, createMemo} from "solid-js"
 import {useDocument} from "@automerge/automerge-repo-solid-primitives"
 import type {ChatMessage} from "../types"
+import type {CuteSchema} from "../lib/syntax-schema"
 import {Avatar} from "./Avatar"
 import {MessageBody} from "./MessageBody"
 import {MessageReplyRef} from "./MessageReplyRef"
@@ -16,7 +17,7 @@ export function MessageRow(props: {
 	msg: ChatMessage
 	replyToMsg?: ChatMessage
 	isContinuation: boolean
-	emoticonBlobUrls: Record<string, string>
+	schema: CuteSchema
 	onReply: (msgId: string) => void
 	onReact: (idx: number, anchorEl: HTMLElement) => void
 	onToggleReaction: (idx: number, emoji: string) => void
@@ -89,7 +90,7 @@ export function MessageRow(props: {
 						<GifInlineThumbnail gifSelfieUrl={props.msg.gifSelfieUrl!} />
 					</Show>
 					<div>
-						<MessageBody msg={props.msg} emoticonBlobUrls={props.emoticonBlobUrls} />
+						<MessageBody msg={props.msg} schema={props.schema} />
 						<Slot
 							name="message-reactions-row"
 							extra={{
@@ -140,7 +141,7 @@ export function MessageRow(props: {
 								</span>
 								<span class="chat-msg-time">{formatTime(props.msg.timestamp)}</span>
 							</div>
-							<MessageBody msg={props.msg} emoticonBlobUrls={props.emoticonBlobUrls} />
+							<MessageBody msg={props.msg} schema={props.schema} />
 							<Slot
 								name="message-reactions-row"
 								extra={{

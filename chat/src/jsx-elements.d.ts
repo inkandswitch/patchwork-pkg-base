@@ -7,6 +7,7 @@ declare module "solid-js" {
 	namespace JSX {
 		interface IntrinsicElements {
 			"patchwork-view": any
+			marquee: any
 		}
 	}
 }

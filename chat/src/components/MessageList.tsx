@@ -14,6 +14,7 @@ import type {ChatMessage, ChatMessageRef} from "../types"
 import {MessageRow} from "./MessageRow"
 import {formatTimeGap} from "../lib/helpers"
 import {getRepo} from "../lib/repo"
+import {useChatSchema} from "../lib/syntax-schema"
 
 export function MessageList(props: {
 	replyToId: string | null
@@ -21,7 +22,7 @@ export function MessageList(props: {
 	onReact: (idx: number, anchorEl: HTMLElement) => void
 }) {
 	let messagesRef!: HTMLDivElement
-	const {handle, doc, repo} = useChat()
+	const {handle, doc, repo, selector, hasFeature} = useChat()
 	const {myName} = useIdentity()
 	const {peerEmoticons} = usePresence()
 
@@ -226,6 +227,16 @@ export function MessageList(props: {
 		return urls
 	})
 
+	// The cute.txt render schema, built once for the whole list from the active
+	// chat:syntax plugins + chat-internal specs (emoticons/code/think). Passed to
+	// every MessageBody so each message parses against the same schema.
+	const cuteSchema = useChatSchema({
+		selector,
+		emoticonBlobUrls,
+		allowEmoticons: () => hasFeature("emoticons"),
+		allowThink: () => hasFeature("computer"),
+	})
+
 	// Auto-scroll to bottom
 	const [wasAtBottom, setWasAtBottom] = createSignal(true)
 
@@ -349,7 +360,7 @@ export function MessageList(props: {
 									replyToMsg={
 										msg().replyTo ? msgMap().get(msg().replyTo!) : undefined
 									}
-									emoticonBlobUrls={emoticonBlobUrls()}
+									schema={cuteSchema()}
 									onReply={props.onReply}
 									onReact={props.onReact}
 									onToggleReaction={toggleReaction}

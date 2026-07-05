@@ -11,7 +11,7 @@
 
 import {mergePlugins, type PluginSelector} from "./registry"
 import {featurePlugins} from "../features"
-import {parserExtensionPlugins} from "./parser-extensions"
+import {syntaxPlugins} from "./syntax"
 import {slashPlugins} from "./slash-plugins"
 import {messageActionPlugins} from "./message-actions"
 import {emojiPackPlugins} from "./emoji-packs"
@@ -19,7 +19,7 @@ import {emojiPackPlugins} from "./emoji-packs"
 // Every plugin type this tool tiers over, paired with its built-in declarations.
 export const BUILTIN_PLUGIN_TYPES: {type: string; builtins: any[]}[] = [
 	{type: "chat:feature", builtins: featurePlugins},
-	{type: "chat:parser-extension", builtins: parserExtensionPlugins},
+	{type: "chat:syntax", builtins: syntaxPlugins},
 	{type: "chat:slash", builtins: slashPlugins},
 	{type: "chat:messageaction", builtins: messageActionPlugins},
 	{type: "chat:emojipack", builtins: emojiPackPlugins},

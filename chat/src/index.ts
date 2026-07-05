@@ -1,5 +1,5 @@
 import {featureDescriptions} from "./features"
-import {parserExtensionPlugins} from "./lib/parser-extensions"
+import {syntaxPluginDescriptions} from "./lib/syntax"
 import {slashPluginDescriptions} from "./lib/slash-plugins"
 import {messageActionDescriptions} from "./lib/message-actions"
 import {emojiPackDescriptions} from "./lib/emoji-packs"
@@ -69,7 +69,7 @@ export const plugins = [
 	// `messageaction` and `emojipack` carry function fields, so they're registered
 	// as descriptions with the fancy code behind `async load()`.
 	...featureDescriptions,
-	...parserExtensionPlugins,
+	...syntaxPluginDescriptions,
 	...slashPluginDescriptions,
 	...messageActionDescriptions,
 	...emojiPackDescriptions,

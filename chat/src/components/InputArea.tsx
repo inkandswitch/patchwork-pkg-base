@@ -1,4 +1,4 @@
-import {createSignal, createEffect, onMount, onCleanup, Show, For, Index} from "solid-js"
+import {createSignal, createEffect, onMount, onCleanup, mapArray, Show, For, Index} from "solid-js"
 import {useChat} from "../context/ChatContext"
 import {useIdentity} from "../context/IdentityContext"
 import {usePresence} from "../context/PresenceContext"
@@ -10,7 +10,9 @@ import {slashPlugins, matchSlashCommand} from "../lib/slash-plugins"
 import {SVG_ICONS} from "../lib/svg-icons"
 import {cmPromise} from "../lib/codemirror-setup"
 import {ensureFontLoaded} from "../lib/blob-cache"
-import {AutocompletePopup, type AutocompleteItem, type AutocompleteHandle} from "./AutocompletePopup"
+import {cuteAutocomplete} from "cute.txt/autocomplete"
+import {createCompletionSpecs, chatRenderRow} from "../lib/completion"
+import {autocompletePlugins, type AutocompleteCtx} from "../lib/autocomplete-plugins"
 import type {ChatMessage} from "../types"
 
 type PendingFile = {blob: Blob; dataUrl?: string; name: string; mimeType: string}
@@ -36,7 +38,7 @@ export function InputArea(props: {
 	let inputWrapRef!: HTMLDivElement
 	let inputRowRef!: HTMLDivElement
 	const [cmView, setCmView] = createSignal<any>(null)
-	const {handle, doc, repo, selector} = useChat()
+	const {handle, doc, repo, selector, element} = useChat()
 	// Active slash commands with behaviour (`transform`) resolved inline for own
 	// built-ins or loaded from a cross-bundle contribution's `.module` (chitter).
 	const loadedSlash = createLoadedPlugins("chat:slash", slashPlugins, selector)
@@ -58,7 +60,7 @@ export function InputArea(props: {
 	}
 	const anyContentPending = () => contentChecks.some((c) => { try { return c() } catch { return false } })
 	const {myName, myContactUrl, myFont, myAvatarUrl, myEmoticons, myFonts, chatProfileHandle} = useIdentity()
-	const {broadcastPresence, peerFonts} = usePresence()
+	const {broadcastPresence, peerFonts, peerEmoticons, presenceMap} = usePresence()
 
 	const pendingFiles = () => props.pendingFiles
 	const setPendingFiles = (fn: (prev: PendingFile[]) => PendingFile[]) => props.setPendingFiles(fn)
@@ -69,8 +71,26 @@ export function InputArea(props: {
 
 
 
-	// Autocomplete handle
-	let acHandle: AutocompleteHandle | null = null
+	// Input autocomplete, driven by the cute.txt engine. The three built-in triggers
+	// (slash/emoji/@mention) come from createCompletionSpecs; `chat:autocomplete`
+	// providers (people, @selection, …) feed the @mention trigger. Providers are
+	// `create`d once with a ctx that carries the live presence roster.
+	const acCtx: AutocompleteCtx = {
+		element,
+		repo,
+		selector,
+		presence: () => Array.from(presenceMap().keys()),
+	}
+	const acProviders = createLoadedPlugins("chat:autocomplete", autocompletePlugins, selector)
+	const mentionProviders = mapArray(acProviders, (p: any) =>
+		typeof p?.create === "function" ? p.create(acCtx) : null
+	)
+	const completionSpecs = createCompletionSpecs({
+		selector,
+		myEmoticons,
+		peerEmoticons: () => Object.fromEntries(peerEmoticons()),
+		mentionProviders: () => mentionProviders().filter(Boolean) as any,
+	})
 
 	// Draft sync
 	let draftHandle: any = null
@@ -194,22 +214,18 @@ export function InputArea(props: {
 					}),
 					EditorView.lineWrapping,
 					EditorView.contentAttributes.of({"aria-label": placeholderText}),
-					keymap.of([
-						{
-							key: "Enter",
-							run: () => {
-								if (acHandle?.handleKey("Enter", false)) return true
-								sendMessage()
-								return true
-							},
-						},
-						{key: "Tab", run: () => acHandle?.handleKey("Tab", false) || false},
-						{key: "Shift-Enter", run: () => false},
-						{key: "ArrowDown", run: () => acHandle?.handleKey("ArrowDown", false) || false},
-						{key: "ArrowUp", run: () => acHandle?.handleKey("ArrowUp", false) || false},
-						{key: "Escape", run: () => acHandle?.handleKey("Escape", false) || false},
-					]),
-					EditorView.updateListener.of((update) => {
+						// cuteAutocomplete adds a Prec.highest keymap (Arrow/Enter/Tab/Escape)
+						// that wins only while the popup is open; when closed it returns
+						// false so Enter falls through to sendMessage here.
+						...cuteAutocomplete(() => completionSpecs, {
+							className: "chat-autocomplete-pop",
+							renderRow: chatRenderRow,
+						}),
+						keymap.of([
+							{key: "Enter", run: () => { sendMessage(); return true }},
+							{key: "Shift-Enter", run: () => false},
+						]),
+					EditorView.updateListener.of((update: any) => {
 						if (update.docChanged || update.selectionSet) updateInputState()
 						if (update.docChanged) {
 							broadcastPresence(true)
@@ -406,25 +422,6 @@ export function InputArea(props: {
 		props.onClearReply()
 	}
 
-	function handleAutocomplete(item: AutocompleteItem, colonStart: number) {
-		const cm = cmView()
-		if (!cm) return
-		if (item.isCommand) {
-			cm.dispatch({
-				changes: {from: 0, to: cm.state.doc.length, insert: item.display},
-				selection: {anchor: item.display.length},
-			})
-		} else {
-			const cursor = cm.state.selection.main.head
-			const replacement = item.display + " "
-			cm.dispatch({
-				changes: {from: colonStart, to: cursor, insert: replacement},
-				selection: {anchor: colonStart + replacement.length},
-			})
-		}
-		updateInputState()
-	}
-
 	function handlePaste(e: ClipboardEvent) {
 		const items = e.clipboardData?.items
 		if (!items) return
@@ -509,16 +506,6 @@ export function InputArea(props: {
 					/>
 				</div>
 			</Show>
-
-			{/* Autocomplete popup */}
-			<AutocompletePopup
-				inputText={inputText()}
-				cursorPos={cursorPos()}
-				anchorEl={inputWrapRef}
-				onComplete={handleAutocomplete}
-				onClose={() => {}}
-				onHandle={(h) => { acHandle = h }}
-			/>
 
 			{/* Input row */}
 			<div

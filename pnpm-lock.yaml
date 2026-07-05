@@ -174,6 +174,9 @@ importers:
       '@inkandswitch/patchwork-filesystem':
         specifier: ^0.1.2
         version: 0.1.2(@automerge/automerge-repo@2.5.6(supports-color@5.5.0))(@automerge/automerge@3.2.6)(supports-color@5.5.0)
+      cute.txt:
+        specifier: ^0.0.3
+        version: 0.0.3(@automerge/automerge@3.2.6)(@codemirror/state@6.7.0)(@codemirror/view@6.43.2)(solid-js@1.9.13)
       solid-js:
         specifier: ^1.9.11
         version: 1.9.13
@@ -511,9 +514,6 @@ importers:
       '@inkandswitch/patchwork-providers-solid':
         specifier: 0.2.3
         version: 0.2.3(@automerge/automerge-repo-solid-primitives@2.6.0-subduction.34(@automerge/automerge@3.3.0-fragments.1)(solid-js@1.9.13))(@automerge/automerge-repo@2.6.0-subduction.34)(solid-js@1.9.13)
-      debug:
-        specifier: ^4.4.3
-        version: 4.4.3(supports-color@5.5.0)
       solid-js:
         specifier: ^1.9.9
         version: 1.9.13
@@ -4422,6 +4422,23 @@ packages:
 
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
+
+  cute.txt@0.0.3:
+    resolution: {integrity: sha512-Usua/lHl7hM+zSmfzq2giUIPkiCpfv7HcIVuC2hp1fEHjfyZJFsMkQAbacQBW1dwTE+sLkuog/JcyDe2BdHlQQ==}
+    peerDependencies:
+      '@automerge/automerge': '*'
+      '@codemirror/state': '*'
+      '@codemirror/view': '*'
+      solid-js: '*'
+    peerDependenciesMeta:
+      '@automerge/automerge':
+        optional: true
+      '@codemirror/state':
+        optional: true
+      '@codemirror/view':
+        optional: true
+      solid-js:
+        optional: true
 
   debug@4.4.3:
     resolution: {integrity: sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==}
@@ -10004,6 +10021,13 @@ snapshots:
       which: 2.0.2
 
   csstype@3.2.3: {}
+
+  cute.txt@0.0.3(@automerge/automerge@3.2.6)(@codemirror/state@6.7.0)(@codemirror/view@6.43.2)(solid-js@1.9.13):
+    optionalDependencies:
+      '@automerge/automerge': 3.2.6
+      '@codemirror/state': 6.7.0
+      '@codemirror/view': 6.43.2
+      solid-js: 1.9.13
 
   debug@4.4.3(supports-color@5.5.0):
     dependencies:
