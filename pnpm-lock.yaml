@@ -175,8 +175,8 @@ importers:
         specifier: ^0.1.2
         version: 0.1.2(@automerge/automerge-repo@2.5.6(supports-color@5.5.0))(@automerge/automerge@3.2.6)(supports-color@5.5.0)
       cute.txt:
-        specifier: ^0.0.5
-        version: 0.0.5(@automerge/automerge@3.2.6)(@codemirror/state@6.7.0)(@codemirror/view@6.43.2)(solid-js@1.9.13)
+        specifier: ^0.0.6
+        version: 0.0.6(@automerge/automerge@3.2.6)(@codemirror/state@6.7.0)(@codemirror/view@6.43.2)(solid-js@1.9.13)
       solid-js:
         specifier: ^1.9.11
         version: 1.9.13
@@ -4423,8 +4423,8 @@ packages:
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
 
-  cute.txt@0.0.5:
-    resolution: {integrity: sha512-SnXJVhJ9yslpJCGdkfIu6lFIjvfRRhTBRPvF7DQv0CPQ7jjJYvelQrci5TJK49dYjGhp3fngfPyk4KEKSRAHnQ==}
+  cute.txt@0.0.6:
+    resolution: {integrity: sha512-X6nmLFh4oIllqv0l6fdx1Y+qa273S0F8TwkLXvUEqfYsWWtpGjDosWo1u01zMKrWYNlX64sUnYxMeWa/ppw9lg==}
     peerDependencies:
       '@automerge/automerge': '*'
       '@codemirror/state': '*'
@@ -10022,7 +10022,7 @@ snapshots:
 
   csstype@3.2.3: {}
 
-  cute.txt@0.0.5(@automerge/automerge@3.2.6)(@codemirror/state@6.7.0)(@codemirror/view@6.43.2)(solid-js@1.9.13):
+  cute.txt@0.0.6(@automerge/automerge@3.2.6)(@codemirror/state@6.7.0)(@codemirror/view@6.43.2)(solid-js@1.9.13):
     optionalDependencies:
       '@automerge/automerge': 3.2.6
       '@codemirror/state': 6.7.0
