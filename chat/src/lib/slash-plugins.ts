@@ -24,8 +24,14 @@ export interface SlashPlugin {
 	desc: string
 	tier: "core" | "full"
 	transform?: (argText: string) => SlashTransform | null
-	// One of: "font-dialog" | "emoticon-dialog" | "computer" | "call" | "model" | "pin"
+	// One of: "font-dialog" | "emoticon-dialog" | "computer" | "model" | "pin"
 	sideEffect?: string
+	// A self-contained side effect owned by the contributing plugin (e.g. `/call`
+	// from the `call` bundle). The host calls it with the explicit SlotContext and
+	// the argument text; it sends no message. Preferred over `sideEffect` — new
+	// commands should carry their own behaviour here rather than growing the host's
+	// hardcoded dispatch switch.
+	run?: (ctx: any, argText: string) => void | Promise<void>
 }
 
 export const slashPlugins: SlashPlugin[] = [
@@ -56,8 +62,8 @@ export const slashPlugins: SlashPlugin[] = [
 // behind load() — a top-level `transform` fn throws DataCloneError. The tool
 // itself uses the inline `slashPlugins` above (main thread, never cloned).
 export const slashPluginDescriptions = slashPlugins.map((p) => {
-	const {transform, ...meta} = p
-	return {...meta, async load() { return {transform} }}
+	const {transform, run, ...meta} = p
+	return {...meta, async load() { return {transform, run} }}
 })
 
 /** Match input text against the active slash plugins. Returns the matched plugin

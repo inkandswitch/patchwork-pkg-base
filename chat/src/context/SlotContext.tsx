@@ -41,7 +41,6 @@ export interface SlotBaseCaps {
 	setShowEmoticonDialog: (v: boolean) => void
 	showFontDialog: Accessor<boolean>
 	setShowFontDialog: (v: boolean) => void
-	onCallCommand: () => void
 	openLightbox: (src: string, type?: string) => void
 	computerActive: Accessor<boolean>
 }

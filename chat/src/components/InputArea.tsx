@@ -5,7 +5,7 @@ import {usePresence} from "../context/PresenceContext"
 import {generateId} from "../lib/helpers"
 import {createFileDoc} from "../lib/file-helpers"
 import {createLoadedPlugins} from "../lib/slots"
-import {Slot} from "../context/SlotContext"
+import {Slot, useSlotContext} from "../context/SlotContext"
 import {slashPlugins, matchSlashCommand} from "../lib/slash-plugins"
 import {SVG_ICONS} from "../lib/svg-icons"
 import {cmPromise} from "../lib/codemirror-setup"
@@ -28,7 +28,6 @@ export function InputArea(props: {
 	onShowEmoticonDialog?: () => void
 	onToggleSidebar?: () => void
 	onComputerCommand?: (sub: string) => void
-	onCallCommand?: () => void
 	onModelCommand?: () => void
 	onPinCommand?: (arg: string) => void
 	onPluginCommand?: (arg: string) => void
@@ -41,6 +40,9 @@ export function InputArea(props: {
 	let inputRowRef!: HTMLDivElement
 	const [cmView, setCmView] = createSignal<any>(null)
 	const {handle, doc, repo, selector, element, hasFeature} = useChat()
+	// Full SlotContext, handed to self-contained slash commands' `run` (e.g. `/call`
+	// from the `call` bundle) so they drive the chat without the host hardcoding them.
+	const slotCtx = useSlotContext()
 	// Active slash commands with behaviour (`transform`) resolved inline for own
 	// built-ins or loaded from a cross-bundle contribution's `.module` (chitter).
 	const loadedSlash = createLoadedPlugins("chat:slash", slashPlugins, selector)
@@ -319,13 +321,19 @@ export function InputArea(props: {
 		// tool's slashCommands feature). Side-effecting commands don't send a message.
 		const activeSlash = loadedSlash()
 		const slashMatch = matchSlashCommand(text, activeSlash)
+		// Plugin-owned commands carry their own `run` (e.g. `/call` from the call
+		// bundle) — dispatched generically with the SlotContext, no host switch.
+		if (slashMatch?.plugin.run) {
+			setInputValue("")
+			void slashMatch.plugin.run(slotCtx, slashMatch.argText)
+			return
+		}
 		if (slashMatch?.plugin.sideEffect) {
 			setInputValue("")
 			switch (slashMatch.plugin.sideEffect) {
 				case "font-dialog": props.onShowFontDialog?.(); break
 				case "emoticon-dialog": props.onShowEmoticonDialog?.(); break
 				case "computer": props.onComputerCommand?.(slashMatch.argText.trim().toLowerCase() || "invite"); break
-				case "call": props.onCallCommand?.(); break
 				case "model": props.onModelCommand?.(); break
 				case "pin": props.onPinCommand?.(slashMatch.argText.trim()); break
 				case "plugin": props.onPluginCommand?.(slashMatch.argText.trim()); break

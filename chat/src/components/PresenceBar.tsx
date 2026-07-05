@@ -3,6 +3,7 @@ import {useChat} from "../context/ChatContext"
 import {useIdentity} from "../context/IdentityContext"
 import {usePresence} from "../context/PresenceContext"
 import {SVG_ICONS} from "../lib/svg-icons"
+import {Slot} from "../context/SlotContext"
 import {NotifyMenu} from "./NotifyMenu"
 import {automergeUrlToServiceWorkerUrl} from "@inkandswitch/patchwork-filesystem"
 
@@ -10,7 +11,6 @@ const computerPngUrl = new URL("../../computer.png", import.meta.url).href
 
 export function PresenceBar(props: {
 	onToggleSidebar?: () => void
-	onCallCommand?: () => void
 	computerActive?: boolean
 }) {
 	const {doc, hasFeature} = useChat()
@@ -116,14 +116,7 @@ export function PresenceBar(props: {
 						/>
 					</Show>
 				</Show>
-				<Show when={hasFeature("call")}>
-					<button
-						class="chat-theme-btn"
-						title="Call"
-						on:click={() => props.onCallCommand?.()}
-						innerHTML={SVG_ICONS.phone}
-					/>
-				</Show>
+				<Slot name="presence-bar-actions" />
 				<Show when={hasFeature("sidebar")}>
 					<button
 						class="chat-sidebar-toggle-btn"

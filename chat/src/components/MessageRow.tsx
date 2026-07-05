@@ -125,7 +125,7 @@ export function MessageRow(props: {
 							<Avatar
 								name={displayName()}
 								contactUrl={props.msg.contactUrl}
-								avatarUrl={props.msg.avatarUrl}
+								avatarUrl={contactDoc()?.avatarUrl || props.msg.avatarUrl}
 								gifSelfieUrl={props.msg.gifSelfieUrl}
 								isComputer={!!props.msg.isComputer}
 							/>

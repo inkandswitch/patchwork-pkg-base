@@ -4,6 +4,8 @@ import {updateText, splice} from "@automerge/automerge"
 import {applyAutomerge} from "../lib/automerge-ops"
 import type {ChatDoc} from "../types"
 import type {FeatureSelector} from "../features"
+import {featurePlugins} from "../features"
+import {createLoadedPlugins} from "../lib/slots"
 import {expandSelector, docSelector} from "../lib/plugin-catalog"
 import type {PluginSelector} from "../lib/registry"
 import {ChatProvider, useChat} from "../context/ChatContext"
@@ -65,6 +67,20 @@ export function ChatRoot(props: {
 		expandSelector(props.selector ?? docSel())
 	)
 	const has = (id: string) => activeFeatures().has(id)
+
+	// Active feature plugins with their loaded module flattened on (`.slots`,
+	// `.buildContext`, …). Lets the host stay feature-agnostic: it discovers what a
+	// feature contributes (a presence-bar button, extra LLM context) rather than
+	// naming specific ones. Cross-bundle features (e.g. `call`) load via the registry.
+	const loadedFeatures = createLoadedPlugins(
+		"chat:feature",
+		featurePlugins,
+		() => [...activeFeatures()]
+	)
+	// Does any active feature contribute the given render slot? (Drives chrome
+	// visibility without the host hardcoding which feature owns which slot.)
+	const hasSlot = (slot: string) =>
+		loadedFeatures().some((f: any) => f?.slots && slot in f.slots)
 
 	// Are we the streamlined doc-editing "context tool"?
 	const isContext = () => props.mode === "context"
@@ -1938,19 +1954,14 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 			logParts.push(iframeContext)
 		}
 
-		// Call transcript
-		if (doc?.callUrl) {
+		// Feature-contributed context (e.g. the `call` bundle folds in its transcript).
+		// The host stays agnostic: each active feature's loaded module may expose an
+		// async `buildContext({repo, doc})` returning a string to append.
+		for (const f of loadedFeatures()) {
+			if (typeof (f as any).buildContext !== "function") continue
 			try {
-				const ch = await repo.find(doc.callUrl)
-				const cd = ch.doc() as any
-				if (
-					cd?.content &&
-					typeof cd.content === "string" &&
-					cd.content.length > 0
-				) {
-					const transcript = cd.content.slice(-4000)
-					logParts.push("Call transcript (last 4000 chars):\n" + transcript)
-				}
+				const part = await (f as any).buildContext({repo, doc})
+				if (part) logParts.push(part)
 			} catch {}
 		}
 
@@ -2991,24 +3002,6 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 		props.handle.off("change", onDocChangeWatchdog)
 	})
 
-	// ---- Call ----
-	async function handleCallCommand() {
-		const repo = (props.element as any).repo
-		if (!repo) return
-		const d = props.handle.doc() as any
-		let callUrl = d?.callUrl
-		if (!callUrl) {
-			const title = (d?.title || "Chat") + " Call"
-			const callHandle = await repo.create2({title, content: ""})
-			callUrl = callHandle.url
-			props.handle.change((dd: any) => {
-				dd.callUrl = callUrl
-			})
-		}
-		// Pin it
-		pinDoc(callUrl, "telephone", (d?.title || "Chat") + " Call")
-	}
-
 	// ---- Lightbox ----
 	const [lightboxSrc, setLightboxSrc] = createSignal<string | null>(null)
 	const [lightboxType, setLightboxType] = createSignal<"image" | "video">(
@@ -3023,14 +3016,6 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 	// ---- Pin ----
 	function handlePinCommand(arg: string) {
 		if (!arg) return
-
-		if (arg.toLowerCase() === "transcript") {
-			const d = props.handle.doc() as any
-			if (d?.callUrl) {
-				pinDoc(d.callUrl, "teleprint", "Teleprint")
-			}
-			return
-		}
 
 		// Try as automerge URL
 		if (arg.startsWith("automerge:")) {
@@ -3243,7 +3228,6 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 		setShowEmoticonDialog,
 		showFontDialog,
 		setShowFontDialog,
-		onCallCommand: handleCallCommand,
 		openLightbox,
 		computerActive,
 	}
@@ -3269,10 +3253,9 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 						<PresenceProvider handle={props.handle}>
 							<SlotProvider caps={slotCaps}>
 							<div class="chat-main">
-								<Show when={has("presence") || has("sidebar") || has("call") || has("notifications")}>
+								<Show when={has("presence") || has("sidebar") || has("notifications") || hasSlot("presence-bar-actions")}>
 									<PresenceBar
 										onToggleSidebar={toggleSidebar}
-										onCallCommand={handleCallCommand}
 										computerActive={computerActive()}
 									/>
 								</Show>
@@ -3317,7 +3300,6 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 									onShowEmoticonDialog={() => setShowEmoticonDialog(true)}
 									onToggleSidebar={toggleSidebar}
 									onComputerCommand={handleComputerCommand}
-									onCallCommand={handleCallCommand}
 									onModelCommand={() => void openModelPicker()}
 									onPinCommand={handlePinCommand}
 									onPluginCommand={handlePluginCommand}
