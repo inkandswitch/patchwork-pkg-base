@@ -23,7 +23,16 @@ interface ToolStorageDoc {
 	defaultPlugins?: string[]
 }
 
-const DEFAULT_CHITCHAT_PLUGINS = ["computer"]
+const DEFAULT_CHITCHAT_PLUGINS = ["computer", "model"]
+const OLD_DEFAULT_CHITCHAT_PLUGINS = ["computer"]
+
+function isOldDefaultChitchatPlugins(plugins: unknown): plugins is string[] {
+	return (
+		Array.isArray(plugins) &&
+		plugins.length === OLD_DEFAULT_CHITCHAT_PLUGINS.length &&
+		plugins.every((p, i) => p === OLD_DEFAULT_CHITCHAT_PLUGINS[i])
+	)
+}
 
 /** Find (or create + link) the chat doc stored on the focused document, seeding a
  * new one's plugin set from the remembered default. */
@@ -39,6 +48,9 @@ async function ensureChitchat(
 		chat.change((d: any) => {
 			const isMissingPlugins = !Array.isArray(d.plugins)
 			if (isMissingPlugins) d.plugins = defaultPlugins.slice()
+			else if (isOldDefaultChitchatPlugins(d.plugins)) {
+				d.plugins = DEFAULT_CHITCHAT_PLUGINS.slice()
+			}
 			if (isMissingPlugins && d["@patchwork"]?.type === "chitterchatter") {
 				d["@patchwork"].type = "chat"
 			}
@@ -91,6 +103,11 @@ function ContextHost(props: {element: HTMLElement; repo: Repo}) {
 				if (!Array.isArray(storage.doc()?.defaultPlugins)) {
 					storage.change((d) => {
 						if (!Array.isArray(d.defaultPlugins))
+							d.defaultPlugins = DEFAULT_CHITCHAT_PLUGINS.slice()
+					})
+				} else if (isOldDefaultChitchatPlugins(storage.doc()?.defaultPlugins)) {
+					storage.change((d) => {
+						if (isOldDefaultChitchatPlugins(d.defaultPlugins))
 							d.defaultPlugins = DEFAULT_CHITCHAT_PLUGINS.slice()
 					})
 				}

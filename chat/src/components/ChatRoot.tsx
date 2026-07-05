@@ -1156,11 +1156,23 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 				if (range === undefined || range === null) {
 					return "Error: range is required ([from,to] for a splice, or a key for assign/delete)."
 				}
-				// `value` is intentionally NOT JSON-parsed when it's a string: a string
-				// is a legitimate text/scalar value. Native function-calling already
-				// sends real JSON types for objects/lists.
+				let targetBefore = h.doc() as any
+				for (const k of path) targetBefore = targetBefore == null ? targetBefore : targetBefore[k]
+				const parseValueMaybe = (v: any) => {
+					if (typeof v !== "string") return v
+					if (Array.isArray(range) && typeof targetBefore === "string") return v
+					const trimmed = v.trim()
+					if (!/^(?:[{[]|"(?:[^"\\]|\\.)*"|-?\d|true\b|false\b|null\b)/.test(trimmed)) {
+						return v
+					}
+					try {
+						return JSON.parse(trimmed)
+					} catch {
+						return v
+					}
+				}
 				const hasValue = Object.prototype.hasOwnProperty.call(args, "value")
-				const value = hasValue ? args.value : undefined
+				const value = hasValue ? parseValueMaybe(args.value) : undefined
 				const heads = parseMaybe(args.heads)
 				const mut = (d: any) => applyAutomerge(d, path, range, value)
 				if (Array.isArray(heads) && heads.length) {
@@ -3334,5 +3346,3 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 		</div>
 	)
 }
-
-

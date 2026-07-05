@@ -18,7 +18,7 @@ const setTitle = (doc: ChatDoc, title: string) => {
 // lives in the chitter bundle as the `chitter` datatype.
 export const ChatDatatype = {
 	init(doc: ChatDoc) {
-		base(doc, "chat " + new Date().toLocaleString(), ["computer"])
+		base(doc, "chat " + new Date().toLocaleString(), ["computer", "model"])
 	},
 	getTitle,
 	setTitle,
