@@ -25,7 +25,10 @@
   --placeholder-line: var(--studio-line-offset-50, #808e80);
   --document-list-search-line: var(--studio-line, #000);
 
-  --document-list-primary: color-mix(in oklch, var(--studio-secondary, #33ccf8), var(--studio-fill, white) 60%);
+  --document-list-primary: var(--studio-primary-fill, var(--studio-primary, #35f7ca));
+  --document-list-primary-line: var(--studio-primary-line, var(--studio-line, black));
+  --document-list-selection-fill: var(--document-list-primary);
+  --document-list-selection-line: var(--document-list-primary-line);
 
   --document-list-create-new-fill: var(--studio-fill, white);
   --document-list-create-new-line: color-mix(
@@ -290,7 +293,11 @@ button {
   }
 
   &[aria-selected="true"] {
-    background: var(--document-list-primary);
+    background: var(--document-list-selection-fill);
+    color: var(--document-list-selection-line);
+    .document-list-folder__toggle path {
+      stroke: var(--document-list-selection-line);
+    }
     .document-list__doclist > &:first-child {
       border-top-left-radius: var(--document-list-radius);
       border-top-right-radius: var(--document-list-radius);

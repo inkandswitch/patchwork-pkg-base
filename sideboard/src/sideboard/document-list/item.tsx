@@ -330,7 +330,7 @@ export default function Item(props: {
             font-family: inherit;
             font-size: 0.9rem;
             pointer-events: none;
-            color: var(--document-list-line);
+            color: var(--document-list-primary-line);
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
           `;
           const count = dragstack.size;
