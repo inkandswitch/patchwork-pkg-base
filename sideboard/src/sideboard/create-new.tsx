@@ -21,7 +21,6 @@ import { DropdownMenu } from "@kobalte/core/dropdown-menu";
 import type { OpenDocumentEventDetail } from "@inkandswitch/patchwork-elements";
 import type { AutomergeRepoKeyhive } from "@automerge/automerge-repo-keyhive";
 import { NEW_DOC_DND_TYPE, setNewDocDragging, clearDropTarget } from "./dnd/dnd.ts";
-import { setFilter } from "./state.ts";
 
 export async function createNew(
   repo: Repo,
@@ -177,6 +176,7 @@ export interface CreateNewProps {
   square?: boolean;
   /** allow dragging the button onto a folder/item to create a doc there */
   draggable?: boolean;
+  clearFilter(): void;
 }
 
 export default function CreateNew(props: CreateNewProps) {
@@ -188,7 +188,7 @@ export default function CreateNew(props: CreateNewProps) {
       doc.docs.push(freshy);
     });
     // Clear the filter so the just-created doc is actually visible in the list.
-    setFilter("");
+    props.clearFilter();
     props.open(freshy);
     setOpen(false);
   }
@@ -201,7 +201,7 @@ export default function CreateNew(props: CreateNewProps) {
       doc.docs.push(docLink);
     });
     // Clear the filter so the freshly added doc is visible.
-    setFilter("");
+    props.clearFilter();
     props.open(docLink);
     setOpen(false);
   }
@@ -299,12 +299,13 @@ export function NewDocPlaceholder(props: {
   hive?: AutomergeRepoKeyhive;
   onCreate(docLink: DocLink): void;
   onDismiss(): void;
+  clearFilter(): void;
 }) {
   const [open, setOpen] = createSignal(true);
 
   async function pickDatatype(datatype: Plugin<DatatypeDescription>) {
     const freshy = await createNew(props.repo, datatype, props.hive);
-    setFilter("");
+    props.clearFilter();
     props.onCreate(freshy);
   }
 
@@ -312,7 +313,7 @@ export function NewDocPlaceholder(props: {
     const trimmed = url.trim();
     if (!isValidAutomergeUrl(trimmed)) return;
     const docLink = await docLinkFromUrl(props.repo, trimmed as AutomergeUrl);
-    setFilter("");
+    props.clearFilter();
     props.onCreate(docLink);
   }
 
