@@ -9,19 +9,17 @@
        it's ever loaded outside the host.
        ================================================================ */
     .chat-root {
-      /* Fill/line surfaces derive from the --studio-* family — the tokens the
-         host actually sets for the system theme. The background is one gentle
-         step off the base studio fill; the input stays on the base --studio-fill
-         so it reads as a clean surface (line on fill). */
-      --bg-dark:     var(--studio-fill-offset-10, oklch(0.15 0.03 270));  /* base surface (messages) */
-      --bg-darkest:  var(--studio-fill-offset-20, oklch(0.12 0.02 270));  /* chrome / menus / popovers */
-      --bg-mid:      var(--studio-fill-offset-10, oklch(0.19 0.03 270));  /* secondary surfaces */
-      --bg-input:    var(--studio-fill, oklch(0.17 0.03 270));            /* inputs / pills — base studio fill (line on fill) */
-      --bg-hover:    var(--studio-fill-offset-20, oklch(0.22 0.04 270));  /* hover states */
-      --border:      var(--studio-fill-offset-20, oklch(0.28 0.05 270));
+      /* Fill/line surfaces derive from the editor tokens so the chat body
+         matches the active document/editor surface exactly. */
+      --bg-dark:     var(--editor-fill, var(--studio-fill, oklch(0.15 0.03 270)));  /* base surface (messages) */
+      --bg-darkest:  var(--editor-fill-offset-20, var(--studio-fill-offset-20, oklch(0.12 0.02 270)));  /* chrome / menus / popovers */
+      --bg-mid:      var(--editor-fill-offset-10, var(--studio-fill-offset-10, oklch(0.19 0.03 270)));  /* secondary surfaces */
+      --bg-input:    var(--editor-fill, var(--studio-fill, oklch(0.17 0.03 270)));            /* inputs / pills — base editor fill (line on fill) */
+      --bg-hover:    var(--editor-fill-offset-20, var(--studio-fill-offset-20, oklch(0.22 0.04 270)));  /* hover states */
+      --border:      var(--editor-fill-offset-20, var(--studio-fill-offset-20, oklch(0.28 0.05 270)));
 
       --accent:       var(--studio-primary-fill, var(--studio-primary, oklch(0.55 0.18 270)));
-      --accent-line:  var(--studio-primary-line, var(--studio-fill, oklch(1 0 0)));
+      --accent-line:  var(--studio-primary-line, var(--editor-fill, var(--studio-fill, oklch(1 0 0))));
       --accent-text:  var(--studio-primary-text, var(--accent));
       --accent-hover: color-mix(in oklch, var(--accent), var(--studio-line, black) 18%);
       --accent-soft:  color-mix(in oklch, var(--accent), transparent 85%);
