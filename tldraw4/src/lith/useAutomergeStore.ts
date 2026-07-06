@@ -76,8 +76,24 @@ export function useAutomergeStore({
     /* Automerge to TLDraw */
     const syncAutomergeDocChangesToStore = ({
       patches,
+      scopeReplaced,
     }: DocHandleChangePayload<any>) => {
       if (preventPatchApplications) return;
+
+      // A wholesale scope replacement (e.g. the draft overlay re-pointing
+      // this handle at a different clone) carries no patch stream connecting
+      // the old doc to the new one; reload the snapshot instead.
+      if (scopeReplaced) {
+        const doc = handle.doc();
+        if (!doc?.store) return;
+        store.mergeRemoteChanges(() => {
+          store.loadStoreSnapshot({
+            store: JSON.parse(JSON.stringify(doc.store)),
+            schema: JSON.parse(JSON.stringify(doc.schema)),
+          });
+        });
+        return;
+      }
 
       applyAutomergePatchesToTLStore(patches, store);
     };

@@ -16,7 +16,6 @@
  */
 
 import type { AutomergeUrl } from "@automerge/automerge-repo";
-import { subscribeDoc } from "@inkandswitch/patchwork-providers-solid";
 import { makePersisted } from "@solid-primitives/storage";
 import {
   createEffect,
@@ -32,12 +31,6 @@ import { useSidebarResize } from "../hooks/useSidebarResize";
 import { FrameTopBar } from "./FrameTopBar";
 import { ContextSidebar } from "./ContextSidebar";
 import { MainDocumentView } from "./MainDocumentView";
-
-type DraftsState = {
-  drafts: AutomergeUrl[];
-  // `null` represents "main" — i.e. the host doc itself, no draft overlay.
-  selectedDraft: AutomergeUrl | null;
-};
 
 const MIN_SIDEBAR_WIDTH = 180;
 const MAX_SIDEBAR_WIDTH = 720;
@@ -133,8 +126,9 @@ export function DocumentAreaRoot(props: DocumentAreaRootProps) {
     dragThreshold: DRAG_THRESHOLD,
   });
 
-  // Selected context-sidebar tab, lifted above the per-draft remount boundary so
-  // the active tab survives branch switches even though its content remounts.
+  // Selected context-sidebar tab. Persisted so it survives reloads; the
+  // sidebar itself stays mounted across draft switches (the overlay provider
+  // re-points handles in place rather than remounting its subtree).
   const [selectedContextToolId, setSelectedContextToolId] = makePersisted(
     createSignal<string | undefined>(),
     { name: SIDEBAR_KEYS.contextToolId }
@@ -189,11 +183,10 @@ export function DocumentAreaRoot(props: DocumentAreaRootProps) {
   );
 }
 
-// Reads the draft list state from the draft-list provider, then renders the
-// main document inside a draft-overlay provider keyed on the selected draft.
-// The overlay provider is always mounted; it becomes a no-op when its `url`
-// is empty (the "main" case), letting document resolution fall through to the
-// host repo.
+// Renders the main document inside the draft-overlay provider. The provider
+// mounts once and follows the selected draft itself (via the draft-list
+// provider's `draft:list` state doc), re-pointing live document handles in
+// place — so a draft switch remounts nothing here.
 //
 // The comments + focus providers and the context (right) sidebar live *inside*
 // the overlay so that, on a draft, comment threads / selection resolve against
@@ -224,14 +217,6 @@ function DraftDocumentArea(props: {
   const hasContextOrTray = () =>
     contextItems().length > 0 || trayItems().length > 0;
 
-  const [draftsState] = subscribeDoc<DraftsState>(props.host, {
-    type: "draft:list",
-  });
-
-  const draftProviderKey = createMemo<AutomergeUrl | "main">(
-    () => draftsState()?.selectedDraft ?? "main"
-  );
-
   const [draftOverlayProviderHost, setDraftOverlayProviderHost] =
     createSignal<HTMLElement>();
   const isDraftOverlayProviderReady = useProviderReady(
@@ -261,69 +246,62 @@ function DraftDocumentArea(props: {
   );
 
   return (
-    <Show when={draftProviderKey()} keyed>
-      {(key) => (
+    <patchwork-view
+      component="patchwork-draft-overlay-provider"
+      ref={setDraftOverlayProviderHost}
+    >
+      <patchwork-view
+        component="patchwork-comments-provider"
+        ref={setCommentsProviderElement}
+      >
         <patchwork-view
-          component="patchwork-draft-overlay-provider"
-          url={key === "main" ? "" : key}
-          ref={setDraftOverlayProviderHost}
+          component="patchwork-focus-provider"
+          ref={setFocusProviderElement}
         >
-          <patchwork-view
-            component="patchwork-comments-provider"
-            ref={setCommentsProviderElement}
-          >
-            <patchwork-view
-              component="patchwork-focus-provider"
-              ref={setFocusProviderElement}
-            >
-              <Show when={areDocProvidersReady()}>
-                <div class="frame__main-column">
-                  <div class="frame__doc-column">
-                    <FrameTopBar
-                      docUrl={props.selectedDocUrl}
-                      toolSlots={props.doctitleSlots}
-                      isLeftCollapsed={props.isLeftCollapsed}
-                      hasContext={hasContextOrTray}
-                      isRightCollapsed={props.isRightSidebarCollapsed}
-                      onToggleRight={() =>
-                        props.setIsRightSidebarCollapsed((v) => !v)
-                      }
-                    />
+          <Show when={areDocProvidersReady()}>
+            <div class="frame__main-column">
+              <div class="frame__doc-column">
+                <FrameTopBar
+                  docUrl={props.selectedDocUrl}
+                  toolSlots={props.doctitleSlots}
+                  isLeftCollapsed={props.isLeftCollapsed}
+                  hasContext={hasContextOrTray}
+                  isRightCollapsed={props.isRightSidebarCollapsed}
+                  onToggleRight={() =>
+                    props.setIsRightSidebarCollapsed((v) => !v)
+                  }
+                />
 
-                    <div class="main-area">
-                      <MainDocumentView
-                        viewKey={props.selectedDocUrl}
-                        selectedDocUrl={props.selectedDocUrl}
-                        toolId={props.selectedToolId}
-                        // Always pass a function ref. Passing `ref={undefined}`
-                        // (the isolated path, where no host ref is threaded)
-                        // makes Solid's component-ref codegen fall back to
-                        // assigning the prop, which throws on the getter-only
-                        // reactive props object. A no-op wrapper avoids that.
-                        ref={(el) => props.setMainDocElement?.(el)}
-                      />
-                    </div>
-                  </div>
-
-                  <Show when={hasContextOrTray()}>
-                    <ContextSidebar
-                      selectedToolId={props.selectedContextToolId}
-                      setSelectedToolId={props.setSelectedContextToolId}
-                      isCollapsed={props.isRightSidebarCollapsed}
-                      width={props.rightSidebarWidth}
-                      onMouseDown={props.handleMouseDown}
-                      onToggleClick={props.handleToggleClick}
-                      onCollapse={() =>
-                        props.setIsRightSidebarCollapsed(true)
-                      }
-                    />
-                  </Show>
+                <div class="main-area">
+                  <MainDocumentView
+                    viewKey={props.selectedDocUrl}
+                    selectedDocUrl={props.selectedDocUrl}
+                    toolId={props.selectedToolId}
+                    // Always pass a function ref. Passing `ref={undefined}`
+                    // (the isolated path, where no host ref is threaded)
+                    // makes Solid's component-ref codegen fall back to
+                    // assigning the prop, which throws on the getter-only
+                    // reactive props object. A no-op wrapper avoids that.
+                    ref={(el) => props.setMainDocElement?.(el)}
+                  />
                 </div>
+              </div>
+
+              <Show when={hasContextOrTray()}>
+                <ContextSidebar
+                  selectedToolId={props.selectedContextToolId}
+                  setSelectedToolId={props.setSelectedContextToolId}
+                  isCollapsed={props.isRightSidebarCollapsed}
+                  width={props.rightSidebarWidth}
+                  onMouseDown={props.handleMouseDown}
+                  onToggleClick={props.handleToggleClick}
+                  onCollapse={() => props.setIsRightSidebarCollapsed(true)}
+                />
               </Show>
-            </patchwork-view>
-          </patchwork-view>
+            </div>
+          </Show>
         </patchwork-view>
-      )}
-    </Show>
+      </patchwork-view>
+    </patchwork-view>
   );
 }

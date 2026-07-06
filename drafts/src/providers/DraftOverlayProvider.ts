@@ -7,14 +7,16 @@ import {
 } from "@automerge/automerge-repo";
 import {
   accept,
+  subscribe,
   type DocHandleDescriptor,
   type SubscribeEvent,
 } from "@inkandswitch/patchwork-providers";
 
-import type { Baseline, DraftDoc } from "../draft-types.js";
+import type { Baseline, DraftDoc, DraftsState } from "../draft-types.js";
 
 const HANDLE_DESCRIPTOR_SELECTOR = "repo:handle-descriptor";
 const BASELINE_SELECTOR = "draft:baseline";
+const DRAFT_LIST_SELECTOR = "draft:list";
 
 // HACK: datatypes the draft overlay must never clone into a draft.
 //
@@ -37,34 +39,31 @@ const SKIPPED_DATATYPES: ReadonlySet<string> = new Set([
   "draft",
 ]);
 
-// Mounts on a draft URL and remaps documents resolved beneath it onto
-// per-draft clones, so edits stay inside the draft.
+// Remaps documents resolved beneath it onto per-draft clones, so edits stay
+// inside the selected draft — and re-points *live* in place when the selection
+// changes, without the host remounting anything.
 //
-// Under the new provider model the host `<patchwork-view>` wraps legacy tool
-// document resolution in an `OverlayRepo` that asks the provider tree for a
-// `repo:handle-descriptor` descriptor. This provider answers with
-// `{ url, cloneUrl }`: the clone is forked eagerly the first time a document is
-// requested in this draft (recorded in `DraftDoc.clones`), and the editor then
-// reads and writes the clone while still reporting the original url. The fork
-// point is published as `draft:baseline { heads }` so consumers can render
-// a diff against the pre-draft state.
+// The host `<patchwork-view>` wraps tool document resolution in an
+// `OverlayRepo` that opens a *streaming* `repo:handle-descriptor` subscription
+// per document. This provider always claims those subscriptions (even while
+// "main" is selected, where it answers a pass-through `{ url }`) and keeps the
+// `respond` callbacks registered. It follows the selected draft itself via the
+// ancestor draft-list provider's `draft:list` state doc: when
+// `DraftsState.selectedDraft` changes, every live subscription is re-answered
+// with the new mapping — `{ url, cloneUrl }` on a draft (the clone is forked
+// eagerly on first resolution and recorded in `DraftDoc.clones`), `{ url }` on
+// main — and the `OverlayRepo` swaps handle backings in place.
 //
-// If the `url` attribute is absent or empty the provider becomes a no-op: it
-// registers no listeners and lets `repo:handle-descriptor`/`draft:baseline`
-// subscriptions bubble up to the root `<repo-provider>`, so the frame can mount
-// this component unconditionally and have "main" fall through to the host repo.
+// The fork point is published as `draft:baseline { heads }` (also streaming;
+// re-notified on every re-point) so consumers can render a diff against the
+// pre-draft state.
+//
+// A `url` attribute, when present, seeds the initial selection. That is how
+// the chat preview iframe (see chat's `preview-frame.ts`) pins a
+// self-bootstrapped overlay to a specific draft in a realm that has no
+// draft-list provider to follow. The *current* selection is reflected onto the
+// (un-observed, so remount-free) `draft-url` attribute for outside readers.
 export const DraftOverlayProvider = (element: HTMLElement) => {
-  const rawUrl = element.getAttribute("url");
-  if (!rawUrl) return () => {};
-  if (!isValidAutomergeUrl(rawUrl)) {
-    console.warn(
-      `[drafts] <patchwork-view component="patchwork-draft-overlay-provider"> ` +
-        `has an invalid url attribute (got ${JSON.stringify(rawUrl)})`
-    );
-    return () => {};
-  }
-  const draftUrl: AutomergeUrl = rawUrl;
-
   const repo = "repo" in window ? window.repo : undefined;
   if (!repo) {
     console.warn(
@@ -74,29 +73,69 @@ export const DraftOverlayProvider = (element: HTMLElement) => {
   }
   const liveRepo = repo;
 
-  let draftHandle: DocHandle<DraftDoc> | null = null;
   let disposed = false;
 
+  // The selected draft this overlay currently maps onto. Null = "main"
+  // (pass-through descriptors, null baselines).
+  let draftUrl: AutomergeUrl | null = null;
+  let draftHandle: DocHandle<DraftDoc> | null = null;
+  let draftReady: Promise<DocHandle<DraftDoc>> | null = null;
+  // Bumped on every re-point so in-flight resolutions from a superseded
+  // selection can detect they lost the race and stay silent.
+  let switchEpoch = 0;
+
   // One eager-clone resolution per original url; de-dupes concurrent requests.
+  // Cleared on re-point (it is per-draft state).
   const cloneResolutions = new Map<AutomergeUrl, Promise<AutomergeUrl>>();
+
+  // Live `repo:handle-descriptor` subscriptions, kept so a re-point can push
+  // fresh descriptors to every consumer.
+  type DescriptorSubscriber = {
+    original: AutomergeUrl;
+    respond: (descriptor: DocHandleDescriptor) => void;
+  };
+  const descriptorSubscribers = new Set<DescriptorSubscriber>();
+
   // `draft:baseline` subscribers keyed by the canonical target url.
   const baselineSubscribers = new Map<
     AutomergeUrl,
     Set<(baseline: Baseline) => void>
   >();
 
-  const ready: Promise<DocHandle<DraftDoc>> = (async () => {
-    const handle = await liveRepo.find<DraftDoc>(draftUrl);
-    if (disposed) throw new Error("[drafts] provider disposed mid-load");
-    draftHandle = handle;
-    return handle;
-  })();
-  ready.catch((err) => {
-    console.error(
-      `[drafts] failed to load draft overlay for ${draftUrl}:`,
-      err
-    );
-  });
+  // Seed the selection from the `url` attribute when present (the chat
+  // preview iframe mounts us with a pinned draft and no draft-list provider).
+  const rawSeed = element.getAttribute("url");
+  if (rawSeed) {
+    if (isValidAutomergeUrl(rawSeed)) {
+      void applyDraft(rawSeed);
+    } else {
+      console.warn(
+        `[drafts] <patchwork-view component="patchwork-draft-overlay-provider"> ` +
+          `has an invalid url attribute (got ${JSON.stringify(rawSeed)})`
+      );
+    }
+  }
+
+  // Follow the selection: the ancestor draft-list provider serves the
+  // ephemeral DraftsState doc url; we watch its `selectedDraft` live.
+  let draftsStateHandle: DocHandle<DraftsState> | null = null;
+  const onDraftsStateChange = () => {
+    void applyDraft(draftsStateHandle?.doc()?.selectedDraft ?? null);
+  };
+  const unsubscribeDraftList = subscribe<AutomergeUrl>(
+    element,
+    { type: DRAFT_LIST_SELECTOR },
+    (url) => {
+      if (disposed || !isValidAutomergeUrl(url)) return;
+      void liveRepo.find<DraftsState>(url).then((handle) => {
+        if (disposed || draftsStateHandle === handle) return;
+        draftsStateHandle?.off("change", onDraftsStateChange);
+        draftsStateHandle = handle;
+        handle.on("change", onDraftsStateChange);
+        onDraftsStateChange();
+      });
+    }
+  );
 
   const onSubscribe = (event: SubscribeEvent) => {
     const selector = event.detail.selector;
@@ -108,10 +147,22 @@ export const DraftOverlayProvider = (element: HTMLElement) => {
       }
       const original = canonicalUrl(rawTarget);
       accept<DocHandleDescriptor>(event, (respond) => {
-        void resolveDescriptor(original).then((descriptor) => {
-          if (disposed) return;
-          respond(descriptor);
-        });
+        const subscriber: DescriptorSubscriber = { original, respond };
+        descriptorSubscribers.add(subscriber);
+        const epoch = switchEpoch;
+        void resolveDescriptor(original)
+          .then((descriptor) => {
+            // A re-point raced this resolution; `applyDraft`'s refresh pass
+            // answers this subscriber with the new mapping instead.
+            if (disposed || epoch !== switchEpoch) return;
+            respond(descriptor);
+          })
+          .catch((err) => {
+            console.error(`[drafts] failed to resolve ${original}:`, err);
+          });
+        return () => {
+          descriptorSubscribers.delete(subscriber);
+        };
       });
       return;
     }
@@ -123,10 +174,16 @@ export const DraftOverlayProvider = (element: HTMLElement) => {
       }
       const target = canonicalUrl(rawTarget);
       accept<Baseline>(event, (respond) => {
-        void ready.then(() => {
-          if (disposed) return;
+        const ready = draftReady;
+        if (ready) {
+          const epoch = switchEpoch;
+          void ready.then(() => {
+            if (disposed || epoch !== switchEpoch) return;
+            respond(currentBaseline(target));
+          });
+        } else {
           respond(currentBaseline(target));
-        });
+        }
         let set = baselineSubscribers.get(target);
         if (!set) baselineSubscribers.set(target, (set = new Set()));
         set.add(respond);
@@ -143,16 +200,77 @@ export const DraftOverlayProvider = (element: HTMLElement) => {
   return () => {
     disposed = true;
     element.removeEventListener("patchwork:subscribe", onSubscribe);
+    unsubscribeDraftList();
+    draftsStateHandle?.off("change", onDraftsStateChange);
+    draftsStateHandle = null;
+    descriptorSubscribers.clear();
     baselineSubscribers.clear();
     cloneResolutions.clear();
   };
 
-  // Resolve a `repo:handle-descriptor` request: skipped docs (account, contacts)
-  // resolve straight to the real doc (no `cloneUrl` -> no fork); everything
-  // else is forked into this draft via `resolveClone`.
+  // Re-point the overlay at a new selection in place: reset the per-draft
+  // state, then push fresh descriptors and baselines to every live subscriber.
+  async function applyDraft(next: AutomergeUrl | null): Promise<void> {
+    if (disposed) return;
+    if (next === draftUrl) return;
+
+    draftUrl = next;
+    draftHandle = null;
+    const epoch = ++switchEpoch;
+    cloneResolutions.clear();
+
+    // Reflect the selection for outside readers (e.g. the chat preview frame).
+    // `draft-url` is not observed by <patchwork-view>, so this never remounts.
+    element.setAttribute("draft-url", next ?? "");
+
+    draftReady = next
+      ? (async () => {
+          const handle = await liveRepo.find<DraftDoc>(next);
+          if (disposed) {
+            throw new Error("[drafts] provider disposed mid-load");
+          }
+          if (epoch === switchEpoch) draftHandle = handle;
+          return handle;
+        })()
+      : null;
+    draftReady?.catch((err) => {
+      console.error(`[drafts] failed to load draft overlay for ${next}:`, err);
+    });
+
+    // Re-answer every live descriptor subscription against the new selection.
+    // Each resolution is epoch-guarded so a rapid follow-up switch wins.
+    for (const subscriber of [...descriptorSubscribers]) {
+      void resolveDescriptor(subscriber.original)
+        .then((descriptor) => {
+          if (disposed || epoch !== switchEpoch) return;
+          subscriber.respond(descriptor);
+        })
+        .catch((err) => {
+          console.error(
+            `[drafts] failed to re-map ${subscriber.original}:`,
+            err
+          );
+        });
+    }
+
+    // Baselines flip wholesale on re-point: null on main, the recorded fork
+    // point (or null until first clone) on a draft.
+    if (draftReady) await draftReady.catch(() => {});
+    if (disposed || epoch !== switchEpoch) return;
+    for (const [target, set] of baselineSubscribers) {
+      const baseline = currentBaseline(target);
+      for (const respond of [...set]) respond(baseline);
+    }
+  }
+
+  // Resolve a `repo:handle-descriptor` request against the current selection:
+  // on main everything passes through un-remapped; on a draft, skipped docs
+  // (account, contacts) resolve straight to the real doc (no `cloneUrl` -> no
+  // fork) and everything else is forked into the draft via `resolveClone`.
   async function resolveDescriptor(
     original: AutomergeUrl
   ): Promise<DocHandleDescriptor> {
+    if (!draftUrl) return { url: original };
     if (await isSkippedDoc(original)) return { url: original };
     const cloneUrl = await resolveClone(original);
     return { url: original, cloneUrl };
@@ -174,14 +292,19 @@ export const DraftOverlayProvider = (element: HTMLElement) => {
     }
   }
 
-  // Ensure a clone of `original` exists for this draft and return its url.
-  // Reuses an existing clone recorded in `DraftDoc.clones`; otherwise forks
-  // `original` at its current heads and records the fork point so the baseline
-  // and merge-back can find it.
+  // Ensure a clone of `original` exists for the current draft and return its
+  // url. Reuses an existing clone recorded in `DraftDoc.clones`; otherwise
+  // forks `original` at its current heads and records the fork point so the
+  // baseline and merge-back can find it.
   function resolveClone(original: AutomergeUrl): Promise<AutomergeUrl> {
     const cached = cloneResolutions.get(original);
     if (cached) return cached;
+    const ready = draftReady;
+    const epoch = switchEpoch;
     const promise = (async () => {
+      if (!ready) {
+        throw new Error("[drafts] resolveClone called without a draft");
+      }
       const handle = await ready;
       const existing = handle.doc()?.clones?.[original];
       if (existing) return canonicalUrl(existing.cloneUrl);
@@ -195,7 +318,7 @@ export const DraftOverlayProvider = (element: HTMLElement) => {
         d.clones[original] = { cloneUrl, clonedAt };
       });
 
-      notifyBaseline(original);
+      if (!disposed && epoch === switchEpoch) notifyBaseline(original);
       return cloneUrl;
     })();
     cloneResolutions.set(original, promise);

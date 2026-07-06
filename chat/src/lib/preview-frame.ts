@@ -15,13 +15,21 @@ const OVERLAY_PROVIDER_SELECTOR =
 /**
  * The automerge URL of the draft the chat is currently scoped to, or "" for
  * Main. Read straight off the overlay provider the frame mounts as an ancestor
- * of the tool — no extra dependency or subscription needed. Returns "" if the
- * host has no drafts overlay (drafts plugin absent) so callers fall back to the
- * plain preview path.
+ * of the tool — no extra dependency or subscription needed. The provider
+ * mirrors its live selection onto `draft-url` (it follows the draft list
+ * itself and no longer remounts per draft); `url` remains as the seed
+ * attribute for self-bootstrapped frames. Returns "" if the host has no
+ * drafts overlay (drafts plugin absent) so callers fall back to the plain
+ * preview path.
  */
 export function getActiveDraftUrl(element: HTMLElement): string {
 	const provider = element.closest(OVERLAY_PROVIDER_SELECTOR)
-	return provider?.getAttribute("url")?.trim() || ""
+	if (!provider) return ""
+	return (
+		provider.getAttribute("draft-url")?.trim() ||
+		provider.getAttribute("url")?.trim() ||
+		""
+	)
 }
 
 function docIdFromUrl(url: string): string {
