@@ -135,13 +135,10 @@ export default function Folder(props: {
     setRenaming(h.url + "/" + newIndex);
   }
 
-  async function handleDropIntoFolder(
-    event: DragEvent,
-    folderUrl: AutomergeUrl
-  ) {
-    log("Folder drop handler called for:", folderUrl);
+  async function handleDropIntoFolder(event: DragEvent) {
+    log("Folder drop handler called for:", props.url);
 
-    // Handle file drops from OS - add to beginning of folder
+    // Handle file drops from OS - insert at the front of this folder.
     if (event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
       await handleFilesDrop(
         event.dataTransfer.files,
@@ -160,14 +157,14 @@ export default function Folder(props: {
     }
 
     const { source, items } = payload;
-    log("Drop data:", { source, items, folderUrl });
+    log("Drop data:", { source, items, folderUrl: props.url });
 
     executeDrop(
       {
         draggedIds: items.map((i: any) => i.id),
         draggedUrls: items.map((i: any) => i.url),
         draggedItems: items,
-        targetId: folderUrl,
+        targetId: props.url,
         position: "inside",
         sourceToolId: source,
         copyMode: copyMode(),
@@ -235,10 +232,13 @@ export default function Folder(props: {
             const h = handle();
             if (h) {
               setExpanded(true);
-              setPendingNewDoc({ containerUrl: h.url, index: 0 });
+              setPendingNewDoc({
+                containerUrl: h.url,
+                index: 0,
+              });
             }
           } else {
-            handleDropIntoFolder(event, props.url);
+            handleDropIntoFolder(event);
           }
         }
         clearDropTarget();

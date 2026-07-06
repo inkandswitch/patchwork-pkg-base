@@ -92,7 +92,7 @@ function DatatypeMenuContent(props: {
 
   return (
     <DropdownMenu.Portal>
-      <DropdownMenu.Content class="popmenu__content">
+      <DropdownMenu.Content class="popmenu__content create-new-menu__content">
         <div class="create-new-filter">
           <input
             class="create-new-filter__input"

@@ -591,6 +591,30 @@ button {
   color: var(--document-list-widget-line);
 }
 
+.create-new-menu__content {
+  scrollbar-gutter: stable;
+  scrollbar-color: var(--document-list-border-strong) var(--document-list-widget-fill);
+  scrollbar-width: thin;
+}
+
+.create-new-menu__content::-webkit-scrollbar {
+  width: 10px;
+}
+
+.create-new-menu__content::-webkit-scrollbar-track {
+  background: var(--document-list-widget-fill);
+}
+
+.create-new-menu__content::-webkit-scrollbar-thumb {
+  background: var(--document-list-border-strong);
+  border: 2px solid var(--document-list-widget-fill);
+  border-radius: 999px;
+}
+
+.create-new-menu__content::-webkit-scrollbar-thumb:hover {
+  background: var(--document-list-muted);
+}
+
 .create-new-filter {
   padding: 4px;
 }
