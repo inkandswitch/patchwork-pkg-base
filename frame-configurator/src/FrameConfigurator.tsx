@@ -456,17 +456,18 @@ function FrameConfiguratorUI(props: {
             docUrl={docUrl}
           />
         </Show>
-
-        <Show when={(accountDoc() as any)?.themePreferencesUrl}>
-          <div class="config-section">
-            <div class="section-label">Theme</div>
-            <div class="theme-embed">
-              <patchwork-view
-                doc-url={(accountDoc() as any).themePreferencesUrl}
-                tool-id="theme-picker"
-              />
+        <Show when={(accountDoc() as any)?.toolStorage?.["theme-preferences"]}>
+          {(themePreferencesUrl) => (
+            <div class="config-section">
+              <div class="section-label">Theme</div>
+              <div class="theme-embed">
+                <patchwork-view
+                  doc-url={themePreferencesUrl()}
+                  tool-id="theme-picker"
+                />
+              </div>
             </div>
-          </div>
+          )}
         </Show>
       </div>
     </Show>
