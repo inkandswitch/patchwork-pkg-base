@@ -183,19 +183,24 @@ export default function Item(props: {
   async function handleDrop(
     event: DragEvent,
     targetId: string,
-    position: "above" | "below"
+    position: "above" | "below" | "inside"
   ) {
     log("Item drop handler called for:", targetId, position);
 
-    // Handle file drops from OS - add to parent folder at correct position.
-    // Top-level items have no parent handle, so fall back to the root folder.
+    // Handle file drops from OS. Above/below go into this item's parent; inside
+    // goes into the target folder itself.
     if (event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
+      const folderHandle =
+        position === "inside" && props.type === "folder"
+          ? await props.repo.find<FolderDoc>(props.url)
+          : props.parentFolderHandle ?? props.rootFolderHandle;
+
       await handleFilesDrop(
         event.dataTransfer.files,
-        props.parentFolderHandle ?? props.rootFolderHandle,
+        folderHandle,
         props.repo,
         position,
-        props.itemIndex ?? 0
+        position === "inside" ? 0 : props.itemIndex ?? 0
       );
       return;
     }
@@ -412,11 +417,24 @@ export default function Item(props: {
             target
           );
 
-          // For folders with "inside" position, let the container handle it
+          // For folder rows, handle "inside" directly. Relying on bubbling from
+          // the row button to the folder wrapper is fragile and can make a
+          // folder-name drop do nothing in some browsers/components.
           if (props.type === "folder" && target?.position === "inside") {
-            console.log(
-              "[DnD] Folder inside position, letting container handle"
-            );
+            event.preventDefault();
+            event.stopPropagation();
+
+            if (isNewDocDrag(event)) {
+              setPendingNewDoc({
+                containerUrl: props.url,
+                index: 0,
+              });
+              clearDropTarget();
+              return;
+            }
+
+            handleDrop(event, target.id, "inside");
+            clearDropTarget();
             return;
           }
 
