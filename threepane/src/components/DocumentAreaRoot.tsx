@@ -119,27 +119,29 @@ function DraftScopedDocumentColumn(props: {
     isDraftListProviderReady() ? draftListProviderHost() : undefined;
 
   return (
-    <patchwork-view
-      component="patchwork-draft-list-provider"
-      doc-url={props.selectedDocUrl()}
-      ref={setDraftListProviderHost}
-    >
-      <Show when={readyDraftListHost()}>
-        {(host) => (
-          <DraftDocumentArea
-            host={host()}
-            setMainDocElement={props.setMainDocElement}
-            selectedDocUrl={props.selectedDocUrl}
-            selectedToolId={props.selectedToolId}
-            doctitleSlots={props.doctitleSlots}
-            isLeftCollapsed={props.isLeftCollapsed}
-            hasContext={props.hasContext}
-            isRightSidebarCollapsed={props.isRightSidebarCollapsed}
-            onToggleRight={props.onToggleRight}
-          />
-        )}
-      </Show>
-    </patchwork-view>
+    <div class="frame__doc-column">
+      <patchwork-view
+        component="patchwork-draft-list-provider"
+        doc-url={props.selectedDocUrl()}
+        ref={setDraftListProviderHost}
+      >
+        <Show when={readyDraftListHost()}>
+          {(host) => (
+            <DraftDocumentArea
+              host={host()}
+              setMainDocElement={props.setMainDocElement}
+              selectedDocUrl={props.selectedDocUrl}
+              selectedToolId={props.selectedToolId}
+              doctitleSlots={props.doctitleSlots}
+              isLeftCollapsed={props.isLeftCollapsed}
+              hasContext={props.hasContext}
+              isRightSidebarCollapsed={props.isRightSidebarCollapsed}
+              onToggleRight={props.onToggleRight}
+            />
+          )}
+        </Show>
+      </patchwork-view>
+    </div>
   );
 }
 
@@ -214,36 +216,36 @@ function DraftDocumentArea(props: {
           >
             <patchwork-view
               component="patchwork-focus-provider"
-              ref={setFocusProviderElement}
-            >
-              <Show when={areDocProvidersReady()}>
-                <div class="frame__doc-column">
-                  <FrameTopBar
-                    docUrl={props.selectedDocUrl}
-                    toolSlots={props.doctitleSlots}
-                    isLeftCollapsed={props.isLeftCollapsed}
-                    hasContext={props.hasContext}
-                    isRightCollapsed={props.isRightSidebarCollapsed}
-                    onToggleRight={props.onToggleRight}
-                  />
+            ref={setFocusProviderElement}
+          >
+            <Show when={areDocProvidersReady()}>
+              <>
+                <FrameTopBar
+                  docUrl={props.selectedDocUrl}
+                  toolSlots={props.doctitleSlots}
+                  isLeftCollapsed={props.isLeftCollapsed}
+                  hasContext={props.hasContext}
+                  isRightCollapsed={props.isRightSidebarCollapsed}
+                  onToggleRight={props.onToggleRight}
+                />
 
-                  <div class="main-area">
-                    <MainDocumentView
-                      viewKey={props.selectedDocUrl}
-                      selectedDocUrl={props.selectedDocUrl}
-                      toolId={props.selectedToolId}
-                      // Always pass a function ref. Passing `ref={undefined}`
-                      // (the isolated path, where no host ref is threaded)
-                      // makes Solid's component-ref codegen fall back to
-                      // assigning the prop, which throws on the getter-only
-                      // reactive props object. A no-op wrapper avoids that.
-                      ref={(el) => props.setMainDocElement?.(el)}
-                    />
-                  </div>
+                <div class="main-area">
+                  <MainDocumentView
+                    viewKey={props.selectedDocUrl}
+                    selectedDocUrl={props.selectedDocUrl}
+                    toolId={props.selectedToolId}
+                    // Always pass a function ref. Passing `ref={undefined}`
+                    // (the isolated path, where no host ref is threaded)
+                    // makes Solid's component-ref codegen fall back to
+                    // assigning the prop, which throws on the getter-only
+                    // reactive props object. A no-op wrapper avoids that.
+                    ref={(el) => props.setMainDocElement?.(el)}
+                  />
                 </div>
-              </Show>
-            </patchwork-view>
+              </>
+            </Show>
           </patchwork-view>
+        </patchwork-view>
         </patchwork-view>
       )}
     </Show>

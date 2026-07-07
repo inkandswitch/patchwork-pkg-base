@@ -128,6 +128,7 @@
    [document column | right sidebar], so the right sidebar spans the full frame
    height and its resize divider runs top-to-bottom exactly like the left one. */
 .frame__main-column {
+  position: relative;
   flex: 1;
   min-width: 0;
   display: flex;
@@ -141,10 +142,22 @@
 .frame__doc-column {
   flex: 1;
   min-width: 0;
+  width: 100%;
   display: flex;
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+}
+
+.frame__doc-column > patchwork-view,
+.frame__doc-column > patchwork-view > patchwork-view,
+.frame__doc-column > patchwork-view > patchwork-view > patchwork-view,
+.frame__doc-column
+  > patchwork-view
+  > patchwork-view
+  > patchwork-view
+  > patchwork-view {
+  display: contents;
 }
 
 /* The full-width top toolbar. Its height + top safe-area inset match the
@@ -343,14 +356,6 @@
   border-left: 1px solid var(--context-sidebar-border);
 }
 
-/* The right sidebar persists its content while collapsed so the system tray's
-   tools keep running. Do not use `display: none`: `patchwork-view` instances
-   must remain connected and layout-independent even before any doc is selected. */
-.sidebar[data-side="right"][data-collapsed] .context-sidebar {
-  visibility: hidden;
-  pointer-events: none;
-}
-
 /* Tab bar: the row holding the tab list and the collapse button. Its height +
    top safe-area inset match the document column's top bar so the two header
    strips line up and their bottom hairlines read as one continuous line across
@@ -461,6 +466,11 @@
   display: block;
   width: 100%;
   height: 100%;
+}
+
+.context-sidebar__tray-spacer {
+  flex: none;
+  min-height: var(--threepane-tray-height);
 }
 
 /* Left sidebar body: a stack of widgets with the account footer pinned below. */
@@ -581,7 +591,22 @@
   cursor: default;
 }
 
-/* Right sidebar tray: a row of tray-tagged tools pinned to the bottom. */
+.system-tray-host {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.system-tray-host[data-visible] {
+  visibility: visible;
+  pointer-events: auto;
+}
+
+/* Right sidebar tray: a row of tray-tagged tools pinned to the bottom by the
+   host-level `SystemTrayHost`. */
 .frame-tray {
   display: flex;
   align-items: center;

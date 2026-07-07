@@ -25,6 +25,7 @@ import { SidebarWidgets } from "./components/SidebarWidgets";
 import { ContextSidebar } from "./components/ContextSidebar";
 import { DocumentAreaRoot } from "./components/DocumentAreaRoot";
 import { IsolatedDocumentArea } from "./components/IsolatedDocumentArea";
+import { Tray } from "./components/Tray";
 import { makePersisted } from "@solid-primitives/storage";
 import {
   createEffect,
@@ -279,10 +280,13 @@ function PatchworkFrameInner(props: {
   // the trusted host realm and preserves one instance across document changes.
   const contextItems = useTaggedComponents("context-tool");
   const trayItems = useTaggedComponents("system-tray");
-  const hasContextOrTray = () =>
-    contextItems().length > 0 || trayItems().length > 0;
+  const hasContextItems = () => contextItems().length > 0;
+  const hasTrayItems = () => trayItems().length > 0;
+  const hasContextOrTray = () => hasContextItems() || hasTrayItems();
   const effectiveRightSidebarCollapsed = () =>
     !hasSelectedDoc() || sidebarState.isRightSidebarCollapsed();
+  const isTrayVisible = () =>
+    hasSelectedDoc() && hasTrayItems() && !effectiveRightSidebarCollapsed();
   const toggleRightSidebar = () => {
     if (!hasSelectedDoc()) return;
     sidebarState.setIsRightSidebarCollapsed((v) => !v);
@@ -381,9 +385,15 @@ function PatchworkFrameInner(props: {
               onMouseDown={handleRightMouseDown}
               onToggleClick={handleRightToggleClick}
               canExpand={hasSelectedDoc}
+              reserveTraySpace={isTrayVisible}
               onCollapse={() => sidebarState.setIsRightSidebarCollapsed(true)}
             />
           </Show>
+
+          <SystemTrayHost
+            visible={isTrayVisible}
+            width={sidebarState.rightSidebarWidth}
+          />
         </div>
       </FrameLayout>
 
@@ -392,6 +402,22 @@ function PatchworkFrameInner(props: {
           <FramePopover view={view()} onClose={() => setPopoverView(null)} />
         )}
       </Show>
+    </div>
+  );
+}
+
+function SystemTrayHost(props: {
+  visible: Accessor<boolean>;
+  width: Accessor<number>;
+}) {
+  return (
+    <div
+      class="system-tray-host"
+      data-visible={props.visible() ? "" : undefined}
+      aria-hidden={props.visible() ? undefined : "true"}
+      style={{ width: `${props.width()}px` }}
+    >
+      <Tray />
     </div>
   );
 }
