@@ -503,8 +503,8 @@
   background: var(--threepane-sidebar-fill);
   color: var(--threepane-fg);
   border-top: 1px solid var(--threepane-sidebar-divider);
-  padding-block: var(--threepane-space-md);
-  padding-bottom: calc(var(--threepane-space-md) + env(safe-area-inset-bottom));
+  padding-block: var(--threepane-space-2xs);
+  padding-bottom: calc(var(--threepane-space-2xs) + env(safe-area-inset-bottom));
   padding-left: calc(env(safe-area-inset-left) + var(--threepane-space-md));
   padding-right: calc(env(safe-area-inset-right) + var(--threepane-space-md));
   justify-content: space-between;
@@ -605,7 +605,6 @@
   bottom: 0;
   z-index: 4;
   box-sizing: border-box;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 .frame__tray-dock--collapsed {
@@ -618,8 +617,14 @@
   align-items: center;
   gap: var(--threepane-space-2xs);
   box-sizing: border-box;
-  min-height: var(--threepane-tray-height);
+  /* min-height includes the safe-area inset (border-box), and the matching
+     padding-bottom lifts the tray's contents clear of it while the tray's own
+     background fills the inset down to the very bottom edge. */
+  min-height: calc(
+    var(--threepane-tray-height) + env(safe-area-inset-bottom, 0px)
+  );
   padding-inline: var(--threepane-space-sm);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   border-top: 1px solid var(--threepane-sidebar-divider);
   background: var(--threepane-sidebar-fill);
 }

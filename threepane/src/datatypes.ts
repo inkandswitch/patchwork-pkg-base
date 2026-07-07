@@ -18,6 +18,7 @@ export const AccountDatatype: DatatypeImplementation<AccountDoc> = {
       "doc-openwith",
       "doc-presence",
       "sync-indicator",
+      "theme-titlebar",
     ];
   },
   getTitle: () => "Patchwork Account",
