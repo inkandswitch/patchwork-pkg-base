@@ -3,7 +3,7 @@ import { createMemo, For, Show } from "solid-js";
 import {
   createDocSignal,
   useDocument,
-} from "@automerge/automerge-repo-solid-primitives";
+} from "solid-automerge";
 import type { AutomergeUrl, DocHandle, Repo } from "@automerge/automerge-repo";
 import { subscribeDoc } from "@inkandswitch/patchwork-providers-solid";
 import type {

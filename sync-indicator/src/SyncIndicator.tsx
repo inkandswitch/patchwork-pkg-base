@@ -9,7 +9,7 @@ import {
 import {
   useRepo,
   RepoContext,
-} from "@automerge/automerge-repo-solid-primitives";
+} from "solid-automerge";
 import {
   createSignal,
   createMemo,

@@ -6,7 +6,7 @@ import { accept, type SubscribeEvent } from "@inkandswitch/patchwork-providers";
 import {
   useDocument,
   RepoContext,
-} from "@automerge/automerge-repo-solid-primitives";
+} from "solid-automerge";
 import {
   createSignal,
   createMemo,

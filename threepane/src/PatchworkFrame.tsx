@@ -2,7 +2,7 @@ import "@inkandswitch/patchwork-elements";
 import {
   useDocHandle,
   useDocument,
-} from "@automerge/automerge-repo-solid-primitives";
+} from "solid-automerge";
 import type { AutomergeUrl, DocHandle, Repo } from "@automerge/automerge-repo";
 import { subscribe } from "@inkandswitch/patchwork-providers";
 import type {

@@ -1,4 +1,4 @@
-import { useDocument } from "@automerge/automerge-repo-solid-primitives";
+import { useDocument } from "solid-automerge";
 import type { AutomergeUrl, Repo } from "@automerge/automerge-repo";
 import type { PatchworkViewElement } from "@inkandswitch/patchwork-elements";
 import type { OpenDocumentEventDetail } from "@inkandswitch/patchwork-elements";

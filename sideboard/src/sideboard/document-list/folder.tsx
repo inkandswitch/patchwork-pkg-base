@@ -5,7 +5,7 @@ import {
   type DocHandle,
 } from "@automerge/automerge-repo";
 import type { AutomergeRepoKeyhive } from "@automerge/automerge-repo-keyhive";
-import { useDocument } from "@automerge/automerge-repo-solid-primitives";
+import { useDocument } from "solid-automerge";
 import type {
   OpenDocumentEventDetail,
   PatchworkViewElement,
