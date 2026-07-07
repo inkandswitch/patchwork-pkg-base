@@ -16,7 +16,6 @@ type ContextSidebarProps = {
   onMouseDown: (side: "left" | "right", e: MouseEvent) => void;
   onToggleClick: (side: "left" | "right", e: MouseEvent) => void;
   canExpand?: Accessor<boolean>;
-  reserveTraySpace?: Accessor<boolean>;
   /** Collapse the sidebar, from its own tab-header button. */
   onCollapse: () => void;
 };
@@ -24,8 +23,8 @@ type ContextSidebarProps = {
 /**
  * The document context sidebar: a full-height column with its own tab header
  * (the tabs that select the active tool, plus a collapse button), and the
- * active context tool's content. The system tray is host-frame chrome owned by
- * `PatchworkFrame`; this sidebar only reserves space for it when visible.
+ * active context tool's content. The system tray is separate host chrome in the
+ * left sidebar (owned by `PatchworkFrame`) — it no longer lives here.
  *
  * The tab list is every `patchwork:component` tagged `"context-tool"` —
  * registry-driven, not configured — so it's always rendered as a bare
@@ -79,9 +78,6 @@ export function ContextSidebar(props: ContextSidebarProps) {
               {(id) => <patchwork-view component={id} />}
             </Show>
           </div>
-        </Show>
-        <Show when={props.reserveTraySpace?.()}>
-          <div class="context-sidebar__tray-spacer" aria-hidden="true" />
         </Show>
       </div>
     </Sidebar>

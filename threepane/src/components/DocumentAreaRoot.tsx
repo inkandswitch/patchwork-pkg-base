@@ -1,6 +1,6 @@
 /**
  * `DocumentAreaRoot` — the threepane document column (draft scope + top bar +
- * main view), extracted so it can run either directly in the
+ * main view + context sidebar), extracted so it can run either directly in the
  * host (`threepane`) or as an isolated `patchwork:component` inside the iframe
  * (`threepane-isolation`).
  *
@@ -9,17 +9,28 @@
  * parsed-JSON values in constant accessors, which is correct because any real
  * change to the boot spec reboots the iframe.
  *
- * The context sidebar and system tray stay host-side in `PatchworkFrame`, so
- * they have one stable instance and remain outside the isolation boundary.
- * This component only reads the host sidebar state for top-bar layout.
+ * The right-sidebar collapse/width state, its resize handlers, and the selected
+ * context-tab signal live HERE (not threaded from the host), so they survive
+ * inside the isolation boundary. The left sidebar is host-side; this component
+ * only reads `isLeftCollapsed` for top-bar layout.
  */
 
 import type { AutomergeUrl } from "@automerge/automerge-repo";
 import { subscribeDoc } from "@inkandswitch/patchwork-providers-solid";
-import { createMemo, createSignal, Show, type Accessor } from "solid-js";
+import { makePersisted } from "@solid-primitives/storage";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  on,
+  Show,
+  type Accessor,
+} from "solid-js";
 import type { ToolSlot } from "../types";
-import { useProviderReady } from "../hooks";
+import { useProviderReady, useTaggedComponents, SIDEBAR_KEYS } from "../hooks";
+import { useSidebarResize } from "../hooks/useSidebarResize";
 import { FrameTopBar } from "./FrameTopBar";
+import { ContextSidebar } from "./ContextSidebar";
 import { MainDocumentView } from "./MainDocumentView";
 
 type DraftsState = {
@@ -28,10 +39,18 @@ type DraftsState = {
   selectedDraft: AutomergeUrl | null;
 };
 
+const MIN_SIDEBAR_WIDTH = 180;
+const MAX_SIDEBAR_WIDTH = 720;
+// Drag a sidebar narrower than this and it snaps closed (Things-3 style).
+const AUTO_CLOSE_WIDTH = 120;
+const DRAG_THRESHOLD = 3;
+
 /**
  * The reactive inputs the document area needs, shared by both the local caller
  * (`PatchworkFrame` → `DocumentAreaRoot`) and the isolated caller
- * (`IsolatedDocumentArea`, which forwards them into the boot spec).
+ * (`IsolatedDocumentArea`, which forwards them into the boot spec). The host
+ * owns these — including reading the right-sidebar seeds from localStorage — so
+ * both paths receive an identical contract.
  */
 export interface DocumentAreaInputs {
   selectedDocUrl: Accessor<AutomergeUrl | undefined>;
@@ -39,9 +58,9 @@ export interface DocumentAreaInputs {
   doctitleSlots: Accessor<ToolSlot[] | undefined>;
   /** The host-side left sidebar's collapsed state, for top-bar layout only. */
   isLeftCollapsed: Accessor<boolean>;
-  hasContext?: Accessor<boolean>;
-  isRightSidebarCollapsed?: Accessor<boolean>;
-  onToggleRight?: () => void;
+  /** Seed values for the document-area-local right-sidebar state. */
+  initialRightWidth: Accessor<number>;
+  initialRightCollapsed: Accessor<boolean>;
 }
 
 export interface DocumentAreaRootProps extends DocumentAreaInputs {
@@ -55,60 +74,78 @@ export interface DocumentAreaRootProps extends DocumentAreaInputs {
 }
 
 export function DocumentAreaRoot(props: DocumentAreaRootProps) {
-  return (
-    <Show when={props.selectedDocUrl()} fallback={<NoDocumentColumn {...props} />}>
-      <DraftScopedDocumentColumn
-        setMainDocElement={props.setMainDocElement}
-        selectedDocUrl={props.selectedDocUrl}
-        selectedToolId={props.selectedToolId}
-        doctitleSlots={props.doctitleSlots}
-        isLeftCollapsed={props.isLeftCollapsed}
-        hasContext={props.hasContext ?? (() => false)}
-        isRightSidebarCollapsed={props.isRightSidebarCollapsed ?? (() => true)}
-        onToggleRight={props.onToggleRight ?? (() => {})}
-      />
-    </Show>
+  // ── Right-sidebar state (document-area-local) ──────────────────
+  // Lives here so it survives inside the isolation boundary. Seeded from props
+  // (the host reads persisted values from its localStorage and passes them in,
+  // since localStorage is stubbed inside the sandboxed iframe). Persisted back
+  // to localStorage when host-side; a harmless no-op inside the iframe.
+  const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = createSignal(
+    props.initialRightCollapsed()
   );
-}
-
-function NoDocumentColumn(props: DocumentAreaRootProps) {
-  return (
-    <div class="frame__doc-column">
-      <FrameTopBar
-        docUrl={props.selectedDocUrl}
-        toolSlots={props.doctitleSlots}
-        isLeftCollapsed={props.isLeftCollapsed}
-        hasContext={() => false}
-        isRightCollapsed={() => true}
-        onToggleRight={() => {}}
-      />
-
-      <div class="main-area">
-        <MainDocumentView
-          viewKey={props.selectedDocUrl}
-          selectedDocUrl={props.selectedDocUrl}
-          toolId={props.selectedToolId}
-          ref={(el) => props.setMainDocElement?.(el)}
-        />
-      </div>
-    </div>
+  const [rightSidebarWidth, setRightSidebarWidth] = createSignal(
+    props.initialRightWidth()
   );
-}
 
-function DraftScopedDocumentColumn(props: {
-  setMainDocElement?: (el: HTMLElement) => void;
-  selectedDocUrl: Accessor<AutomergeUrl | undefined>;
-  selectedToolId: Accessor<string | undefined>;
-  doctitleSlots: Accessor<ToolSlot[] | undefined>;
-  isLeftCollapsed: Accessor<boolean>;
-  hasContext: Accessor<boolean>;
-  isRightSidebarCollapsed: Accessor<boolean>;
-  onToggleRight: () => void;
-}) {
-  // Per-document draft scope. The provider element persists across navigation
-  // while a document is selected: we feed it a reactive `doc-url` and it
-  // re-points in place (it watches the attribute), rather than remounting the
-  // whole draft subtree on every doc switch.
+  createEffect(
+    on(
+      isRightSidebarCollapsed,
+      (value) => {
+        try {
+          localStorage.setItem(SIDEBAR_KEYS.rightCollapsed, String(value));
+        } catch {
+          /* localStorage stubbed inside the iframe */
+        }
+      },
+      { defer: true }
+    )
+  );
+  createEffect(
+    on(
+      rightSidebarWidth,
+      (value) => {
+        try {
+          localStorage.setItem(SIDEBAR_KEYS.rightWidth, String(value));
+        } catch {
+          /* localStorage stubbed inside the iframe */
+        }
+      },
+      { defer: true }
+    )
+  );
+
+  // Right-sidebar-only resize. There is no left sidebar in this subtree, so the
+  // "left" branch of the hook is never exercised — `handleMouseDown` /
+  // `handleToggleClick` are only ever called with side="right" by the context
+  // sidebar. The left signals below exist purely to satisfy the hook's typed
+  // params; left-collapsed is read from the host prop.
+  const [, setUnusedLeftWidth] = createSignal(0);
+  const [, setUnusedLeftCollapsed] = createSignal(false);
+  const sidebarResize = useSidebarResize({
+    setLeftSidebarWidth: setUnusedLeftWidth,
+    setRightSidebarWidth,
+    setIsSidebarCollapsed: setUnusedLeftCollapsed,
+    setIsRightSidebarCollapsed,
+    isLeftCollapsed: () => props.isLeftCollapsed(),
+    isRightCollapsed: isRightSidebarCollapsed,
+    minWidth: MIN_SIDEBAR_WIDTH,
+    maxWidth: MAX_SIDEBAR_WIDTH,
+    autoCloseWidth: AUTO_CLOSE_WIDTH,
+    dragThreshold: DRAG_THRESHOLD,
+  });
+
+  // Selected context-sidebar tab, lifted above the per-draft remount boundary so
+  // the active tab survives branch switches even though its content remounts.
+  const [selectedContextToolId, setSelectedContextToolId] = makePersisted(
+    createSignal<string | undefined>(),
+    { name: SIDEBAR_KEYS.contextToolId }
+  );
+
+  // Per-document draft scope. The provider element persists across navigation:
+  // we feed it a reactive `doc-url` and it re-points in place (it watches the
+  // attribute), rather than remounting the whole draft subtree on every doc
+  // switch. When no doc is selected we still render the sidebars (so the drafts
+  // sidebar can show its "no doc selected" empty state), just without a
+  // draft-root scope.
   const [draftListProviderHost, setDraftListProviderHost] =
     createSignal<HTMLElement>();
   const isDraftListProviderReady = useProviderReady(
@@ -119,29 +156,36 @@ function DraftScopedDocumentColumn(props: {
     isDraftListProviderReady() ? draftListProviderHost() : undefined;
 
   return (
-    <div class="frame__doc-column">
-      <patchwork-view
-        component="patchwork-draft-list-provider"
-        doc-url={props.selectedDocUrl()}
-        ref={setDraftListProviderHost}
-      >
-        <Show when={readyDraftListHost()}>
-          {(host) => (
-            <DraftDocumentArea
-              host={host()}
-              setMainDocElement={props.setMainDocElement}
-              selectedDocUrl={props.selectedDocUrl}
-              selectedToolId={props.selectedToolId}
-              doctitleSlots={props.doctitleSlots}
-              isLeftCollapsed={props.isLeftCollapsed}
-              hasContext={props.hasContext}
-              isRightSidebarCollapsed={props.isRightSidebarCollapsed}
-              onToggleRight={props.onToggleRight}
-            />
-          )}
-        </Show>
-      </patchwork-view>
-    </div>
+    // Not keyed: the provider element stays mounted across navigation and
+    // re-points itself when `doc-url` changes, so we don't tear down and
+    // rebuild the whole draft subtree (and its ephemeral DraftsState doc)
+    // on every doc switch. It wraps only the main column (display:
+    // contents), not the left sidebar.
+    <patchwork-view
+      component="patchwork-draft-list-provider"
+      doc-url={props.selectedDocUrl()}
+      ref={setDraftListProviderHost}
+    >
+      <Show when={readyDraftListHost()}>
+        {(host) => (
+          <DraftDocumentArea
+            host={host()}
+            setMainDocElement={props.setMainDocElement}
+            selectedDocUrl={props.selectedDocUrl}
+            selectedToolId={props.selectedToolId}
+            doctitleSlots={props.doctitleSlots}
+            isLeftCollapsed={props.isLeftCollapsed}
+            isRightSidebarCollapsed={isRightSidebarCollapsed}
+            setIsRightSidebarCollapsed={setIsRightSidebarCollapsed}
+            rightSidebarWidth={rightSidebarWidth}
+            handleMouseDown={sidebarResize.handleMouseDown}
+            handleToggleClick={sidebarResize.handleToggleClick}
+            selectedContextToolId={selectedContextToolId}
+            setSelectedContextToolId={setSelectedContextToolId}
+          />
+        )}
+      </Show>
+    </patchwork-view>
   );
 }
 
@@ -151,10 +195,10 @@ function DraftScopedDocumentColumn(props: {
 // is empty (the "main" case), letting document resolution fall through to the
 // host repo.
 //
-// The comments + focus providers and document toolbar live *inside* the overlay
-// so that, on a draft, comment threads / selection resolve against the draft's
-// clone. The right context sidebar lives outside this provider branch so its
-// tray components keep one stable instance across doc selection changes.
+// The comments + focus providers and the context (right) sidebar live *inside*
+// the overlay so that, on a draft, comment threads / selection resolve against
+// the draft's clone. The document toolbar (top bar) is in that scope too — it
+// targets the same selected doc as the editor.
 function DraftDocumentArea(props: {
   host: HTMLElement;
   setMainDocElement?: (el: HTMLElement) => void;
@@ -162,10 +206,23 @@ function DraftDocumentArea(props: {
   selectedToolId: Accessor<string | undefined>;
   doctitleSlots: Accessor<ToolSlot[] | undefined>;
   isLeftCollapsed: Accessor<boolean>;
-  hasContext: Accessor<boolean>;
   isRightSidebarCollapsed: Accessor<boolean>;
-  onToggleRight: () => void;
+  setIsRightSidebarCollapsed: (
+    value: boolean | ((prev: boolean) => boolean)
+  ) => void;
+  rightSidebarWidth: Accessor<number>;
+  handleMouseDown: (side: "left" | "right", e: MouseEvent) => void;
+  handleToggleClick: (side: "left" | "right", e: MouseEvent) => void;
+  selectedContextToolId: Accessor<string | undefined>;
+  setSelectedContextToolId: (id: string) => void;
 }) {
+  // Registry-driven: whether the context sidebar exists at all (any tabs) — no
+  // longer depends on any per-account config, just on whether anything is
+  // currently tagged `context-tool`. The system tray is separate host chrome in
+  // the left sidebar (see `PatchworkFrame`) and no longer gates this column.
+  const contextItems = useTaggedComponents("context-tool");
+  const hasContext = () => contextItems().length > 0;
+
   const [draftsState] = subscribeDoc<DraftsState>(props.host, {
     type: "draft:list",
   });
@@ -216,36 +273,54 @@ function DraftDocumentArea(props: {
           >
             <patchwork-view
               component="patchwork-focus-provider"
-            ref={setFocusProviderElement}
-          >
-            <Show when={areDocProvidersReady()}>
-              <>
-                <FrameTopBar
-                  docUrl={props.selectedDocUrl}
-                  toolSlots={props.doctitleSlots}
-                  isLeftCollapsed={props.isLeftCollapsed}
-                  hasContext={props.hasContext}
-                  isRightCollapsed={props.isRightSidebarCollapsed}
-                  onToggleRight={props.onToggleRight}
-                />
+              ref={setFocusProviderElement}
+            >
+              <Show when={areDocProvidersReady()}>
+                <div class="frame__main-column">
+                  <div class="frame__doc-column">
+                    <FrameTopBar
+                      docUrl={props.selectedDocUrl}
+                      toolSlots={props.doctitleSlots}
+                      isLeftCollapsed={props.isLeftCollapsed}
+                      hasContext={hasContext}
+                      isRightCollapsed={props.isRightSidebarCollapsed}
+                      onToggleRight={() =>
+                        props.setIsRightSidebarCollapsed((v) => !v)
+                      }
+                    />
 
-                <div class="main-area">
-                  <MainDocumentView
-                    viewKey={props.selectedDocUrl}
-                    selectedDocUrl={props.selectedDocUrl}
-                    toolId={props.selectedToolId}
-                    // Always pass a function ref. Passing `ref={undefined}`
-                    // (the isolated path, where no host ref is threaded)
-                    // makes Solid's component-ref codegen fall back to
-                    // assigning the prop, which throws on the getter-only
-                    // reactive props object. A no-op wrapper avoids that.
-                    ref={(el) => props.setMainDocElement?.(el)}
-                  />
+                    <div class="main-area">
+                      <MainDocumentView
+                        viewKey={props.selectedDocUrl}
+                        selectedDocUrl={props.selectedDocUrl}
+                        toolId={props.selectedToolId}
+                        // Always pass a function ref. Passing `ref={undefined}`
+                        // (the isolated path, where no host ref is threaded)
+                        // makes Solid's component-ref codegen fall back to
+                        // assigning the prop, which throws on the getter-only
+                        // reactive props object. A no-op wrapper avoids that.
+                        ref={(el) => props.setMainDocElement?.(el)}
+                      />
+                    </div>
+                  </div>
+
+                  <Show when={hasContext()}>
+                    <ContextSidebar
+                      selectedToolId={props.selectedContextToolId}
+                      setSelectedToolId={props.setSelectedContextToolId}
+                      isCollapsed={props.isRightSidebarCollapsed}
+                      width={props.rightSidebarWidth}
+                      onMouseDown={props.handleMouseDown}
+                      onToggleClick={props.handleToggleClick}
+                      onCollapse={() =>
+                        props.setIsRightSidebarCollapsed(true)
+                      }
+                    />
+                  </Show>
                 </div>
-              </>
-            </Show>
+              </Show>
+            </patchwork-view>
           </patchwork-view>
-        </patchwork-view>
         </patchwork-view>
       )}
     </Show>

@@ -468,11 +468,6 @@
   height: 100%;
 }
 
-.context-sidebar__tray-spacer {
-  flex: none;
-  min-height: var(--threepane-tray-height);
-}
-
 /* Left sidebar body: a stack of widgets with the account footer pinned below. */
 .threepane-sidebar {
   display: flex;
@@ -591,22 +586,8 @@
   cursor: default;
 }
 
-.system-tray-host {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  z-index: 2;
-  visibility: hidden;
-  pointer-events: none;
-}
-
-.system-tray-host[data-visible] {
-  visibility: visible;
-  pointer-events: auto;
-}
-
-/* Right sidebar tray: a row of tray-tagged tools pinned to the bottom by the
-   host-level `SystemTrayHost`. */
+/* System tray: a row of tray-tagged tools pinned in the left sidebar, just
+   above the account bar. */
 .frame-tray {
   display: flex;
   align-items: center;
@@ -614,7 +595,7 @@
   box-sizing: border-box;
   min-height: var(--threepane-tray-height);
   padding-inline: var(--threepane-space-sm);
-  border-top: 1px solid var(--context-sidebar-border);
+  border-top: 1px solid var(--threepane-sidebar-divider);
   background: var(--threepane-sidebar-fill);
 }
 

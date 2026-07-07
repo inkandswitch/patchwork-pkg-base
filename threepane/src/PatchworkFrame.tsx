@@ -17,16 +17,17 @@ import {
   useMainDocMounted,
   useDebugRegistryToast,
   DebugRegistryToast,
-  useTaggedComponents,
   SIDEBAR_KEYS,
+  getStoredNumber,
+  getStoredBoolean,
+  DEFAULT_SIDEBAR_WIDTH,
 } from "./hooks";
 import { Sidebar } from "./components/Sidebar";
 import { SidebarWidgets } from "./components/SidebarWidgets";
-import { ContextSidebar } from "./components/ContextSidebar";
 import { DocumentAreaRoot } from "./components/DocumentAreaRoot";
 import { IsolatedDocumentArea } from "./components/IsolatedDocumentArea";
+import { MainDocumentView } from "./components/MainDocumentView";
 import { Tray } from "./components/Tray";
-import { makePersisted } from "@solid-primitives/storage";
 import {
   createEffect,
   createMemo,
@@ -269,37 +270,20 @@ function PatchworkFrameInner(props: {
 
   const selectedDocUrl = () => selectedView()?.url;
   const selectedToolId = () => selectedView()?.toolId ?? undefined;
-  const hasSelectedDoc = () => Boolean(selectedDocUrl());
 
-  const [selectedContextToolId, setSelectedContextToolId] = makePersisted(
-    createSignal<string | undefined>(),
-    { name: SIDEBAR_KEYS.contextToolId }
-  );
-
-  // Host-side, registry-driven context sidebar/tray. It deliberately lives
-  // outside `IsolatedDocumentArea`, so isolation mode keeps tray components in
-  // the trusted host realm and preserves one instance across document changes.
-  const contextItems = useTaggedComponents("context-tool");
-  const trayItems = useTaggedComponents("system-tray");
-  const hasContextItems = () => contextItems().length > 0;
-  const hasTrayItems = () => trayItems().length > 0;
-  const hasContextOrTray = () => hasContextItems() || hasTrayItems();
-  const effectiveRightSidebarCollapsed = () =>
-    !hasSelectedDoc() || sidebarState.isRightSidebarCollapsed();
-  const isTrayVisible = () =>
-    hasSelectedDoc() && hasTrayItems() && !effectiveRightSidebarCollapsed();
-  const toggleRightSidebar = () => {
-    if (!hasSelectedDoc()) return;
-    sidebarState.setIsRightSidebarCollapsed((v) => !v);
-  };
-  const handleRightMouseDown = (side: "left" | "right", e: MouseEvent) => {
-    if (!hasSelectedDoc()) return;
-    sidebarResize.handleMouseDown(side, e);
-  };
-  const handleRightToggleClick = (side: "left" | "right", e: MouseEvent) => {
-    if (!hasSelectedDoc()) return;
-    sidebarResize.handleToggleClick(side, e);
-  };
+  // Right-sidebar seeds, read from host localStorage. The host owns this read
+  // and hands the values to whichever document-area path renders — the local
+  // `DocumentAreaRoot`, or the isolated root via `IsolatedDocumentArea`'s boot
+  // spec (localStorage is stubbed inside the sandboxed iframe, so the isolated
+  // path can't read it itself). The right-sidebar collapse/width state and the
+  // selected context tab then live *inside* `DocumentAreaRoot`, so the context
+  // sidebar — and its chrome — sit inside the isolation boundary and are
+  // sandboxed alongside the main view. The system tray is separate trusted host
+  // chrome in the left sidebar (see `FrameLayout`).
+  const initialRightWidth = () =>
+    getStoredNumber(SIDEBAR_KEYS.rightWidth, DEFAULT_SIDEBAR_WIDTH);
+  const initialRightCollapsed = () =>
+    getStoredBoolean(SIDEBAR_KEYS.rightCollapsed);
 
   // Suspend the sidebar widgets until the main document has settled (mounted or
   // failed to mount), so the primary column wins the initial render race. With
@@ -346,12 +330,28 @@ function PatchworkFrameInner(props: {
         isolation={props.isolation}
         onInterceptOpen={setPopoverView}
       >
-        <div class="frame__main-column">
+        <Show
+          when={selectedDocUrl()}
+          fallback={
+            <div class="main-area">
+              <MainDocumentView
+                viewKey={selectedDocUrl}
+                selectedDocUrl={selectedDocUrl}
+                toolId={selectedToolId}
+                ref={setMainDocElement}
+              />
+            </div>
+          }
+        >
           {/*
             Document area: isolated (rendered inside a sandboxed iframe) or local
-            (rendered directly). The right context sidebar/tray is a host-side
-            sibling, outside the isolation boundary, so its tray components have
-            one stable host-realm instance.
+            (rendered directly). `isolation` is fixed per tool instance. Both
+            paths render the whole main column (doc column + context sidebar) and
+            own the right-sidebar state, seeded from the host localStorage reads
+            above — so under isolation the context sidebar lives *inside* the
+            iframe, sandboxed with the main view. The local path additionally
+            threads `setMainDocElement` for the host's widgetsReady race (the
+            iframe can't drive that host ref).
           */}
           <Show
             when={props.isolation}
@@ -362,9 +362,8 @@ function PatchworkFrameInner(props: {
                 selectedToolId={selectedToolId}
                 doctitleSlots={doctitleSlots}
                 isLeftCollapsed={sidebarState.isSidebarCollapsed}
-                hasContext={hasContextOrTray}
-                isRightSidebarCollapsed={sidebarState.isRightSidebarCollapsed}
-                onToggleRight={toggleRightSidebar}
+                initialRightWidth={initialRightWidth}
+                initialRightCollapsed={initialRightCollapsed}
               />
             }
           >
@@ -374,28 +373,11 @@ function PatchworkFrameInner(props: {
               selectedToolId={selectedToolId}
               doctitleSlots={doctitleSlots}
               isLeftCollapsed={sidebarState.isSidebarCollapsed}
+              initialRightWidth={initialRightWidth}
+              initialRightCollapsed={initialRightCollapsed}
             />
           </Show>
-
-          <Show when={hasContextOrTray()}>
-            <ContextSidebar
-              selectedToolId={selectedContextToolId}
-              setSelectedToolId={setSelectedContextToolId}
-              isCollapsed={effectiveRightSidebarCollapsed}
-              width={sidebarState.rightSidebarWidth}
-              onMouseDown={handleRightMouseDown}
-              onToggleClick={handleRightToggleClick}
-              canExpand={hasSelectedDoc}
-              reserveTraySpace={isTrayVisible}
-              onCollapse={() => sidebarState.setIsRightSidebarCollapsed(true)}
-            />
-          </Show>
-
-          <SystemTrayHost
-            visible={isTrayVisible}
-            width={sidebarState.rightSidebarWidth}
-          />
-        </div>
+        </Show>
       </FrameLayout>
 
       <Show when={popoverView()}>
@@ -403,22 +385,6 @@ function PatchworkFrameInner(props: {
           <FramePopover view={view()} onClose={() => setPopoverView(null)} />
         )}
       </Show>
-    </div>
-  );
-}
-
-function SystemTrayHost(props: {
-  visible: Accessor<boolean>;
-  width: Accessor<number>;
-}) {
-  return (
-    <div
-      class="system-tray-host"
-      data-visible={props.visible() ? "" : undefined}
-      aria-hidden={props.visible() ? undefined : "true"}
-      style={{ width: `${props.width()}px` }}
-    >
-      <Tray />
     </div>
   );
 }
@@ -528,6 +494,14 @@ function FrameLayout(props: {
             rootFolderUrl={props.rootFolderUrl}
             ready={props.widgetsReady}
           />
+          {/*
+            The system tray — a row of `system-tray`-tagged tools — pinned just
+            above the account bar. It's trusted host chrome (one stable instance,
+            full host repo access), so it lives here in the host-side left sidebar
+            rather than in the context sidebar, which is being sandboxed. Renders
+            nothing when no tray tools are registered.
+          */}
+          <Tray />
           {/*
             The account bar — avatar (account picker) + Packages + Settings —
             pinned to the sidebar's bottom. Inlined here directly rather than
