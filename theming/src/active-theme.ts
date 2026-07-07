@@ -31,6 +31,7 @@ let started = false
 let currentPrefsHandle: ThemePreferencesHandle | undefined
 let currentState: ActiveThemeState | undefined
 let storageStarted = false
+let storageElement: HTMLElement | undefined
 let unsubscribeStorage: (() => void) | undefined
 let unsubscribePrefsChange: (() => void) | undefined
 
@@ -169,13 +170,12 @@ async function useToolStoragePreferences(element: HTMLElement, storageUrl: strin
 }
 
 function connectThemePreferences(element: HTMLElement) {
-	if (storageStarted) return
+	if (currentPrefsHandle) return
+	if (storageStarted && storageElement === element) return
 
 	unsubscribeStorage?.()
-	unsubscribePrefsChange?.()
-	currentPrefsHandle = undefined
-	applyFromPrefs()
 	storageStarted = true
+	storageElement = element
 
 	let lastStorageUrl: string | undefined
 
