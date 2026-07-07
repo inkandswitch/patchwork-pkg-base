@@ -17,6 +17,7 @@ import {
   useMainDocMounted,
   useDebugRegistryToast,
   DebugRegistryToast,
+  useTaggedComponents,
   SIDEBAR_KEYS,
   getStoredNumber,
   getStoredBoolean,
@@ -442,6 +443,14 @@ function FrameLayout(props: {
 }) {
   const isCollapsed = props.sidebarState.isSidebarCollapsed;
 
+  // The system tray is docked to the frame's bottom-left, OUTSIDE the collapsing
+  // sidebar, so it stays visible even when the sidebar is closed. We read the
+  // tray registry here to reserve matching space at the sidebar's bottom (so the
+  // account bar clears the dock when open) and to skip the dock entirely when no
+  // tray tools are registered.
+  const trayItems = useTaggedComponents("system-tray");
+  const hasTray = () => trayItems().length > 0;
+
   // Under isolation, intercept `patchwork:open-document` events fired by the
   // account bar (account picker / Packages / Settings) at the footer, before
   // they bubble to the selected-doc provider. Left to propagate they'd select a
@@ -487,21 +496,16 @@ function FrameLayout(props: {
         onMouseDown={props.sidebarResize.handleMouseDown}
         onToggleClick={props.sidebarResize.handleToggleClick}
       >
-        <div class="threepane-sidebar">
+        <div
+          class="threepane-sidebar"
+          classList={{ "threepane-sidebar--has-tray": hasTray() }}
+        >
           <SidebarWidgets
             widgets={props.sidebarWidgets}
             configHandle={props.configHandle}
             rootFolderUrl={props.rootFolderUrl}
             ready={props.widgetsReady}
           />
-          {/*
-            The system tray — a row of `system-tray`-tagged tools — pinned just
-            above the account bar. It's trusted host chrome (one stable instance,
-            full host repo access), so it lives here in the host-side left sidebar
-            rather than in the context sidebar, which is being sandboxed. Renders
-            nothing when no tray tools are registered.
-          */}
-          <Tray />
           {/*
             The account bar — avatar (account picker) + Packages + Settings —
             pinned to the sidebar's bottom. Inlined here directly rather than
@@ -565,6 +569,28 @@ function FrameLayout(props: {
           </div>
         </div>
       </Sidebar>
+
+      {/*
+        The system tray, docked to the frame's bottom-left. Rendered here —
+        outside the collapsing <Sidebar> — so it stays put when the sidebar
+        closes (trusted host chrome, one stable instance). When the sidebar is
+        open the dock spans its width and sits in the space reserved by
+        `threepane-sidebar--has-tray`, above the account bar; when closed it
+        floats as a compact dock at the corner.
+      */}
+      <Show when={hasTray()}>
+        <div
+          class="frame__tray-dock"
+          classList={{ "frame__tray-dock--collapsed": isCollapsed() }}
+          style={
+            isCollapsed()
+              ? undefined
+              : { width: `${props.sidebarState.leftSidebarWidth()}px` }
+          }
+        >
+          <Tray />
+        </div>
+      </Show>
 
       {props.children}
     </>

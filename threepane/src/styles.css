@@ -477,6 +477,14 @@
   min-height: 0;
 }
 
+/* Reserve the docked tray's height at the sidebar's bottom so the account bar
+   sits above the tray (which is pinned outside this collapsing column). */
+.threepane-sidebar--has-tray {
+  padding-bottom: calc(
+    var(--threepane-tray-height) + env(safe-area-inset-bottom, 0px)
+  );
+}
+
 /* account / packages / settings footer, pinned to the sidebar bottom */
 .threepane-sidebar__footer {
   flex: none;
@@ -586,8 +594,25 @@
   cursor: default;
 }
 
-/* System tray: a row of tray-tagged tools pinned in the left sidebar, just
-   above the account bar. */
+/* System tray dock: pinned to the frame's bottom-left, always visible. Lives
+   outside the collapsing left sidebar so it stays put when the sidebar closes.
+   When the sidebar is open the dock spans its width (set inline) and fills the
+   space reserved by `threepane-sidebar--has-tray`; when closed it shrinks to a
+   compact corner dock. */
+.frame__tray-dock {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  z-index: 4;
+  box-sizing: border-box;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.frame__tray-dock--collapsed {
+  width: auto;
+}
+
+/* A row of tray-tagged tools, filling the dock. */
 .frame-tray {
   display: flex;
   align-items: center;
