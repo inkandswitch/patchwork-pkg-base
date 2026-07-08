@@ -488,8 +488,7 @@
 /* account / packages / settings footer, pinned to the sidebar bottom */
 .threepane-sidebar__footer {
   flex: none;
-  margin-bottom: 
-    var(--threepane-tray-height) + env(safe-area-inset-bottom, 0px);
+  margin-bottom: calc(var(--threepane-tray-height) + env(safe-area-inset-bottom, 0px));
 }
 
 /* The inlined account bar: avatar (account picker) + Packages + Settings. Ported
