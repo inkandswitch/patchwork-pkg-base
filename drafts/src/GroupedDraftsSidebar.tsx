@@ -35,12 +35,12 @@ import type {
 // Seed for the read-only `draft:list` subscription until the provider answers.
 // `main.url` is a placeholder; the Main card displays the host doc url instead.
 const EMPTY_DRAFT_LIST: DraftList = {
-  main: { url: "" as AutomergeUrl, members: [], childCount: 0 },
+  main: { url: "" as AutomergeUrl, members: [], childCount: 0, name: null },
   drafts: [],
 };
 
 // Bump on each deploy to eyeball whether the latest build has synced.
-const DRAFTS_VERSION = "0.0.15";
+const DRAFTS_VERSION = "0.0.16";
 
 // Logged at module load so the console shows which build is running even
 // before the panel renders.
@@ -262,6 +262,26 @@ export function GroupedDraftsSidebar(props: { element: HTMLElement }) {
     selectDraft(draft.url);
   };
 
+  // Rename a draft, or main (`url === null`). Names live on the `DraftDoc`;
+  // renaming main creates the main draft doc if this is the first draft-ish
+  // action on the host doc. `null` clears back to the default label.
+  const onRename = async (url: AutomergeUrl | null, name: string | null) => {
+    const repo = getRepo();
+    if (!repo) return;
+    let handle: DocHandle<DraftDoc>;
+    if (url === null) {
+      const docHandle = hostDocHandle();
+      if (!docHandle) return;
+      handle = await ensureMainDraft(repo, docHandle);
+    } else {
+      handle = await repo.find<DraftDoc>(url);
+    }
+    handle.change((d) => {
+      if (name) d.name = name;
+      else delete d.name;
+    });
+  };
+
   const onMergeDraft = async () => {
     const draftUrl = selected();
     if (!draftUrl) return;
@@ -287,6 +307,8 @@ export function GroupedDraftsSidebar(props: { element: HTMLElement }) {
             hostDocUrl={hostDocHandle()?.url}
             isSelected={isMainSelected()}
             members={() => list().main.members}
+            name={list().main.name}
+            onRename={(name) => void onRename(null, name)}
             onSelect={() => selectDraft(null)}
             onScrub={(scrub) => onScrub(null, list().main.members, scrub)}
             scrubber={() => (isMainSelected() ? scrubber() : null)}
@@ -303,6 +325,8 @@ export function GroupedDraftsSidebar(props: { element: HTMLElement }) {
                 members={summary.members}
                 mainDocUrl={hostDocHandle()?.url}
                 isSelected={selected() === summary.url}
+                name={summary.name}
+                onRename={(name) => void onRename(summary.url, name)}
                 onSelect={selectDraft}
                 onScrub={(scrub) => onScrub(summary.url, summary.members, scrub)}
                 scrubber={() =>
@@ -715,6 +739,8 @@ function MainCard(props: {
   hostDocUrl: AutomergeUrl | undefined;
   isSelected: boolean;
   members: Accessor<DraftMemberDoc[]>;
+  name: string | null;
+  onRename: (name: string | null) => void;
   onSelect: () => void;
   onScrub: (scrub: ScrubberState) => void;
   scrubber: Accessor<ScrubberState | null>;
@@ -722,19 +748,24 @@ function MainCard(props: {
 }) {
   return (
     <div class="draft-card" data-selected={props.isSelected ? "" : undefined}>
-      <button
-        type="button"
+      {/* A div, not a <button>: the rename input rendered inside would be
+          invalid (and misbehave) nested in a button. */}
+      <div
         class="draft-card-header"
         onClick={props.onSelect}
         title="Main version (host document)"
       >
         <div class="draft-card-title">
-          <span>Main</span>
+          <DraftName
+            name={props.name}
+            fallback="Main"
+            onRename={props.onRename}
+          />
           <Show when={props.isSelected}>
             <span class="draft-badge">current</span>
           </Show>
         </div>
-      </button>
+      </div>
       <Show when={props.isSelected}>
         <DraftChangesList
           members={props.members}
@@ -753,6 +784,8 @@ function DraftCard(props: {
   members: DraftMemberDoc[];
   mainDocUrl: AutomergeUrl | undefined;
   isSelected: boolean;
+  name: string | null;
+  onRename: (name: string | null) => void;
   onSelect: (url: AutomergeUrl) => void;
   onScrub: (scrub: ScrubberState) => void;
   scrubber: Accessor<ScrubberState | null>;
@@ -760,19 +793,23 @@ function DraftCard(props: {
 }) {
   return (
     <div class="draft-card" data-selected={props.isSelected ? "" : undefined}>
-      <button
-        type="button"
+      {/* A div, not a <button>: see MainCard. */}
+      <div
         class="draft-card-header"
         onClick={() => props.onSelect(props.url)}
         title="Open draft"
       >
         <div class="draft-card-title">
-          <span>Draft</span>
+          <DraftName
+            name={props.name}
+            fallback="Draft"
+            onRename={props.onRename}
+          />
           <Show when={props.isSelected}>
             <span class="draft-badge">current</span>
           </Show>
         </div>
-      </button>
+      </div>
       <Show when={props.isSelected}>
         <DraftChangesList
           members={() => props.members}
@@ -783,6 +820,51 @@ function DraftCard(props: {
         />
       </Show>
     </div>
+  );
+}
+
+// A card's display name. Double-click to rename inline: Enter or clicking
+// away commits, Escape cancels, and committing an empty value clears the
+// name back to the default label.
+function DraftName(props: {
+  name: string | null;
+  fallback: string;
+  onRename: (name: string | null) => void;
+}) {
+  const [editing, setEditing] = createSignal(false);
+  return (
+    <Show
+      when={editing()}
+      fallback={
+        <span
+          class="draft-name"
+          title="Double-click to rename"
+          onDblClick={() => setEditing(true)}
+        >
+          {props.name ?? props.fallback}
+        </span>
+      }
+    >
+      <input
+        class="draft-name-input"
+        value={props.name ?? ""}
+        placeholder={props.fallback}
+        // Focus once mounted; the ref fires before insertion, hence the tick.
+        ref={(el) => setTimeout(() => el.select())}
+        onClick={(e) => e.stopPropagation()}
+        onDblClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "Escape") setEditing(false);
+        }}
+        onBlur={(e) => {
+          if (!editing()) return; // already cancelled via Escape
+          setEditing(false);
+          const value = e.currentTarget.value.trim();
+          if (value !== (props.name ?? "")) props.onRename(value || null);
+        }}
+      />
+    </Show>
   );
 }
 

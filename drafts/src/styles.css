@@ -124,6 +124,10 @@
 }
 
 .draft-card-header {
+  /* The header is a div (a rename input can't nest in a button), which,
+     unlike a button, doesn't default to border-box — without this the
+     padding pushes it past the card edge. */
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
@@ -154,7 +158,28 @@
   font-weight: 500;
 }
 
+.draft-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Inline rename editor, swapped in for .draft-name on double-click. */
+.draft-name-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  color: inherit;
+  padding: 0 0.25rem;
+  margin: 0;
+  background: var(--drafts-bg);
+  border: 1px solid var(--drafts-primary);
+  border-radius: var(--drafts-radius-sm);
+  outline: none;
+}
+
 .draft-badge {
+  flex-shrink: 0;
   font-size: 0.625rem;
   line-height: 1;
   padding: 0.125rem 0.375rem;

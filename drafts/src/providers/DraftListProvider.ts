@@ -98,7 +98,7 @@ export const DraftListProvider = (element: HTMLElement) => {
   const listSubscribers = new Set<(list: DraftList) => void>();
   let orderedDraftUrls: AutomergeUrl[] = [];
   let draftList: DraftList = {
-    main: { url: docUrl, members: [], childCount: 0 },
+    main: { url: docUrl, members: [], childCount: 0, name: null },
     drafts: [],
   };
   // Main-case membership: docs mounted beneath this provider, ref-counted so a
@@ -331,6 +331,7 @@ export const DraftListProvider = (element: HTMLElement) => {
         url,
         members: clonesToMembers(doc.clones),
         childCount: doc.drafts.length,
+        name: doc.name ?? null,
       });
     }
     return { main: computeMainSummary(), drafts };
@@ -343,17 +344,18 @@ export const DraftListProvider = (element: HTMLElement) => {
   function computeMainSummary(): DraftSummary {
     const url = mainDraftHandle?.url ?? docUrl;
     const childCount = mainDraftHandle?.doc()?.drafts.length ?? 0;
+    const name = mainDraftHandle?.doc()?.name ?? null;
 
     const mainClones = mainDraftHandle?.doc()?.clones;
     if (mainClones && Object.keys(mainClones).length > 0) {
-      return { url, members: clonesToMembers(mainClones), childCount };
+      return { url, members: clonesToMembers(mainClones), childCount, name };
     }
 
     const members = [...mountCounts.keys()]
       .filter((u) => skipVerdicts.get(u) !== true)
       .map((u) => ({ url: u, cloneUrl: null, clonedAt: null }))
       .sort(byMemberUrl);
-    return { url, members, childCount };
+    return { url, members, childCount, name };
   }
 
   // The diff baseline for `target`, authoritative for both main and drafts:
@@ -501,6 +503,7 @@ function summariesEqual(a: DraftSummary, b: DraftSummary): boolean {
   return (
     a.url === b.url &&
     a.childCount === b.childCount &&
+    a.name === b.name &&
     memberListsEqual(a.members, b.members)
   );
 }

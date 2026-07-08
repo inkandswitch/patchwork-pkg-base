@@ -22,9 +22,14 @@ export type CloneEntry = {
 // `mergedAt` is a wall-clock timestamp set when the draft is merged into
 // its parent; absent means "still open". The sidebar uses it to filter
 // merged drafts out of the list.
+//
+// `name` is the user-given display name; absent means the default label
+// ("Draft", or "Main" for the main draft). Renaming main is what creates the
+// main draft doc if it doesn't exist yet.
 export type DraftDoc = {
   "@patchwork": { type: "draft" };
   isMain?: boolean;
+  name?: string;
   parent: AutomergeUrl;
   drafts: AutomergeUrl[];
   clones: Record<AutomergeUrl, CloneEntry>;
@@ -101,6 +106,9 @@ export type DraftSummary = {
   members: DraftMemberDoc[];
   // Number of sub-drafts (`DraftDoc.drafts.length`), shown in the card meta.
   childCount: number;
+  // User-given display name (`DraftDoc.name`); `null` (not optional, to stay
+  // structured-cloneable) means unnamed — the card shows its default label.
+  name: string | null;
 };
 
 // Response shape for `draft:list`: the host doc's `main` entry plus the flat,

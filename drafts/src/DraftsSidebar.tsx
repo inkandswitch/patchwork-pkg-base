@@ -35,7 +35,7 @@ import type {
 // Seed for the read-only `draft:list` subscription until the provider answers.
 // `main.url` is a placeholder; the Main card displays the host doc url instead.
 const EMPTY_DRAFT_LIST: DraftList = {
-  main: { url: "" as AutomergeUrl, members: [], childCount: 0 },
+  main: { url: "" as AutomergeUrl, members: [], childCount: 0, name: null },
   drafts: [],
 };
 
