@@ -619,8 +619,7 @@
      doesn't flash at full size over the still-expanding sidebar. The delay equals
      the sidebar's transition duration; collapsing overrides this to hide at once. */
   opacity: 1;
-  transition: opacity var(--studio-transition-fast, 0.1s) ease
-    var(--studio-transition-slow, 0.25s);
+  transition: opacity 0.1s ease 0.25s;
 }
 
 .frame__tray-dock--collapsed {
