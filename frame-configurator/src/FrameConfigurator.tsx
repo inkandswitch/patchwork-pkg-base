@@ -31,7 +31,12 @@ const FRAME_RELOAD_DELAY_MS = 250;
 
 // Minimal shape shared by tool and component descriptions — all we need to
 // build the add-popover options.
-type Describable = { id: string; name?: string; tags?: string[] };
+type Describable = {
+  id: string;
+  name?: string;
+  tags?: string[];
+  unlisted?: boolean;
+};
 
 // Subscribe to a plugin registry (e.g. "patchwork:tool" or
 // "patchwork:component") and keep a reactive list of its descriptions.
@@ -54,7 +59,7 @@ function useDescriptions(type: string) {
 
 function filterToolsByTag(tools: Describable[], tag: string): ModuleOption[] {
   return tools
-    .filter((t) => (t.tags ?? []).includes(tag))
+    .filter((t) => !t.unlisted && (t.tags ?? []).includes(tag))
     .map((t) => ({ id: t.id, name: t.name || t.id }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -258,6 +263,10 @@ function ToolbarStrip(props: {
   let lastDropIndex: number | null = null;
 
   const currentIds = createMemo(() => new Set(props.values ?? []));
+  const listedIds = createMemo(() => new Set(props.allOptions.map((o) => o.id)));
+  const listedValues = createMemo(() =>
+    (props.values ?? []).filter((id) => listedIds().has(id))
+  );
   const available = createMemo(() =>
     props.allOptions.filter((o) => !currentIds().has(o.id))
   );
@@ -265,13 +274,12 @@ function ToolbarStrip(props: {
     props.allOptions.find((o) => o.id === id)?.name ?? id;
 
   const removeAt = (index: number) => {
-    const vals = props.values;
-    if (!vals) return;
+    const vals = listedValues();
     props.setValues(vals.filter((_, i) => i !== index));
   };
 
   const add = (id: string) => {
-    props.setValues([...(props.values ?? []), id]);
+    props.setValues([...listedValues(), id]);
   };
 
   const updateDropIndex = (i: number) => {
@@ -286,7 +294,7 @@ function ToolbarStrip(props: {
     setDropIndex(null);
     lastDropIndex = null;
     if (from == null || to == null || from === to) return;
-    const arr = [...(props.values ?? [])];
+    const arr = [...listedValues()];
     const [moved] = arr.splice(from, 1);
     arr.splice(to, 0, moved);
     props.setValues(arr);
@@ -299,7 +307,7 @@ function ToolbarStrip(props: {
         class={`toolbar-strip${dragIndex() !== null ? " is-dragging" : ""}`}
         ref={nullSelectedDocRef}
       >
-        <For each={props.values ?? []}>
+        <For each={listedValues()}>
           {(id, index) => (
             <div
               class={`toolbar-box${itemDragClass(index(), dragIndex(), dropIndex())}`}
