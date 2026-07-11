@@ -64,6 +64,7 @@ export const plugins: Plugin<any>[] = [
     icon: "Window",
     supportedDatatypes: ["account"],
     load: loadFrame,
+    unlisted: true
   },
   {
     type: "patchwork:tool",
