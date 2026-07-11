@@ -40,7 +40,7 @@ const EMPTY_DRAFT_LIST: DraftList = {
 };
 
 // Bump on each deploy to eyeball whether the latest build has synced.
-const DRAFTS_VERSION = "0.0.16";
+const DRAFTS_VERSION = "0.0.17";
 
 // Logged at module load so the console shows which build is running even
 // before the panel renders.
@@ -978,12 +978,23 @@ function DraftChangesList(props: {
   });
 
   // The flat, newest-first history folded into activity groups for rendering.
-  const timeGroups = createMemo(() => groupChanges(changes()));
+  // Groups whose changes carry no edits (metadata-only churn — zero +/-
+  // counts) are dropped from the timeline entirely.
+  const timeGroups = createMemo(() =>
+    groupChanges(changes()).filter((g) => g.additions > 0 || g.deletions > 0)
+  );
+
+  // The scrubbable timeline: the visible groups' changes flattened
+  // newest-first. All scrubber indices refer to this list, so it must stay
+  // consistent with the rendered rows (not the raw, unfiltered history).
+  const visibleChanges = createMemo(() =>
+    timeGroups().flatMap((g) => g.changes)
+  );
 
   // Scrub so the head sits at the timeline change at `headIndex` (global,
   // 0 = newest).
   const scrubTo = (headIndex: number) => {
-    const head = changes()[headIndex];
+    const head = visibleChanges()[headIndex];
     if (!head) return;
     props.onScrub({ head: changeRef(head) });
   };
@@ -998,7 +1009,7 @@ function DraftChangesList(props: {
   const headIndex = createMemo<number | null>(() => {
     const s = props.scrubber();
     if (!s) return null;
-    const idx = changes().findIndex(
+    const idx = visibleChanges().findIndex(
       (c) => c.hash === s.head.hash && c.docUrl === s.head.docUrl
     );
     return idx >= 0 ? idx : null;
@@ -1100,7 +1111,7 @@ function DraftChangesList(props: {
   // grabbable. With nothing pinned it idles at the very top — you're looking
   // at the live latest.
   const tokenGeometry = createMemo(() => {
-    if (changes().length === 0 || bands().length === 0) return null;
+    if (visibleChanges().length === 0 || bands().length === 0) return null;
     return { top: yForIndex(headIndex() ?? 0) };
   });
 
@@ -1119,7 +1130,7 @@ function DraftChangesList(props: {
   // Every position snaps to an individual change, so the indicator can rest
   // anywhere in history — between groups or in the middle of one.
   const beginDrag = (ev: PointerEvent) => {
-    if (!trackEl || changes().length === 0) return;
+    if (!trackEl || visibleChanges().length === 0) return;
     ev.preventDefault();
     ev.stopPropagation();
     const grabOffset = yInTrack(ev) - yForIndex(headIndex() ?? 0);
@@ -1154,57 +1165,27 @@ function DraftChangesList(props: {
     props.onDragVersion(head);
   };
 
-  // Zoomed-in scrubbing: group rows render 5x taller (see the data-zoomed
-  // CSS), so the scrubber's per-change stops spread out for fine positioning.
-  const [zoomed, setZoomed] = createSignal(false);
-  // The scrollable changes area, needed to keep the head line fixed in
-  // screen space across a zoom toggle.
-  let scrollerEl: HTMLDivElement | undefined;
-
-  // Toggle the zoom from `group`'s magnifier. Zooming in is entering scrubber
-  // mode, so if nothing is pinned yet, pin to the group first (like clicking
-  // the row). Rows then resize, so re-measure and shift the scroll position
-  // to keep the head line where the eye already is.
-  const toggleZoom = (group: TimeGroup) => {
-    const turningOn = !zoomed();
-    if (turningOn && headIndex() === null) scrubToGroup(group);
-    const before = tokenGeometry()?.top ?? 0;
-    const screenY = before - (scrollerEl?.scrollTop ?? 0);
-    setZoomed(turningOn);
-    requestAnimationFrame(() => {
-      // The rows have re-laid out at the new size; bands re-measure on the
-      // tick and the geometry memo re-evaluates on read.
-      setMeasureTick((t) => t + 1);
-      const after = tokenGeometry()?.top ?? 0;
-      if (scrollerEl) scrollerEl.scrollTop = after - screenY;
-    });
-  };
-
   // The exact change the scrubber head sits on; feeds the sticker that
-  // overlays the group row with the version being looked at. Zoomed out, it
-  // is suppressed when the head sits exactly on a group's newest change (the
-  // row already shows that version); zoomed in you are always in explicit
-  // scrubber mode, so the sticker always shows.
+  // overlays the group row with the version being looked at. It is
+  // suppressed when the head sits exactly on a group's newest change (the
+  // row already shows that version).
   const headChange = createMemo<DraftChange | null>(() => {
     const idx = headIndex();
-    const change = idx === null ? null : (changes()[idx] ?? null);
+    const change = idx === null ? null : (visibleChanges()[idx] ?? null);
     if (!change) return null;
     const atGroupStart = timeGroups().some(
       (g) => g.newest.hash === change.hash && g.newest.docUrl === change.docUrl
     );
-    return atGroupStart && !zoomed() ? null : change;
+    return atGroupStart ? null : change;
   });
 
   return (
-    <div class="draft-card-changes" ref={scrollerEl}>
+    <div class="draft-card-changes">
       <Show
         when={timeGroups().length > 0}
         fallback={<div class="draft-changes-empty">No changes yet.</div>}
       >
-        <div
-          class="draft-changes-body"
-          data-zoomed={zoomed() ? "" : undefined}
-        >
+        <div class="draft-changes-body">
           <div class="draft-scrubber" ref={trackEl} />
           <div class="draft-changes-rows" ref={setRowsEl}>
             <For each={timeGroups()}>
@@ -1213,9 +1194,7 @@ function DraftChangesList(props: {
                   group={group}
                   rowRef={(el) => rowEls.set(group.id, el)}
                   isSelected={groupContainsHead(group)}
-                  zoomActive={zoomed()}
                   onSelect={() => scrubToGroup(group)}
-                  onToggleZoom={() => toggleZoom(group)}
                   onVersionDragStart={(e) =>
                     beginVersionDrag(e, changeRef(group.newest))
                   }
@@ -1278,19 +1257,17 @@ function DraftChangesList(props: {
 }
 
 // One time group, rendered as a single non-expandable row: author avatars,
-// the group's newest timestamp, the zoom toggle, and the aggregated +/-
-// counts. Clicking the row parks the scrubber at the top of the group. The
-// row highlights while the scrubber head sits inside the group. Dragging the
-// row out forks a new draft at the group's newest change (the same version
-// clicking pins); dragstart only fires past the movement threshold, so
-// click-to-select is unaffected.
+// the group's newest timestamp, and the aggregated +/- counts. Clicking the
+// row parks the scrubber at the top of the group. The row highlights while
+// the scrubber head sits inside the group. Dragging the row out forks a new
+// draft at the group's newest change (the same version clicking pins);
+// dragstart only fires past the movement threshold, so click-to-select is
+// unaffected.
 function TimeGroupRow(props: {
   group: TimeGroup;
   rowRef: (el: HTMLElement) => void;
   isSelected: boolean;
-  zoomActive: boolean;
   onSelect: () => void;
-  onToggleZoom: () => void;
   onVersionDragStart: (e: DragEvent) => void;
   onVersionDragEnd: () => void;
 }) {
@@ -1308,49 +1285,12 @@ function TimeGroupRow(props: {
     >
       <AuthorAvatars actors={props.group.actors} />
       <span class="draft-group-time">{formatTime(props.group.endTime)}</span>
-      <span
-        class="draft-zoom-toggle"
-        classList={{ "draft-zoom-toggle--active": props.zoomActive }}
-        role="button"
-        tabindex={0}
-        title={
-          props.zoomActive
-            ? "Zoom back out"
-            : "Zoom in for fine-grained scrubbing"
-        }
-        onClick={(e) => {
-          e.stopPropagation();
-          props.onToggleZoom();
-        }}
-      >
-        <MagnifierIcon />
-      </span>
       <span class="draft-group-spacer" />
       <EditCounts
         additions={props.group.additions}
         deletions={props.group.deletions}
       />
     </button>
-  );
-}
-
-// A magnifying glass for the zoom toggle shown on every group row. Zoomed
-// in, group rows render 5x taller for fine-grained scrubbing.
-function MagnifierIcon() {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2.5"
-      stroke-linecap="round"
-      aria-hidden="true"
-    >
-      <circle cx="11" cy="11" r="7" />
-      <path d="m21 21-4.3-4.3" />
-    </svg>
   );
 }
 

@@ -287,13 +287,15 @@
 
 /* ---- Grouped history: one non-expandable row per time window ---- */
 
-/* Group row layout: avatar stack, timestamp, flexible spacer, +/- counts. */
+/* Group row layout: avatar stack, timestamp, flexible spacer, +/- counts.
+   The extra vertical padding gives each group a taller scrubber band, so
+   per-change stops inside a group are easier to hit. */
 .draft-group-row {
   display: flex;
   align-items: center;
   gap: 0.375rem;
   width: 100%;
-  padding: 0.25rem 0.375rem;
+  padding: 0.5rem 0.375rem;
   border: none;
   border-radius: var(--drafts-radius-sm);
   background: transparent;
@@ -308,15 +310,6 @@
    underneath the rows remain visible through them. */
 .draft-group-row:hover {
   background: color-mix(in srgb, var(--drafts-hover-bg) 60%, transparent);
-}
-
-/* Zoomed-in scrubbing (toggled by the row magnifier): every group row is 5x
-   its natural height, spreading the scrubber's per-change stops out for fine
-   positioning. Content pins to the top of the band so the row label stays
-   put while the head line travels the band. */
-.draft-changes-body[data-zoomed] .draft-group-row {
-  min-height: 8.125rem;
-  align-items: flex-start;
 }
 
 .draft-group-row[data-selected] {
@@ -502,27 +495,6 @@
 
 .draft-sticker-spacer {
   flex: 1 1 auto;
-}
-
-/* The zoom toggle: always visible, lit while the list is zoomed in. */
-.draft-zoom-toggle {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2px;
-  border-radius: var(--drafts-radius-sm);
-  color: var(--drafts-muted-fg);
-  cursor: pointer;
-}
-
-.draft-zoom-toggle:hover {
-  background: var(--drafts-hover-bg);
-  color: var(--drafts-fg);
-}
-
-.draft-zoom-toggle--active {
-  color: var(--drafts-primary);
 }
 
 /* Edit-size counts */
