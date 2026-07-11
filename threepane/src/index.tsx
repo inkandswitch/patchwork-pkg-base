@@ -48,18 +48,13 @@ export const plugins: Plugin<any>[] = [
     },
   },
   {
-    // The account's module-settings subdoc. Registered here so a fresh account's
-    // `ensureAccountSubdocs` can create it — otherwise the subdoc Promise.all
-    // stalls on an unregistered datatype and the sidebar/config never bootstraps.
-    type: "patchwork:datatype",
-    id: "patchwork:module-settings",
-    name: "Module Settings",
-    icon: "Settings",
-    unlisted: true,
-    async load() {
-      const { ModuleSettingsDatatype } = await import("./datatypes");
-      return ModuleSettingsDatatype;
-    },
+    type: "patchwork:tool",
+    id: "threepane",
+    tags: ["frame-tool"],
+    name: "Threepane (🤠 wild west)",
+    icon: "Window",
+    supportedDatatypes: ["account"],
+    load: loadFrame,
   },
   {
     type: "patchwork:tool",
@@ -72,20 +67,10 @@ export const plugins: Plugin<any>[] = [
   },
   {
     type: "patchwork:tool",
-    id: "threepane",
-    tags: ["frame-tool"],
-    name: "Threepane",
-    icon: "Window",
-    supportedDatatypes: ["account"],
-    load: () => loadFrame(true),
-  },
-  {
-    type: "patchwork:tool",
     id: "threepane-isolation",
     tags: ["frame-tool"],
-    name: "Threepane",
+    name: "Threepane (isolate)",
     icon: "Window",
-    unlisted: true,
     supportedDatatypes: ["account"],
     load: () => loadFrame(true),
   },
@@ -114,4 +99,4 @@ export const plugins: Plugin<any>[] = [
     unlisted: true,
     load: loadFrame,
   },
-];
+]
