@@ -15,7 +15,12 @@
  * only reads `isLeftCollapsed` for top-bar layout.
  */
 
-import type { AutomergeUrl } from "@automerge/automerge-repo";
+import {
+  parseAutomergeUrl,
+  stringifyAutomergeUrl,
+  type AutomergeUrl,
+  type UrlHeads,
+} from "@automerge/automerge-repo";
 import { subscribeDoc } from "@inkandswitch/patchwork-providers-solid";
 import { makePersisted } from "@solid-primitives/storage";
 import {
@@ -40,10 +45,23 @@ import { FrameTopBar } from "./FrameTopBar";
 import { ContextSidebar } from "./ContextSidebar";
 import { MainDocumentView } from "./MainDocumentView";
 
-type DraftsState = {
-  drafts: AutomergeUrl[];
+// Mirrors the drafts package's `CheckedOutDraft`/`DraftCheckpoint`: the small
+// writeable doc that holds the current selection plus an optional history pin.
+// Each member doc's original url maps to the heads to view it at (`to`, which the
+// frame reads to pin the doc) and to diff against (`from`, read by the drafts
+// provider to serve `draft:baseline`). A doc absent from the map stays live.
+type DocCheckpoint = {
+  from?: UrlHeads;
+  to?: UrlHeads;
+};
+
+type DraftCheckpoint = Record<AutomergeUrl, DocCheckpoint>;
+
+type CheckedOutDraft = {
   // `null` represents "main" — i.e. the host doc itself, no draft overlay.
-  selectedDraft: AutomergeUrl | null;
+  checkedOut: AutomergeUrl | null;
+  // Absent/null = live latest heads; set = a frozen, read-only history view.
+  at?: DraftCheckpoint | null;
 };
 
 const MIN_SIDEBAR_WIDTH = 180;
@@ -160,12 +178,10 @@ export function DocumentAreaRoot(props: DocumentAreaRootProps) {
     { name: SIDEBAR_KEYS.contextToolId }
   );
 
-  // Per-document draft scope. The provider element persists across navigation:
-  // we feed it a reactive `doc-url` and it re-points in place (it watches the
-  // attribute), rather than remounting the whole draft subtree on every doc
-  // switch. When no doc is selected we still render the sidebars (so the drafts
-  // sidebar can show its "no doc selected" empty state), just without a
-  // draft-root scope.
+  // Per-document draft scope. Keyed on the selected doc URL so the whole draft
+  // tree remounts when the user switches docs: the draft-list provider reads
+  // its `doc-url` attribute once at mount (attribute changes are ignored while
+  // a `component` attribute is set), so it cannot re-point in place.
   const [draftListProviderHost, setDraftListProviderHost] =
     createSignal<HTMLElement>();
   const isDraftListProviderReady = useProviderReady(
@@ -176,44 +192,44 @@ export function DocumentAreaRoot(props: DocumentAreaRootProps) {
     isDraftListProviderReady() ? draftListProviderHost() : undefined;
 
   return (
-    // Not keyed: the provider element stays mounted across navigation and
-    // re-points itself when `doc-url` changes, so we don't tear down and
-    // rebuild the whole draft subtree (and its ephemeral DraftsState doc)
-    // on every doc switch. It wraps only the main column (display:
-    // contents), not the left sidebar.
-    <patchwork-view
-      component="patchwork-draft-list-provider"
-      doc-url={props.selectedDocUrl()}
-      ref={setDraftListProviderHost}
-    >
-      <Show when={readyDraftListHost()}>
-        {(host) => (
-          <DraftDocumentArea
-            host={host()}
-            setMainDocElement={props.setMainDocElement}
-            selectedDocUrl={props.selectedDocUrl}
-            selectedToolId={props.selectedToolId}
-            doctitleSlots={props.doctitleSlots}
-            isLeftCollapsed={props.isLeftCollapsed}
-            isRightSidebarCollapsed={isRightSidebarCollapsed}
-            setIsRightSidebarCollapsed={setIsRightSidebarCollapsed}
-            rightSidebarWidth={rightSidebarWidth}
-            handleMouseDown={sidebarResize.handleMouseDown}
-            handleToggleClick={sidebarResize.handleToggleClick}
-            selectedContextToolId={selectedContextToolId}
-            setSelectedContextToolId={setSelectedContextToolId}
-          />
-        )}
-      </Show>
-    </patchwork-view>
+    <Show when={props.selectedDocUrl()} keyed>
+      {(docUrl) => (
+        <patchwork-view
+          component="patchwork-draft-list-provider"
+          doc-url={docUrl}
+          ref={setDraftListProviderHost}
+        >
+          <Show when={readyDraftListHost()}>
+            {(host) => (
+              <DraftDocumentArea
+                host={host()}
+                setMainDocElement={props.setMainDocElement}
+                selectedDocUrl={props.selectedDocUrl}
+                selectedToolId={props.selectedToolId}
+                doctitleSlots={props.doctitleSlots}
+                isLeftCollapsed={props.isLeftCollapsed}
+                isRightSidebarCollapsed={isRightSidebarCollapsed}
+                setIsRightSidebarCollapsed={setIsRightSidebarCollapsed}
+                rightSidebarWidth={rightSidebarWidth}
+                handleMouseDown={sidebarResize.handleMouseDown}
+                handleToggleClick={sidebarResize.handleToggleClick}
+                selectedContextToolId={selectedContextToolId}
+                setSelectedContextToolId={setSelectedContextToolId}
+              />
+            )}
+          </Show>
+        </patchwork-view>
+      )}
+    </Show>
   );
 }
 
-// Reads the draft list state from the draft-list provider, then renders the
-// main document inside a draft-overlay provider keyed on the selected draft.
-// The overlay provider is always mounted; it becomes a no-op when its `url`
-// is empty (the "main" case), letting document resolution fall through to the
-// host repo.
+// Renders the main document inside the draft-overlay provider. The provider
+// mounts pinned to one draft (its `url` attribute) and answers document
+// descriptors one-shot, so switching drafts works by remounting the provider
+// subtree on the checked-out draft (see `draftProviderKey`). Checking a
+// history entry in or out likewise remounts the main view (see `mainViewKey`),
+// since nested docs resolve their checkpoint pin once, at mount.
 //
 // The comments + focus providers and the context (right) sidebar live *inside*
 // the overlay so that, on a draft, comment threads / selection resolve against
@@ -236,6 +252,18 @@ function DraftDocumentArea(props: {
   selectedContextToolId: Accessor<string | undefined>;
   setSelectedContextToolId: (id: string) => void;
 }) {
+  const [checkedOut] = subscribeDoc<CheckedOutDraft>(props.host, {
+    type: "draft:checked-out",
+  });
+
+  // The overlay provider resolves descriptors one-shot against the draft in
+  // its `url` attribute, so the whole provider subtree is keyed on the
+  // selection: switching drafts remounts it and every descriptor is
+  // re-requested against the new draft.
+  const draftProviderKey = createMemo<AutomergeUrl | "main">(
+    () => checkedOut()?.checkedOut ?? "main"
+  );
+
   // Registry-driven: whether the context sidebar exists at all (any tabs) — no
   // longer depends on any per-account config, just on whether anything is
   // currently tagged `context-tool`. The system tray is separate host chrome in
@@ -243,13 +271,28 @@ function DraftDocumentArea(props: {
   const contextItems = useTaggedComponents("context-tool");
   const hasContext = () => contextItems().length > 0;
 
-  const [draftsState] = subscribeDoc<DraftsState>(props.host, {
-    type: "draft:list",
+  // When a history entry is checked out, view the selected doc at its pinned
+  // heads. The overlay reapplies these heads onto the draft's clone, yielding a
+  // fixed-heads (read-only) handle. No pin -> the live, canonical url. Keying
+  // the view on this url remounts the tool when entering/leaving a checkpoint.
+  const pinnedDocUrl = createMemo<AutomergeUrl | undefined>(() => {
+    const url = props.selectedDocUrl();
+    if (!url) return url;
+    const { documentId } = parseAutomergeUrl(url);
+    const heads = checkedOut()?.at?.[stringifyAutomergeUrl({ documentId })]?.to;
+    return heads ? stringifyAutomergeUrl({ documentId, heads }) : url;
   });
 
-  const draftProviderKey = createMemo<AutomergeUrl | "main">(
-    () => draftsState()?.selectedDraft ?? "main"
-  );
+  // Remount key for the main view. Nested docs (embeds, folder entries) resolve
+  // their checkpoint pin once, at mount, via `repo:handle-descriptor`; they only
+  // re-resolve when the subtree remounts. `pinnedDocUrl` alone misses checkpoint
+  // moves that don't change the main doc's own heads (e.g. an entry that only
+  // pins an embedded doc), so fold the whole `at` map into the key.
+  const mainViewKey = createMemo<string | undefined>(() => {
+    const url = pinnedDocUrl();
+    if (!url) return url;
+    return `${url}|${JSON.stringify(checkedOut()?.at ?? null)}`;
+  });
 
   const [draftOverlayProviderHost, setDraftOverlayProviderHost] =
     createSignal<HTMLElement>();
@@ -311,8 +354,8 @@ function DraftDocumentArea(props: {
 
                     <div class="main-area">
                       <MainDocumentView
-                        viewKey={props.selectedDocUrl}
-                        selectedDocUrl={props.selectedDocUrl}
+                        viewKey={mainViewKey}
+                        selectedDocUrl={pinnedDocUrl}
                         toolId={props.selectedToolId}
                         // Always pass a function ref. Passing `ref={undefined}`
                         // (the isolated path, where no host ref is threaded)
@@ -332,9 +375,7 @@ function DraftDocumentArea(props: {
                       width={props.rightSidebarWidth}
                       onMouseDown={props.handleMouseDown}
                       onToggleClick={props.handleToggleClick}
-                      onCollapse={() =>
-                        props.setIsRightSidebarCollapsed(true)
-                      }
+                      onCollapse={() => props.setIsRightSidebarCollapsed(true)}
                     />
                   </Show>
                 </div>

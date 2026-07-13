@@ -9,46 +9,124 @@ export type CloneEntry = {
   mergedAt?: UrlHeads;
 };
 
-// `parent` points at the URL this draft branches off of: either the host
-// document (for top-level drafts attached via `@patchwork.drafts`) or
-// another `DraftDoc` (for sub-drafts attached via `DraftDoc.drafts`).
+// `parent` points at the URL this draft branches off of: the main draft (for
+// top-level drafts, listed in `mainDraft.drafts`) or another `DraftDoc` (for
+// sub-drafts attached via `DraftDoc.drafts`).
+//
+// `isMain` marks the single "main draft" a host doc points at via
+// `@patchwork.mainDraftUrl`. The main draft is bookkeeping only: it is never
+// resolved through (the overlay stays a no-op for main), its `clones` are
+// identity mappings (`cloneUrl === url`, `clonedAt === []`), and its `drafts`
+// holds the user-visible top-level draft list.
 //
 // `mergedAt` is a wall-clock timestamp set when the draft is merged into
 // its parent; absent means "still open". The sidebar uses it to filter
 // merged drafts out of the list.
+//
+// `name` is the user-given display name; absent means the default label
+// ("Draft", or "Main" for the main draft). Renaming main is what creates the
+// main draft doc if it doesn't exist yet.
 export type DraftDoc = {
   "@patchwork": { type: "draft" };
+  isMain?: boolean;
+  name?: string;
   parent: AutomergeUrl;
   drafts: AutomergeUrl[];
   clones: Record<AutomergeUrl, CloneEntry>;
   mergedAt?: number;
 };
 
-// Ephemeral state owned by the draft-list provider. `selectedDraft = null`
-// means "main" — i.e. the host doc itself, no draft overlay.
-export type DraftsState = {
-  drafts: AutomergeUrl[];
-  selectedDraft: AutomergeUrl | null;
+// One member doc's pinned view within a checkpoint. `to` is the heads to render
+// the doc at (a fixed-heads, read-only view); omit it to leave the doc live.
+// `from` is the diff baseline the consumer compares `to` (or live) against;
+// omit it for no diff. A doc whose pinned change is its first has no predecessor,
+// so `from` is `[]` (the whole doc reads as added).
+export type DocCheckpoint = {
+  from?: UrlHeads;
+  to?: UrlHeads;
 };
 
-// Response shape for `draft:baseline { url }`. The draft overlay
-// publishes `heads` as the document's fork-point heads (`clones[url].clonedAt`)
-// once the doc has been cloned in this draft; consumers compute a diff
-// against the live doc state from there. `heads` is `null` while there is no
-// baseline yet (e.g. the doc hasn't been resolved in this draft, or "main" is
-// selected). It is `null` rather than optional so the value is a valid
-// structured-cloneable `JSONValue` crossing the provider channel.
+// A frozen, read-only view of a draft (or main) at a point in its history: maps
+// each member doc's original url to the heads to view it at (`to`) and to diff
+// against (`from`). The selection's `checkedOut` branch gives those heads their
+// meaning, since post-fork changes only exist in that branch's clone.
+//
+// Built from a clicked timeline entry: the clicked doc is pinned exactly to that
+// change, every other member to its latest change at or before the entry's time
+// (approximate but good enough). Docs with no change at or before that time are
+// absent from the map — they didn't exist yet, so they fall through to live.
+export type DraftCheckpoint = Record<AutomergeUrl, DocCheckpoint>;
+
+// Ephemeral, writeable state owned by the draft-list provider and handed to
+// the sidebar via `draft:checked-out`. It holds the selection: which draft is
+// currently checked out. `checkedOut = null` means "main" — i.e. the host doc
+// itself, no draft overlay. The derived drafts list lives separately in the
+// read-only `draft:list` push (`DraftList`).
+//
+// `at` pins the checkout to a history entry: absent/null means the live latest
+// heads (the default), set means a frozen read-only view (see DraftCheckpoint).
+export type CheckedOutDraft = {
+  checkedOut: AutomergeUrl | null;
+  at?: DraftCheckpoint | null;
+};
+
+// Response shape for `draft:baseline { url }`, served by the draft-list provider
+// (see `currentBaseline`). `heads` is the doc's diff baseline: the checkpoint's
+// per-doc `from` when a history entry is pinned, otherwise the checked-out
+// draft's fork-point heads (`clones[url].clonedAt`) for a live draft view.
+// `heads` is `null` when there is no baseline (no clone yet, no pin on main).
+// It is `null` rather than optional so the value is a valid structured-cloneable
+// `JSONValue` crossing the provider channel.
 export type Baseline = {
   heads: UrlHeads | null;
 };
 
-// Convention: any document may carry `@patchwork.drafts` listing the
-// top-level drafts that branch off of it. Each entry is the URL of a
-// `DraftDoc`, which in turn may have its own sub-drafts via `DraftDoc.drafts`.
+// One document that makes up a draft (or main), nested inside `DraftSummary`.
+//
+// On a draft these are the docs the overlay has forked — `cloneUrl` is the
+// per-draft clone and `clonedAt` its fork point (mirrors `CloneEntry`). On
+// "main" they come from the main draft's identity clones (`cloneUrl === url`,
+// `clonedAt === []`) once it exists; before the first draft is created there is
+// no main draft, so membership is observed from `patchwork:mounted` events and
+// both fields are `null`. Like `Baseline`, the nullable fields use `null`
+// rather than optional so the value stays a valid structured-cloneable
+// `JSONValue` crossing the provider channel.
+export type DraftMemberDoc = {
+  url: AutomergeUrl;
+  cloneUrl: AutomergeUrl | null;
+  clonedAt: UrlHeads | null;
+};
+
+// One entry in the read-only `draft:list` push: a draft (or main) together
+// with the member docs that make it up, so a consumer can render a card and
+// its change timeline without loading the `DraftDoc` itself.
+export type DraftSummary = {
+  // The `DraftDoc` url for a real draft; the host/main-draft url for `main`.
+  url: AutomergeUrl;
+  members: DraftMemberDoc[];
+  // Number of sub-drafts (`DraftDoc.drafts.length`), shown in the card meta.
+  childCount: number;
+  // User-given display name (`DraftDoc.name`); `null` (not optional, to stay
+  // structured-cloneable) means unnamed — the card shows its default label.
+  name: string | null;
+};
+
+// Response shape for `draft:list`: the host doc's `main` entry plus the flat,
+// tree-ordered list of its (non-merged) drafts. Read-only and recomputed by
+// the provider; selection lives separately in `CheckedOutDraft`.
+export type DraftList = {
+  main: DraftSummary;
+  drafts: DraftSummary[];
+};
+
+// Convention: a document that has been drafted carries `@patchwork.mainDraftUrl`
+// pointing at its single "main draft" — a `DraftDoc` (with `isMain`) whose
+// `drafts` lists the top-level drafts that branch off of it. The pointer is
+// created lazily on the first draft, so it is absent until then.
 export type HasDrafts = {
   "@patchwork"?: {
     type?: string;
-    drafts?: AutomergeUrl[];
+    mainDraftUrl?: AutomergeUrl;
   };
 };
 

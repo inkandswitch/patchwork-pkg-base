@@ -4,38 +4,27 @@ import {
   stringifyAutomergeUrl,
   type AutomergeUrl,
   type DocHandle,
+  type UrlHeads,
 } from "@automerge/automerge-repo";
 import {
   accept,
-  type DocHandleDescriptor,
+  subscribe,
   type SubscribeEvent,
 } from "@inkandswitch/patchwork-providers";
 
-import type { Baseline, DraftDoc } from "../draft-types.js";
+// Shape of a `repo:handle-descriptor` answer. The one-shot host's
+// patchwork-providers (0.2.2) does not export this type, so it is declared
+// locally; it must stay in sync with the host's `OverlayRepo`.
+type DocHandleDescriptor = {
+  url: AutomergeUrl;
+  cloneUrl?: AutomergeUrl;
+};
+
+import type { CheckedOutDraft, DraftDoc } from "../draft-types.js";
+import { SKIPPED_DATATYPES, canonicalUrl } from "../clone-policy.js";
 
 const HANDLE_DESCRIPTOR_SELECTOR = "repo:handle-descriptor";
-const BASELINE_SELECTOR = "draft:baseline";
-
-// HACK: datatypes the draft overlay must never clone into a draft.
-//
-// The overlay forks *every* document resolved beneath it so edits stay scoped
-// to the draft. But some docs pulled through the overlay are app-global rather
-// than part of the document being drafted: the account doc (read by the context
-// sidebar, which renders inside the overlay) and contact docs (resolved per
-// comment author). Forking those branches global state — account config, user
-// profiles — into a draft, which is wrong and could even merge back into main.
-//
-// The principled fix is to know which documents actually belong to the draft
-// and fork only those — the overlay shouldn't clone a doc just because it was
-// resolved beneath it. Until we have that notion of draft membership we invert
-// the problem with a blunt skip-list: it bakes app-level datatype names into
-// the otherwise-generic overlay and relies on each doc carrying a matching
-// `@patchwork.type`.
-const SKIPPED_DATATYPES: ReadonlySet<string> = new Set([
-  "account",
-  "contact",
-  "draft",
-]);
+const CHECKED_OUT_SELECTOR = "draft:checked-out";
 
 // Mounts on a draft URL and remaps documents resolved beneath it onto
 // per-draft clones, so edits stay inside the draft.
@@ -46,24 +35,31 @@ const SKIPPED_DATATYPES: ReadonlySet<string> = new Set([
 // `{ url, cloneUrl }`: the clone is forked eagerly the first time a document is
 // requested in this draft (recorded in `DraftDoc.clones`), and the editor then
 // reads and writes the clone while still reporting the original url. The fork
-// point is published as `draft:baseline { heads }` so consumers can render
-// a diff against the pre-draft state.
+// point lives in `DraftDoc.clones[url].clonedAt`; the draft-list provider reads
+// it to serve `draft:baseline` (this provider no longer answers that).
 //
-// If the `url` attribute is absent or empty the provider becomes a no-op: it
-// registers no listeners and lets `repo:handle-descriptor`/`draft:baseline`
-// subscriptions bubble up to the root `<repo-provider>`, so the frame can mount
-// this component unconditionally and have "main" fall through to the host repo.
+// On "main" (empty `url`) there is no clone remapping, but the provider still
+// answers `repo:handle-descriptor` so that an active checkpoint can pin nested
+// docs: it returns the original url carrying the checkpoint's `to` heads when one
+// is set. Pinning also applies on a draft, baked onto the clone url. The per-doc
+// `to`/`from` heads live on the checked-out draft (`CheckedOutDraft.at`), read
+// here via the `draft:checked-out` subscription. A non-empty but invalid `url`
+// is a misconfiguration and disables the provider.
 export const DraftOverlayProvider = (element: HTMLElement) => {
   const rawUrl = element.getAttribute("url");
-  if (!rawUrl) return () => {};
-  if (!isValidAutomergeUrl(rawUrl)) {
-    console.warn(
-      `[drafts] <patchwork-view component="patchwork-draft-overlay-provider"> ` +
-        `has an invalid url attribute (got ${JSON.stringify(rawUrl)})`
-    );
-    return () => {};
+  // Empty `url` = "main": no clone remapping, but we still answer
+  // `repo:handle-descriptor` so an active checkpoint can pin nested docs.
+  let draftUrl: AutomergeUrl | null = null;
+  if (rawUrl) {
+    if (!isValidAutomergeUrl(rawUrl)) {
+      console.warn(
+        `[drafts] <patchwork-view component="patchwork-draft-overlay-provider"> ` +
+          `has an invalid url attribute (got ${JSON.stringify(rawUrl)})`
+      );
+      return () => {};
+    }
+    draftUrl = rawUrl;
   }
-  const draftUrl: AutomergeUrl = rawUrl;
 
   const repo = "repo" in window ? window.repo : undefined;
   if (!repo) {
@@ -74,29 +70,38 @@ export const DraftOverlayProvider = (element: HTMLElement) => {
   }
   const liveRepo = repo;
 
-  let draftHandle: DocHandle<DraftDoc> | null = null;
   let disposed = false;
 
   // One eager-clone resolution per original url; de-dupes concurrent requests.
   const cloneResolutions = new Map<AutomergeUrl, Promise<AutomergeUrl>>();
-  // `draft:baseline` subscribers keyed by the canonical target url.
-  const baselineSubscribers = new Map<
-    AutomergeUrl,
-    Set<(baseline: Baseline) => void>
-  >();
 
-  const ready: Promise<DocHandle<DraftDoc>> = (async () => {
-    const handle = await liveRepo.find<DraftDoc>(draftUrl);
-    if (disposed) throw new Error("[drafts] provider disposed mid-load");
-    draftHandle = handle;
-    return handle;
-  })();
-  ready.catch((err) => {
-    console.error(
-      `[drafts] failed to load draft overlay for ${draftUrl}:`,
-      err
-    );
+  // The draft doc backing this overlay (clone bookkeeping). Null on "main".
+  const ready: Promise<DocHandle<DraftDoc>> | null = draftUrl
+    ? (async () => {
+        const handle = await liveRepo.find<DraftDoc>(draftUrl);
+        if (disposed) throw new Error("[drafts] provider disposed mid-load");
+        return handle;
+      })()
+    : null;
+  ready?.catch((err) => {
+    console.error(`[drafts] failed to load draft overlay for ${draftUrl}:`, err);
   });
+
+  // Track the checked-out draft's checkpoint so descriptors can pin a nested doc
+  // to its per-doc `to` heads. The url is served by the ancestor draft-list
+  // provider; we read `at[original].to` live at resolve time (one-shot, so we
+  // never block on this — absent means render live).
+  let checkedOutHandle: DocHandle<CheckedOutDraft> | null = null;
+  const unsubscribeCheckedOut = subscribe<AutomergeUrl>(
+    element,
+    { type: CHECKED_OUT_SELECTOR },
+    (url) => {
+      if (disposed || !isValidAutomergeUrl(url)) return;
+      void liveRepo.find<CheckedOutDraft>(url).then((handle) => {
+        if (!disposed) checkedOutHandle = handle;
+      });
+    }
+  );
 
   const onSubscribe = (event: SubscribeEvent) => {
     const selector = event.detail.selector;
@@ -115,47 +120,47 @@ export const DraftOverlayProvider = (element: HTMLElement) => {
       });
       return;
     }
-
-    if (selector.type === BASELINE_SELECTOR) {
-      const rawTarget = selector.url;
-      if (typeof rawTarget !== "string" || !isValidAutomergeUrl(rawTarget)) {
-        return;
-      }
-      const target = canonicalUrl(rawTarget);
-      accept<Baseline>(event, (respond) => {
-        void ready.then(() => {
-          if (disposed) return;
-          respond(currentBaseline(target));
-        });
-        let set = baselineSubscribers.get(target);
-        if (!set) baselineSubscribers.set(target, (set = new Set()));
-        set.add(respond);
-        return () => {
-          set!.delete(respond);
-          if (set!.size === 0) baselineSubscribers.delete(target);
-        };
-      });
-      return;
-    }
   };
 
   element.addEventListener("patchwork:subscribe", onSubscribe);
   return () => {
     disposed = true;
     element.removeEventListener("patchwork:subscribe", onSubscribe);
-    baselineSubscribers.clear();
+    unsubscribeCheckedOut();
     cloneResolutions.clear();
   };
 
-  // Resolve a `repo:handle-descriptor` request: skipped docs (account, contacts)
-  // resolve straight to the real doc (no `cloneUrl` -> no fork); everything
-  // else is forked into this draft via `resolveClone`.
+  // Resolve a `repo:handle-descriptor` request. The backing url is pinned to the
+  // active checkpoint's `to` heads for this doc (if any) so nested views freeze
+  // with the doc they live in; `OverlayRepo` honors heads on the backing url.
+  //  - On "main" (no draft): no clone, just the (maybe pinned) original.
+  //  - Skipped docs (account, contacts): the real doc, never forked.
+  //  - Everything else on a draft: the per-draft clone (pinned when checked out).
   async function resolveDescriptor(
     original: AutomergeUrl
   ): Promise<DocHandleDescriptor> {
-    if (await isSkippedDoc(original)) return { url: original };
+    const to = checkedOutHandle?.doc()?.at?.[original]?.to ?? undefined;
+    if (!draftUrl || (await isSkippedDoc(original))) {
+      return to
+        ? { url: original, cloneUrl: withHeads(original, to) }
+        : { url: original };
+    }
     const cloneUrl = await resolveClone(original);
-    return { url: original, cloneUrl };
+    return { url: original, cloneUrl: withHeads(cloneUrl, to) };
+  }
+
+  // Stamp `heads` onto `url` (same documentId), or return it unchanged when
+  // there is no pin. Heads ride on the url so `OverlayRepo` resolves the doc at
+  // that point in time.
+  function withHeads(
+    url: AutomergeUrl,
+    heads: UrlHeads | undefined
+  ): AutomergeUrl {
+    if (!heads) return url;
+    return stringifyAutomergeUrl({
+      documentId: parseAutomergeUrl(url).documentId,
+      heads,
+    });
   }
 
   // A doc is skipped when its `@patchwork.type` is in `SKIPPED_DATATYPES`. On
@@ -182,6 +187,7 @@ export const DraftOverlayProvider = (element: HTMLElement) => {
     const cached = cloneResolutions.get(original);
     if (cached) return cached;
     const promise = (async () => {
+      if (!ready) throw new Error("[drafts] resolveClone called without a draft");
       const handle = await ready;
       const existing = handle.doc()?.clones?.[original];
       if (existing) return canonicalUrl(existing.cloneUrl);
@@ -195,27 +201,9 @@ export const DraftOverlayProvider = (element: HTMLElement) => {
         d.clones[original] = { cloneUrl, clonedAt };
       });
 
-      notifyBaseline(original);
       return cloneUrl;
     })();
     cloneResolutions.set(original, promise);
     return promise;
   }
-
-  function currentBaseline(target: AutomergeUrl): Baseline {
-    const heads = draftHandle?.doc()?.clones?.[target]?.clonedAt;
-    return { heads: heads ?? null };
-  }
-
-  function notifyBaseline(target: AutomergeUrl): void {
-    const set = baselineSubscribers.get(target);
-    if (!set) return;
-    const baseline = currentBaseline(target);
-    for (const respond of [...set]) respond(baseline);
-  }
 };
-
-function canonicalUrl(url: AutomergeUrl): AutomergeUrl {
-  const { documentId } = parseAutomergeUrl(url);
-  return stringifyAutomergeUrl({ documentId });
-}

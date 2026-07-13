@@ -119,10 +119,14 @@ export function TldrawTool({
   element: HTMLElement;
 }) {
   const handle = useDocHandle<TLDrawDoc>(docUrl, { suspense: true });
+  // A history-pinned handle (url carries heads) is at fixed heads and rejects
+  // writes, so the whole tool renders read-only.
+  const readOnly = handle.isReadOnly();
   const contactInfo = useContactInfo();
   const store = useAutomergeStore({
     handle,
     userId: contactInfo.userId,
+    readOnly,
     shapeUtils: customShapeUtils,
   });
 
@@ -169,7 +173,7 @@ export function TldrawTool({
         overrides={newDocUiOverrides}
         components={components}
       >
-        <TldrawInner docUrl={docUrl} element={element} />
+        <TldrawInner docUrl={docUrl} element={element} readOnly={readOnly} />
       </Tldraw>
     </DiffStatusContext.Provider>
   );
@@ -280,7 +284,11 @@ function useDeletedGhosts(
   }, [store, handle, diff]);
 }
 
-function TldrawInner(props: { docUrl: AutomergeUrl; element: HTMLElement }) {
+function TldrawInner(props: {
+  docUrl: AutomergeUrl;
+  element: HTMLElement;
+  readOnly: boolean;
+}) {
   const key = useMemo(() => `${props.docUrl}-camera`, [props.docUrl]);
 
   const editor = useEditor();
@@ -299,6 +307,10 @@ function TldrawInner(props: { docUrl: AutomergeUrl; element: HTMLElement }) {
 
   useEffect(() => {
     if (!editor) return;
+
+    // History-pinned views block all canvas editing (the store write-back is
+    // also disabled in useAutomergeStore).
+    editor.updateInstanceState({ isReadonly: props.readOnly });
 
     // Give the NewDocTool the repo it needs to create embedded documents.
     setNewDocToolContext(repo, editor);
@@ -389,7 +401,7 @@ function TldrawInner(props: { docUrl: AutomergeUrl; element: HTMLElement }) {
     }
     editor.on("change", onChange);
     return () => void editor.off("change", onChange);
-  }, [editor]);
+  }, [editor, props.readOnly]);
   return null;
 }
 

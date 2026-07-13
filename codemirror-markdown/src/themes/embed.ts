@@ -2,12 +2,10 @@ import { EditorView } from "@codemirror/view";
 
 export const embedTheme = EditorView.baseTheme({
   ".cm-embed": {
-    display: "flex",
-    flexDirection: "column",
+    display: "block",
     border: "1px solid",
     borderRadius: "4px",
     overflow: "hidden",
-    height: "500px",
   },
   "&light .cm-embed": {
     borderColor: "#ddd",
@@ -59,5 +57,14 @@ export const embedTheme = EditorView.baseTheme({
   },
   "&dark .cm-embed-label": {
     borderBottomColor: "#333",
+  },
+  ".cm-embed patchwork-view": {
+    display: "block",
+    height: "500px",
+    width: "100%",
+  },
+  ".cm-embed patchwork-view > *": {
+    height: "100%",
+    width: "100%",
   },
 });

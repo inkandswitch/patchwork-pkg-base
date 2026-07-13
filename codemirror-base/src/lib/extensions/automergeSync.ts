@@ -31,8 +31,14 @@ export function createSyncExtension<T>(
         })
       : [];
 
+  // Reconfiguring the compartment replaces the sync plugin wholesale (the old
+  // instance is destroyed without seeing this transaction, so the full-doc
+  // reset below is not echoed back into the automerge doc) and the fresh
+  // plugin re-seeds its reconciled heads from the current doc.
   const createReconfigureEffect = (view: EditorView) =>
     createEffect(() => {
+      // The `handle()`/`path()` reads inside `syncExtension` are tracked, so a
+      // reactive prop change re-runs this and rebuilds the plugin.
       view.dispatch({
         effects: sync.reconfigure(syncExtension()),
         changes: {

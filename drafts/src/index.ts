@@ -31,6 +31,18 @@ export const plugins: Plugin<any>[] = [
     },
     unlisted: true,
   },
+  {
+    type: "patchwork:tool",
+    id: "drafts",
+    tags: ["context-tool"],
+    name: "Drafts",
+    icon: "GitBranch",
+    supportedDatatypes: ["account"],
+    async load() {
+      const { renderDraftsSidebar } = await import("./main");
+      return renderDraftsSidebar;
+    },
+  },
   // A `patchwork:component` that takes no document: the render function
   // ignores its handle (it reads everything off `element`), so we pass `null`
   // and it can be slotted in without an account doc.
@@ -49,8 +61,11 @@ export const plugins: Plugin<any>[] = [
 
 export type {
   Baseline,
+  CheckedOutDraft,
   CloneEntry,
   DraftDoc,
-  DraftsState,
+  DraftList,
+  DraftMemberDoc,
+  DraftSummary,
 } from "./draft-types.js";
 export { isDraftDoc } from "./draft-types.js";
