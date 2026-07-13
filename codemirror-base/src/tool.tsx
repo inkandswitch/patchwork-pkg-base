@@ -324,9 +324,9 @@ async function resolveSubDocUrlsOfDoc(
   return Array.from(refs);
 }
 
-// Targets that overlap `emphasisRefs` (selection ∪ highlight) render in a
-// stronger secondary tint; the rest stay in the plain secondary fill. Both are
-// theme tokens, so they adapt to light/dark on their own.
+// Targets that overlap `emphasisRefs` (selection ∪ highlight) render in the
+// solid secondary fill; the rest stay in a faint wash of it. Both keep their
+// text legible (see `commentTargetStyle`) and adapt to light/dark on their own.
 function buildCommentDecorations(
   targetRefs: DocHandle<unknown>[],
   emphasisRefs: DocHandle<unknown>[]
@@ -348,17 +348,26 @@ function buildCommentDecorations(
 }
 
 function commentTargetStyle(isEmphasised: boolean): string {
-  const background = isEmphasised
-    ? "var(--studio-secondary-fill-offset-40)"
-    : "var(--studio-secondary-fill)";
-  // --studio-secondary-line is the luminance-adaptive ink derived to stay legible
-  // ON the secondary fill (black for light accents, white for dark ones), so the
-  // highlighted text reads regardless of the theme's secondary colour. The offset-40
-  // background only mixes 32% toward that ink, so the pairing holds when emphasised too.
+  // The only guaranteed-legible pairing is --studio-secondary-fill (the solid
+  // surface) with --studio-secondary-line (its luminance-adaptive invert ink:
+  // black on light accents, white on dark). The -fill-offset ramp mixes the fill
+  // *toward* that ink, so pairing offset backgrounds with -line text collapses the
+  // contrast — that was the unreadable case. So we never use an offset here:
+  //
+  //   emphasised  -> solid fill + invert ink (max contrast, the strong state)
+  //   plain       -> a faint translucent wash of the fill over the editor
+  //                  background, leaving the editor's own text colour untouched so
+  //                  it keeps whatever contrast it already had.
+  if (isEmphasised) {
+    return `
+      color: var(--studio-secondary-line);
+      border-bottom: 2px solid var(--studio-secondary-line);
+      background-color: var(--studio-secondary-fill);
+    `;
+  }
   return `
-    color: var(--studio-secondary-line);
     border-bottom: 2px solid var(--studio-secondary-line);
-    background-color: ${background};
+    background-color: color-mix(in srgb, var(--studio-secondary-fill) 22%, transparent);
   `;
 }
 
