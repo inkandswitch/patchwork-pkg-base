@@ -197,7 +197,9 @@ function PatchworkFrameInner(props: {
     await ensureAccountSubdocs(props.handle, props.repo);
     await ensureThreepaneConfig(props.handle, props.repo);
     await seedExampleDocuments(props.handle, props.repo);
-  })();
+  })().catch((err) => {
+    console.error("frame: account bootstrap failed", err);
+  });
 
   const [docVersion, setDocVersion] = createSignal(0);
   createEffect(() => {

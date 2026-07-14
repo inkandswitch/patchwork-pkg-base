@@ -21,20 +21,44 @@ export async function seedExampleDocuments(
   repo: Repo
 ) {
   const account = accountHandle.doc();
-  if (!account?.rootFolderUrl || account.exampleDocsSeededAt) return;
+  if (!account?.rootFolderUrl) {
+    console.log("examples: skipped — account has no rootFolderUrl");
+    return;
+  }
+  if (account.exampleDocsSeededAt) {
+    console.log(
+      "examples: skipped — already ran for this account at",
+      new Date(account.exampleDocsSeededAt).toISOString()
+    );
+    return;
+  }
 
+  console.log("examples: claiming marker on account", accountHandle.url);
   accountHandle.change((doc) => {
     if (!doc.exampleDocsSeededAt) doc.exampleDocsSeededAt = Date.now();
   });
 
   const rootFolder = await repo.find<FolderDoc>(account.rootFolderUrl);
-  if (rootFolder.doc()?.docs?.length) return;
+  const existingDocs = rootFolder.doc()?.docs?.length ?? 0;
+  if (existingDocs) {
+    console.log(
+      `examples: skipped — root folder already has ${existingDocs} doc(s); only fresh accounts are seeded`
+    );
+    return;
+  }
 
   const initUrls = await bundleInitScriptUrls();
-  if (!initUrls.length) return;
+  console.log("examples: bundle init scripts:", initUrls);
+  if (!initUrls.length) {
+    console.log("examples: skipped — no static module bundles to ask");
+    return;
+  }
 
   const folderDatatype = await loadDatatypeWhenReady<FolderDoc>("folder");
-  if (!folderDatatype) return;
+  if (!folderDatatype) {
+    console.warn("examples: folder datatype never registered; giving up");
+    return;
+  }
   const folder = await createDocOfDatatype2<FolderDoc>(
     folderDatatype,
     repo,
@@ -47,17 +71,27 @@ export async function seedExampleDocuments(
     try {
       const mod = await import(/* @vite-ignore */ url);
       await mod.default?.(repo, folder);
-    } catch {
-      // Bundle ships no init script (404) or it failed — nothing to seed.
+      console.log("examples: ran init script", url);
+    } catch (err) {
+      // A bundle that ships no init script 404s here — normal, not an error.
+      console.log("examples: init script unavailable or failed", url, err);
     }
   }
 
-  // Don't leave an empty Examples folder if no bundle contributed anything.
-  if (!folder.doc()?.docs?.length) return;
+  const seeded = folder.doc()?.docs?.length ?? 0;
+  if (!seeded) {
+    // Don't leave an empty Examples folder if no bundle contributed anything.
+    console.log("examples: no bundle contributed any documents");
+    return;
+  }
 
   rootFolder.change((doc) => {
     doc.docs.unshift({ name: "Examples", type: "folder", url: folder.url });
   });
+  console.log(
+    `examples: seeded ${seeded} document(s) into Examples folder`,
+    folder.url
+  );
 }
 
 type ModuleWatcherLike = {
@@ -66,18 +100,36 @@ type ModuleWatcherLike = {
 };
 
 /**
+ * The patchwork-tools bundle isn't in every site's default module sources
+ * (some boot from an automerge module-settings doc, which has no init.js),
+ * but its examples should seed everywhere — so it's always consulted.
+ */
+const TOOLS_BUNDLE_INIT_URL = "https://patchwork-tools.netlify.app/init.js";
+
+/**
+ * Fallback for shells with no static manifest at all (automerge-doc module
+ * sources only): the deployed patchwork-base bundle. Not consulted when any
+ * static manifest is configured, because that manifest is usually a copy of
+ * this very bundle (e.g. a localhost dev serve) and URL-dedupe can't tell —
+ * always adding it would seed base's examples twice.
+ */
+const BASE_BUNDLE_INIT_URL = "https://patchwork-base.netlify.app/init.js";
+
+/**
  * The `init.js` URL next to every static (http) module manifest the host is
- * watching. Automerge module-settings docs have no init script. Waits for the
- * watcher's initial load so the bundles' plugins are registered before any
- * example module asks the registry for a datatype.
+ * watching, plus the hardcoded bundles above. Automerge module-settings docs
+ * have no init script. Waits for the watcher's initial load so the bundles'
+ * plugins are registered before any example runs.
  */
 async function bundleInitScriptUrls(): Promise<string[]> {
   const watcher = (
     window as { patchwork?: { packages?: ModuleWatcherLike } }
   ).patchwork?.packages;
-  if (!watcher?.urls) return [];
+  if (!watcher?.urls) return [BASE_BUNDLE_INIT_URL, TOOLS_BUNDLE_INIT_URL];
   await watcher.doneLoading;
-  return Object.values(watcher.urls)
+  const fromManifests = Object.values(watcher.urls)
     .filter((url) => typeof url === "string" && !url.startsWith("automerge:"))
     .map((url) => new URL("init.js", new URL(url, document.baseURI)).href);
+  const base = fromManifests.length ? [] : [BASE_BUNDLE_INIT_URL];
+  return [...new Set([...fromManifests, ...base, TOOLS_BUNDLE_INIT_URL])];
 }

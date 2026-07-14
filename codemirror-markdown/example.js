@@ -1,27 +1,41 @@
 // Example document for fresh accounts (aggregated into the bundle's init.js):
-// a short markdown essay to read and mess with. Standalone: builds the doc
-// shape inline instead of going through the plugin registry.
+// a markdown essay introducing the lab. Standalone: builds the doc shape
+// inline instead of going through the plugin registry.
 
-const CONTENT = `# Working with the garage door up
+const CONTENT = `# Ink & Switch
 
-This document is yours — edit it, break it, delete it.
+An independent research lab exploring the future of tools for thought.
 
-One of the nicest habits in software (and writing, and most crafts) is
-working with the garage door up: doing your work where others can see it,
-half-finished edges and all. Not as a performance, but because unfinished
-work invites collaboration in a way polished work never does.
+We envision a new computer that amplifies human intelligence. A system that
+helps you think more clearly, collaborate more effectively, and is available
+anywhere and anytime. Though the specifics of our work continue to evolve,
+everything we do is in pursuit of this vision.
 
-## Why it works
+## Research Areas
 
-A finished document says *admire me*. A draft says *help me*. When people
-can see the seams — the TODO, the sentence that trails off, the paragraph
-marked "is this right?" — they know where to push.
+Our research spans a wide variety of domains from theoretical computer
+science to practical user experiences. We focus our research on four primary
+themes.
 
-## Try it here
+### Local-first Software
 
-Everything in this folder is a live document. Put your cursor anywhere in
-this essay and start typing. There is no save button; every keystroke is
-already yours, and the history of the document remembers how it got here.
+Exploring software architecture that returns data to users and enables
+collaboration in every tool.
+
+### Malleable Software
+
+Designing software environments where people can customize tools in the
+moment to meet their unique needs.
+
+### Programmable Ink
+
+Discovering a dynamic medium for sketching ideas where adding behaviors and
+interaction is as natural as applying ink to paper.
+
+### Universal Version Control
+
+Building tools to help people explore alternatives, keep track of history,
+and collaborate better, across all kinds of media.
 `;
 
 export default async function example(repo) {
@@ -34,7 +48,7 @@ export default async function example(repo) {
   });
 
   return {
-    name: "Working with the garage door up",
+    name: "Ink & Switch",
     type: "essay",
     url: handle.url,
   };
