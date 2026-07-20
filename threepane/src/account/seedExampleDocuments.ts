@@ -1,8 +1,11 @@
+import debug from "debug";
 import type { DocHandle, Repo } from "@automerge/automerge-repo";
 import { createDocOfDatatype2 } from "@inkandswitch/patchwork-plugins";
 import type { FolderDoc } from "@inkandswitch/patchwork-filesystem";
 import type { AccountDoc } from "../types";
 import { loadDatatypeWhenReady } from "./ensureSubdocs";
+
+const log = debug("patchwork:threepane:examples");
 
 /**
  * Seed a fresh account with example documents by running each static module
@@ -22,18 +25,18 @@ export async function seedExampleDocuments(
 ) {
   const account = accountHandle.doc();
   if (!account?.rootFolderUrl) {
-    console.log("examples: skipped — account has no rootFolderUrl");
+    log("skipped — account has no rootFolderUrl");
     return;
   }
   if (account.exampleDocsSeededAt) {
-    console.log(
-      "examples: skipped — already ran for this account at",
+    log(
+      "skipped — already ran for this account at",
       new Date(account.exampleDocsSeededAt).toISOString()
     );
     return;
   }
 
-  console.log("examples: claiming marker on account", accountHandle.url);
+  log("claiming marker on account", accountHandle.url);
   accountHandle.change((doc) => {
     if (!doc.exampleDocsSeededAt) doc.exampleDocsSeededAt = Date.now();
   });
@@ -41,22 +44,22 @@ export async function seedExampleDocuments(
   const rootFolder = await repo.find<FolderDoc>(account.rootFolderUrl);
   const existingDocs = rootFolder.doc()?.docs?.length ?? 0;
   if (existingDocs) {
-    console.log(
-      `examples: skipped — root folder already has ${existingDocs} doc(s); only fresh accounts are seeded`
+    log(
+      `skipped — root folder already has ${existingDocs} doc(s); only fresh accounts are seeded`
     );
     return;
   }
 
   const initUrls = await bundleInitScriptUrls();
-  console.log("examples: bundle init scripts:", initUrls);
+  log("bundle init scripts:", initUrls);
   if (!initUrls.length) {
-    console.log("examples: skipped — no static module bundles to ask");
+    log("skipped — no static module bundles to ask");
     return;
   }
 
   const folderDatatype = await loadDatatypeWhenReady<FolderDoc>("folder");
   if (!folderDatatype) {
-    console.warn("examples: folder datatype never registered; giving up");
+    log("folder datatype never registered; giving up");
     return;
   }
   const folder = await createDocOfDatatype2<FolderDoc>(
@@ -71,27 +74,24 @@ export async function seedExampleDocuments(
     try {
       const mod = await import(/* @vite-ignore */ url);
       await mod.default?.(repo, folder);
-      console.log("examples: ran init script", url);
+      log("ran init script", url);
     } catch (err) {
       // A bundle that ships no init script 404s here — normal, not an error.
-      console.log("examples: init script unavailable or failed", url, err);
+      log("init script unavailable or failed", url, err);
     }
   }
 
   const seeded = folder.doc()?.docs?.length ?? 0;
   if (!seeded) {
     // Don't leave an empty Examples folder if no bundle contributed anything.
-    console.log("examples: no bundle contributed any documents");
+    log("no bundle contributed any documents");
     return;
   }
 
   rootFolder.change((doc) => {
     doc.docs.unshift({ name: "Examples", type: "folder", url: folder.url });
   });
-  console.log(
-    `examples: seeded ${seeded} document(s) into Examples folder`,
-    folder.url
-  );
+  log(`seeded ${seeded} document(s) into Examples folder`, folder.url);
 }
 
 type ModuleWatcherLike = {

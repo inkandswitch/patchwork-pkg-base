@@ -28,7 +28,7 @@ const MARKDOWN_STYLES: Record<string, any> = {
     overflow: "auto",
   },
   ".cm-scroller": {
-    background: "var(--studio-fill)",
+    background: "var(--text-editor-fill)",
   },
   ".cm-gutter": {
     background: "transparent",

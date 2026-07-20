@@ -21,6 +21,7 @@
     "@inkandswitch/patchwork-providers": "0.3.0",
     "@inkandswitch/patchwork-providers-solid": "0.2.3",
     "@solid-primitives/storage": "^4.3.5",
+    "debug": "^4.4.3",
     "solid-automerge": "^2.0.0",
     "solid-js": "^1.9.10"
   },
@@ -30,6 +31,7 @@
     "@eslint/js": "^9.37.0",
     "@inkandswitch/patchwork-bootloader": "^0.2.8",
     "@types/babel__core": "^7.20.5",
+    "@types/debug": "^4.1.12",
     "@typescript-eslint/parser": "^8.40.0",
     "babel-preset-solid": "^1.9.9",
     "esbuild": "^0.23.1",
