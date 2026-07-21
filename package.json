@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "type": "module",
   "description": "Base packages for the Patchwork system",
+  "private": true,
   "scripts": {
     "build:static": "node scripts/build-static.mjs",
     "build:static:fresh": "node scripts/build-static.mjs --build",
