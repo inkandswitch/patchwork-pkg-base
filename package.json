@@ -1,9 +1,8 @@
 {
   "name": "@inkandswitch/patchwork-pkg-base",
   "version": "0.0.0",
-  "private": true,
   "type": "module",
-  "description": "Core Patchwork tools, plus a static-HTTP aggregate build.",
+  "description": "Base packages for the Patchwork system",
   "scripts": {
     "build:static": "node scripts/build-static.mjs",
     "build:static:fresh": "node scripts/build-static.mjs --build",
