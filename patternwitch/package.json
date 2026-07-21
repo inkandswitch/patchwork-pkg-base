@@ -4,12 +4,11 @@
   "description": "PatternWitch — a pixel painter for Patchwork",
   "type": "module",
   "main": "patternwitch.js",
-  "exports": {
-    ".": "patternwitch.js"
-  },
+  "exports": "./patternwitch.js",
   "scripts": {
-    "build": "echo no build step",
-    "push": "pushwork sync"
+    "build": "echo 'bundleless — nothing to build'",
+    "push": "pushwork sync",
+    "register": "pw-modules add \"$MODULE_SETTINGS_DOC_URL\" \"$(pushwork url)\""
   },
   "keywords": [],
   "author": "Ink & Switch"
