@@ -32,7 +32,7 @@ jobs:
           node-version: 24
           cache: pnpm
 
-      - name: resolve tools bundle preview url
+      - name: resolve package list url
         id: bundle
         run: |
           site=$(curl -sf -H "Authorization: Bearer $NETLIFY_AUTH_TOKEN" \
@@ -50,17 +50,34 @@ jobs:
         id: deploy
         run: |
           set -o pipefail
-          url=$(pnpm --package=netlify-cli dlx netlify deploy \
+          out=$(pnpm --package=netlify-cli dlx netlify deploy \
             --dir=dist \
             --alias="$ALIAS" \
             --message="patchwork-base#${{ github.event.number }} @ ${{ github.event.pull_request.head.sha }}" \
-            --json | jq -er .deploy_url)
-          echo "url=$url" >> "$GITHUB_OUTPUT"
+            --json)
+          echo "$out" | jq .
+          echo "url=$(echo "$out" | jq -er .deploy_url)" >> "$GITHUB_OUTPUT"
+
+      - name: verify the deploy serves this PR's tools bundle
+        env:
+          SHELL_URL: ${{ steps.deploy.outputs.url }}
+          PACKAGE_LIST_URL: ${{ steps.bundle.outputs.url }}
+        run: |
+          set -o pipefail
+          html=$(curl -sfL "$SHELL_URL")
+          for asset in $(echo "$html" | grep -oE '/assets/[A-Za-z0-9_.-]+\.js' | sort -u); do
+            if curl -sfL "$SHELL_URL$asset" | grep -qF "$PACKAGE_LIST_URL"; then
+              echo "ok: $asset references $PACKAGE_LIST_URL"
+              exit 0
+            fi
+          done
+          echo "::error::deployed shell at $SHELL_URL does not reference $PACKAGE_LIST_URL"
+          exit 1
 
       - uses: actions/github-script@v7
         env:
           SHELL_URL: ${{ steps.deploy.outputs.url }}
-          MODULES_URL: ${{ steps.bundle.outputs.url }}
+          PACKAGE_LIST_URL: ${{ steps.bundle.outputs.url }}
         with:
           script: |
             const marker = process.env.MARKER
@@ -72,11 +89,6 @@ jobs:
               `## ${process.env.SHELL_URL}`,
               ``,
               `Patchwork from \`${process.env.SHELL_REPO}\`, tools from this PR at \`${sha}\`.`,
-              `Point any other shell at the same tools with:`,
-              ``,
-              "```js",
-              `localStorage.systemPackageListURL = ${JSON.stringify(process.env.MODULES_URL)}`,
-              "```",
             ].join("\n")
             const {owner, repo} = context.repo
             const issue_number = context.issue.number
