@@ -1,0 +1,50 @@
+name: publish
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - run: npm install -g npm@latest
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build:static:fresh
+
+      - name: prepare static-dist/package.json
+        run: |
+          node -e '
+            const {execSync} = require("node:child_process")
+            const fs = require("node:fs")
+            const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"))
+            delete pkg.private
+            let latest = "0.0.0"
+            try {
+              latest = execSync(`npm view ${pkg.name} version`, {stdio: ["ignore", "pipe", "ignore"]}).toString().trim()
+            } catch {}
+            const [major, minor, patch] = latest.split(".").map(Number)
+            pkg.version = `${major}.${minor}.${patch + 1}`
+            fs.writeFileSync("static-dist/package.json", JSON.stringify(pkg, null, 2) + "\n")
+            console.log(`publishing ${pkg.name}@${pkg.version} (latest was ${latest})`)
+          '
+
+      - name: publish
+        run: npm publish --access public
+        working-directory: static-dist
