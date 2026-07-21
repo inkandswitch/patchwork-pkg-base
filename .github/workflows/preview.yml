@@ -1,0 +1,74 @@
+name: shell preview
+
+on:
+  pull_request:
+
+env:
+  # Netlify site slug that hosts this repo's tools-bundle deploy previews,
+  # i.e. the `<site>` in https://deploy-preview-<pr>--<site>.netlify.app
+  TOOLS_SITE: ${{ vars.TOOLS_NETLIFY_SITE }}
+  SHELL_REPO: inkandswitch/patchwork.inkandswitch.com
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.SHELL_REPO }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.15.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: build shell against this PR's tools bundle
+        env:
+          PATCHWORK_SYSTEM_PACKAGE_LIST_URL: https://deploy-preview-${{ github.event.number }}--${{ env.TOOLS_SITE }}.netlify.app/modules.json
+        run: pnpm build
+
+      - name: deploy
+        id: deploy
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_PREVIEW_SITE_ID }}
+        run: |
+          url=$(pnpm dlx netlify-cli deploy \
+            --dir=dist \
+            --alias="pr-${{ github.event.number }}" \
+            --message="patchwork-base#${{ github.event.number }} @ ${{ github.event.pull_request.head.sha }}" \
+            --json | jq -r .deploy_url)
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/github-script@v7
+        env:
+          SHELL_URL: ${{ steps.deploy.outputs.url }}
+          MODULES_URL: https://deploy-preview-${{ github.event.number }}--${{ env.TOOLS_SITE }}.netlify.app/modules.json
+        with:
+          script: |
+            const marker = "<!-- shell-preview -->"
+            const body = [
+              marker,
+              `**Shell preview:** ${process.env.SHELL_URL}`,
+              ``,
+              `Built from \`${process.env.SHELL_REPO}\` against this PR's tools bundle:`,
+              `\`${process.env.MODULES_URL}\``,
+            ].join("\n")
+            const {owner, repo} = context.repo
+            const issue_number = context.issue.number
+            const comments = await github.rest.issues.listComments({owner, repo, issue_number})
+            const existing = comments.data.find(c => c.body.startsWith(marker))
+            if (existing) {
+              await github.rest.issues.updateComment({owner, repo, comment_id: existing.id, body})
+            } else {
+              await github.rest.issues.createComment({owner, repo, issue_number, body})
+            }
