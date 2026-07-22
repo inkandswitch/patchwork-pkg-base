@@ -225,11 +225,11 @@ export function DocumentAreaRoot(props: DocumentAreaRootProps) {
 }
 
 // Renders the main document inside the draft-overlay provider. The provider
-// mounts pinned to one draft (its `url` attribute) and answers document
-// descriptors one-shot, so switching drafts works by remounting the provider
-// subtree on the checked-out draft (see `draftProviderKey`). Checking a
-// history entry in or out likewise remounts the main view (see `mainViewKey`),
-// since nested docs resolve their checkpoint pin once, at mount.
+// mounts once and follows the checked-out draft itself (via the draft-list
+// provider's `draft:checked-out` doc), re-pointing live document handles in
+// place — so a draft switch remounts nothing here. Only checking a history
+// entry in or out remounts the main view (see `mainViewKey`), since nested
+// docs resolve their checkpoint pin once, at mount.
 //
 // The comments + focus providers and the context (right) sidebar live *inside*
 // the overlay so that, on a draft, comment threads / selection resolve against
@@ -255,14 +255,6 @@ function DraftDocumentArea(props: {
   const [checkedOut] = subscribeDoc<CheckedOutDraft>(props.host, {
     type: "draft:checked-out",
   });
-
-  // The overlay provider resolves descriptors one-shot against the draft in
-  // its `url` attribute, so the whole provider subtree is keyed on the
-  // selection: switching drafts remounts it and every descriptor is
-  // re-requested against the new draft.
-  const draftProviderKey = createMemo<AutomergeUrl | "main">(
-    () => checkedOut()?.checkedOut ?? "main"
-  );
 
   // Registry-driven: whether the context sidebar exists at all (any tabs) — no
   // longer depends on any per-account config, just on whether anything is
@@ -323,67 +315,62 @@ function DraftDocumentArea(props: {
   );
 
   return (
-    <Show when={draftProviderKey()} keyed>
-      {(key) => (
+    <patchwork-view
+      component="patchwork-draft-overlay-provider"
+      ref={setDraftOverlayProviderHost}
+    >
+      <patchwork-view
+        component="patchwork-comments-provider"
+        ref={setCommentsProviderElement}
+      >
         <patchwork-view
-          component="patchwork-draft-overlay-provider"
-          url={key === "main" ? "" : key}
-          ref={setDraftOverlayProviderHost}
+          component="patchwork-focus-provider"
+          ref={setFocusProviderElement}
         >
-          <patchwork-view
-            component="patchwork-comments-provider"
-            ref={setCommentsProviderElement}
-          >
-            <patchwork-view
-              component="patchwork-focus-provider"
-              ref={setFocusProviderElement}
-            >
-              <Show when={areDocProvidersReady()}>
-                <div class="frame__main-column">
-                  <div class="frame__doc-column">
-                    <FrameTopBar
-                      docUrl={props.selectedDocUrl}
-                      toolSlots={props.doctitleSlots}
-                      isLeftCollapsed={props.isLeftCollapsed}
-                      hasContext={hasContext}
-                      isRightCollapsed={props.isRightSidebarCollapsed}
-                      onToggleRight={() =>
-                        props.setIsRightSidebarCollapsed((v) => !v)
-                      }
-                    />
+          <Show when={areDocProvidersReady()}>
+            <div class="frame__main-column">
+              <div class="frame__doc-column">
+                <FrameTopBar
+                  docUrl={props.selectedDocUrl}
+                  toolSlots={props.doctitleSlots}
+                  isLeftCollapsed={props.isLeftCollapsed}
+                  hasContext={hasContext}
+                  isRightCollapsed={props.isRightSidebarCollapsed}
+                  onToggleRight={() =>
+                    props.setIsRightSidebarCollapsed((v) => !v)
+                  }
+                />
 
-                    <div class="main-area">
-                      <MainDocumentView
-                        viewKey={mainViewKey}
-                        selectedDocUrl={pinnedDocUrl}
-                        toolId={props.selectedToolId}
-                        // Always pass a function ref. Passing `ref={undefined}`
-                        // (the isolated path, where no host ref is threaded)
-                        // makes Solid's component-ref codegen fall back to
-                        // assigning the prop, which throws on the getter-only
-                        // reactive props object. A no-op wrapper avoids that.
-                        ref={(el) => props.setMainDocElement?.(el)}
-                      />
-                    </div>
-                  </div>
-
-                  <Show when={hasContext()}>
-                    <ContextSidebar
-                      selectedToolId={props.selectedContextToolId}
-                      setSelectedToolId={props.setSelectedContextToolId}
-                      isCollapsed={props.isRightSidebarCollapsed}
-                      width={props.rightSidebarWidth}
-                      onMouseDown={props.handleMouseDown}
-                      onToggleClick={props.handleToggleClick}
-                      onCollapse={() => props.setIsRightSidebarCollapsed(true)}
-                    />
-                  </Show>
+                <div class="main-area">
+                  <MainDocumentView
+                    viewKey={mainViewKey}
+                    selectedDocUrl={pinnedDocUrl}
+                    toolId={props.selectedToolId}
+                    // Always pass a function ref. Passing `ref={undefined}`
+                    // (the isolated path, where no host ref is threaded)
+                    // makes Solid's component-ref codegen fall back to
+                    // assigning the prop, which throws on the getter-only
+                    // reactive props object. A no-op wrapper avoids that.
+                    ref={(el) => props.setMainDocElement?.(el)}
+                  />
                 </div>
+              </div>
+
+              <Show when={hasContext()}>
+                <ContextSidebar
+                  selectedToolId={props.selectedContextToolId}
+                  setSelectedToolId={props.setSelectedContextToolId}
+                  isCollapsed={props.isRightSidebarCollapsed}
+                  width={props.rightSidebarWidth}
+                  onMouseDown={props.handleMouseDown}
+                  onToggleClick={props.handleToggleClick}
+                  onCollapse={() => props.setIsRightSidebarCollapsed(true)}
+                />
               </Show>
-            </patchwork-view>
-          </patchwork-view>
+            </div>
+          </Show>
         </patchwork-view>
-      )}
-    </Show>
+      </patchwork-view>
+    </patchwork-view>
   );
 }
