@@ -102,6 +102,8 @@ jobs:
               `## ${process.env.SHELL_URL}`,
               ``,
               `Patchwork from \`${process.env.SHELL_REPO}\`, packages from this PR at \`${sha}\`.`,
+              ``,
+              `[build-info.json](${process.env.SHELL_URL}/build-info.json)`,
             ].join("\n")
             const {owner, repo} = context.repo
             const issue_number = context.issue.number
