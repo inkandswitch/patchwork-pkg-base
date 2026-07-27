@@ -19,7 +19,7 @@ import { useEffect, useState } from "react";
 import {
   type DocHandle,
   type DocHandleChangePayload,
-} from "@automerge/automerge-repo";
+} from "@automerge/automerge-repo/slim";
 import {
   useLocalAwareness,
   useRemoteAwareness,

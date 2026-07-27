@@ -1,5 +1,5 @@
 import "./styles.css";
-import type { DocHandle } from "@automerge/automerge-repo";
+import type { DocHandle } from "@automerge/automerge-repo/slim";
 import type { ToolElement } from "@inkandswitch/patchwork-plugins";
 import { getRegistry } from "@inkandswitch/patchwork-plugins";
 import { accept, type SubscribeEvent } from "@inkandswitch/patchwork-providers";

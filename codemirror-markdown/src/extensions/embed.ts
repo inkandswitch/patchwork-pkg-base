@@ -12,7 +12,7 @@ import {
   type DocumentId,
   isValidDocumentId,
   parseAutomergeUrl,
-} from "@automerge/automerge-repo";
+} from "@automerge/automerge-repo/slim";
 import { embedTheme } from "../themes/embed.ts";
 import { openLinkIcon } from "./icons.ts";
 

@@ -6,7 +6,7 @@ import {
 	createEffect,
 	onCleanup,
 } from "solid-js"
-import type {AutomergeUrl} from "@automerge/automerge-repo"
+import type {AutomergeUrl} from "@automerge/automerge-repo/slim"
 import {useChat} from "../context/ChatContext"
 import {useIdentity} from "../context/IdentityContext"
 import {usePresence} from "../context/PresenceContext"

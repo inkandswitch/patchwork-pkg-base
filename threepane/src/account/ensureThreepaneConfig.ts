@@ -1,4 +1,4 @@
-import type { AutomergeUrl, DocHandle, Repo } from "@automerge/automerge-repo";
+import type { AutomergeUrl, DocHandle, Repo } from "@automerge/automerge-repo/slim";
 import { createDocOfDatatype2 } from "@inkandswitch/patchwork-plugins";
 import type { AccountDoc, ThreepaneConfigDoc, ToolRef, ToolSlot } from "../types";
 import { DEFAULT_TRAY_TOOLS } from "../datatypes";

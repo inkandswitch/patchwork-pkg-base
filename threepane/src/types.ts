@@ -1,4 +1,4 @@
-import { AutomergeUrl } from "@automerge/automerge-repo";
+import { AutomergeUrl } from "@automerge/automerge-repo/slim";
 
 /**
  * The account document for a Patchwork frame.

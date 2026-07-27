@@ -3,7 +3,7 @@ import {
   type AutomergeUrl,
   type Repo,
   type DocHandle,
-} from "@automerge/automerge-repo";
+} from "@automerge/automerge-repo/slim";
 import type { AutomergeRepoKeyhive } from "@automerge/automerge-repo-keyhive";
 import { useDocument } from "solid-automerge";
 import type {

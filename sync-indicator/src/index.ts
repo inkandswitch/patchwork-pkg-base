@@ -1,5 +1,5 @@
 import type { ToolImplementation } from "@inkandswitch/patchwork-plugins";
-import type { Repo } from "@automerge/automerge-repo";
+import type { Repo } from "@automerge/automerge-repo/slim";
 
 export const plugins = [
   {

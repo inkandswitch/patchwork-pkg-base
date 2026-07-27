@@ -1,4 +1,4 @@
-import type { AutomergeUrl, Repo } from "@automerge/automerge-repo";
+import type { AutomergeUrl, Repo } from "@automerge/automerge-repo/slim";
 import { getRegistry, isLoadedPlugin } from "@inkandswitch/patchwork-plugins";
 import type {
   DocLink,

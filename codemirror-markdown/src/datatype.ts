@@ -1,5 +1,5 @@
 import { type DatatypeImplementation } from "@inkandswitch/patchwork-plugins";
-import { updateText } from "@automerge/automerge";
+import { updateText } from "@automerge/automerge/slim";
 
 export type MarkdownDoc = {
   content: string;

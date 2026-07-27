@@ -1,4 +1,4 @@
-import type { AutomergeUrl } from '@automerge/automerge-repo';
+import type { AutomergeUrl } from '@automerge/automerge-repo/slim';
 import type { MessageToRouter, MessageToWorker, MessageToWorkerPool } from './protocol';
 
 import { getAccountHandle, getTaskQueues } from './helpers';

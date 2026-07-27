@@ -8,7 +8,7 @@ import {
 	type ParentComponent,
 	type Accessor,
 } from "solid-js"
-import type {DocHandle, AutomergeUrl} from "@automerge/automerge-repo"
+import type {DocHandle, AutomergeUrl} from "@automerge/automerge-repo/slim"
 import type {ChatDoc, PresenceInfo, PresencePayload} from "../types"
 import {useIdentity} from "./IdentityContext"
 

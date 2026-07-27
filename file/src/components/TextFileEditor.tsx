@@ -27,7 +27,7 @@ import {
 	emacsStyleKeymap,
 } from "@codemirror/commands"
 import {automergeSyncPlugin} from "@automerge/automerge-codemirror"
-import {isImmutableString} from "@automerge/automerge-repo"
+import {isImmutableString} from "@automerge/automerge-repo/slim"
 import codemirrorTheme from "../codemirror-theme"
 import {getLanguageExtension} from "../languages"
 import type {FileDoc} from "../types"

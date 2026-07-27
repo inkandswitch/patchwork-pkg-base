@@ -1,5 +1,5 @@
 import {createSignal, createEffect, onCleanup, Show} from "solid-js"
-import type {AutomergeUrl} from "@automerge/automerge-repo"
+import type {AutomergeUrl} from "@automerge/automerge-repo/slim"
 import {loadAudioUrl} from "../lib/blob-cache"
 import {formatDuration} from "../lib/helpers"
 import {SVG_ICONS} from "../lib/svg-icons"

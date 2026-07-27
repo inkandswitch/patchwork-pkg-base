@@ -10,7 +10,7 @@ import {
   type Tooltip,
   type TooltipView,
 } from "@codemirror/view";
-import type { AutomergeUrl } from "@automerge/automerge-repo";
+import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
 import { COMMENT_THREAD_TYPE } from "./comments.ts";
 
 // The data hooks the editor UI needs from its host (the CodeMirror tool). The

@@ -2,7 +2,7 @@ import {
   cursor,
   type AutomergeUrl,
   type DocHandle,
-} from "@automerge/automerge-repo";
+} from "@automerge/automerge-repo/slim";
 
 export type DocWithComments = {
   "@comments"?: {

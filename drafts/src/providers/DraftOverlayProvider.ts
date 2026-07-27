@@ -5,7 +5,7 @@ import {
   type AutomergeUrl,
   type DocHandle,
   type UrlHeads,
-} from "@automerge/automerge-repo";
+} from "@automerge/automerge-repo/slim";
 import {
   accept,
   subscribe,

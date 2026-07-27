@@ -1,4 +1,4 @@
-import type {AutomergeUrl} from "@automerge/automerge-repo"
+import type {AutomergeUrl} from "@automerge/automerge-repo/slim"
 import {getRepo} from "./repo"
 
 const blobCache = new Map<string, string>()

@@ -1,6 +1,6 @@
-import * as Automerge from "@automerge/automerge";
-import type { ChangeMetadata } from "@automerge/automerge";
-import type { DocHandle, Repo } from "@automerge/automerge-repo";
+import * as Automerge from "@automerge/automerge/slim";
+import type { ChangeMetadata } from "@automerge/automerge/slim";
+import type { DocHandle, Repo } from "@automerge/automerge-repo/slim";
 import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
 import {
   makeDocumentProjection,

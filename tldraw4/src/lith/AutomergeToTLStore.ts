@@ -1,5 +1,5 @@
 import type { TLRecord, RecordId, TLStore } from "@tldraw/tldraw";
-import * as Automerge from "@automerge/automerge";
+import * as Automerge from "@automerge/automerge/slim";
 
 export function applyAutomergePatchesToTLStore(
   patches: Automerge.Patch[],

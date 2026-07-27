@@ -12,14 +12,14 @@ import {
 import { RangeSet, StateEffect, type Range } from "@codemirror/state";
 
 /** Automerge */
-import { next as Automerge } from "@automerge/automerge";
-import type { Prop as AutomergeProp } from "@automerge/automerge";
+import { next as Automerge } from "@automerge/automerge/slim";
+import type { Prop as AutomergeProp } from "@automerge/automerge/slim";
 import {
   decodeHeads,
   type Doc,
   type DocHandle,
   type UrlHeads,
-} from "@automerge/automerge-repo";
+} from "@automerge/automerge-repo/slim";
 
 // Carries the diff baseline (fork-point heads) from the provider subscription
 // into the editor. Dispatched only when the baseline changes (i.e. on fork),

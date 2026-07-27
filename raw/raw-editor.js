@@ -1,8 +1,8 @@
 import {createSignal, createMemo, createEffect, onCleanup, untrack} from "solid-js"
 import {render} from "solid-js/web"
 import html from "solid-js/html"
-import * as Automerge from "@automerge/automerge"
-import {isValidAutomergeUrl, isImmutableString} from "@automerge/automerge-repo"
+import * as Automerge from "@automerge/automerge/slim"
+import {isValidAutomergeUrl, isImmutableString} from "@automerge/automerge-repo/slim"
 import {EditorView, keymap} from "@codemirror/view"
 import {EditorState} from "@codemirror/state"
 

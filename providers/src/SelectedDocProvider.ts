@@ -1,4 +1,4 @@
-import { type AutomergeUrl } from "@automerge/automerge-repo";
+import { type AutomergeUrl } from "@automerge/automerge-repo/slim";
 import { accept, type SubscribeEvent } from "@inkandswitch/patchwork-providers";
 import type { OpenDocumentEvent } from "@inkandswitch/patchwork-elements";
 

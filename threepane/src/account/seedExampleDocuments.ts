@@ -1,5 +1,5 @@
 import debug from "debug";
-import type { DocHandle, Repo } from "@automerge/automerge-repo";
+import type { DocHandle, Repo } from "@automerge/automerge-repo/slim";
 import { createDocOfDatatype2 } from "@inkandswitch/patchwork-plugins";
 import type { FolderDoc } from "@inkandswitch/patchwork-filesystem";
 import type { AccountDoc } from "../types";

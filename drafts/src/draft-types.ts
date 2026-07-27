@@ -1,4 +1,4 @@
-import type { AutomergeUrl, UrlHeads } from "@automerge/automerge-repo";
+import type { AutomergeUrl, UrlHeads } from "@automerge/automerge-repo/slim";
 
 // One COW relationship between an original doc and the per-draft clone we
 // write to. `clonedAt`/`mergedAt` capture the fork and join points on the

@@ -1,11 +1,11 @@
 import Debug from "debug";
-import * as A from "@automerge/automerge";
+import * as A from "@automerge/automerge/slim";
 import {
   type DocHandle,
   type StorageId,
   type UrlHeads,
   type PeerId,
-} from "@automerge/automerge-repo";
+} from "@automerge/automerge-repo/slim";
 import {
   useRepo,
   RepoContext,

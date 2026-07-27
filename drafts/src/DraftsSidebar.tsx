@@ -14,9 +14,9 @@ import type {
   DocHandle,
   Repo,
   UrlHeads,
-} from "@automerge/automerge-repo";
-import { decodeHeads, encodeHeads } from "@automerge/automerge-repo";
-import * as Automerge from "@automerge/automerge";
+} from "@automerge/automerge-repo/slim";
+import { decodeHeads, encodeHeads } from "@automerge/automerge-repo/slim";
+import * as Automerge from "@automerge/automerge/slim";
 import { getRegistry, isLoadedPlugin } from "@inkandswitch/patchwork-plugins";
 import {
   subscribe,

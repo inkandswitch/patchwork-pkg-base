@@ -1,4 +1,4 @@
-import type { AutomergeUrl, DocHandle } from "@automerge/automerge-repo";
+import type { AutomergeUrl, DocHandle } from "@automerge/automerge-repo/slim";
 
 /**
  * The `@patchwork.type` stamped on a comment thread so a datatype (and thus a

@@ -1,6 +1,6 @@
 import {createSignal, createMemo, createEffect, Show, onMount, onCleanup} from "solid-js"
-import type {DocHandle, AutomergeUrl} from "@automerge/automerge-repo"
-import {updateText, splice} from "@automerge/automerge"
+import type {DocHandle, AutomergeUrl} from "@automerge/automerge-repo/slim"
+import {updateText, splice} from "@automerge/automerge/slim"
 import {applyAutomerge} from "../lib/automerge-ops"
 import type {ChatDoc} from "../types"
 import type {FeatureSelector} from "../features"
@@ -344,7 +344,7 @@ export function ChatRoot(props: {
 ## Patchwork / Automerge
 Docs are Automerge CRDTs synced peer-to-peer.
 - \`const h = await window.repo.find("automerge:…")\` → handle; \`h.doc()\` reads a snapshot; \`h.change(d => { d.x = … })\` mutates; \`h.on("change", fn)\` listens.
-- \`import { splice } from "@automerge/automerge"\` for text edits. Docs can't hold \`undefined\` — use \`null\` or \`delete d.x\`.
+- \`import { splice } from "@automerge/automerge/slim"\` for text edits. Docs can't hold \`undefined\` — use \`null\` or \`delete d.x\`.
 
 ## Tools
 Call a tool with a fenced block; you get the result back, then continue:
@@ -412,7 +412,7 @@ Keep responses concise. When you build a tool, briefly say what it does.`
 ## Patchwork / Automerge
 Docs are Automerge CRDTs synced peer-to-peer.
 - \`const h = await window.repo.find("automerge:…")\` → handle; \`h.doc()\` reads a snapshot; \`h.change(d => { d.x = … })\` mutates; \`h.on("change", fn)\` listens.
-- \`import { splice } from "@automerge/automerge"\` for text edits. Docs can't hold \`undefined\` — use \`null\` or \`delete d.x\`.
+- \`import { splice } from "@automerge/automerge/slim"\` for text edits. Docs can't hold \`undefined\` — use \`null\` or \`delete d.x\`.
 
 ## Tools
 Call a tool with a fenced block; you get the result back, then continue:

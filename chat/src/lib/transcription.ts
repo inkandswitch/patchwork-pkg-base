@@ -7,7 +7,7 @@
  * "transcription", mime "audio/webm;codecs=opus" — match chat's doc shape). The
  * model + provider come from the account doc.
  */
-import type {AutomergeUrl} from "@automerge/automerge-repo"
+import type {AutomergeUrl} from "@automerge/automerge-repo/slim"
 import {
 	transcribeDoc,
 	getExistingTranscription as getExisting,

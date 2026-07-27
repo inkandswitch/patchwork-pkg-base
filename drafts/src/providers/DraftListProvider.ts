@@ -5,7 +5,7 @@ import {
   type DocHandle,
   type Repo,
   type UrlHeads,
-} from "@automerge/automerge-repo";
+} from "@automerge/automerge-repo/slim";
 import { accept, type SubscribeEvent } from "@inkandswitch/patchwork-providers";
 import type {
   MountedEvent,

@@ -1,4 +1,4 @@
-import type { DocHandle } from "@automerge/automerge-repo";
+import type { DocHandle } from "@automerge/automerge-repo/slim";
 import type { AccountDoc } from "../types";
 
 /**

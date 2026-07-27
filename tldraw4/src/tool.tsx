@@ -1,5 +1,5 @@
-import type { AutomergeUrl, DocHandle } from "@automerge/automerge-repo";
-import { decodeHeads, type UrlHeads } from "@automerge/automerge-repo";
+import type { AutomergeUrl, DocHandle } from "@automerge/automerge-repo/slim";
+import { decodeHeads, type UrlHeads } from "@automerge/automerge-repo/slim";
 import {
   RepoContext,
   useDocHandle,

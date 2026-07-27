@@ -1,7 +1,7 @@
 import { makeDocumentProjection } from "solid-automerge";
 import { Show } from "solid-js";
 import { render } from "solid-js/web";
-import type { DocHandle, Repo } from "@automerge/automerge-repo";
+import type { DocHandle, Repo } from "@automerge/automerge-repo/slim";
 import type { PatchworkViewElement } from "@inkandswitch/patchwork-elements";
 
 import type { PatchworkToolProps, SideboardAccountDoc } from "../types.ts";

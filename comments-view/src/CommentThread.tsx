@@ -17,7 +17,7 @@ import {
   type AutomergeUrl,
   type DocHandle,
   type Repo,
-} from "@automerge/automerge-repo";
+} from "@automerge/automerge-repo/slim";
 import { subscribeDoc } from "@inkandswitch/patchwork-providers-solid";
 import { type ToolElement } from "@inkandswitch/patchwork-plugins";
 import {

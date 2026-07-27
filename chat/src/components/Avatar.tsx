@@ -1,5 +1,5 @@
 import {Show, createMemo, createSignal} from "solid-js"
-import type {AutomergeUrl} from "@automerge/automerge-repo"
+import type {AutomergeUrl} from "@automerge/automerge-repo/slim"
 import {automergeUrlToServiceWorkerUrl} from "@inkandswitch/patchwork-filesystem"
 
 const computerPngUrl = new URL("../../computer.png", import.meta.url).href

@@ -20,7 +20,7 @@ import {
   stringifyAutomergeUrl,
   type AutomergeUrl,
   type UrlHeads,
-} from "@automerge/automerge-repo";
+} from "@automerge/automerge-repo/slim";
 import { subscribeDoc } from "@inkandswitch/patchwork-providers-solid";
 import { makePersisted } from "@solid-primitives/storage";
 import {

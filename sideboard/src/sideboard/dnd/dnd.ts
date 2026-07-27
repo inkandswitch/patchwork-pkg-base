@@ -1,5 +1,5 @@
 import { createSignal } from "solid-js";
-import type { AutomergeUrl } from "@automerge/automerge-repo";
+import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
 
 export const [dragging, setDragging] = createSignal(false);
 export const [copyMode, setCopyMode] = createSignal(false);

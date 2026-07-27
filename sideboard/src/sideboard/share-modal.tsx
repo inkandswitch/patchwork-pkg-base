@@ -6,7 +6,7 @@ import {
   onCleanup,
   createMemo,
 } from "solid-js";
-import type { AutomergeUrl } from "@automerge/automerge-repo";
+import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
 import {
   Access,
   ContactCard,

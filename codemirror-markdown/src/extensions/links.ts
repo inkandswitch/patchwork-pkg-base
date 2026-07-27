@@ -8,7 +8,7 @@ import {
 } from "@codemirror/view";
 import { Range } from "@codemirror/state";
 import { syntaxTree } from "@codemirror/language";
-import { isValidAutomergeUrl } from "@automerge/automerge-repo";
+import { isValidAutomergeUrl } from "@automerge/automerge-repo/slim";
 import { linkTheme } from "../themes/links.ts";
 
 /**

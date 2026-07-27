@@ -1,6 +1,6 @@
 import { For, Show } from "solid-js";
 import { useDocHandle } from "solid-automerge";
-import type { AutomergeUrl, DocHandle } from "@automerge/automerge-repo";
+import type { AutomergeUrl, DocHandle } from "@automerge/automerge-repo/slim";
 import { subscribe } from "@inkandswitch/patchwork-providers-solid";
 import { SyncIndicator } from "./SyncIndicator";
 import "./styles.css";
