@@ -2,7 +2,7 @@ import {
   encodeHeads,
   isValidAutomergeUrl,
   stringifyAutomergeUrl,
-} from "@automerge/automerge-repo";
+} from "@automerge/automerge-repo/slim";
 import { Automerge } from "@automerge/automerge-repo/slim";
 
 const toCamelCase = (str) => {
