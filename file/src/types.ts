@@ -1,7 +1,7 @@
 // File document types
 
-import {ImmutableString} from "@automerge/automerge-repo"
-import {UnixFileEntry} from "@inkandswitch/patchwork-filesystem"
+import type {ImmutableString} from "@automerge/automerge-repo"
+import type {UnixFileEntry} from "@inkandswitch/patchwork-filesystem"
 
 export type TextFileDoc = {
 	name: string
