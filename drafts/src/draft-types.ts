@@ -161,6 +161,11 @@ export type DraftMemberDoc = {
 export type DraftSummary = {
   // The `DraftDoc` url for a real draft; the host/main-draft url for `main`.
   url: AutomergeUrl;
+  // What this draft was forked off (`DraftDoc.parent`): the main draft's url
+  // for a top-level draft, another draft's url for a sub-fork. `null` on the
+  // main entry itself. The sidebar uses it to place the merge button on the
+  // parent's card and to indent nested cards.
+  parent: AutomergeUrl | null;
   members: DraftMemberDoc[];
   // Number of sub-drafts (`DraftDoc.drafts.length`), shown in the card meta.
   childCount: number;

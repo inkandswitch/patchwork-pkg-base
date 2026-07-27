@@ -108,6 +108,7 @@ export const DraftListProvider = (element: HTMLElement) => {
   let draftList: DraftList = {
     main: {
       url: docUrl,
+      parent: null,
       members: [],
       childCount: 0,
       name: null,
@@ -411,6 +412,7 @@ export const DraftListProvider = (element: HTMLElement) => {
       if (!doc || doc.mergedAt !== undefined) continue;
       drafts.push({
         url,
+        parent: doc.parent ?? null,
         members: clonesToMembers(doc.clones),
         childCount: doc.drafts.length,
         name: doc.name ?? null,
@@ -440,6 +442,7 @@ export const DraftListProvider = (element: HTMLElement) => {
     if (mainClones && Object.keys(mainClones).length > 0) {
       return {
         url,
+        parent: null,
         members: clonesToMembers(mainClones),
         childCount,
         name,
@@ -451,7 +454,7 @@ export const DraftListProvider = (element: HTMLElement) => {
       .filter((u) => skipVerdicts.get(u) !== true)
       .map((u) => ({ url: u, cloneUrl: null, clonedAt: null }))
       .sort(byMemberUrl);
-    return { url, members, childCount, name, changeGroupCacheUrl };
+    return { url, parent: null, members, childCount, name, changeGroupCacheUrl };
   }
 
   // The diff baseline for `target`: the checkpoint's per-doc `from`, written
@@ -535,6 +538,8 @@ export const DraftListProvider = (element: HTMLElement) => {
   }
 };
 
+// Depth-first pre-order, so a fork lists directly beneath the draft it was
+// forked off (the sidebar indents by parent depth).
 async function collectAllDrafts(
   repo: Repo,
   roots: readonly AutomergeUrl[],
@@ -556,10 +561,8 @@ async function collectAllDrafts(
       tracked.set(url, h);
       h.on("change", onNewChange);
     }
-    const drafts = h.doc()?.drafts ?? [];
-    for (const child of drafts) {
-      if (isValidAutomergeUrl(child)) queue.push(child);
-    }
+    const drafts = (h.doc()?.drafts ?? []).filter(isValidAutomergeUrl);
+    queue.unshift(...drafts);
   }
   return order;
 }
@@ -591,6 +594,7 @@ function draftListsEqual(a: DraftList, b: DraftList): boolean {
 function summariesEqual(a: DraftSummary, b: DraftSummary): boolean {
   return (
     a.url === b.url &&
+    a.parent === b.parent &&
     a.childCount === b.childCount &&
     a.name === b.name &&
     a.changeGroupCacheUrl === b.changeGroupCacheUrl &&

@@ -17,7 +17,6 @@ import type {
 } from "@automerge/automerge-repo";
 import { decodeHeads, encodeHeads } from "@automerge/automerge-repo";
 import * as Automerge from "@automerge/automerge";
-import { getRegistry, isLoadedPlugin } from "@inkandswitch/patchwork-plugins";
 import {
   subscribe,
   subscribeDoc,
@@ -32,6 +31,7 @@ import type {
   DraftDoc,
   DraftList,
   DraftMemberDoc,
+  DraftSummary,
   HasDrafts,
 } from "./draft-types";
 import {
@@ -45,6 +45,7 @@ import {
 const EMPTY_DRAFT_LIST: DraftList = {
   main: {
     url: "" as AutomergeUrl,
+    parent: null,
     members: [],
     childCount: 0,
     name: null,
@@ -55,7 +56,7 @@ const EMPTY_DRAFT_LIST: DraftList = {
 };
 
 // Bump on each deploy to eyeball whether the latest build has synced.
-const DRAFTS_VERSION = "0.0.31";
+const DRAFTS_VERSION = "0.0.39";
 
 // Logged at module load so the console shows which build is running even
 // before the panel renders.
@@ -108,15 +109,6 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
   // driving the editor diff. Non-null only while the eye is open and a
   // version is pinned; that is also exactly when the handle renders.
   const [baseliner, setBaseliner] = createSignal<BaselineState | null>(null);
-
-  // A version being dragged out of a history timeline (from a group row or
-  // the scrubber sticker). While set, the actions area shows a drop zone
-  // that forks a new draft at that version; cleared on drop or dragend.
-  const [dragVersion, setDragVersion] = createSignal<{
-    members: DraftMemberDoc[];
-    head: ChangeRef;
-  } | null>(null);
-  const [dropActive, setDropActive] = createSignal(false);
 
   // The derived drafts list (read-only): main plus each draft with its member
   // docs, recomputed and pushed by the provider.
@@ -378,7 +370,19 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     });
   });
 
-  const onCreateDraft = async () => {
+  // Fork the current selection as a new child draft. `atVersion` picks the
+  // fork point (the two menu items): true clones every member doc at the
+  // heads it had as of the scrubbed version, false forks at the latest
+  // heads. The new draft is parented to the selection — merging it later
+  // lands back here, not on main. Pre-populating `DraftDoc.clones` means the
+  // overlay's lazy `resolveClone` reuses these entries instead of forking
+  // the originals at current heads (which matters when forking off a draft:
+  // the clones must branch off the draft's clones). Forking main live needs
+  // no eager clones — main's members are the originals, so the lazy path is
+  // exactly right. Members with no changes at or before a pinned version
+  // (created later) are left out; the version's docs don't reference them
+  // yet, so they are normally never resolved beneath the draft.
+  const onForkSelection = async (atVersion: boolean) => {
     if (isFolder()) return;
     const docHandle = hostDocHandle();
     if (!docHandle) return;
@@ -388,73 +392,61 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
       return;
     }
 
-    // Top-level drafts branch off the main draft and live in its `drafts`
-    // list. The main draft is created lazily the first time we draft this doc.
-    const mainDraft = await ensureMainDraft(repo, docHandle);
-    const draft = repo.create<DraftDoc>({
-      "@patchwork": { type: "draft" },
-      parent: mainDraft.url,
-      drafts: [],
-      clones: {},
-    });
-    mainDraft.change((d) => {
-      d.drafts.push(draft.url);
-    });
-    selectDraft(draft.url);
-  };
-
-  // Fork a new top-level draft off a historical version: every member doc is
-  // cloned at the heads it had as of `head` (the dragged-out change), not at
-  // the live latest. Pre-populating `DraftDoc.clones` here means the overlay's
-  // lazy `resolveClone` reuses these entries instead of forking at current
-  // heads. Members with no changes at or before the version (created later)
-  // are left out; the version's docs don't reference them yet, so they are
-  // normally never resolved beneath the draft.
-  const onCreateDraftFromVersion = async (
-    members: DraftMemberDoc[],
-    head: ChangeRef
-  ) => {
-    if (isFolder()) return;
-    const docHandle = hostDocHandle();
-    if (!docHandle) return;
-    const repo = getRepo();
-    if (!repo) {
-      console.warn("[drafts] window.repo is not set");
-      return;
-    }
-
-    // Reuse the scrub machinery to resolve per-doc heads at this version
-    // (only the `to`s are read, so no diff baseline).
-    const checkpoint = await computeCheckpoint(repo, members, head, "none");
+    const parentUrl = selected(); // null = main
+    const members = membersFor(parentUrl);
+    const head = atVersion ? (scrubber()?.head ?? null) : null;
 
     const clones: Record<AutomergeUrl, CloneEntry> = {};
-    for (const member of members) {
-      const to = checkpoint[member.url]?.to;
-      if (!to) continue;
-      let handle: DocHandle<unknown> | null = null;
-      try {
-        // Clone the doc the timeline read its changes from (the draft's clone
-        // when dragging out of a draft), pinned to the version's heads.
-        // Keyed by the original url so baselines and merge-back resolve.
-        handle = await repo.find<unknown>(member.cloneUrl ?? member.url);
-        const clone = cloneAtVersion(repo, handle, to);
-        clones[member.url] = { cloneUrl: clone.url, clonedAt: to };
-      } catch (err) {
-        reportForkFailure(
-          handle ? collectForkDiagnostic(handle, member, to) : null,
-          err
-        );
+    if (head) {
+      // Reuse the scrub machinery to resolve per-doc heads at this version
+      // (only the `to`s are read, so no diff baseline).
+      const checkpoint = await computeCheckpoint(repo, members, head, "none");
+      for (const member of members) {
+        const to = checkpoint[member.url]?.to;
+        if (!to) continue;
+        let handle: DocHandle<unknown> | null = null;
+        try {
+          // Clone the doc the timeline read its changes from (the draft's
+          // clone when forking off a draft), pinned to the version's heads.
+          // Keyed by the original url so baselines and merge-back resolve.
+          handle = await repo.find<unknown>(member.cloneUrl ?? member.url);
+          const clone = cloneAtVersion(repo, handle, to);
+          clones[member.url] = { cloneUrl: clone.url, clonedAt: to };
+        } catch (err) {
+          reportForkFailure(
+            handle ? collectForkDiagnostic(handle, member, to) : null,
+            err
+          );
+        }
+      }
+    } else if (parentUrl) {
+      // Forking a draft at its latest heads: branch each member off the
+      // draft's clone (not the original, which lacks the draft's changes).
+      for (const member of members) {
+        try {
+          const source = await repo.find<unknown>(
+            member.cloneUrl ?? member.url
+          );
+          const clonedAt = source.heads();
+          const clone = repo.clone(source);
+          clones[member.url] = { cloneUrl: clone.url, clonedAt };
+        } catch (err) {
+          console.warn("[drafts] failed to fork member:", member, err);
+        }
       }
     }
 
     const mainDraft = await ensureMainDraft(repo, docHandle);
+    const parentHandle = parentUrl
+      ? await repo.find<DraftDoc>(parentUrl)
+      : mainDraft;
     const draft = repo.create<DraftDoc>({
       "@patchwork": { type: "draft" },
-      parent: mainDraft.url,
+      parent: parentHandle.url,
       drafts: [],
       clones,
     });
-    mainDraft.change((d) => {
+    parentHandle.change((d) => {
       d.drafts.push(draft.url);
     });
     selectDraft(draft.url);
@@ -480,10 +472,63 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     });
   };
 
+  // The selected draft's summary and parent, driving the merge button on the
+  // selected draft's header (it merges up into the parent).
+  const selectedSummary = createMemo<DraftSummary | null>(
+    () => list().drafts.find((s) => s.url === selected()) ?? null
+  );
+  const mergeParentUrl = createMemo<AutomergeUrl | null>(
+    () => selectedSummary()?.parent ?? null
+  );
+  // Display name of the merge target (the parent): the tooltip and the
+  // confirm dialog both name it.
+  const mergeTargetName = createMemo<string>(() => {
+    const parentUrl = mergeParentUrl();
+    if (parentUrl === null || parentUrl === list().main.url) {
+      return list().main.name ?? "Main";
+    }
+    return list().drafts.find((s) => s.url === parentUrl)?.name ?? "Draft";
+  });
+
+  // Label of the menu's fork-from-version item, e.g. "Fork from Jul 24,
+  // 3:12 PM" — the change the scrubber sits on. Null (item hidden) while
+  // the timeline isn't pinned.
+  const forkAtLabel = createMemo<string | null>(() => {
+    if (!isPinned()) return null;
+    const time = scrubber()?.head.time;
+    if (!time) return null;
+    return `Fork from ${formatVersionTime(time)}`;
+  });
+
+  // True while the menu's merge item is hovered: the target card (the
+  // selected draft's parent) lights up via `data-merge-target`.
+  const [mergeHighlight, setMergeHighlight] = createSignal(false);
+
+  // Nesting depth for a card's indentation: hops up the parent chain until
+  // main (a top-level draft's parent is the main draft, which isn't in the
+  // drafts list, so it counts 0). Cycle-guarded — parents are plain urls.
+  const draftDepth = (summary: DraftSummary): number => {
+    const byUrl = new Map(list().drafts.map((s) => [s.url, s]));
+    const seen = new Set<AutomergeUrl>();
+    let depth = 0;
+    let parent = summary.parent;
+    while (parent && byUrl.has(parent) && !seen.has(parent)) {
+      seen.add(parent);
+      depth++;
+      parent = byUrl.get(parent)!.parent;
+    }
+    return depth;
+  };
+
+  // Merge the selected draft into its parent — the draft it was forked off,
+  // or main for a top-level draft — then check the parent out. The merged
+  // draft's `mergedAt` stamp hides it from the list.
   const onMergeDraft = async () => {
     const draftUrl = selected();
     if (!draftUrl) return;
-    if (!window.confirm("Merge this draft into the main document?")) return;
+    const parentUrl = mergeParentUrl();
+    if (!window.confirm(`Merge this draft into "${mergeTargetName()}"?`))
+      return;
     const repo = getRepo();
     if (!repo) {
       console.warn("[drafts] window.repo is not set");
@@ -491,7 +536,42 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     }
     const draftHandle = await repo.find<DraftDoc>(draftUrl);
     await mergeDraft(repo, draftHandle);
-    selectDraft(null);
+    selectDraft(parentUrl && parentUrl !== list().main.url ? parentUrl : null);
+  };
+
+  // Delete the selected draft: unlink it from its parent's `drafts` list,
+  // which drops it — along with any drafts forked from it — from every
+  // peer's tree walk. Nothing is merged and the docs themselves are left in
+  // place; the draft just becomes unreachable.
+  const onDeleteDraft = async () => {
+    const draftUrl = selected();
+    if (!draftUrl) return;
+    const childCount = selectedSummary()?.childCount ?? 0;
+    const warning =
+      childCount > 0
+        ? "Delete this draft? Drafts forked from it will be deleted too. This can't be undone."
+        : "Delete this draft? This can't be undone.";
+    if (!window.confirm(warning)) return;
+    const repo = getRepo();
+    if (!repo) {
+      console.warn("[drafts] window.repo is not set");
+      return;
+    }
+    const parentUrl = mergeParentUrl();
+    let parentHandle: DocHandle<DraftDoc>;
+    if (parentUrl) {
+      parentHandle = await repo.find<DraftDoc>(parentUrl);
+    } else {
+      // Legacy drafts without a `parent` field hang off the main draft.
+      const docHandle = hostDocHandle();
+      if (!docHandle) return;
+      parentHandle = await ensureMainDraft(repo, docHandle);
+    }
+    parentHandle.change((d) => {
+      const i = d.drafts.indexOf(draftUrl);
+      if (i >= 0) d.drafts.splice(i, 1);
+    });
+    selectDraft(parentUrl && parentUrl !== list().main.url ? parentUrl : null);
   };
 
   return (
@@ -500,27 +580,6 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
         when={hostDoc()}
         fallback={<div class="drafts-empty">No document selected.</div>}
       >
-        <Show when={isMainSelected()}>
-          <div class="drafts-actions drafts-actions--top">
-            <button
-              class="drafts-btn drafts-btn--primary"
-              disabled={isFolder()}
-              onClick={onCreateDraft}
-              title={
-                isFolder()
-                  ? "Drafts aren't supported for folders yet"
-                  : "Create a new draft off this document"
-              }
-            >
-              New draft
-            </button>
-            <Show when={isFolder()}>
-              <span class="drafts-hint">
-                Drafts aren't supported for folders yet.
-              </span>
-            </Show>
-          </div>
-        </Show>
         <div class="drafts-list">
           <MainCard
             hostDocUrl={hostDocHandle()?.url}
@@ -536,16 +595,18 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
               onBaselineScrub(null, list().main.members, base)
             }
             baseliner={() => (isMainSelected() ? baseliner() : null)}
-            onDragVersion={(head) =>
-              setDragVersion(
-                head ? { members: list().main.members, head } : null
-              )
-            }
             hasCheckpoint={isMainSelected() && isPinned()}
             onReturnToLatest={clearCheckpoint}
             eyeOpen={isMainSelected() && eyeOpen()}
             eyeDisabled={!isPinned()}
             onToggleEye={toggleEye}
+            forkDisabled={isFolder()}
+            onFork={() => void onForkSelection(false)}
+            forkAtLabel={forkAtLabel()}
+            onForkAt={() => void onForkSelection(true)}
+            isMergeTarget={
+              mergeHighlight() && mergeParentUrl() === list().main.url
+            }
           />
           <For each={list().drafts}>
             {(summary) => (
@@ -556,6 +617,7 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
                 mainDocUrl={hostDocHandle()?.url}
                 isSelected={selected() === summary.url}
                 name={summary.name}
+                depth={draftDepth(summary)}
                 onRename={(name) => void onRename(summary.url, name)}
                 onSelect={selectDraft}
                 onScrub={(scrub) =>
@@ -570,56 +632,24 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
                 baseliner={() =>
                   selected() === summary.url ? baseliner() : null
                 }
-                onDragVersion={(head) =>
-                  setDragVersion(
-                    head ? { members: summary.members, head } : null
-                  )
-                }
                 hasCheckpoint={selected() === summary.url && isPinned()}
                 onReturnToLatest={clearCheckpoint}
                 eyeOpen={selected() === summary.url && eyeOpen()}
                 eyeDisabled={false}
                 onToggleEye={toggleEye}
+                onFork={() => void onForkSelection(false)}
+                forkAtLabel={forkAtLabel()}
+                onForkAt={() => void onForkSelection(true)}
+                mergeLabel={`Merge into "${mergeTargetName()}"`}
+                onMerge={() => void onMergeDraft()}
+                onMergeHover={setMergeHighlight}
+                onDelete={() => void onDeleteDraft()}
+                isMergeTarget={
+                  mergeHighlight() && mergeParentUrl() === summary.url
+                }
               />
             )}
           </For>
-        </div>
-        <div class="drafts-actions">
-          <Show when={dragVersion()}>
-            <div
-              class="drafts-dropzone"
-              data-over={dropActive() ? "" : undefined}
-              onDragEnter={(e) => {
-                e.preventDefault();
-                setDropActive(true);
-              }}
-              onDragOver={(e) => {
-                e.preventDefault();
-                if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
-              }}
-              onDragLeave={() => setDropActive(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                const version = dragVersion();
-                setDropActive(false);
-                setDragVersion(null);
-                if (version) {
-                  void onCreateDraftFromVersion(version.members, version.head);
-                }
-              }}
-            >
-              Drop to fork a new draft from this version
-            </div>
-          </Show>
-          <Show when={!isMainSelected()}>
-            <button
-              class="drafts-btn drafts-btn--warning"
-              onClick={onMergeDraft}
-              title="Merge this draft into Main"
-            >
-              Merge into Main
-            </button>
-          </Show>
         </div>
       </Show>
       <div class="drafts-version">v{DRAFTS_VERSION}</div>
@@ -627,24 +657,44 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
   );
 }
 
-// Merges every cloned doc back into its original, recording per-clone
-// merge heads for auditing, and marks the draft as merged.
+// Merges every cloned doc back into the parent draft's copy of it — the
+// parent's clone when it has one, the original otherwise (the main draft's
+// identity clones make those the same thing, so a top-level draft merges
+// into the originals) — recording per-clone merge heads for auditing, and
+// marks the draft as merged (which hides it from the list).
 async function mergeDraft(
   repo: Repo,
   draftHandle: DocHandle<DraftDoc>
 ): Promise<void> {
-  const entries = Object.entries(draftHandle.doc()?.clones ?? {}) as [
+  const doc = draftHandle.doc();
+  let parentClones: Record<AutomergeUrl, CloneEntry> = {};
+  const parentUrl = doc?.parent;
+  if (parentUrl) {
+    try {
+      const parent = await repo.find<DraftDoc>(parentUrl);
+      parentClones = parent.doc()?.clones ?? {};
+    } catch (err) {
+      console.warn(
+        "[drafts] failed to load parent draft for merge; " +
+          "falling back to merging into the originals:",
+        parentUrl,
+        err
+      );
+    }
+  }
+  const entries = Object.entries(doc?.clones ?? {}) as [
     AutomergeUrl,
     CloneEntry,
   ][];
   for (const [originalUrl, entry] of entries) {
-    if (entry.cloneUrl === originalUrl) continue;
-    const [original, clone] = await Promise.all([
-      repo.find<unknown>(originalUrl),
+    const targetUrl = parentClones[originalUrl]?.cloneUrl ?? originalUrl;
+    if (entry.cloneUrl === targetUrl) continue;
+    const [target, clone] = await Promise.all([
+      repo.find<unknown>(targetUrl),
       repo.find<unknown>(entry.cloneUrl),
     ]);
-    original.merge(clone);
-    const mergedAt = original.heads();
+    target.merge(clone);
+    const mergedAt = target.heads();
     draftHandle.change((d) => {
       const e = d.clones[originalUrl];
       if (e) e.mergedAt = mergedAt;
@@ -958,15 +1008,26 @@ function MainCard(props: {
   scrubber: Accessor<ScrubberState | null>;
   onBaselineScrub: (base: BaselineState) => void;
   baseliner: Accessor<BaselineState | null>;
-  onDragVersion: (head: ChangeRef | null) => void;
   hasCheckpoint: boolean;
   onReturnToLatest: () => void;
   eyeOpen: boolean;
   eyeDisabled: boolean;
   onToggleEye: () => void;
+  forkDisabled: boolean;
+  onFork: () => void;
+  forkAtLabel: string | null;
+  onForkAt: () => void;
+  // True while the merge menu item is hovered and this card is the target.
+  isMergeTarget: boolean;
 }) {
+  const [menuOpen, setMenuOpen] = createSignal(false);
   return (
-    <div class="draft-card" data-selected={props.isSelected ? "" : undefined}>
+    <div
+      class="draft-card"
+      data-selected={props.isSelected ? "" : undefined}
+      data-menu-open={menuOpen() ? "" : undefined}
+      data-merge-target={props.isMergeTarget ? "" : undefined}
+    >
       {/* A div, not a <button>: the rename input rendered inside would be
           invalid (and misbehave) nested in a button. */}
       <div
@@ -980,7 +1041,7 @@ function MainCard(props: {
             fallback="Main"
             onRename={props.onRename}
           />
-          {/* Shown left of the eye while the timeline is pinned: drops the
+          {/* Shown left of the tools while the timeline is pinned: drops the
               pin and returns to the live latest heads. It lives inside the
               clickable header, so the click is stopped from also
               re-selecting the card. */}
@@ -998,11 +1059,20 @@ function MainCard(props: {
             </button>
           </Show>
           <Show when={props.isSelected}>
-            <EyeToggle
-              open={props.eyeOpen}
-              disabled={props.eyeDisabled}
-              onToggle={props.onToggleEye}
-            />
+            <span class="draft-card-tools">
+              <EyeToggle
+                open={props.eyeOpen}
+                disabled={props.eyeDisabled}
+                onToggle={props.onToggleEye}
+              />
+              <CardMenu
+                forkDisabled={props.forkDisabled}
+                onFork={props.onFork}
+                forkAtLabel={props.forkAtLabel}
+                onForkAt={props.onForkAt}
+                onOpenChange={setMenuOpen}
+              />
+            </span>
           </Show>
         </div>
       </div>
@@ -1016,7 +1086,6 @@ function MainCard(props: {
           onBaselineScrub={props.onBaselineScrub}
           baseliner={props.baseliner}
           eyeOpen={() => props.eyeOpen}
-          onDragVersion={props.onDragVersion}
           onReturnToLatest={props.onReturnToLatest}
         />
       </Show>
@@ -1031,21 +1100,46 @@ function DraftCard(props: {
   mainDocUrl: AutomergeUrl | undefined;
   isSelected: boolean;
   name: string | null;
+  // Nesting depth below main (0 = top-level draft); indents the card so a
+  // fork reads as a child of the card above it. Rendering adds one level so
+  // every draft — main's children included — sits indented under the Main
+  // card.
+  depth: number;
   onRename: (name: string | null) => void;
   onSelect: (url: AutomergeUrl) => void;
   onScrub: (scrub: ScrubberState) => void;
   scrubber: Accessor<ScrubberState | null>;
   onBaselineScrub: (base: BaselineState) => void;
   baseliner: Accessor<BaselineState | null>;
-  onDragVersion: (head: ChangeRef | null) => void;
   hasCheckpoint: boolean;
   onReturnToLatest: () => void;
   eyeOpen: boolean;
   eyeDisabled: boolean;
   onToggleEye: () => void;
+  onFork: () => void;
+  forkAtLabel: string | null;
+  onForkAt: () => void;
+  // Menu item text naming the merge target (this draft's parent, e.g.
+  // `Merge into "Main"`); merging goes up.
+  mergeLabel: string;
+  onMerge: () => void;
+  // Fires with true/false as the merge item is hovered/left, so the parent
+  // card can light up as the target.
+  onMergeHover: (over: boolean) => void;
+  // True while the merge menu item is hovered and this card is the target.
+  isMergeTarget: boolean;
+  // Unlinks the draft (and its forks) from the tree, after a confirm dialog.
+  onDelete: () => void;
 }) {
+  const [menuOpen, setMenuOpen] = createSignal(false);
   return (
-    <div class="draft-card" data-selected={props.isSelected ? "" : undefined}>
+    <div
+      class="draft-card"
+      data-selected={props.isSelected ? "" : undefined}
+      data-menu-open={menuOpen() ? "" : undefined}
+      data-merge-target={props.isMergeTarget ? "" : undefined}
+      style={{ "margin-left": `${Math.min(props.depth + 1, 5)}rem` }}
+    >
       {/* A div, not a <button>: see MainCard. */}
       <div
         class="draft-card-header"
@@ -1073,11 +1167,25 @@ function DraftCard(props: {
             </button>
           </Show>
           <Show when={props.isSelected}>
-            <EyeToggle
-              open={props.eyeOpen}
-              disabled={props.eyeDisabled}
-              onToggle={props.onToggleEye}
-            />
+            <span class="draft-card-tools">
+              <EyeToggle
+                open={props.eyeOpen}
+                disabled={props.eyeDisabled}
+                onToggle={props.onToggleEye}
+              />
+              <CardMenu
+                onFork={props.onFork}
+                forkAtLabel={props.forkAtLabel}
+                onForkAt={props.onForkAt}
+                merge={{
+                  label: props.mergeLabel,
+                  onMerge: props.onMerge,
+                  onHoverTarget: props.onMergeHover,
+                }}
+                onDelete={props.onDelete}
+                onOpenChange={setMenuOpen}
+              />
+            </span>
           </Show>
         </div>
       </div>
@@ -1091,11 +1199,263 @@ function DraftCard(props: {
           onBaselineScrub={props.onBaselineScrub}
           baseliner={props.baseliner}
           eyeOpen={() => props.eyeOpen}
-          onDragVersion={props.onDragVersion}
           onReturnToLatest={props.onReturnToLatest}
         />
       </Show>
     </div>
+  );
+}
+
+// The "⋯" context menu in a selected card's title. Items: fork at the
+// latest heads, fork from the scrubbed version (only while the timeline is
+// pinned), and — on draft cards — merge up into the parent. Hovering the
+// merge item highlights the target card via `onHoverTarget`. The dropdown
+// is anchored to the trigger; `onOpenChange` mirrors the open state up so
+// the card can lift its overflow clipping while the list is showing.
+function CardMenu(props: {
+  forkDisabled?: boolean;
+  onFork: () => void;
+  // "Fork from Jul 24, 3:12 PM" while pinned; null hides the item.
+  forkAtLabel: string | null;
+  onForkAt: () => void;
+  // Draft cards only: the merge-up item.
+  merge?: {
+    label: string;
+    onMerge: () => void;
+    onHoverTarget: (over: boolean) => void;
+  };
+  // Draft cards only: the delete item (confirmed via a dialog in the
+  // handler).
+  onDelete?: () => void;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [open, setOpenSignal] = createSignal(false);
+  const setOpen = (v: boolean) => {
+    setOpenSignal(v);
+    props.onOpenChange(v);
+    if (!v) props.merge?.onHoverTarget(false);
+  };
+  // The menu unmounts with its card's selection; reset what was mirrored up.
+  onCleanup(() => setOpen(false));
+
+  createEffect(() => {
+    if (!open()) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    onCleanup(() => document.removeEventListener("keydown", onKey));
+  });
+
+  // Every item click: don't bubble into the header's select, close, run.
+  const pick = (e: MouseEvent, action: () => void) => {
+    e.stopPropagation();
+    setOpen(false);
+    action();
+  };
+
+  return (
+    <span class="draft-menu">
+      <button
+        type="button"
+        class="draft-card-action"
+        data-active={open() ? "" : undefined}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen(!open());
+        }}
+        title="Draft actions"
+      >
+        <EllipsisIcon />
+      </button>
+      <Show when={open()}>
+        {/* Invisible click-catcher behind the list: any click outside the
+            items closes the menu without doing anything else. */}
+        <div
+          class="draft-menu-backdrop"
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen(false);
+          }}
+        />
+        <div class="draft-menu-list">
+          <button
+            type="button"
+            class="draft-menu-item"
+            disabled={props.forkDisabled}
+            title={
+              props.forkDisabled
+                ? "Drafts aren't supported for folders yet"
+                : "Fork a new draft from the latest version"
+            }
+            onClick={(e) => pick(e, props.onFork)}
+          >
+            <GitBranchIcon />
+            Fork
+          </button>
+          <Show when={props.forkAtLabel}>
+            {(label) => (
+              <button
+                type="button"
+                class="draft-menu-item"
+                title="Fork a new draft from the version you're viewing"
+                onClick={(e) => pick(e, props.onForkAt)}
+              >
+                <HistoryIcon />
+                {label()}
+              </button>
+            )}
+          </Show>
+          <Show when={props.merge}>
+            {(merge) => (
+              <>
+                <div class="draft-menu-separator" />
+                <button
+                  type="button"
+                  class="draft-menu-item"
+                  title="Merge this draft into the highlighted card and hide it"
+                  onClick={(e) => pick(e, merge().onMerge)}
+                  onMouseEnter={() => merge().onHoverTarget(true)}
+                  onMouseLeave={() => merge().onHoverTarget(false)}
+                >
+                  <GitMergeIcon />
+                  {merge().label}
+                </button>
+              </>
+            )}
+          </Show>
+          <Show when={props.onDelete}>
+            {(onDelete) => (
+              <>
+                <div class="draft-menu-separator" />
+                <button
+                  type="button"
+                  class="draft-menu-item draft-menu-item--danger"
+                  title="Deletes this draft and any drafts forked from it"
+                  onClick={(e) => pick(e, onDelete())}
+                >
+                  <TrashIcon />
+                  Delete draft
+                </button>
+              </>
+            )}
+          </Show>
+        </div>
+      </Show>
+    </span>
+  );
+}
+
+// "Jul 24, 3:12 PM" (with the year when it isn't the current one), for the
+// fork-from-version menu item.
+function formatVersionTime(ms: number): string {
+  const date = new Date(ms);
+  const sameYear = date.getFullYear() === new Date().getFullYear();
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: sameYear ? undefined : "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function GitBranchIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <line x1="6" x2="6" y1="3" y2="15" />
+      <circle cx="18" cy="6" r="3" />
+      <circle cx="6" cy="18" r="3" />
+      <path d="M18 9a9 9 0 0 1-9 9" />
+    </svg>
+  );
+}
+
+function GitMergeIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <circle cx="18" cy="18" r="3" />
+      <circle cx="6" cy="6" r="3" />
+      <path d="M6 21V9a9 9 0 0 0 9 9" />
+    </svg>
+  );
+}
+
+function EllipsisIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <circle cx="12" cy="12" r="1" />
+      <circle cx="19" cy="12" r="1" />
+      <circle cx="5" cy="12" r="1" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path d="M3 6h18" />
+      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+      <line x1="10" x2="10" y1="11" y2="17" />
+      <line x1="14" x2="14" y1="11" y2="17" />
+    </svg>
+  );
+}
+
+// A clock rewinding: the fork-from-a-past-version item.
+function HistoryIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
+      <path d="M12 7v5l4 2" />
+    </svg>
   );
 }
 
@@ -1293,7 +1653,6 @@ function DraftChangesList(props: {
   onBaselineScrub: (base: BaselineState) => void;
   baseliner: Accessor<BaselineState | null>;
   eyeOpen: Accessor<boolean>;
-  onDragVersion: (head: ChangeRef | null) => void;
   onReturnToLatest: () => void;
 }) {
   const repo = "repo" in window ? window.repo : undefined;
@@ -1735,16 +2094,6 @@ function DraftChangesList(props: {
     target.addEventListener("pointercancel", onUp);
   };
 
-  // Start a native drag carrying a version out of the timeline. The payload
-  // rides in a component signal (source and drop zone share the panel);
-  // dataTransfer is only set so the browser actually starts the drag.
-  const beginVersionDrag = (ev: DragEvent, head: ChangeRef) => {
-    if (!ev.dataTransfer) return;
-    ev.dataTransfer.setData("text/plain", `${head.docUrl}#${head.hash}`);
-    ev.dataTransfer.effectAllowed = "copy";
-    props.onDragVersion(head);
-  };
-
   // The exact change the scrubber head sits on, recovered through the
   // on-demand scan; feeds the sticker that overlays the group row with the
   // version being looked at. It is suppressed when the head sits exactly on
@@ -1773,22 +2122,6 @@ function DraftChangesList(props: {
     return computeEditCounts(change.doc, change.hash, change.deps);
   });
 
-  // The sticker's title, resolved lazily per member doc and cached.
-  const [titles, setTitles] = createSignal<Record<string, string>>({});
-  createEffect(() => {
-    const change = headChange();
-    if (!change) return;
-    if (titles()[change.docUrl] !== undefined) return;
-    void resolveDocTitle(change.doc, change.docUrl).then((title) => {
-      setTitles((t) => ({ ...t, [change.docUrl]: title }));
-    });
-  });
-  const headTitle = (): string => {
-    const change = headChange();
-    if (!change) return "";
-    return titles()[change.docUrl] ?? shortUrl(change.docUrl);
-  };
-
   return (
     <div class="draft-card-changes">
       <Show
@@ -1804,14 +2137,6 @@ function DraftChangesList(props: {
                   group={group}
                   rowRef={(el) => rowEls.set(group.id, el)}
                   onSelect={() => selectGroup(group)}
-                  onVersionDragStart={(e) =>
-                    beginVersionDrag(e, {
-                      docUrl: group.newestMemberUrl,
-                      hash: group.newestHash,
-                      time: group.endTime,
-                    })
-                  }
-                  onVersionDragEnd={() => props.onDragVersion(null)}
                 />
               )}
             </For>
@@ -1835,27 +2160,17 @@ function DraftChangesList(props: {
                 onPointerDown={beginDrag}
               />
               {/* Pinned inside a group: overlay the row with the exact
-                  version the head sits on. Draggable — dragging it out forks
-                  a new draft at that version. */}
+                  version the head sits on (the card's Fork button forks
+                  from it). */}
               <Show when={headChange()}>
                 {(change) => (
                   <div
                     class="draft-scrubber-sticker"
-                    draggable={true}
-                    title="Drag out to fork a new draft from this version"
-                    onDragStart={(e) =>
-                      beginVersionDrag(e, {
-                        docUrl: change().docUrl,
-                        hash: change().hash,
-                        time: change().time,
-                      })
-                    }
-                    onDragEnd={() => props.onDragVersion(null)}
+                    title="The version being viewed — Fork below to branch from here"
                   >
                     <span class="draft-sticker-time">
                       {formatTime(change().time)}
                     </span>
-                    <span class="draft-sticker-title">{headTitle()}</span>
                     <span class="draft-sticker-spacer" />
                     <EditCounts
                       additions={headCounts()?.additions ?? 0}
@@ -1904,27 +2219,19 @@ function DraftChangesList(props: {
 // One time group, rendered as a single non-expandable row: author avatars,
 // the group's newest timestamp, and the aggregated +/- counts. Clicking the
 // row parks the scrubber at the top of the group (the scrubber token is the
-// selection indicator — the row itself doesn't highlight). Dragging the row
-// out forks a new draft at the group's newest change (the same version
-// clicking pins); dragstart only fires past the movement threshold, so
-// click-to-select is unaffected.
+// selection indicator — the row itself doesn't highlight).
 function TimeGroupRow(props: {
   group: CachedGroup;
   rowRef: (el: HTMLElement) => void;
   onSelect: () => void;
-  onVersionDragStart: (e: DragEvent) => void;
-  onVersionDragEnd: () => void;
 }) {
   return (
     <button
       type="button"
       class="draft-group-row"
       ref={props.rowRef}
-      title="View the draft as of this group — drag out to fork a draft from it"
+      title="View the draft as of this group"
       onClick={props.onSelect}
-      draggable={true}
-      onDragStart={props.onVersionDragStart}
-      onDragEnd={props.onVersionDragEnd}
     >
       <AuthorAvatars actors={props.group.actors} />
       <span class="draft-group-time">{formatTime(props.group.endTime)}</span>
@@ -2079,44 +2386,6 @@ async function computeCheckpoint(
     }
   }
   return checkpoint;
-}
-
-// Resolve a document's display title: prefer its cached `@patchwork.title`,
-// otherwise ask its datatype for one, falling back to a short url. Mirrors the
-// sideboard's `docLinkFromUrl` but reuses an already-loaded doc.
-async function resolveDocTitle(
-  doc: unknown,
-  url: AutomergeUrl
-): Promise<string> {
-  try {
-    const meta = (doc as { "@patchwork"?: { title?: string; type?: string } })[
-      "@patchwork"
-    ];
-    if (typeof meta?.title === "string" && meta.title) return meta.title;
-
-    const type = meta?.type;
-    if (type) {
-      const registry = getRegistry("patchwork:datatype");
-      const datatype = registry.get(type);
-      if (datatype) {
-        await registry.load(datatype.id);
-        if (isLoadedPlugin(datatype)) {
-          const title = datatype.module.getTitle(doc);
-          if (title) return title;
-        }
-      }
-    }
-  } catch (err) {
-    console.warn("[drafts] failed to resolve title for:", url, err);
-  }
-  return shortUrl(url);
-}
-
-// "automerge:4NMNnk…AVdXu" → a compact, fixed-width label for a doc url.
-function shortUrl(url: AutomergeUrl): string {
-  const id = url.replace(/^automerge:/, "");
-  if (id.length <= 10) return id;
-  return `${id.slice(0, 6)}…${id.slice(-4)}`;
 }
 
 // ---- Author attribution ----------------------------------------------------

@@ -12,19 +12,22 @@
   --drafts-font: var(--studio-family-sans, system-ui, sans-serif);
   --drafts-mono: var(--studio-family-code, ui-monospace, monospace);
   --drafts-primary: var(--studio-primary-fill, var(--studio-primary, #3b82f6));
-  --drafts-primary-line: var(--studio-primary-line, var(--studio-fill, white));
-  --drafts-primary-fg: var(--drafts-primary-line);
   /* The accent used as ink on the ambient background (accent-coloured text,
      not a filled surface); contrast-tuned separately from the fill. */
   --drafts-primary-text: var(--studio-primary-text, #2563eb);
-  --drafts-warning: var(--studio-warning-fill, var(--studio-warning, #f59e0b));
-  --drafts-warning-fg: var(--studio-warning-line, var(--studio-fill, white));
+  /* Danger as ink (the menu's delete item). */
+  --drafts-danger-text: var(--studio-danger-text, var(--studio-danger, #dc2626));
   /* Diff edit-size colors, from the theme's diff palette. */
   --drafts-added: var(--studio-added, #16a34a);
   --drafts-deleted: var(--studio-deleted, #dc2626);
   --drafts-radius: var(--studio-radius-md, 0.5rem);
   --drafts-radius-sm: var(--studio-radius-sm, 0.25rem);
   --drafts-shadow-sm: var(--studio-shadow-sm, 0 1px 2px 0 rgb(0 0 0 / 0.05));
+  --drafts-shadow-md: var(
+    --studio-shadow-md,
+    0 4px 6px -1px rgb(0 0 0 / 0.1),
+    0 2px 4px -2px rgb(0 0 0 / 0.1)
+  );
 }
 }
 
@@ -49,76 +52,6 @@
   gap: 0.25rem;
 }
 
-.drafts-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.25rem;
-}
-
-/* The panel-level actions row above the cards (the "New draft" button). */
-.drafts-actions--top {
-  align-items: stretch;
-}
-
-.drafts-hint {
-  font-size: 0.75rem;
-  font-style: italic;
-  color: var(--drafts-faint-fg);
-}
-
-/* Drop target for a version dragged out of a history timeline (group row or
-   scrubber sticker); only rendered while such a drag is in flight. Dropping
-   forks a new draft at that version. */
-.drafts-dropzone {
-  align-self: stretch;
-  padding: 0.75rem 0.5rem;
-  border: 1.5px dashed var(--drafts-primary);
-  border-radius: var(--drafts-radius-sm);
-  font-size: 0.75rem;
-  color: var(--drafts-primary-text);
-  text-align: center;
-}
-
-.drafts-dropzone[data-over] {
-  background: color-mix(in oklch, var(--drafts-primary) 12%, transparent);
-}
-
-.drafts-btn {
-  font-family: inherit;
-  font-size: 0.875rem;
-  line-height: 1.25rem;
-  padding: 0.25rem 0.75rem;
-  border: 1px solid transparent;
-  border-radius: var(--drafts-radius-sm);
-  cursor: pointer;
-}
-
-.drafts-btn:not(:disabled):hover {
-  filter: brightness(0.95);
-}
-
-.drafts-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.drafts-btn--primary {
-  background: var(--drafts-primary);
-  color: var(--drafts-primary-fg);
-}
-
-.drafts-btn--warning {
-  background: var(--drafts-warning);
-  color: var(--drafts-warning-fg);
-}
-
-.drafts-btn--ghost {
-  background: transparent;
-  border-color: var(--drafts-border);
-  color: var(--drafts-fg);
-}
-
 .draft-card {
   background: var(--drafts-bg);
   border: 1px solid var(--drafts-border);
@@ -136,6 +69,21 @@
   border-color: color-mix(in oklch, var(--drafts-primary) 35%, var(--drafts-border));
 }
 
+/* While the context menu is showing, lift the card's clipping so the
+   dropdown can extend past a short card. */
+.draft-card[data-menu-open] {
+  overflow: visible;
+}
+
+/* While the menu's "Merge into …" item is hovered, the target card (the
+   draft's parent) lights up so you can see where the changes will land. */
+.draft-card[data-merge-target] {
+  border-color: var(--drafts-primary);
+  box-shadow:
+    0 0 0 1px var(--drafts-primary),
+    var(--drafts-shadow-sm);
+}
+
 .draft-card-header {
   /* The header is a div (a rename input can't nest in a button), which,
      unlike a button, doesn't default to border-box — without this the
@@ -149,6 +97,9 @@
   text-align: left;
   background: transparent;
   border: none;
+  /* Round the top corners itself: the card's overflow clipping is lifted
+     while the menu is open, so the hover background can't rely on it. */
+  border-radius: calc(var(--drafts-radius) - 1px) calc(var(--drafts-radius) - 1px) 0 0;
   cursor: pointer;
   font-family: inherit;
   color: inherit;
@@ -219,6 +170,126 @@
   max-height: 32rem;
 }
 
+/* Right-aligned icon cluster in the selected card's title: the eye, fork,
+   and (on drafts) merge-up buttons. */
+.draft-card-tools {
+  flex-shrink: 0;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.125rem;
+}
+
+/* Icon actions in the card title (fork, merge): same look as the eye. */
+.draft-card-action {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  border: none;
+  border-radius: var(--studio-radius, 0.25rem);
+  background: transparent;
+  color: var(--drafts-faint-fg);
+  cursor: pointer;
+}
+
+.draft-card-action:hover:not(:disabled) {
+  background: var(--drafts-hover-bg);
+  color: var(--drafts-primary-text);
+}
+
+.draft-card-action:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* The menu trigger stays lit while its dropdown is showing. */
+.draft-card-action[data-active] {
+  background: var(--drafts-hover-bg);
+  color: var(--drafts-primary-text);
+}
+
+/* ---- The card-title context menu (⋯): trigger + dropdown ---- */
+
+/* Anchor for the absolutely positioned dropdown. */
+.draft-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+/* Invisible click-catcher behind the dropdown; closes the menu. */
+.draft-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.draft-menu-list {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  right: 0;
+  z-index: 41;
+  min-width: 13rem;
+  display: flex;
+  flex-direction: column;
+  padding: 0.25rem;
+  background: var(--drafts-bg);
+  border: 1px solid var(--drafts-border);
+  border-radius: var(--drafts-radius-sm);
+  box-shadow: var(--drafts-shadow-md);
+}
+
+.draft-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.375rem 0.5rem;
+  border: none;
+  border-radius: var(--drafts-radius-sm);
+  background: transparent;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  text-align: left;
+  color: var(--drafts-fg);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.draft-menu-item:hover:not(:disabled) {
+  background: var(--drafts-hover-bg);
+}
+
+.draft-menu-item:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.draft-menu-item svg {
+  flex: none;
+  color: var(--drafts-muted-fg);
+}
+
+/* The destructive delete item (and its confirm step) reads in danger ink. */
+.draft-menu-item--danger {
+  color: var(--drafts-danger-text);
+}
+
+.draft-menu-item--danger:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--drafts-danger-text) 12%, transparent);
+}
+
+.draft-menu-item--danger svg {
+  color: inherit;
+}
+
+.draft-menu-separator {
+  height: 1px;
+  margin: 0.25rem;
+  background: var(--drafts-border);
+}
+
 /* Sits in the card title, left-aligned right after the name, while the
    timeline is pinned; drops the pin and returns to the latest version. */
 .draft-card-return {
@@ -238,11 +309,10 @@
   background: var(--drafts-hover-bg);
 }
 
-/* The diff toggle (eye), right-aligned in the card title. Active = diff
+/* The diff toggle (eye) in the card title's tool cluster. Active = diff
    highlighting showing (the checkpoint carries baselines). */
 .draft-card-eye {
   flex-shrink: 0;
-  margin-left: auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -551,9 +621,7 @@
 /* While pinned, a chip anchored to the head line overlays the group row's
    time/summary with the exact change the line sits on. Painted above
    everything in the changes body (opaque, topmost z-index) so neither the
-   head line nor the row content shows through. Interactive as a drag handle:
-   dragging it out of the timeline forks a new draft at that version (which
-   is why it takes pointer events, shadowing the row beneath it). */
+   head line nor the row content shows through. */
 .draft-scrubber-sticker {
   position: absolute;
   top: -10px;
@@ -571,25 +639,11 @@
   font-size: 0.6875rem;
   white-space: nowrap;
   overflow: hidden;
-  pointer-events: auto;
-  cursor: grab;
-}
-
-.draft-scrubber-sticker:active {
-  cursor: grabbing;
 }
 
 .draft-sticker-time {
   flex: none;
   color: var(--drafts-muted-fg);
-}
-
-.draft-sticker-title {
-  flex: 0 1 auto;
-  min-width: 0;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .draft-sticker-spacer {
