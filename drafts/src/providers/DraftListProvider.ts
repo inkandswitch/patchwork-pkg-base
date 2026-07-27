@@ -28,6 +28,10 @@ import {
   ensureMainDraft,
   type TimelineSpec,
 } from "../change-group-cache.js";
+import {
+  createActorRecorder,
+  ensureActorAttribution,
+} from "../actor-attribution.js";
 
 const ROOT_DOC_SELECTOR = "draft:root-doc";
 const CHECKED_OUT_SELECTOR = "draft:checked-out";
@@ -110,12 +114,20 @@ export const DraftListProvider = (element: HTMLElement) => {
       changeGroupCacheUrl: null,
     },
     drafts: [],
+    actorAttributionUrl: null,
   };
+  // Author attribution: stamps the local user's actor ids (revealed by local
+  // changes on the member docs the filler already watches) into the host
+  // doc's shared ActorAttributionDoc, so timelines can show contacts instead
+  // of raw actor ids.
+  const recorder = createActorRecorder(element);
   // The write side of the change-group cache: keeps every timeline's
   // ChangeGroupCacheDoc filled in background slices, whether or not the
   // sidebar is open. Fed the current timelines after each list recompute;
   // its own member-doc listeners drive incremental fills between recomputes.
-  const filler = createChangeGroupCacheFiller(repo);
+  const filler = createChangeGroupCacheFiller(repo, {
+    onLocalChange: recorder.onLocalChange,
+  });
   // Main-case membership: docs mounted beneath this provider, ref-counted so a
   // doc shown in several views is only dropped on its last unmount. Populated
   // even while a draft is selected (where it goes unused) so switching back to
@@ -176,8 +188,13 @@ export const DraftListProvider = (element: HTMLElement) => {
     const hostType = handle.doc()?.["@patchwork"]?.type;
     if (hostType == null || !SKIPPED_DATATYPES.has(hostType)) {
       try {
-        await ensureMainDraft(repo, handle);
+        const mainDraft = await ensureMainDraft(repo, handle);
         if (disposed) return;
+        // The attribution doc is shared by every timeline on this host doc;
+        // once it resolves the recorder starts stamping local actor ids.
+        const attribution = await ensureActorAttribution(repo, mainDraft);
+        if (disposed) return;
+        recorder.setAttributionHandle(attribution);
       } catch (err) {
         console.warn("[drafts] failed to eagerly create main draft:", err);
       }
@@ -269,6 +286,7 @@ export const DraftListProvider = (element: HTMLElement) => {
   return () => {
     disposed = true;
     filler.dispose();
+    recorder.dispose();
     element.removeEventListener("patchwork:subscribe", onSubscribe);
     element.removeEventListener("patchwork:mounted", onMounted);
     element.removeEventListener("patchwork:unmounted", onUnmounted);
@@ -399,7 +417,12 @@ export const DraftListProvider = (element: HTMLElement) => {
         changeGroupCacheUrl: doc.changeGroupCacheUrl ?? null,
       });
     }
-    return { main: computeMainSummary(), drafts };
+    return {
+      main: computeMainSummary(),
+      drafts,
+      actorAttributionUrl:
+        mainDraftHandle?.doc()?.actorAttributionUrl ?? null,
+    };
   }
 
   // Main's summary. Its members come from the main draft's identity clones once
@@ -556,6 +579,7 @@ function clonesToMembers(
 }
 
 function draftListsEqual(a: DraftList, b: DraftList): boolean {
+  if (a.actorAttributionUrl !== b.actorAttributionUrl) return false;
   if (!summariesEqual(a.main, b.main)) return false;
   if (a.drafts.length !== b.drafts.length) return false;
   for (let i = 0; i < a.drafts.length; i++) {

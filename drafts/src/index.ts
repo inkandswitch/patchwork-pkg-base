@@ -60,6 +60,7 @@ export const plugins: Plugin<any>[] = [
 ];
 
 export type {
+  ActorAttributionDoc,
   Baseline,
   CachedGroup,
   ChangeGroupCacheDoc,

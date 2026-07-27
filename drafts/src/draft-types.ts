@@ -38,6 +38,22 @@ export type DraftDoc = {
   // activity groups for its timeline. Stamped lazily by the fill engine the
   // first time it touches the timeline (see change-group-cache.ts).
   changeGroupCacheUrl?: AutomergeUrl;
+  // Main draft only: points at the host doc's ActorAttributionDoc, mapping
+  // actor ids to contact urls for author display. Stamped by the list
+  // provider alongside the eager main-draft creation.
+  actorAttributionUrl?: AutomergeUrl;
+};
+
+// Maps Automerge actor ids to the contact doc of the user who wrote with
+// them. An actor id is per doc instance per session, so one person
+// accumulates many — the map is many-to-one and only the writing client can
+// attribute its own ids, which it does as it makes local changes (see
+// actor-attribution.ts). One doc per host doc (actor ids span main and every
+// draft), stamped on the main draft via `actorAttributionUrl`. Keyed by
+// actor id so concurrent writers converge per-entry.
+export type ActorAttributionDoc = {
+  "@patchwork": { type: "actor-attribution" };
+  actors: Record<string, AutomergeUrl>;
 };
 
 // One cached burst of activity in a draft's timeline: consecutive changes
@@ -163,6 +179,10 @@ export type DraftSummary = {
 export type DraftList = {
   main: DraftSummary;
   drafts: DraftSummary[];
+  // The host doc's ActorAttributionDoc url (`mainDraft.actorAttributionUrl`);
+  // `null` until stamped. The sidebar resolves timeline actors to contacts
+  // through it.
+  actorAttributionUrl: AutomergeUrl | null;
 };
 
 // Convention: a document that has been drafted carries `@patchwork.mainDraftUrl`

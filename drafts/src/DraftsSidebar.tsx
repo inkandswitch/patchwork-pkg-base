@@ -23,6 +23,7 @@ import {
   subscribeDoc,
 } from "@inkandswitch/patchwork-providers-solid";
 import type {
+  ActorAttributionDoc,
   CachedGroup,
   ChangeGroupCacheDoc,
   CheckedOutDraft,
@@ -50,10 +51,11 @@ const EMPTY_DRAFT_LIST: DraftList = {
     changeGroupCacheUrl: null,
   },
   drafts: [],
+  actorAttributionUrl: null,
 };
 
 // Bump on each deploy to eyeball whether the latest build has synced.
-const DRAFTS_VERSION = "0.0.28";
+const DRAFTS_VERSION = "0.0.31";
 
 // Logged at module load so the console shows which build is running even
 // before the panel renders.
@@ -123,6 +125,37 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     { type: "draft:list" },
     EMPTY_DRAFT_LIST
   );
+
+  // Feed the module-level attribution store from this host doc's attribution
+  // doc, so `AuthorAvatars` can render contacts instead of raw actor ids.
+  createEffect(() => {
+    const url = list().actorAttributionUrl;
+    const repo = getRepo();
+    if (!url || !repo) return;
+    let disposed = false;
+    let off: (() => void) | null = null;
+    void repo.find<ActorAttributionDoc>(url).then(
+      (handle) => {
+        if (disposed) return;
+        const update = () => {
+          const actors = handle.doc()?.actors;
+          if (actors && Object.keys(actors).length > 0) {
+            setActorContacts((prev) => ({ ...prev, ...actors }));
+          }
+        };
+        handle.on("change", update);
+        off = () => handle.off("change", update);
+        update();
+      },
+      (err) => {
+        console.warn("[drafts] failed to load actor attribution:", url, err);
+      }
+    );
+    onCleanup(() => {
+      disposed = true;
+      off?.();
+    });
+  });
 
   const isMainSelected = createMemo(() => selected() === null);
   // Drafting off a folder isn't supported yet, so creating a draft is disabled
@@ -1904,24 +1937,41 @@ function TimeGroupRow(props: {
   );
 }
 
-// A stack of author avatars (deduped), newest-contributor first.
+// A stack of author avatars, newest-contributor first. Actors with a known
+// contact embed the contact tool's own avatar view (image or name initials —
+// see contact/src/components/InlineContactAvatar.ts) and are deduped by
+// contact — one person editing across several sessions reads as one avatar;
+// unattributed actors fall back to actor-id rendering.
 function AuthorAvatars(props: { actors: string[] }) {
-  const visible = () => props.actors.slice(0, 3);
-  const extra = () => Math.max(0, props.actors.length - 3);
+  const authors = createMemo(() => resolveAuthors(props.actors));
+  const visible = () => authors().slice(0, 3);
+  const extra = () => Math.max(0, authors().length - 3);
   return (
     <div class="draft-avatars">
       <For each={visible()}>
-        {(actor, i) => (
+        {(author, i) => (
           <div
             class="draft-avatar"
-            title={actor}
+            // Attributed avatars carry their own name tooltip (set by the
+            // embedded contact view); only the fallback labels the actor id.
+            title={author.contactUrl ? undefined : author.key}
             style={{
-              background: authorColor(actor),
+              background: author.contactUrl
+                ? undefined
+                : authorColor(author.key),
               "margin-left": i() === 0 ? "0" : "-4px",
               "z-index": String(visible().length - i()),
             }}
           >
-            {getInitials(actor)}
+            <Show
+              when={author.contactUrl}
+              fallback={getInitials(author.key)}
+            >
+              <patchwork-view
+                doc-url={author.contactUrl!}
+                tool-id="contact-inline"
+              />
+            </Show>
           </div>
         )}
       </For>
@@ -2067,6 +2117,39 @@ function shortUrl(url: AutomergeUrl): string {
   const id = url.replace(/^automerge:/, "");
   if (id.length <= 10) return id;
   return `${id.slice(0, 6)}…${id.slice(-4)}`;
+}
+
+// ---- Author attribution ----------------------------------------------------
+// Module-level, like the `nowMs` ticker below: attribution (actor id ->
+// contact url) is globally true, not per host doc, so one merged store can
+// serve every card and survive doc switches. Fed by the sidebar's
+// attribution-doc subscription. Rendering (including the name tooltip) is
+// delegated to the contact tool (`tool-id="contact-inline"`).
+
+const [actorContacts, setActorContacts] = createSignal<
+  Record<string, AutomergeUrl>
+>({});
+
+// What an avatar renders for one author. `key` dedupes (and seeds the
+// fallback rendering): the contact url when attributed, the actor id
+// otherwise.
+type AuthorDisplay = {
+  key: string;
+  contactUrl: AutomergeUrl | null;
+};
+
+function resolveAuthors(actors: string[]): AuthorDisplay[] {
+  const attribution = actorContacts();
+  const out: AuthorDisplay[] = [];
+  const seen = new Set<string>();
+  for (const actor of actors) {
+    const contactUrl = attribution[actor] ?? null;
+    const key = contactUrl ?? actor;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ key, contactUrl });
+  }
+  return out;
 }
 
 // A stable-ish color for an author, so the same person reads the same across

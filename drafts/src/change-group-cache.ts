@@ -4,6 +4,7 @@ import {
   isValidAutomergeUrl,
   type AutomergeUrl,
   type DocHandle,
+  type DocHandleChangePayload,
   type Repo,
   type UrlHeads,
 } from "@automerge/automerge-repo";
@@ -32,6 +33,10 @@ const SLICE_BUDGET_MS = 8;
 // Coalesce bursts of member-doc change events into one incremental fill.
 const FILL_DEBOUNCE_MS = 250;
 
+// Change-event sources that mean a LOCAL edit (made through this client's
+// doc instance), as opposed to synced/merged remote changes.
+const LOCAL_PATCH_SOURCES = new Set(["change", "changeAt", "emptyChange"]);
+
 // One timeline the filler is responsible for: the DraftDoc that owns it
 // (main included — the main draft is always real), the member docs whose
 // interleaved changes make it up, and the host doc whose creation time is
@@ -48,6 +53,13 @@ export type ChangeGroupCacheFiller = {
   // drive incremental fills; timelines absent from the list are torn down.
   sync: (specs: TimelineSpec[]) => void;
   dispose: () => void;
+};
+
+export type ChangeGroupCacheFillerOpts = {
+  // Called when a watched member doc receives a local change — i.e. the
+  // current user just wrote with that doc instance's actor id. Feeds the
+  // actor-attribution recorder (see actor-attribution.ts).
+  onLocalChange?: (doc: Automerge.Doc<unknown>) => void;
 };
 
 // Resolve the host doc's single main draft, creating it (and pointing
@@ -360,14 +372,15 @@ function sameHeads(a: UrlHeads | undefined, b: UrlHeads | undefined): boolean {
 // history backfilling behind them. One global runner processes timelines
 // sequentially in the priority order `sync` was given.
 export function createChangeGroupCacheFiller(
-  repo: Repo
+  repo: Repo,
+  opts: ChangeGroupCacheFillerOpts = {}
 ): ChangeGroupCacheFiller {
   // Change listeners on the docs a timeline reads (originals for main,
   // clones for drafts). `handle` is null while the doc is still resolving —
   // the slot is reserved up front so concurrent syncs don't double-attach.
   type SourceListener = {
     handle: DocHandle<unknown> | null;
-    onChange: () => void;
+    onChange: (payload: DocHandleChangePayload<unknown>) => void;
   };
 
   type Task = {
@@ -456,7 +469,14 @@ export function createChangeGroupCacheFiller(
     }
     for (const url of wanted) {
       if (task.listeners.has(url)) continue;
-      const onChange = () => {
+      const onChange = (payload: DocHandleChangePayload<unknown>) => {
+        if (
+          opts.onLocalChange &&
+          LOCAL_PATCH_SOURCES.has(payload.patchInfo.source) &&
+          payload.doc
+        ) {
+          opts.onLocalChange(payload.doc);
+        }
         if (task.debounce) clearTimeout(task.debounce);
         task.debounce = setTimeout(() => {
           task.debounce = null;

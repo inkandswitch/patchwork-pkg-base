@@ -403,6 +403,20 @@
   background: var(--drafts-faint-fg);
 }
 
+/* An attributed author embeds the contact tool's avatar (a <patchwork-view
+   tool-id="contact-inline">, see AuthorAvatars); size it to the stack slot —
+   the wrapper keeps the stack geometry (overlap + z-index). */
+.draft-avatar > patchwork-view {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+
+.draft-avatar .contact-avatar {
+  width: 100%;
+  height: 100%;
+}
+
 /* ---- Scrubber: the history gutter left of the group rows ---- */
 
 /* Two-column body inside the scrollable changes area: gutter + group rows,
