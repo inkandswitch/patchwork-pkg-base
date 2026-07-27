@@ -1,6 +1,6 @@
 // File datatype implementation
 
-import {isImmutableString} from "@automerge/automerge-repo"
+import {isImmutableString} from "@automerge/automerge-repo/slim"
 import {BinaryFileDoc, FileDoc, TextFileDoc} from "./types"
 
 export function isBinaryFileDoc(doc: FileDoc): doc is BinaryFileDoc {
