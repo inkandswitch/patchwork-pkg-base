@@ -44,6 +44,13 @@ const ATTR_DOC_URL = "doc-url";
 // "from the start", so `getChangesMetaSince(doc, [])` yields the full history.
 const EMPTY_HEADS: UrlHeads = encodeHeads([]);
 
+// Deep links: the current selection is mirrored into a `draft=` hash param
+// (an AutomergeUrl, written via `replaceState` so it never re-routes), and a
+// `draft=` found in the URL is applied once the draft shows up in this doc's
+// tree. The router treats the param as doc-scoped and opaque: it drops it
+// when navigating to a different document and otherwise carries it along.
+const DRAFT_PARAM = "draft";
+
 // Mounts on a document URL and exposes that document's draft state via three
 // subscriptions:
 //   - `draft:root-doc`    → AutomergeUrl of the doc this provider is on
@@ -142,6 +149,13 @@ export const DraftListProvider = (element: HTMLElement) => {
   let disposed = false;
   let rewalkInFlight = false;
   let rewalkPending = false;
+  // A deep-linked draft (`#draft=`) waiting to be claimed: applied by the
+  // first rewalk that finds it in this doc's tree (it may not have synced
+  // yet), cancelled by any explicit selection made in the meantime.
+  let pendingUrlDraft: AutomergeUrl | null = readDraftParam();
+  // Last selection this provider observed, so checkout-doc writes that don't
+  // move the selection (scrubber checkpoints) don't touch the URL.
+  let lastCheckedOut: AutomergeUrl | null = null;
   // A tracked draft changing can mean either its sub-draft list moved (needs a
   // rewalk) or its clone map grew (needs a list recompute), so do both.
   const onTrackedChange = () => {
@@ -150,9 +164,40 @@ export const DraftListProvider = (element: HTMLElement) => {
   };
   const onHostDocChange = () => scheduleRewalk();
   // The checkout doc changed: its `at` checkpoint may have been set, cleared, or
-  // moved, so re-publish every live `draft:baseline` subscriber.
+  // moved, so re-publish every live `draft:baseline` subscriber. If the
+  // selection itself moved, mirror it into the `draft=` hash param.
   const onCheckedOutChange = () => {
+    syncSelectionToUrl();
     notifyBaselines();
+  };
+
+  // The hash changed under us (pasted link, back/forward, router navigation):
+  // reconcile the `draft=` param with the selection. Our own writes go through
+  // `replaceState` and never fire this.
+  const onHashChange = () => {
+    if (disposed || !checkedOutHandle) return;
+    const urlDraft = readDraftParam();
+    const selected = checkedOutHandle.doc()?.checkedOut ?? null;
+    if (urlDraft === selected) {
+      pendingUrlDraft = null;
+      return;
+    }
+    if (urlDraft === null) {
+      // The param was removed out from under us: drop back to main.
+      pendingUrlDraft = null;
+      checkedOutHandle.change((d) => {
+        d.checkedOut = null;
+      });
+      return;
+    }
+    if (orderedDraftUrls.includes(urlDraft)) {
+      checkedOutHandle.change((d) => {
+        d.checkedOut = urlDraft;
+      });
+    } else {
+      // Not (yet) in this doc's tree: hold it for the next rewalk.
+      pendingUrlDraft = urlDraft;
+    }
   };
 
   const onMounted = (event: MountedEvent) => {
@@ -283,6 +328,7 @@ export const DraftListProvider = (element: HTMLElement) => {
   element.addEventListener("patchwork:subscribe", onSubscribe);
   element.addEventListener("patchwork:mounted", onMounted);
   element.addEventListener("patchwork:unmounted", onUnmounted);
+  window.addEventListener("hashchange", onHashChange);
 
   return () => {
     disposed = true;
@@ -291,6 +337,7 @@ export const DraftListProvider = (element: HTMLElement) => {
     element.removeEventListener("patchwork:subscribe", onSubscribe);
     element.removeEventListener("patchwork:mounted", onMounted);
     element.removeEventListener("patchwork:unmounted", onUnmounted);
+    window.removeEventListener("hashchange", onHashChange);
     if (hostDocHandle) hostDocHandle.off("change", onHostDocChange);
     if (mainDraftHandle) mainDraftHandle.off("change", onTrackedChange);
     for (const [, h] of trackedDrafts) h.off("change", onTrackedChange);
@@ -335,6 +382,17 @@ export const DraftListProvider = (element: HTMLElement) => {
         );
         if (disposed) return;
         orderedDraftUrls = allDrafts;
+
+        // Claim a deep-linked draft once it's confirmed in this doc's tree.
+        if (pendingUrlDraft && allDrafts.includes(pendingUrlDraft)) {
+          const target = pendingUrlDraft;
+          pendingUrlDraft = null;
+          if (liveCheckedOut.doc()?.checkedOut !== target) {
+            liveCheckedOut.change((d) => {
+              d.checkedOut = target;
+            });
+          }
+        }
 
         // Reconcile the checkout pointer: if the checked-out draft is gone
         // (merged or detached), fall back to main.
@@ -493,6 +551,18 @@ export const DraftListProvider = (element: HTMLElement) => {
     }
   }
 
+  // Mirror the selection into the `draft=` hash param. Only runs when the
+  // selection actually moved; a selection made while a deep link was still
+  // pending also wins over (cancels) the pending link.
+  function syncSelectionToUrl(): void {
+    if (disposed) return;
+    const selected = checkedOutHandle?.doc()?.checkedOut ?? null;
+    if (selected === lastCheckedOut) return;
+    lastCheckedOut = selected;
+    if (pendingUrlDraft && selected !== pendingUrlDraft) pendingUrlDraft = null;
+    writeDraftParam(selected);
+  }
+
   // Resolve (once, cached) whether a mounted doc is an app-global datatype we
   // exclude from the main-case membership. On failure we leave it unresolved,
   // so the doc stays visible — mirroring the overlay's "fall back to forking".
@@ -640,4 +710,41 @@ function sameHeads(a: UrlHeads | null, b: UrlHeads | null): boolean {
   if (!a || !b || a.length !== b.length) return false;
   const set = new Set(b);
   return a.every((h) => set.has(h));
+}
+
+function readDraftParam(): AutomergeUrl | null {
+  const raw = new URLSearchParams(window.location.hash.slice(1)).get(
+    DRAFT_PARAM
+  );
+  return raw && isValidAutomergeUrl(raw) ? raw : null;
+}
+
+function writeDraftParam(selected: AutomergeUrl | null): void {
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  if ((params.get(DRAFT_PARAM) ?? null) === selected) return;
+  if (selected) params.set(DRAFT_PARAM, selected);
+  else params.delete(DRAFT_PARAM);
+  // `replaceState` rather than assigning `location.hash`: no hashchange, so
+  // the router doesn't re-route, and draft switches don't pile up history.
+  try {
+    history.replaceState(null, "", "#" + serializeHash(params));
+  } catch {
+    // Sandboxed realms (srcdoc previews) can refuse replaceState; the URL is
+    // cosmetic there, so silently skip.
+  }
+}
+
+// Mirrors the router's hash serialization: automerge-URL values stay literal
+// so links remain readable, everything else is percent-encoded.
+const RAW_HASH_KEYS = new Set(["doc", DRAFT_PARAM]);
+
+function serializeHash(params: URLSearchParams): string {
+  const parts: string[] = [];
+  params.forEach((value, key) => {
+    if (!value) return;
+    parts.push(
+      `${key}=${RAW_HASH_KEYS.has(key) ? value : encodeURIComponent(value)}`
+    );
+  });
+  return parts.join("&");
 }
