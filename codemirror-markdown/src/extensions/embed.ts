@@ -4,6 +4,7 @@ import {
   WidgetType,
   ViewPlugin,
   ViewUpdate,
+  dropCursor,
   type DecorationSet,
 } from "@codemirror/view";
 import { Range } from "@codemirror/state";
@@ -287,7 +288,15 @@ async function fileDropRefs(files: FileList): Promise<DocRef[]> {
 
 function insertRefs(view: EditorView, pos: number, refs: DocRef[]): void {
   if (refs.length === 0) return;
-  const text = refs.map(embedSyntax).join("\n\n");
+  let text = refs.map(embedSyntax).join("\n\n");
+  // When dropping onto a line that has content, put the embed on its own line:
+  // break before it unless dropped at the line start, and after it unless
+  // dropped at the line end.
+  const line = view.state.doc.lineAt(pos);
+  if (/\S/.test(line.text)) {
+    if (pos > line.from) text = "\n" + text;
+    if (pos < line.to) text = text + "\n";
+  }
   view.dispatch({
     changes: { from: pos, insert: text },
     selection: { anchor: pos + text.length },
@@ -366,5 +375,7 @@ const embedPlugin = ViewPlugin.fromClass(
 );
 
 export function markdownEmbed() {
-  return [embedPlugin, embedTheme, embedDropHandlers()];
+  // `dropCursor` uses event observers, so it keeps working even though our
+  // dragover handler claims the event.
+  return [embedPlugin, embedTheme, embedDropHandlers(), dropCursor()];
 }
