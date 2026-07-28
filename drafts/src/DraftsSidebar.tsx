@@ -60,9 +60,9 @@ const EMPTY_DRAFT_LIST: DraftList = {
   actorAttributionUrl: null,
 };
 
-// Logged on load and stamped into fork diagnostics; bump on deploy to tell
-// builds apart (no longer shown in the UI).
-const DRAFTS_VERSION = "0.0.43";
+// Shown in the panel footer, logged on load, and stamped into fork
+// diagnostics; bump on deploy to tell builds apart.
+const DRAFTS_VERSION = "0.0.44";
 
 // Logged at module load so the console shows which build is running even
 // before the panel renders.
@@ -670,6 +670,7 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
           </For>
         </div>
       </Show>
+      <div class="drafts-version">v{DRAFTS_VERSION}</div>
     </div>
   );
 }

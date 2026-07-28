@@ -46,6 +46,14 @@
   color: var(--drafts-faint-fg);
 }
 
+/* Build stamp pinned below the list so deployed versions are identifiable. */
+.drafts-version {
+  margin-top: auto;
+  font-size: 0.65rem;
+  color: var(--drafts-faint-fg);
+  text-align: right;
+}
+
 .drafts-list {
   display: flex;
   flex-direction: column;
