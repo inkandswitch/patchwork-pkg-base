@@ -36,6 +36,7 @@ import type {
 } from "./draft-types";
 import {
   computeEditCounts,
+  computeRangeEditCounts,
   ensureMainDraft,
   getDocCreationTime,
 } from "./change-group-cache";
@@ -55,8 +56,9 @@ const EMPTY_DRAFT_LIST: DraftList = {
   actorAttributionUrl: null,
 };
 
-// Bump on each deploy to eyeball whether the latest build has synced.
-const DRAFTS_VERSION = "0.0.39";
+// Logged on load and stamped into fork diagnostics; bump on deploy to tell
+// builds apart (no longer shown in the UI).
+const DRAFTS_VERSION = "0.0.42";
 
 // Logged at module load so the console shows which build is running even
 // before the panel renders.
@@ -595,6 +597,7 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
               onBaselineScrub(null, list().main.members, base)
             }
             baseliner={() => (isMainSelected() ? baseliner() : null)}
+            checkpoint={() => (isMainSelected() ? (checkedOut()?.at ?? null) : null)}
             hasCheckpoint={isMainSelected() && isPinned()}
             onReturnToLatest={clearCheckpoint}
             eyeOpen={isMainSelected() && eyeOpen()}
@@ -632,6 +635,9 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
                 baseliner={() =>
                   selected() === summary.url ? baseliner() : null
                 }
+                checkpoint={() =>
+                  selected() === summary.url ? (checkedOut()?.at ?? null) : null
+                }
                 hasCheckpoint={selected() === summary.url && isPinned()}
                 onReturnToLatest={clearCheckpoint}
                 eyeOpen={selected() === summary.url && eyeOpen()}
@@ -652,7 +658,6 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
           </For>
         </div>
       </Show>
-      <div class="drafts-version">v{DRAFTS_VERSION}</div>
     </div>
   );
 }
@@ -1008,6 +1013,7 @@ function MainCard(props: {
   scrubber: Accessor<ScrubberState | null>;
   onBaselineScrub: (base: BaselineState) => void;
   baseliner: Accessor<BaselineState | null>;
+  checkpoint: Accessor<DraftCheckpoint | null>;
   hasCheckpoint: boolean;
   onReturnToLatest: () => void;
   eyeOpen: boolean;
@@ -1086,6 +1092,7 @@ function MainCard(props: {
           onBaselineScrub={props.onBaselineScrub}
           baseliner={props.baseliner}
           eyeOpen={() => props.eyeOpen}
+          checkpoint={props.checkpoint}
           onReturnToLatest={props.onReturnToLatest}
         />
       </Show>
@@ -1111,6 +1118,7 @@ function DraftCard(props: {
   scrubber: Accessor<ScrubberState | null>;
   onBaselineScrub: (base: BaselineState) => void;
   baseliner: Accessor<BaselineState | null>;
+  checkpoint: Accessor<DraftCheckpoint | null>;
   hasCheckpoint: boolean;
   onReturnToLatest: () => void;
   eyeOpen: boolean;
@@ -1199,6 +1207,7 @@ function DraftCard(props: {
           onBaselineScrub={props.onBaselineScrub}
           baseliner={props.baseliner}
           eyeOpen={() => props.eyeOpen}
+          checkpoint={props.checkpoint}
           onReturnToLatest={props.onReturnToLatest}
         />
       </Show>
@@ -1653,6 +1662,9 @@ function DraftChangesList(props: {
   onBaselineScrub: (base: BaselineState) => void;
   baseliner: Accessor<BaselineState | null>;
   eyeOpen: Accessor<boolean>;
+  // The live checkpoint (`CheckedOutDraft.at`): per-member `to`/`from`
+  // heads, read for the sticker's whole-range diff counts.
+  checkpoint: Accessor<DraftCheckpoint | null>;
   onReturnToLatest: () => void;
 }) {
   const repo = "repo" in window ? window.repo : undefined;
@@ -2114,11 +2126,38 @@ function DraftChangesList(props: {
     );
   });
 
-  // The sticker's per-change +/- counts: one on-demand diff of the single
-  // change under the head (the cache stores only group aggregates).
+  // The sticker's +/- counts. With the eye open they cover the whole diff
+  // range — each member diffed from the checkpoint's `from` (the baseline)
+  // to its `to` (the head), summed — so extending the baseline grows them.
+  // With the eye closed there is no range, so they fall back to the single
+  // change under the head.
   const headCounts = createMemo(() => {
     const change = headChange();
     if (!change) return null;
+    if (props.eyeOpen()) {
+      const at = props.checkpoint();
+      const srcs = sources();
+      if (at && srcs) {
+        let additions = 0;
+        let deletions = 0;
+        let spans = 0;
+        for (const { member, handle } of srcs) {
+          const entry = at[member.url];
+          if (!entry?.from || !entry.to) continue;
+          const doc = handle.doc() as Automerge.Doc<unknown> | undefined;
+          if (!doc) continue;
+          spans++;
+          const counts = computeRangeEditCounts(
+            doc,
+            decodeHeads(entry.from),
+            decodeHeads(entry.to)
+          );
+          additions += counts.additions;
+          deletions += counts.deletions;
+        }
+        if (spans > 0) return { additions, deletions };
+      }
+    }
     return computeEditCounts(change.doc, change.hash, change.deps);
   });
 

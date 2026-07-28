@@ -110,10 +110,6 @@
   background: var(--drafts-hover-bg);
 }
 
-.draft-card[data-selected] .draft-card-header {
-  background: color-mix(in oklch, var(--drafts-selected-bg) 60%, transparent);
-}
-
 .draft-card-title {
   display: flex;
   align-items: center;
@@ -159,7 +155,10 @@
   flex-direction: column;
   gap: 0.125rem;
   border-top: 1px solid var(--drafts-border);
-  padding: 0.25rem;
+  /* Extra top headroom: the scrubber's dot (5px) and sticker (10px) overhang
+     above the head line, which sits at 0 on the latest version — without
+     this they'd crowd into the card header. */
+  padding: 0.75rem 0.25rem 0.25rem;
   max-height: 12rem;
   overflow-y: auto;
 }
@@ -671,10 +670,3 @@
   color: var(--drafts-deleted);
 }
 
-.drafts-version {
-  padding: 0.25rem 0.5rem;
-  font-family: var(--drafts-mono);
-  font-size: 0.625rem;
-  color: var(--drafts-faint-fg);
-  text-align: right;
-}

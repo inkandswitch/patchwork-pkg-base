@@ -149,30 +149,61 @@ export function computeEditCounts(
   hash: string,
   deps: string[]
 ): { additions: number; deletions: number } {
-  let additions = 0;
-  let deletions = 0;
   try {
-    const patches = Automerge.diff(
-      doc,
-      deps as unknown as Automerge.Heads,
-      [hash] as unknown as Automerge.Heads
+    return countPatches(
+      Automerge.diff(
+        doc,
+        deps as unknown as Automerge.Heads,
+        [hash] as unknown as Automerge.Heads
+      )
     );
-    for (const patch of patches) {
-      if (patch.path[0] === "@patchwork") continue;
-      if (patch.action === "splice") {
-        additions += (patch.value as string).length;
-      } else if (patch.action === "insert") {
-        additions += Array.isArray((patch as { values?: unknown[] }).values)
-          ? (patch as { values: unknown[] }).values.length
-          : 1;
-      } else if (patch.action === "del") {
-        deletions += (patch as { length?: number }).length ?? 1;
-      } else {
-        additions += 1;
-      }
-    }
   } catch (err) {
     console.warn("[drafts] failed to diff change for edit counts:", hash, err);
+    return { additions: 0, deletions: 0 };
+  }
+}
+
+// The same +/- magnitude over an arbitrary head range (`from` → `to`), e.g.
+// the eye's diff span between the baseline and the scrubbed head.
+export function computeRangeEditCounts(
+  doc: Automerge.Doc<unknown>,
+  from: string[],
+  to: string[]
+): { additions: number; deletions: number } {
+  try {
+    return countPatches(
+      Automerge.diff(
+        doc,
+        from as unknown as Automerge.Heads,
+        to as unknown as Automerge.Heads
+      )
+    );
+  } catch (err) {
+    console.warn("[drafts] failed to diff range for edit counts:", err);
+    return { additions: 0, deletions: 0 };
+  }
+}
+
+// Shared patch-counting rules for the two diff flavors above.
+function countPatches(patches: Automerge.Patch[]): {
+  additions: number;
+  deletions: number;
+} {
+  let additions = 0;
+  let deletions = 0;
+  for (const patch of patches) {
+    if (patch.path[0] === "@patchwork") continue;
+    if (patch.action === "splice") {
+      additions += (patch.value as string).length;
+    } else if (patch.action === "insert") {
+      additions += Array.isArray((patch as { values?: unknown[] }).values)
+        ? (patch as { values: unknown[] }).values.length
+        : 1;
+    } else if (patch.action === "del") {
+      deletions += (patch as { length?: number }).length ?? 1;
+    } else {
+      additions += 1;
+    }
   }
   return { additions, deletions };
 }
