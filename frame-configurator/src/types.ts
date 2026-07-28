@@ -1,4 +1,4 @@
-import { AutomergeUrl } from "@automerge/automerge-repo";
+import { AutomergeUrl } from "@automerge/automerge-repo/slim";
 
 export type TinyPatchworkLayoutDoc = {
   rootFolderUrl: AutomergeUrl;

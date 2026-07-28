@@ -12,7 +12,7 @@
  * child) reboots the iframe.
  */
 
-import type { AutomergeUrl } from "@automerge/automerge-repo";
+import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
 import { createMemo } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import type { ToolSlot } from "../types";

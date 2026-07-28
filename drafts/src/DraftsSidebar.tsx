@@ -14,13 +14,13 @@ import type {
   DocHandle,
   Repo,
   UrlHeads,
-} from "@automerge/automerge-repo";
+} from "@automerge/automerge-repo/slim";
 import {
   decodeHeads,
   encodeHeads,
   isValidAutomergeUrl,
-} from "@automerge/automerge-repo";
-import * as Automerge from "@automerge/automerge";
+} from "@automerge/automerge-repo/slim";
+import * as Automerge from "@automerge/automerge/slim";
 import {
   subscribe,
   subscribeDoc,

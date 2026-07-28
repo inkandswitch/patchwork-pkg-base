@@ -1,4 +1,4 @@
-import type { AutomergeUrl, DocHandle } from "@automerge/automerge-repo";
+import type { AutomergeUrl, DocHandle } from "@automerge/automerge-repo/slim";
 import type { ToolElement } from "@inkandswitch/patchwork-plugins";
 import type { ContactDoc } from "../types";
 import { createAvatar, setAvatarImage, setAvatarFallback, getInitials } from "./Avatar";

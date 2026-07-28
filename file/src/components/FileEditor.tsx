@@ -14,7 +14,7 @@ import {VideoFileViewer, isVideoFile} from "./VideoFileViewer"
 import {TextFileEditor, isTextFile} from "./TextFileEditor"
 import {LongTextFileViewer} from "./LongTextFileViewer"
 import {LONG_TEXT_FILE_LENGTH_THRESHOLD} from "../types"
-import {DocHandle} from "@automerge/automerge-repo"
+import {DocHandle} from "@automerge/automerge-repo/slim"
 import {UnixFileEntry} from "@inkandswitch/patchwork-filesystem"
 import {PatchworkViewElement} from "@inkandswitch/patchwork-elements"
 

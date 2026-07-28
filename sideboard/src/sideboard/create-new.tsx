@@ -3,7 +3,7 @@ import {
   type AutomergeUrl,
   type ChangeFn,
   type Repo,
-} from "@automerge/automerge-repo";
+} from "@automerge/automerge-repo/slim";
 import {
   type DatatypeDescription,
   type Plugin,

@@ -3,8 +3,8 @@ import {
   type AutomergeUrl,
   type DocHandle,
   type Repo,
-} from "@automerge/automerge-repo";
-import * as Automerge from "@automerge/automerge";
+} from "@automerge/automerge-repo/slim";
+import * as Automerge from "@automerge/automerge/slim";
 import { subscribe } from "@inkandswitch/patchwork-providers";
 
 import type { ActorAttributionDoc, DraftDoc } from "./draft-types.js";

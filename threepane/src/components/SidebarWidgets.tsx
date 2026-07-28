@@ -1,4 +1,4 @@
-import type { AutomergeUrl, DocHandle } from "@automerge/automerge-repo";
+import type { AutomergeUrl, DocHandle } from "@automerge/automerge-repo/slim";
 import { For, Show, type Accessor } from "solid-js";
 import type { ThreepaneConfigDoc, ToolSlot } from "../types";
 import { SlotView } from "./SlotView";

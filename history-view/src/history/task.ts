@@ -1,4 +1,4 @@
-import type { AutomergeUrl } from "@automerge/automerge-repo";
+import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
 // TODO: relative imports aren't working correctly when the task runs in the shared worker
 // import { getStrategyKey, DEFAULT_TIME_WINDOW } from "./utils";
 import { Automerge } from "@automerge/automerge-repo/slim";
@@ -8,7 +8,7 @@ import type {
   HistoryItem,
   GroupingStrategyConfig,
 } from "../types";
-import { ChangeMetadata } from "@automerge/automerge";
+import { ChangeMetadata } from "@automerge/automerge/slim";
 
 // Safety-net throttle: prevents thrashing the history doc if something keeps
 // re-enqueuing this task faster than it can complete. The primary dispatch

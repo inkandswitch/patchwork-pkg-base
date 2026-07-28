@@ -5,8 +5,8 @@ import { EditorView, type DecorationSet } from "@codemirror/view";
 import { EditorState, type Extension, Compartment } from "@codemirror/state";
 
 /** Automerge */
-import type { Prop as AutomergeProp } from "@automerge/automerge";
-import type { DocHandle, UrlHeads } from "@automerge/automerge-repo";
+import type { Prop as AutomergeProp } from "@automerge/automerge/slim";
+import type { DocHandle, UrlHeads } from "@automerge/automerge-repo/slim";
 import {
   createSyncExtension,
   createReadOnlyExtension,

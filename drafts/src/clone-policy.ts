@@ -2,7 +2,7 @@ import {
   parseAutomergeUrl,
   stringifyAutomergeUrl,
   type AutomergeUrl,
-} from "@automerge/automerge-repo";
+} from "@automerge/automerge-repo/slim";
 
 // HACK: datatypes the draft machinery must never treat as draft content.
 //

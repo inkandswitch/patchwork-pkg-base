@@ -5,12 +5,12 @@ import { EditorView } from "@codemirror/view";
 import { Compartment, Transaction } from "@codemirror/state";
 
 /** Automerge */
-import type { Prop as AutomergeProp } from "@automerge/automerge";
+import type { Prop as AutomergeProp } from "@automerge/automerge/slim";
 import { automergeSyncPlugin } from "@automerge/automerge-codemirror";
 import type {
   DocHandle,
   DocHandleChangePayload,
-} from "@automerge/automerge-repo";
+} from "@automerge/automerge-repo/slim";
 
 /**
  * Create a CodeMirror extension for synchronizing with an Automerge document using a CodeMirror

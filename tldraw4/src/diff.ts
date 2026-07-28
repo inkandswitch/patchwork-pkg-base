@@ -1,4 +1,4 @@
-import * as Automerge from "@automerge/automerge";
+import * as Automerge from "@automerge/automerge/slim";
 import { isEqual } from "lodash";
 import type { TLRecord, TLShapeId } from "@tldraw/tldraw";
 import type { TLDrawDoc } from "./datatype.ts";

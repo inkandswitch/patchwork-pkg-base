@@ -7,8 +7,8 @@ import {
   type DocHandleChangePayload,
   type Repo,
   type UrlHeads,
-} from "@automerge/automerge-repo";
-import * as Automerge from "@automerge/automerge";
+} from "@automerge/automerge-repo/slim";
+import * as Automerge from "@automerge/automerge/slim";
 
 import type {
   CachedGroup,

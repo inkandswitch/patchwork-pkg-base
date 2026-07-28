@@ -25,17 +25,19 @@ jobs:
       - run: npm install -g npm@latest
 
       - run: pnpm install --frozen-lockfile
+        env:
+          PATCHWORK_EXIT_IDLE_MS: 120000
 
       - name: update preview.patchwork.inkandswitch.com
         env:
-          GH_TOKEN: ${{ secrets.PATCHWORK_PREVIEW_DISPATCH_TOKEN }}
+          GH_TOKEN: ${{ secrets.PATCHWORK_CROW_TOKEN }}
         run: |
           gh api --method POST \
             repos/inkandswitch/patchwork.inkandswitch.com/dispatches \
             -f event_type=base-main \
             -F "client_payload[sha]=$GITHUB_SHA"
 
-      - run: pnpm build:static:fresh
+      - run: pnpm build:static:fresh --strict
 
       - name: prepare static-dist/package.json
         run: |

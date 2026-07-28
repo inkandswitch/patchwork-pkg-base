@@ -1,5 +1,5 @@
 import {createContext, useContext, createSignal, createMemo, createEffect, onCleanup, type ParentComponent, type Accessor, type Resource} from "solid-js"
-import type {DocHandle, Repo, Doc} from "@automerge/automerge-repo"
+import type {DocHandle, Repo, Doc} from "@automerge/automerge-repo/slim"
 import type {ChatDoc} from "../types"
 import type {FeatureSelector} from "../features"
 import type {PluginSelector} from "../lib/registry"

@@ -1,7 +1,7 @@
 import {
   parseAutomergeUrl,
   isValidAutomergeUrl,
-} from "@automerge/automerge-repo";
+} from "@automerge/automerge-repo/slim";
 import { openDocument } from "@inkandswitch/patchwork-elements";
 import {
   getRegistry,

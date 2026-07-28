@@ -2,7 +2,7 @@ import {
   AutomergeUrl,
   isValidAutomergeUrl,
   parseAutomergeUrl,
-} from "@automerge/automerge-repo";
+} from "@automerge/automerge-repo/slim";
 
 /**
  * Convert an automerge URL to an Account Token that the user can

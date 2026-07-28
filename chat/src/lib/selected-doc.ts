@@ -6,7 +6,7 @@
 // <patchwork-view>) carrying a MessagePort; the host's SelectedDocProvider
 // answers by posting `{type:"change", value}` messages back over the port.
 import {createSignal, createEffect, onCleanup, type Accessor} from "solid-js"
-import type {AutomergeUrl, Repo, DocHandle} from "@automerge/automerge-repo"
+import type {AutomergeUrl, Repo, DocHandle} from "@automerge/automerge-repo/slim"
 
 export type Selector = {type: string} & Record<string, unknown>
 

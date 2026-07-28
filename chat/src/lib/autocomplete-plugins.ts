@@ -9,7 +9,7 @@
 // (a live selection accessor, the presence roster) — and the returned function is
 // called on each keystroke with the active trigger and query.
 import type {Accessor} from "solid-js"
-import type {Repo} from "@automerge/automerge-repo"
+import type {Repo} from "@automerge/automerge-repo/slim"
 import type {PluginSelector} from "./registry"
 import type {AutocompleteItem} from "./completion"
 import {fuzzyMatch, fuzzyScore} from "./completion"

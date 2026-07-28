@@ -1,4 +1,4 @@
-import type {Repo} from "@automerge/automerge-repo"
+import type {Repo} from "@automerge/automerge-repo/slim"
 
 // The repo comes from the tool element (`element.repo`), set once at mount in
 // tool.tsx. Leaf helpers that have no access to the element or a context read

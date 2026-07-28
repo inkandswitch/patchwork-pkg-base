@@ -91,6 +91,7 @@ jobs:
         env:
           SHELL_URL: ${{ steps.deploy.outputs.url }}
         with:
+          github-token: ${{ secrets.PATCHWORK_CROW_TOKEN }}
           script: |
             const marker = process.env.MARKER
             const sha = context.payload.pull_request.head.sha.slice(0, 7)
@@ -101,6 +102,8 @@ jobs:
               `## ${process.env.SHELL_URL}`,
               ``,
               `Patchwork from \`${process.env.SHELL_REPO}\`, packages from this PR at \`${sha}\`.`,
+              ``,
+              `[build-info.json](${process.env.SHELL_URL}/build-info.json)`,
             ].join("\n")
             const {owner, repo} = context.repo
             const issue_number = context.issue.number
@@ -125,6 +128,7 @@ jobs:
 
       - uses: actions/github-script@v7
         with:
+          github-token: ${{ secrets.PATCHWORK_CROW_TOKEN }}
           script: |
             const marker = process.env.MARKER
             const {owner, repo} = context.repo

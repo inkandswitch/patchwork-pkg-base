@@ -6,7 +6,7 @@
 // (autocomplete-plugins.ts) feeds extra items into the @mention trigger.
 
 import type {Accessor} from "solid-js"
-import type {AutomergeUrl} from "@automerge/automerge-repo"
+import type {AutomergeUrl} from "@automerge/automerge-repo/slim"
 import {EMOJI_ALIASES, EMOJI_DATA, EMOJI_LOADED} from "./emoji-data"
 import {resolvePlugins, type PluginSelector} from "./registry"
 import {slashPlugins} from "./slash-plugins"

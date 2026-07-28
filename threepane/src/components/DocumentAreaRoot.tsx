@@ -15,7 +15,7 @@
  * only reads `isLeftCollapsed` for top-bar layout.
  */
 
-import { type AutomergeUrl } from "@automerge/automerge-repo";
+import { type AutomergeUrl } from "@automerge/automerge-repo/slim";
 import { makePersisted } from "@solid-primitives/storage";
 import {
   createEffect,

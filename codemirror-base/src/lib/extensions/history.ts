@@ -9,7 +9,7 @@ import { history, historyKeymap } from "@codemirror/commands";
 import type {
   DocHandle,
   DocHandleChangePayload,
-} from "@automerge/automerge-repo";
+} from "@automerge/automerge-repo/slim";
 
 /**
  * Undo/redo history, owned by the base editor. Tools must not add their own

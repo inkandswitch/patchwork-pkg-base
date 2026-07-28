@@ -1,5 +1,5 @@
 import { createSignal } from "solid-js";
-import type { AutomergeUrl } from "@automerge/automerge-repo";
+import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
 
 // A "new document" drag (or click) is asking for a doc to be created inside the
 // folder at `containerUrl`, inserted at `index`. The DocumentList whose handle

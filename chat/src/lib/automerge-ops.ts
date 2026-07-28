@@ -13,7 +13,7 @@
 // `applyAutomerge(draft, path, range, value)` MUST run inside a `handle.change()`
 // (or `handle.changeAt()` for a back-dated edit) — `draft` is the mutable proxy.
 
-import {splice as amSplice} from "@automerge/automerge"
+import {splice as amSplice} from "@automerge/automerge/slim"
 
 type Path = (string | number)[]
 

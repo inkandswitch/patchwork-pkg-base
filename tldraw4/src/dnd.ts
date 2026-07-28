@@ -17,7 +17,7 @@ import {
   stringifyAutomergeUrl,
   type AutomergeUrl,
   type DocumentId,
-} from "@automerge/automerge-repo";
+} from "@automerge/automerge-repo/slim";
 
 export const PATCHWORK_URLS_MIME = "text/x-patchwork-urls" as const;
 export const PATCHWORK_DND_MIME = "text/x-patchwork-dnd" as const;

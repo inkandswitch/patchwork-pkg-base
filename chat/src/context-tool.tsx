@@ -13,7 +13,7 @@
 // that new set is written back as the remembered default for future chitchats.
 import {render} from "solid-js/web"
 import {createSignal, createEffect, onCleanup, Show} from "solid-js"
-import type {Repo, DocHandle, AutomergeUrl} from "@automerge/automerge-repo"
+import type {Repo, DocHandle, AutomergeUrl} from "@automerge/automerge-repo/slim"
 import {ChatRoot} from "./components/ChatRoot"
 import {selectedDocUrl, toolStorageUrl} from "./lib/selected-doc"
 import {setRepo} from "./lib/repo"

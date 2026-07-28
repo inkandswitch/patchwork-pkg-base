@@ -1,4 +1,4 @@
-import type { AutomergeUrl, Repo } from "@automerge/automerge-repo";
+import type { AutomergeUrl, Repo } from "@automerge/automerge-repo/slim";
 import type { FolderDoc } from "@inkandswitch/patchwork-filesystem";
 
 /**

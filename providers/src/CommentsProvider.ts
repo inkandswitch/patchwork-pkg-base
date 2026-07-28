@@ -3,7 +3,7 @@ import {
   type DocHandle,
   type DocHandleChangePayload,
   type DocHandleDeletePayload,
-} from "@automerge/automerge-repo";
+} from "@automerge/automerge-repo/slim";
 import { accept, type SubscribeEvent } from "@inkandswitch/patchwork-providers";
 import type {
   MountedEvent,

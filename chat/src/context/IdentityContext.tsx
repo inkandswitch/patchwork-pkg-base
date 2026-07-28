@@ -8,8 +8,8 @@ import {
 	type ParentComponent,
 	type Accessor,
 } from "solid-js"
-import type {DocHandle, AutomergeUrl} from "@automerge/automerge-repo"
-import {isValidAutomergeUrl} from "@automerge/automerge-repo"
+import type {DocHandle, AutomergeUrl} from "@automerge/automerge-repo/slim"
+import {isValidAutomergeUrl} from "@automerge/automerge-repo/slim"
 import type {ChatProfileDoc} from "../types"
 import {getRepo} from "../lib/repo"
 import {useChat} from "./ChatContext"

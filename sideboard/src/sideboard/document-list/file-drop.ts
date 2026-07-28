@@ -1,4 +1,4 @@
-import type { Repo, DocHandle } from "@automerge/automerge-repo";
+import type { Repo, DocHandle } from "@automerge/automerge-repo/slim";
 import type {
   FolderDoc,
   HasPatchworkMetadata,

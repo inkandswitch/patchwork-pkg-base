@@ -23,7 +23,7 @@ import {
 } from "@tldraw/tldraw";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { Repo } from "@automerge/automerge-repo";
+import type { Repo } from "@automerge/automerge-repo/slim";
 import {
   createDocOfDatatype2,
   getRegistry,

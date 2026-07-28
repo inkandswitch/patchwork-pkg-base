@@ -1,4 +1,4 @@
-import { type AutomergeUrl, type DocHandle } from "@automerge/automerge-repo";
+import { type AutomergeUrl, type DocHandle } from "@automerge/automerge-repo/slim";
 import { accept, type SubscribeEvent } from "@inkandswitch/patchwork-providers";
 import type { PatchworkViewElement } from "@inkandswitch/patchwork-elements";
 

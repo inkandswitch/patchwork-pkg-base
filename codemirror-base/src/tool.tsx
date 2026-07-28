@@ -15,7 +15,7 @@ import {
   DocHandle,
   Repo,
   type UrlHeads,
-} from "@automerge/automerge-repo";
+} from "@automerge/automerge-repo/slim";
 
 /** Patchwork */
 import { getRegistry } from "@inkandswitch/patchwork-plugins";

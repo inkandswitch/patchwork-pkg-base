@@ -1,4 +1,4 @@
-import type { AutomergeUrl, Repo } from "@automerge/automerge-repo";
+import type { AutomergeUrl, Repo } from "@automerge/automerge-repo/slim";
 import { type Accessor, Show } from "solid-js";
 import { useDocument } from "solid-automerge";
 import type { HasPatchworkMetadata } from "@inkandswitch/patchwork-filesystem";

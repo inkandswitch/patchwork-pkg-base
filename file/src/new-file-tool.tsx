@@ -1,5 +1,5 @@
 import {render} from "solid-js/web"
-import {DocHandle} from "@automerge/automerge-repo"
+import {DocHandle} from "@automerge/automerge-repo/slim"
 import {PatchworkViewElement} from "@inkandswitch/patchwork-elements"
 import type {FileDoc} from "./types"
 import {getMimeType} from "./mime-types"

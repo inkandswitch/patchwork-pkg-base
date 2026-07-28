@@ -21,7 +21,7 @@ import {
   type LoadedDatatype,
   type LoadedTool,
 } from "@inkandswitch/patchwork-plugins";
-import type { AutomergeUrl } from "@automerge/automerge-repo";
+import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
 import { useDocument, useRepo } from "@automerge/react";
 import { automergeUrlToServiceWorkerUrl } from "@inkandswitch/patchwork-filesystem";
 

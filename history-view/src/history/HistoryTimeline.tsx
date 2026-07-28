@@ -1,4 +1,4 @@
-import type { AutomergeUrl, Repo } from "@automerge/automerge-repo";
+import type { AutomergeUrl, Repo } from "@automerge/automerge-repo/slim";
 import { Show } from "solid-js";
 import { render } from "solid-js/web";
 import { subscribe } from "@inkandswitch/patchwork-providers-solid";

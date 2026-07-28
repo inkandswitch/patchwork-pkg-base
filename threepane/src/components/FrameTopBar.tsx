@@ -1,4 +1,4 @@
-import type { AutomergeUrl } from "@automerge/automerge-repo";
+import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
 import { For, Show, type Accessor } from "solid-js";
 import type { ToolSlot } from "../types";
 import { DocumentTitle } from "./DocumentTitle";

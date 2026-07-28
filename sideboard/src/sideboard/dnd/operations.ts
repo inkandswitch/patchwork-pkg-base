@@ -1,6 +1,6 @@
-import type { DocHandle, Repo, AutomergeUrl } from "@automerge/automerge-repo";
+import type { DocHandle, Repo, AutomergeUrl } from "@automerge/automerge-repo/slim";
 import type { FolderDoc, DocLink } from "@inkandswitch/patchwork-filesystem";
-import { deleteAt } from "@automerge/automerge-repo";
+import { deleteAt } from "@automerge/automerge-repo/slim";
 import { log } from "./debug.ts";
 import { docLinkFromUrl } from "../lib/doc-link.ts";
 

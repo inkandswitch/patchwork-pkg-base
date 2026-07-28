@@ -7,7 +7,7 @@ import {
 } from "solid-automerge";
 import type { ToolImplementation } from "@inkandswitch/patchwork-plugins";
 import "./styles.css";
-import type { DocHandle, Repo } from "@automerge/automerge-repo";
+import type { DocHandle, Repo } from "@automerge/automerge-repo/slim";
 import type { PatchworkViewElement } from "@inkandswitch/patchwork-elements";
 import { HasPatchworkMetadata } from "@inkandswitch/patchwork-filesystem/dist/metadata";
 import {

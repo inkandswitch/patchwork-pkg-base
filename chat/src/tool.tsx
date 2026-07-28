@@ -1,6 +1,6 @@
 import {render} from "solid-js/web"
 import {ChatRoot} from "./components/ChatRoot"
-import type {DocHandle} from "@automerge/automerge-repo"
+import type {DocHandle} from "@automerge/automerge-repo/slim"
 import type {ChatDoc} from "./types"
 import type {FeatureSelector} from "./features"
 import {setRepo} from "./lib/repo"

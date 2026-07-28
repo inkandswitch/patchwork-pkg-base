@@ -12,7 +12,7 @@ import {
 	type JSX,
 } from "solid-js"
 import {For} from "solid-js/web"
-import type {AutomergeUrl} from "@automerge/automerge-repo"
+import type {AutomergeUrl} from "@automerge/automerge-repo/slim"
 import {useChat} from "./ChatContext"
 import {useIdentity} from "./IdentityContext"
 import {usePresence} from "./PresenceContext"

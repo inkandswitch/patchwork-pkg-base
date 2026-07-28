@@ -1,6 +1,6 @@
 import { createSignal, createMemo, createEffect, Show, For, onCleanup } from "solid-js";
 import { render } from "solid-js/web";
-import type { AutomergeUrl } from "@automerge/automerge-repo";
+import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
 import { makeDocumentProjection } from "solid-automerge";
 import { OpenDocumentEvent } from "@inkandswitch/patchwork-elements";
 import type { ToolImplementation } from "@inkandswitch/patchwork-plugins";
