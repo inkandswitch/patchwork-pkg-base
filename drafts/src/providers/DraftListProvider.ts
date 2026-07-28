@@ -412,7 +412,7 @@ export const DraftListProvider = (element: HTMLElement) => {
       if (!doc || doc.mergedAt !== undefined) continue;
       drafts.push({
         url,
-        parent: doc.parent ?? null,
+        parent: effectiveParent(doc.parent),
         members: clonesToMembers(doc.clones),
         childCount: doc.drafts.length,
         name: doc.name ?? null,
@@ -425,6 +425,25 @@ export const DraftListProvider = (element: HTMLElement) => {
       actorAttributionUrl:
         mainDraftHandle?.doc()?.actorAttributionUrl ?? null,
     };
+  }
+
+  // The parent a summary should point at: the nearest non-merged ancestor.
+  // Merging normally re-parents children, but drafts orphaned before that
+  // existed (or by a concurrent merge on another peer) still resolve to the
+  // draft their parent was merged into instead of dangling under a hidden
+  // one. Unknown urls (not tracked, e.g. the main draft) pass through as-is.
+  function effectiveParent(
+    parentUrl: AutomergeUrl | undefined
+  ): AutomergeUrl | null {
+    const seen = new Set<AutomergeUrl>();
+    let cursor = parentUrl ?? null;
+    while (cursor && !seen.has(cursor)) {
+      seen.add(cursor);
+      const doc = trackedDrafts.get(cursor)?.doc();
+      if (!doc || doc.mergedAt === undefined) return cursor;
+      cursor = doc.parent ?? null;
+    }
+    return cursor;
   }
 
   // Main's summary. Its members come from the main draft's identity clones once

@@ -42,6 +42,9 @@ export type DraftDoc = {
   // actor ids to contact urls for author display. Stamped by the list
   // provider alongside the eager main-draft creation.
   actorAttributionUrl?: AutomergeUrl;
+  // Main draft only: monotonic counter behind new forks' default names
+  // ("Draft N"). Never decremented, so numbers aren't reused after deletes.
+  draftCounter?: number;
 };
 
 // Maps Automerge actor ids to the contact doc of the user who wrote with

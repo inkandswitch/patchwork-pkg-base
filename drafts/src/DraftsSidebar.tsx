@@ -15,7 +15,11 @@ import type {
   Repo,
   UrlHeads,
 } from "@automerge/automerge-repo";
-import { decodeHeads, encodeHeads } from "@automerge/automerge-repo";
+import {
+  decodeHeads,
+  encodeHeads,
+  isValidAutomergeUrl,
+} from "@automerge/automerge-repo";
 import * as Automerge from "@automerge/automerge";
 import {
   subscribe,
@@ -58,7 +62,7 @@ const EMPTY_DRAFT_LIST: DraftList = {
 
 // Logged on load and stamped into fork diagnostics; bump on deploy to tell
 // builds apart (no longer shown in the UI).
-const DRAFTS_VERSION = "0.0.42";
+const DRAFTS_VERSION = "0.0.43";
 
 // Logged at module load so the console shows which build is running even
 // before the panel renders.
@@ -442,8 +446,16 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     const parentHandle = parentUrl
       ? await repo.find<DraftDoc>(parentUrl)
       : mainDraft;
+    // Default name from a monotonic counter on the main draft, stamped at
+    // creation so numbering stays stable as drafts are merged or deleted.
+    let draftNumber = 1;
+    mainDraft.change((d) => {
+      d.draftCounter = (d.draftCounter ?? 0) + 1;
+      draftNumber = d.draftCounter;
+    });
     const draft = repo.create<DraftDoc>({
       "@patchwork": { type: "draft" },
+      name: `Draft ${draftNumber}`,
       parent: parentHandle.url,
       drafts: [],
       clones,
@@ -666,27 +678,16 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
 // parent's clone when it has one, the original otherwise (the main draft's
 // identity clones make those the same thing, so a top-level draft merges
 // into the originals) — recording per-clone merge heads for auditing, and
-// marks the draft as merged (which hides it from the list).
+// marks the draft as merged (which hides it from the list). The merged
+// draft's children are handed up to the merge target, so they never dangle
+// under a hidden draft.
 async function mergeDraft(
   repo: Repo,
   draftHandle: DocHandle<DraftDoc>
 ): Promise<void> {
   const doc = draftHandle.doc();
-  let parentClones: Record<AutomergeUrl, CloneEntry> = {};
-  const parentUrl = doc?.parent;
-  if (parentUrl) {
-    try {
-      const parent = await repo.find<DraftDoc>(parentUrl);
-      parentClones = parent.doc()?.clones ?? {};
-    } catch (err) {
-      console.warn(
-        "[drafts] failed to load parent draft for merge; " +
-          "falling back to merging into the originals:",
-        parentUrl,
-        err
-      );
-    }
-  }
+  const parentHandle = await findMergeTarget(repo, doc?.parent);
+  const parentClones = parentHandle?.doc()?.clones ?? {};
   const entries = Object.entries(doc?.clones ?? {}) as [
     AutomergeUrl,
     CloneEntry,
@@ -708,6 +709,67 @@ async function mergeDraft(
   draftHandle.change((d) => {
     d.mergedAt = Date.now();
   });
+
+  // Re-parent the merged draft's children onto the merge target: they list
+  // under it and their own merges land there (where this draft's changes
+  // now live). Their clones branched off this draft's clones, whose history
+  // was just merged into the target, so they still merge back cleanly.
+  if (parentHandle) {
+    const children = (draftHandle.doc()?.drafts ?? []).filter(
+      isValidAutomergeUrl
+    );
+    for (const childUrl of children) {
+      try {
+        const child = await repo.find<DraftDoc>(childUrl);
+        child.change((d) => {
+          d.parent = parentHandle.url;
+        });
+        parentHandle.change((d) => {
+          if (!d.drafts.includes(childUrl)) d.drafts.push(childUrl);
+        });
+        draftHandle.change((d) => {
+          const i = d.drafts.indexOf(childUrl);
+          if (i >= 0) d.drafts.splice(i, 1);
+        });
+      } catch (err) {
+        console.warn(
+          "[drafts] failed to re-parent child draft after merge:",
+          childUrl,
+          err
+        );
+      }
+    }
+  }
+}
+
+// Resolve the draft the merge should land in: the nearest non-merged
+// ancestor. A parent that was itself merged away hands its role up the
+// chain (its changes live in *its* merge target), ending at the main draft,
+// which is never merged. Null when the chain can't be resolved — the caller
+// then falls back to merging into the originals.
+async function findMergeTarget(
+  repo: Repo,
+  parentUrl: AutomergeUrl | undefined
+): Promise<DocHandle<DraftDoc> | null> {
+  const seen = new Set<AutomergeUrl>();
+  let cursor = parentUrl;
+  while (cursor && isValidAutomergeUrl(cursor) && !seen.has(cursor)) {
+    seen.add(cursor);
+    try {
+      const candidate = await repo.find<DraftDoc>(cursor);
+      if (candidate.doc()?.mergedAt === undefined) return candidate;
+      cursor = candidate.doc()?.parent;
+    } catch (err) {
+      console.warn(
+        "[drafts] failed to load ancestor draft for merge; " +
+          "falling back to merging into the originals:",
+        cursor,
+        err
+      );
+      return null;
+    }
+  }
+  return null;
 }
 
 // --- Cloning a member at a version -------------------------------------------
