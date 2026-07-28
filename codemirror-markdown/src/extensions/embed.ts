@@ -63,8 +63,11 @@ class EmbedWidget extends WidgetType {
     patchworkView.style.height = "500px";
     patchworkView.style.width = "100%";
 
-    // Persist tool picks made in the embed frame into the marker text.
+    // Persist tool picks made in the embed frame into the marker text. Stop
+    // propagation: with nested embeds the event would otherwise bubble on to
+    // the outer embed's host and change that one too.
     container.addEventListener("patchwork:embed-tool-changed", (e) => {
+      e.stopPropagation();
       const toolId = (e as CustomEvent<{ toolId?: string }>).detail?.toolId;
       if (toolId) this.setTool(view, container, toolId);
     });

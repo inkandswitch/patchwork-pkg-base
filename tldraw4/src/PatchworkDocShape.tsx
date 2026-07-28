@@ -184,6 +184,9 @@ function PatchworkDocComponent({ shape }: { shape: PatchworkDocShape }) {
     const el = containerRef.current;
     if (!el) return;
     const onToolChanged = (e: Event) => {
+      // Stop propagation: with nested embeds the event would otherwise bubble
+      // on to an outer embed's host and change that one too.
+      e.stopPropagation();
       const newToolId = (e as CustomEvent<{ toolId?: string }>).detail?.toolId;
       if (!newToolId) return;
       editor.updateShape({

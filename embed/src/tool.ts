@@ -19,12 +19,19 @@ import {
 } from "@inkandswitch/patchwork-plugins";
 import { getType } from "@inkandswitch/patchwork-filesystem";
 import { openDocument } from "@inkandswitch/patchwork-elements";
+import { version } from "../package.json";
 import "./embed.css";
 
 const EMBED_TOOL_ID = "embed";
 
 const EmbedFrame: ToolImplementation<any> = (handle, element) => {
-  let currentToolId = element.getAttribute("embed-tool-id") || null;
+  // `element` is the inner <patchwork-view-legacy>, which only receives the
+  // doc-url / tool-id attributes — hosts set `embed-tool-id` on the outer
+  // <patchwork-view>, so resolve it from there too.
+  let currentToolId =
+    element.getAttribute("embed-tool-id") ||
+    element.closest("patchwork-view")?.getAttribute("embed-tool-id") ||
+    null;
   let datatype: DatatypeImplementation<any> | null = null;
 
   const root = document.createElement("div");
@@ -36,6 +43,11 @@ const EmbedFrame: ToolImplementation<any> = (handle, element) => {
   const titleEl = document.createElement("span");
   titleEl.className = "title";
   titleEl.textContent = "\u2026";
+
+  // Deploy check: shows which build of the embed package is actually running.
+  const versionEl = document.createElement("span");
+  versionEl.className = "version";
+  versionEl.textContent = `v${version}`;
 
   const toolButton = document.createElement("button");
   toolButton.className = "tool-btn";
@@ -62,7 +74,7 @@ const EmbedFrame: ToolImplementation<any> = (handle, element) => {
     }
   });
 
-  header.append(titleEl, toolButton, openButton);
+  header.append(titleEl, versionEl, toolButton, openButton);
   content.append(view);
   root.append(header, content, menu);
   element.append(root);

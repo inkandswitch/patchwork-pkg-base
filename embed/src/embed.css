@@ -58,6 +58,12 @@
   outline: none;
 }
 
+.embed-frame .version {
+  font-size: 0.7em;
+  color: var(--embed-frame-muted);
+  flex-shrink: 0;
+}
+
 .embed-frame .tool-btn {
   display: inline-flex;
   align-items: center;
