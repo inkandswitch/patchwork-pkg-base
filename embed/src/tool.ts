@@ -90,16 +90,21 @@ const EmbedFrame: ToolImplementation<any> = (handle, element) => {
   }
 
   function currentToolName(): string {
-    if (currentToolId) {
-      const tool = getRegistry<ToolDescription>("patchwork:tool").get(
-        currentToolId
-      );
-      return tool?.name ?? currentToolId;
-    }
+    const toolId = effectiveToolId();
+    if (!toolId) return "";
+    const tool = getRegistry<ToolDescription>("patchwork:tool").get(toolId);
+    return tool?.name ?? toolId;
+  }
+
+  // When the host didn't pin a tool, the nested patchwork-view renders the
+  // doc's fallback tool — surface that instead of a special "unselected"
+  // state, so the picker always reflects what is actually shown.
+  function effectiveToolId(): string | null {
+    if (currentToolId) return currentToolId;
     try {
-      return getFallbackTool(handle.doc())?.name ?? "Open with\u2026";
+      return getFallbackTool(handle.doc())?.id ?? null;
     } catch {
-      return "Open with\u2026";
+      return null;
     }
   }
 
@@ -146,8 +151,6 @@ const EmbedFrame: ToolImplementation<any> = (handle, element) => {
     input.select();
   }
 
-  // Replicates the sidebar's "Open with" menu: a search box filtering the
-  // suggested tools, Enter on a non-match forces the typed tool id.
   function toggleMenu(): void {
     if (menu.matches(":popover-open")) {
       menu.hidePopover();
@@ -170,84 +173,24 @@ const EmbedFrame: ToolImplementation<any> = (handle, element) => {
 
   function buildMenu(): void {
     menu.replaceChildren();
-    const tools = listTools();
-
-    const input = document.createElement("input");
-    input.className = "search";
-    input.placeholder = "Search or enter tool id\u2026";
-    menu.append(input);
-
     const list = document.createElement("div");
     list.className = "list";
     menu.append(list);
 
-    let highlighted = 0;
-    let filtered: ToolDescription[] = [];
-
-    const pick = (toolId: string) => {
-      menu.hidePopover();
-      setTool(toolId);
-    };
-
-    const highlightAt = (i: number) => {
-      highlighted = i;
-      for (const [j, el] of [...list.children].entries()) {
-        el.toggleAttribute("data-highlight", j === i);
+    const current = effectiveToolId();
+    for (const tool of listTools()) {
+      const item = document.createElement("button");
+      item.className = "item";
+      if (tool.id === current) {
+        item.toggleAttribute("data-current", true);
       }
-    };
-
-    const renderList = () => {
-      const q = input.value.trim().toLowerCase();
-      filtered = tools.filter(
-        (t) =>
-          !q ||
-          t.name.toLowerCase().includes(q) ||
-          t.id.toLowerCase().includes(q)
-      );
-      list.replaceChildren();
-      filtered.forEach((t, i) => {
-        const item = document.createElement("button");
-        item.className = "item";
-        if (i === highlighted) item.toggleAttribute("data-highlight", true);
-        if (t.id === currentToolId) item.toggleAttribute("data-current", true);
-        item.textContent = t.name || t.id;
-        item.addEventListener("click", () => pick(t.id));
-        item.addEventListener("pointerenter", () => highlightAt(i));
-        list.append(item);
-      });
-    };
-
-    input.addEventListener("input", () => {
-      highlighted = 0;
-      renderList();
-    });
-
-    input.addEventListener("keydown", (e) => {
-      e.stopPropagation();
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        highlightAt(Math.min(highlighted + 1, filtered.length - 1));
-        list.children[highlighted]?.scrollIntoView({ block: "nearest" });
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        highlightAt(Math.max(highlighted - 1, 0));
-        list.children[highlighted]?.scrollIntoView({ block: "nearest" });
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        const q = input.value.trim();
-        if (highlighted >= 0 && highlighted < filtered.length) {
-          pick(filtered[highlighted].id);
-        } else if (q) {
-          // Force a tool id that isn't among the suggestions.
-          pick(q);
-        }
-      } else if (e.key === "Escape") {
+      item.textContent = tool.name || tool.id;
+      item.addEventListener("click", () => {
         menu.hidePopover();
-      }
-    });
-
-    renderList();
-    queueMicrotask(() => input.focus());
+        setTool(tool.id);
+      });
+      list.append(item);
+    }
   }
 
   function listTools(): ToolDescription[] {
