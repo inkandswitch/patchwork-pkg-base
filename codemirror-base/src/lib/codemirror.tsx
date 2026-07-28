@@ -40,6 +40,8 @@ type CodeMirrorProps<T> = {
   // When the returned range changes, the editor scrolls it into view -- unless
   // it's already visible. Used to follow focus driven by other views.
   scrollTarget?: () => readonly [number, number] | null;
+  // Forces the editor read-only. A heads-pinned handle makes it read-only
+  // regardless (tracked internally), so this is only needed as an override.
   readOnly?: boolean;
   withView?(view: EditorView): void;
 };
@@ -55,7 +57,10 @@ export function CodeMirror<T>(props: CodeMirrorProps<T>) {
   );
 
   const [readOnlyExtension, createEffectReconfigureReadOnly] =
-    createReadOnlyExtension(() => !!props.readOnly);
+    createReadOnlyExtension(
+      () => props.handle,
+      () => !!props.readOnly
+    );
 
   // Undo/redo lives here (not in tool-supplied extensions) so the stack can
   // be reset when the handle's backing is swapped in place -- see history.ts.
