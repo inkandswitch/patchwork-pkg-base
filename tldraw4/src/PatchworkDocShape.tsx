@@ -19,12 +19,10 @@ import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
 import { useDocument } from "@automerge/react";
 import { automergeUrlToServiceWorkerUrl } from "@inkandswitch/patchwork-filesystem";
 
-// A tldraw shape that embeds another Patchwork document, rendered through the
-// shared "embed" tool: `<patchwork-view tool-id="embed">` draws the title bar
-// (live title, rename), the tool picker, and the open button, and nests the
-// actual content view. The document reference and its display metadata live
-// in the shape props, so they persist through the normal tldraw <-> Automerge
-// sync like any other shape.
+// A tldraw shape embedding another Patchwork document via the shared "embed"
+// tool (<patchwork-view tool-id="embed">), which draws the chrome and nests
+// the content view. The doc reference lives in the shape props, so it syncs
+// like any other shape.
 
 export const PATCHWORK_DOC_SHAPE_TYPE = "patchwork-doc" as const;
 
@@ -177,15 +175,12 @@ function PatchworkDocComponent({ shape }: { shape: PatchworkDocShape }) {
     };
   }, [isFocused]);
 
-  // Persist tool picks made in the embed frame into the shape props. The
-  // frame emits `patchwork:embed-tool-changed` (bubbling, composed) when the
-  // user chooses a different tool from its picker.
+  // Persist tool picks from the embed frame into the shape props.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const onToolChanged = (e: Event) => {
-      // Stop propagation: with nested embeds the event would otherwise bubble
-      // on to an outer embed's host and change that one too.
+      // Stop propagation so nested embeds don't also change the outer embed.
       e.stopPropagation();
       const newToolId = (e as CustomEvent<{ toolId?: string }>).detail?.toolId;
       if (!newToolId) return;
@@ -217,11 +212,8 @@ function PatchworkDocComponent({ shape }: { shape: PatchworkDocShape }) {
           pointerEvents: "all",
         }}
       >
-        {/* Content: interactive only while the shape is in editing mode
-            (double-click, tldraw's native canEdit flow). Otherwise pointer
-            events fall through so tldraw can select and drag the shape from
-            anywhere — the embed frame's own chrome handles title, rename,
-            tool picking, and opening once editing. */}
+        {/* Interactive only while editing (double-click); otherwise pointer
+            events fall through so tldraw can select and drag the shape. */}
         <div
           ref={contentRef}
           style={{

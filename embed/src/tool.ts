@@ -1,12 +1,7 @@
-// The embed frame: chrome around a nested <patchwork-view>. Hosts (codemirror
-// markers, tldraw shapes, …) mount it via <patchwork-view tool-id="embed">
-// and pass the inner tool through the `embed-tool-id` attribute — the tool
-// receives the <patchwork-view> element itself, so it can read attributes off
-// it and dispatch events from it.
-//
-// Emits `patchwork:embed-tool-changed` (bubbles, composed) when the user picks
-// a different tool, so the host can persist the choice wherever it lives
-// (marker text, shape props, …).
+// Embed frame: chrome (title, tool picker, open button) around a nested
+// <patchwork-view>. Hosts mount it via <patchwork-view tool-id="embed">, pin
+// the inner tool with the `embed-tool-id` attribute, and persist picks by
+// listening for the bubbling `patchwork:embed-tool-changed` event.
 
 import {
   getFallbackTool,
@@ -25,9 +20,8 @@ import "./embed.css";
 const EMBED_TOOL_ID = "embed";
 
 const EmbedFrame: ToolImplementation<any> = (handle, element) => {
-  // `element` is the inner <patchwork-view-legacy>, which only receives the
-  // doc-url / tool-id attributes — hosts set `embed-tool-id` on the outer
-  // <patchwork-view>, so resolve it from there too.
+  // `element` is the inner <patchwork-view-legacy>; hosts set `embed-tool-id`
+  // on the outer <patchwork-view>, so check there too.
   let currentToolId =
     element.getAttribute("embed-tool-id") ||
     element.closest("patchwork-view")?.getAttribute("embed-tool-id") ||
@@ -44,7 +38,7 @@ const EmbedFrame: ToolImplementation<any> = (handle, element) => {
   titleEl.className = "title";
   titleEl.textContent = "\u2026";
 
-  // Deploy check: shows which build of the embed package is actually running.
+  // Deploy check: which build is actually running.
   const versionEl = document.createElement("span");
   versionEl.className = "version";
   versionEl.textContent = `v${version}`;
@@ -92,7 +86,7 @@ const EmbedFrame: ToolImplementation<any> = (handle, element) => {
     try {
       return datatype?.getTitle(handle.doc()) || "Untitled";
     } catch {
-      // getTitle may throw if the doc shape doesn't match the datatype
+      // getTitle throws on unexpected doc shapes
       return "Untitled";
     }
   }
@@ -108,9 +102,8 @@ const EmbedFrame: ToolImplementation<any> = (handle, element) => {
     return tool?.name ?? toolId;
   }
 
-  // When the host didn't pin a tool, the nested patchwork-view renders the
-  // doc's fallback tool — surface that instead of a special "unselected"
-  // state, so the picker always reflects what is actually shown.
+  // With no pinned tool the nested view renders the doc's fallback tool, so
+  // surface that as the selection rather than a special "unselected" state.
   function effectiveToolId(): string | null {
     if (currentToolId) return currentToolId;
     try {
@@ -134,8 +127,7 @@ const EmbedFrame: ToolImplementation<any> = (handle, element) => {
     );
   }
 
-  // Rename in place: swap the title for an input; commit via the datatype's
-  // setTitle so the canonical name updates for every view of the doc.
+  // Swap the title for an input; commit via the datatype's setTitle.
   function startRename(): void {
     if (!datatype?.setTitle) return;
     const input = document.createElement("input");
@@ -222,8 +214,7 @@ const EmbedFrame: ToolImplementation<any> = (handle, element) => {
     if (!currentToolId) renderToolButton();
   }
 
-  // Load the datatype so getTitle/setTitle work and the tools it ships with
-  // get registered, then re-render whatever depended on it.
+  // Load the datatype (for getTitle/setTitle and its tools), then re-render.
   async function loadDatatype(): Promise<void> {
     const doc = handle.doc();
     const type = doc && getType(doc);

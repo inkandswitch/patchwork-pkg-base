@@ -1,7 +1,6 @@
 import { EditorView } from "@codemirror/view";
 
-// Only the outer container: all embed chrome (title bar, tool picker, open
-// button) lives in the shared "embed" tool mounted via <patchwork-view>.
+// Outer container only; all embed chrome lives in the shared "embed" tool.
 export const embedTheme = EditorView.baseTheme({
   ".cm-embed": {
     display: "block",
