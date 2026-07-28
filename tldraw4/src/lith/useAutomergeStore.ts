@@ -16,7 +16,7 @@ import {
   sortById,
   useEditor,
 } from "@tldraw/tldraw";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   type DocHandle,
   type DocHandleChangePayload,
@@ -50,6 +50,12 @@ export function useAutomergeStore({
     status: "loading",
   });
 
+  // Read through a ref inside the write-back listener so a mid-session flip
+  // (see `useIsHandleReadOnly`) doesn't re-run the store effect below — that
+  // would re-load the snapshot and clear session records (camera, selection).
+  const readOnlyRef = useRef(readOnly);
+  readOnlyRef.current = readOnly;
+
   /* -------------------- TLDraw <--> Automerge -------------------- */
   useEffect(() => {
     const unsubs: (() => void)[] = [];
@@ -62,6 +68,9 @@ export function useAutomergeStore({
     function syncStoreChangesToAutomergeDoc({
       changes,
     }: HistoryEntry<TLRecord>) {
+      // A read-only (history-pinned) handle is at fixed heads and rejects
+      // `handle.change`, so never forward store edits back to Automerge.
+      if (readOnlyRef.current) return;
       preventPatchApplications = true;
       handle.change((doc) => {
         applyTLStoreChangesToAutomerge(doc, changes);
@@ -69,16 +78,12 @@ export function useAutomergeStore({
       preventPatchApplications = false;
     }
 
-    // A read-only (history-pinned) handle is at fixed heads and rejects
-    // `handle.change`, so never forward store edits back to Automerge.
-    if (!readOnly) {
-      unsubs.push(
-        store.listen(syncStoreChangesToAutomergeDoc, {
-          source: "user",
-          scope: "document",
-        })
-      );
-    }
+    unsubs.push(
+      store.listen(syncStoreChangesToAutomergeDoc, {
+        source: "user",
+        scope: "document",
+      })
+    );
 
     /* Automerge to TLDraw */
     const syncAutomergeDocChangesToStore = ({
@@ -153,9 +158,30 @@ export function useAutomergeStore({
       unsubs.forEach((fn) => fn());
       unsubs.length = 0;
     };
-  }, [handle, store, readOnly]);
+  }, [handle, store]);
 
   return storeWithStatus;
+}
+
+// A handle's read-only state (`isReadOnly()`, true at fixed heads) can flip in
+// place: its backing may be swapped without the handle identity changing (a
+// `change` event with `scopeReplaced: true`). Track it as state re-read on
+// every swap rather than sampling it once per mount.
+export function useIsHandleReadOnly(
+  handle: DocHandle<TLStoreSnapshot>
+): boolean {
+  const [readOnly, setReadOnly] = useState(() => handle.isReadOnly());
+
+  useEffect(() => {
+    setReadOnly(handle.isReadOnly());
+    const onChange = (payload: DocHandleChangePayload<TLStoreSnapshot>) => {
+      if (payload.scopeReplaced) setReadOnly(handle.isReadOnly());
+    };
+    handle.on("change", onChange);
+    return () => void handle.off("change", onChange);
+  }, [handle]);
+
+  return readOnly;
 }
 
 // A scope swap (a `change` event with `scopeReplaced: true` -- the draft
