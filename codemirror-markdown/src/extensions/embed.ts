@@ -286,9 +286,12 @@ function embedDropHandlers() {
 
   return EditorView.domEventHandlers({
     dragover(event) {
-      if (!wantsDragover(event.dataTransfer)) return false;
+      const dt = event.dataTransfer;
+      if (!wantsDragover(dt)) return false;
       event.preventDefault();
-      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+      // Doc drags insert a *reference* to the same automerge doc, so show the
+      // link cursor; OS file drags genuinely copy content into new docs.
+      if (dt) dt.dropEffect = dt.types.includes("Files") ? "copy" : "link";
       return true;
     },
     drop(event, view) {

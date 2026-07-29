@@ -1,6 +1,6 @@
 {
   "name": "embed",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Shared embed frame: title bar, tool picker, and open button around a nested patchwork-view",
   "type": "module",
   "main": "./dist/index.js",

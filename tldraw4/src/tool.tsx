@@ -11,6 +11,7 @@ import {
   useEditor,
   getMediaAssetInfoPartial,
   atom,
+  createShapeId,
   type VecLike,
   type TLContent,
   type TLAssetId,
@@ -41,7 +42,6 @@ import {
   PatchworkDocShapeUtil,
   PATCHWORK_DOC_SHAPE_TYPE,
   getDefaultToolId,
-  makeShapeId,
 } from "./PatchworkDocShape.tsx";
 import {
   NewDocShapeTool,
@@ -421,13 +421,18 @@ function usePatchworkDrop(element: HTMLElement) {
     const isInsideEmbeddedPatchworkView = (e: DragEvent) => {
       for (const el of e.composedPath()) {
         if (el === element) break;
-        if ((el as Element).tagName?.toLowerCase() === "patchwork-view") return true;
+        if ((el as Element).tagName?.toLowerCase() === "patchwork-view")
+          return true;
       }
       return false;
     };
 
     const allowDrop = (e: DragEvent) => {
-      if (e.dataTransfer && isPatchworkDrag(e.dataTransfer.types)) e.preventDefault();
+      if (e.dataTransfer && isPatchworkDrag(e.dataTransfer.types)) {
+        e.preventDefault();
+        // Dropping embeds a *reference* to the same automerge doc, not a copy.
+        e.dataTransfer.dropEffect = "link";
+      }
     };
 
     const handleDrop = (e: DragEvent) => {
@@ -441,15 +446,13 @@ function usePatchworkDrop(element: HTMLElement) {
 
       const dropPoint = editor.screenToPage({ x: e.clientX, y: e.clientY });
       const STAGGER = 24;
+      const createdIds: TLShapeId[] = [];
 
       docs.forEach((item, i) => {
-        const shapeId = makeShapeId(item.url);
-
-        // Already embedded: select it rather than creating a duplicate.
-        if (editor.getShape(shapeId)) {
-          editor.select(shapeId);
-          return;
-        }
+        // Random id (not derived from the doc url) so the same document can be
+        // embedded on the canvas any number of times.
+        const shapeId = createShapeId();
+        createdIds.push(shapeId);
 
         const knownType = item.type ?? "";
         editor.createShape({
@@ -474,7 +477,9 @@ function usePatchworkDrop(element: HTMLElement) {
         if (!item.type || !item.name) {
           void (async () => {
             try {
-              const handle = await repo.find<{ "@patchwork"?: { type?: string } }>(item.url);
+              const handle = await repo.find<{
+                "@patchwork"?: { type?: string };
+              }>(item.url);
               const doc = handle.doc();
               const datatypeId = doc?.["@patchwork"]?.type ?? knownType;
               if (!editor.getShape(shapeId)) return;
@@ -494,7 +499,7 @@ function usePatchworkDrop(element: HTMLElement) {
         }
       });
 
-      editor.setSelectedShapes(docs.map((d) => makeShapeId(d.url)));
+      editor.setSelectedShapes(createdIds);
     };
 
     element.addEventListener("dragenter", allowDrop, { capture: true });
