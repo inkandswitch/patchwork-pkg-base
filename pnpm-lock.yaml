@@ -788,7 +788,7 @@ importers:
         version: 2.6.0-subduction.46(supports-color@7.2.0)
       '@inkandswitch/patchwork-elements':
         specifier: 1.0.0
-        version: 1.0.0(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0))(@inkandswitch/patchwork-filesystem@0.1.3(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0))(@automerge/automerge@3.3.0-fragments.1)(supports-color@7.2.0))(@inkandswitch/patchwork-plugins@0.0.11(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0))(@inkandswitch/patchwork-filesystem@0.1.3(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0))(@automerge/automerge@3.3.0-fragments.1)(supports-color@7.2.0))(supports-color@7.2.0))(@inkandswitch/patchwork-providers@0.3.0(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0)))(@types/react@18.3.31)(react@18.3.1)(solid-js@1.9.14)(supports-color@7.2.0)
+        version: 1.0.0(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0))(@inkandswitch/patchwork-filesystem@0.1.3(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0))(@automerge/automerge@3.3.0-fragments.1)(supports-color@7.2.0))(@inkandswitch/patchwork-plugins@0.0.11(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0))(@automerge/automerge@3.3.0-fragments.1)(@inkandswitch/patchwork-filesystem@0.1.3(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0))(@automerge/automerge@3.3.0-fragments.1)(supports-color@7.2.0))(supports-color@7.2.0))(@inkandswitch/patchwork-providers@0.3.0(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0)))(@types/react@18.3.31)(react@18.3.1)(solid-js@1.9.14)(supports-color@7.2.0)
       '@inkandswitch/patchwork-filesystem':
         specifier: ^0.1.3
         version: 0.1.3(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0))(@automerge/automerge@3.3.0-fragments.1)(supports-color@7.2.0)
@@ -1279,8 +1279,8 @@ importers:
         specifier: 0.2.2
         version: 0.2.2(@automerge/automerge-repo-react-hooks@2.6.0-subduction.20(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(supports-color@7.2.0))(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0))(react@18.3.1)
       '@tldraw/tldraw':
-        specifier: 4.3.1
-        version: 4.3.1(@floating-ui/dom@1.8.0)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        specifier: 4.5.12
+        version: 4.5.12(@floating-ui/dom@1.8.0)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@types/lodash':
         specifier: ^4.17.20
         version: 4.17.24
@@ -1293,9 +1293,6 @@ importers:
       react-dom:
         specifier: ^18.3.1
         version: 18.3.1(react@18.3.1)
-      tldraw:
-        specifier: ^4.3.1
-        version: 4.5.12(@floating-ui/dom@1.8.0)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       vite-plugin-wasm:
         specifier: ^3.5.0
         version: 3.6.0(vite@7.3.6(@types/node@24.13.3))
@@ -4045,20 +4042,8 @@ packages:
   '@tiptap/starter-kit@3.29.0':
     resolution: {integrity: sha512-J3jTp3/WXnnL58TCtdMsfeQ2BeycFYrAib6Nbpjd9G0OLUBE7AILiH2HrobRQpvRbAUgD5SW+sBZYOonbWWqNg==}
 
-  '@tldraw/editor@4.3.1':
-    resolution: {integrity: sha512-7qEhQjRAXrzBVMRQad6APCWOHWuid3LHozUHJ3lPBj9ua/5KG1g4ZE6uEluNTU7mx5o8TBrYdDEpgv5FpHWUaA==}
-    peerDependencies:
-      react: ^18.2.0 || ^19.2.1
-      react-dom: ^18.2.0 || ^19.2.1
-
   '@tldraw/editor@4.5.12':
     resolution: {integrity: sha512-7t5goTeXsf/sH3+IPSJ3eKrkah5wfdRvHyXdAHFRPOrRgQwepCH7BWfzeWDxi26KDUF8wHEIp/yf6PLUWQFjyQ==}
-    peerDependencies:
-      react: ^18.2.0 || ^19.2.1
-      react-dom: ^18.2.0 || ^19.2.1
-
-  '@tldraw/state-react@4.3.1':
-    resolution: {integrity: sha512-rXddhMhWPP5LhzgrOMe0Na1N7Pbyv7lJqynL8Idv5HEp8xIXnFT0Qlu8LhhiJ3hyWji52O0dkoAPqJ/AZYb8PA==}
     peerDependencies:
       react: ^18.2.0 || ^19.2.1
       react-dom: ^18.2.0 || ^19.2.1
@@ -4069,30 +4054,16 @@ packages:
       react: ^18.2.0 || ^19.2.1
       react-dom: ^18.2.0 || ^19.2.1
 
-  '@tldraw/state@4.3.1':
-    resolution: {integrity: sha512-5VtARGQ36cH/T9jMbQV93XDfpPH+WXPoLzZ11O3GHB2M8JQwE0Qoc88K7OZD4rlqe/TbkvbTWo/n1V8tfB3ODQ==}
-
   '@tldraw/state@4.5.12':
     resolution: {integrity: sha512-DPt4rUI+m21FW4mQjYj+RCoZpriDwMravQSh8EPsyz5SimlWFiiv0mc7RaV2LMQXgvQvX3xtIyJsqaWSXpOO5g==}
-
-  '@tldraw/store@4.3.1':
-    resolution: {integrity: sha512-ytw3MGEe2+nC7CFRD5llCdgVi9W3TiTRNqdyqeEgzBXKTjpD81P3UPC5KJi2kXyhe1t6HWWV3Ld4gfPUICuNFg==}
-    peerDependencies:
-      react: ^18.2.0 || ^19.2.1
 
   '@tldraw/store@4.5.12':
     resolution: {integrity: sha512-k3iepU+DlB9A0U6sKHr3J1IIDOMohpLOLGnCZLFrGRDO8lDLF/GUtzVKkzBfzG3zoYWw6vqVxM76i8GQUgpTnw==}
     peerDependencies:
       react: ^18.2.0 || ^19.2.1
 
-  '@tldraw/tldraw@4.3.1':
-    resolution: {integrity: sha512-2AknMcaAWhaEjNSbXmKaLVXOUfpTm9xnc0i3bLAjAMlzJNuS9VgIge1Nh2iBQMEPJfKPfpBaWyhlcgV3MhWyyA==}
-    peerDependencies:
-      react: ^18.2.0 || ^19.2.1
-      react-dom: ^18.2.0 || ^19.2.1
-
-  '@tldraw/tlschema@4.3.1':
-    resolution: {integrity: sha512-+PDQsFkAdEd4BMyB5AGLZVECHQhXUyKLV08ihkZvMjsuTn2WfOrJvANHGkHhJ7XwGiyNj+ROhNaGmWnKPxOoXQ==}
+  '@tldraw/tldraw@4.5.12':
+    resolution: {integrity: sha512-FtK2kSU4/sjeLMVxgpDUDE+kamsuxCYe4gQwDSrDsJobSMI+zkQp+E1BAUuAKxUCmwrFlN/Y1kIu2UjaHm6oRg==}
     peerDependencies:
       react: ^18.2.0 || ^19.2.1
       react-dom: ^18.2.0 || ^19.2.1
@@ -4103,14 +4074,8 @@ packages:
       react: ^18.2.0 || ^19.2.1
       react-dom: ^18.2.0 || ^19.2.1
 
-  '@tldraw/utils@4.3.1':
-    resolution: {integrity: sha512-6Low8mIRzupdkNooPboZyBJ3lnJGcKHTMk5ZdNAOu+aL3ffnoP/+rstNoH5k4kFdyv+ScBSRZ8Oj97nHPwc2CQ==}
-
   '@tldraw/utils@4.5.12':
     resolution: {integrity: sha512-9g679nJFKVLwoAe1RASJCWt7C/0m+c0OWtKgd/o5VRfOvqc0BGrzd0eTm+wJlHbrH0RyNpSPasE2haErbuqIrA==}
-
-  '@tldraw/validate@4.3.1':
-    resolution: {integrity: sha512-kKrPheHfKlVDiokYArgShGn2HYHgSJ5af7oThPlnrACil3ZXcbcedUJcEoSY10uTnYJ9h/eKGrDX26VdSPUWPQ==}
 
   '@tldraw/validate@4.5.12':
     resolution: {integrity: sha512-LHGO0yHIe5A2Rzj+uL1Mo8NQJw2po6mdPrlvj3sJ7QT0Kx0A4+TYOUhrwTB32CimH17EpsdZ8eD04isO1KsRhw==}
@@ -4129,9 +4094,6 @@ packages:
 
   '@types/chai@5.2.3':
     resolution: {integrity: sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA==}
-
-  '@types/core-js@2.5.8':
-    resolution: {integrity: sha512-VgnAj6tIAhJhZdJ8/IpxdatM8G4OD3VWGlp6xIxUGENZlpbob9Ty4VVdC1FIEp0aK6DBscDDjyzy5FB60TuNqg==}
 
   '@types/debug@4.1.13':
     resolution: {integrity: sha512-KSVgmQmzMwPlmtljOomayoR89W4FynCAi3E8PPs7vmDVPe84hT+vGPKkJfThkmXs0x0jAaa9U8uW8bbfyS2fWw==}
@@ -4510,9 +4472,6 @@ packages:
 
   convert-source-map@2.0.0:
     resolution: {integrity: sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg==}
-
-  core-js@3.49.0:
-    resolution: {integrity: sha512-es1U2+YTtzpwkxVLwAFdSpaIMyQaq0PBgm3YD1W3Qpsn1NAmO3KSgZfu+oGSWVu6NvLHoHCV/aYcsE5wiB7ALg==}
 
   crelt@1.0.7:
     resolution: {integrity: sha512-aK6BbWfhf4U/wCcLHKPJl/xa6VkVstRaPywWtMKGwuOLc/wZTyQYuoxgvZnNsBvv7Kg3YTBQYYBCggcviQczuA==}
@@ -5387,12 +5346,6 @@ packages:
   tinyrainbow@3.1.0:
     resolution: {integrity: sha512-Bf+ILmBgretUrdJxzXM0SgXLZ3XfiaUuOj/IKQHuTXip+05Xn+uyEYdVg0kYDipTBcLrCVyUzAPz7QmArb0mmw==}
     engines: {node: '>=14.0.0'}
-
-  tldraw@4.3.1:
-    resolution: {integrity: sha512-duKi/aHG/PlsHLsRBXPbhxQgLKzRN9E52AeP4GRg4ysQniQY6pk7qIm89Vevfi3yP5vF4koX8FpQp/J6Z1L9aQ==}
-    peerDependencies:
-      react: ^18.2.0 || ^19.2.1
-      react-dom: ^18.2.0 || ^19.2.1
 
   tldraw@4.5.12:
     resolution: {integrity: sha512-n7AZFbQ8w4PyqIXQmyJbPXBKHcdwgRCgNqlU78tEMGkExxkIwKQ5p167o3DbKxyHyTmxihdu/DAeMx9uSeehMg==}
@@ -7795,11 +7748,11 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@inkandswitch/patchwork-elements@1.0.0(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0))(@inkandswitch/patchwork-filesystem@0.1.3(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0))(@automerge/automerge@3.3.0-fragments.1)(supports-color@7.2.0))(@inkandswitch/patchwork-plugins@0.0.11(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0))(@inkandswitch/patchwork-filesystem@0.1.3(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0))(@automerge/automerge@3.3.0-fragments.1)(supports-color@7.2.0))(supports-color@7.2.0))(@inkandswitch/patchwork-providers@0.3.0(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0)))(@types/react@18.3.31)(react@18.3.1)(solid-js@1.9.14)(supports-color@7.2.0)':
+  '@inkandswitch/patchwork-elements@1.0.0(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0))(@inkandswitch/patchwork-filesystem@0.1.3(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0))(@automerge/automerge@3.3.0-fragments.1)(supports-color@7.2.0))(@inkandswitch/patchwork-plugins@0.0.11(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0))(@automerge/automerge@3.3.0-fragments.1)(@inkandswitch/patchwork-filesystem@0.1.3(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0))(@automerge/automerge@3.3.0-fragments.1)(supports-color@7.2.0))(supports-color@7.2.0))(@inkandswitch/patchwork-providers@0.3.0(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0)))(@types/react@18.3.31)(react@18.3.1)(solid-js@1.9.14)(supports-color@7.2.0)':
     dependencies:
       '@automerge/automerge-repo': 2.6.0-subduction.39(supports-color@7.2.0)
       '@inkandswitch/patchwork-filesystem': 0.1.3(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0))(@automerge/automerge@3.3.0-fragments.1)(supports-color@7.2.0)
-      '@inkandswitch/patchwork-plugins': 0.0.11(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0))(@inkandswitch/patchwork-filesystem@0.1.3(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0))(@automerge/automerge@3.3.0-fragments.1)(supports-color@7.2.0))(supports-color@7.2.0)
+      '@inkandswitch/patchwork-plugins': 0.0.11(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0))(@automerge/automerge@3.3.0-fragments.1)(@inkandswitch/patchwork-filesystem@0.1.3(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0))(@automerge/automerge@3.3.0-fragments.1)(supports-color@7.2.0))(supports-color@7.2.0)
       '@inkandswitch/patchwork-providers': 0.3.0(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0))
       debug: 4.4.3(supports-color@7.2.0)
     optionalDependencies:
@@ -8147,18 +8100,6 @@ snapshots:
     dependencies:
       '@automerge/automerge-repo': 2.6.0-subduction.39(supports-color@7.2.0)
       '@inkandswitch/patchwork-filesystem': 0.0.8(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0))(supports-color@7.2.0)
-      '@types/debug': 4.1.13
-      '@types/node': 20.19.43
-      debug: 4.4.3(supports-color@7.2.0)
-      eventemitter3: 5.0.4
-      resolve.exports: 2.0.3
-    transitivePeerDependencies:
-      - supports-color
-
-  '@inkandswitch/patchwork-plugins@0.0.11(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0))(@inkandswitch/patchwork-filesystem@0.1.3(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0))(@automerge/automerge@3.3.0-fragments.1)(supports-color@7.2.0))(supports-color@7.2.0)':
-    dependencies:
-      '@automerge/automerge-repo': 2.6.0-subduction.39(supports-color@7.2.0)
-      '@inkandswitch/patchwork-filesystem': 0.1.3(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0))(@automerge/automerge@3.3.0-fragments.1)(supports-color@7.2.0)
       '@types/debug': 4.1.13
       '@types/node': 20.19.43
       debug: 4.4.3(supports-color@7.2.0)
@@ -9717,31 +9658,6 @@ snapshots:
       '@tiptap/extensions': 3.29.0(@tiptap/core@3.29.0(@tiptap/pm@3.29.0))(@tiptap/pm@3.29.0)
       '@tiptap/pm': 3.29.0
 
-  '@tldraw/editor@4.3.1(@floating-ui/dom@1.8.0)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
-    dependencies:
-      '@tiptap/core': 3.29.0(@tiptap/pm@3.29.0)
-      '@tiptap/pm': 3.29.0
-      '@tiptap/react': 3.29.0(@floating-ui/dom@1.8.0)(@tiptap/core@3.29.0(@tiptap/pm@3.29.0))(@tiptap/pm@3.29.0)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@tldraw/state': 4.3.1
-      '@tldraw/state-react': 4.3.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@tldraw/store': 4.3.1(react@18.3.1)
-      '@tldraw/tlschema': 4.3.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@tldraw/utils': 4.3.1
-      '@tldraw/validate': 4.3.1
-      '@types/core-js': 2.5.8
-      '@use-gesture/react': 10.3.1(react@18.3.1)
-      classnames: 2.5.1
-      core-js: 3.49.0
-      eventemitter3: 4.0.7
-      idb: 7.1.1
-      is-plain-object: 5.0.0
-      react: 18.3.1
-      react-dom: 18.3.1(react@18.3.1)
-    transitivePeerDependencies:
-      - '@floating-ui/dom'
-      - '@types/react'
-      - '@types/react-dom'
-
   '@tldraw/editor@4.5.12(@floating-ui/dom@1.8.0)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@tiptap/core': 3.29.0(@tiptap/pm@3.29.0)
@@ -9766,13 +9682,6 @@ snapshots:
       - '@types/react'
       - '@types/react-dom'
 
-  '@tldraw/state-react@4.3.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
-    dependencies:
-      '@tldraw/state': 4.3.1
-      '@tldraw/utils': 4.3.1
-      react: 18.3.1
-      react-dom: 18.3.1(react@18.3.1)
-
   '@tldraw/state-react@4.5.12(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@tldraw/state': 4.5.12
@@ -9780,19 +9689,9 @@ snapshots:
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
 
-  '@tldraw/state@4.3.1':
-    dependencies:
-      '@tldraw/utils': 4.3.1
-
   '@tldraw/state@4.5.12':
     dependencies:
       '@tldraw/utils': 4.5.12
-
-  '@tldraw/store@4.3.1(react@18.3.1)':
-    dependencies:
-      '@tldraw/state': 4.3.1
-      '@tldraw/utils': 4.3.1
-      react: 18.3.1
 
   '@tldraw/store@4.5.12(react@18.3.1)':
     dependencies:
@@ -9800,24 +9699,15 @@ snapshots:
       '@tldraw/utils': 4.5.12
       react: 18.3.1
 
-  '@tldraw/tldraw@4.3.1(@floating-ui/dom@1.8.0)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+  '@tldraw/tldraw@4.5.12(@floating-ui/dom@1.8.0)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
-      tldraw: 4.3.1(@floating-ui/dom@1.8.0)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      tldraw: 4.5.12(@floating-ui/dom@1.8.0)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
     transitivePeerDependencies:
       - '@floating-ui/dom'
       - '@types/react'
       - '@types/react-dom'
-
-  '@tldraw/tlschema@4.3.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
-    dependencies:
-      '@tldraw/state': 4.3.1
-      '@tldraw/store': 4.3.1(react@18.3.1)
-      '@tldraw/utils': 4.3.1
-      '@tldraw/validate': 4.3.1
-      react: 18.3.1
-      react-dom: 18.3.1(react@18.3.1)
 
   '@tldraw/tlschema@4.5.12(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
@@ -9828,14 +9718,6 @@ snapshots:
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
 
-  '@tldraw/utils@4.3.1':
-    dependencies:
-      jittered-fractional-indexing: 1.0.1
-      lodash.isequal: 4.5.0
-      lodash.isequalwith: 4.4.0
-      lodash.throttle: 4.1.1
-      lodash.uniq: 4.5.0
-
   '@tldraw/utils@4.5.12':
     dependencies:
       jittered-fractional-indexing: 1.0.1
@@ -9843,10 +9725,6 @@ snapshots:
       lodash.isequalwith: 4.4.0
       lodash.throttle: 4.1.1
       lodash.uniq: 4.5.0
-
-  '@tldraw/validate@4.3.1':
-    dependencies:
-      '@tldraw/utils': 4.3.1
 
   '@tldraw/validate@4.5.12':
     dependencies:
@@ -9877,8 +9755,6 @@ snapshots:
     dependencies:
       '@types/deep-eql': 4.0.2
       assertion-error: 2.0.1
-
-  '@types/core-js@2.5.8': {}
 
   '@types/debug@4.1.13':
     dependencies:
@@ -10361,8 +10237,6 @@ snapshots:
   concat-map@0.0.1: {}
 
   convert-source-map@2.0.0: {}
-
-  core-js@3.49.0: {}
 
   crelt@1.0.7: {}
 
@@ -11381,29 +11255,6 @@ snapshots:
       picomatch: 4.0.5
 
   tinyrainbow@3.1.0: {}
-
-  tldraw@4.3.1(@floating-ui/dom@1.8.0)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
-    dependencies:
-      '@tiptap/core': 3.29.0(@tiptap/pm@3.29.0)
-      '@tiptap/extension-code': 3.29.0(@tiptap/core@3.29.0(@tiptap/pm@3.29.0))
-      '@tiptap/extension-highlight': 3.29.0(@tiptap/core@3.29.0(@tiptap/pm@3.29.0))
-      '@tiptap/extension-list': 3.29.0(@tiptap/core@3.29.0(@tiptap/pm@3.29.0))(@tiptap/pm@3.29.0)
-      '@tiptap/pm': 3.29.0
-      '@tiptap/react': 3.29.0(@floating-ui/dom@1.8.0)(@tiptap/core@3.29.0(@tiptap/pm@3.29.0))(@tiptap/pm@3.29.0)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@tiptap/starter-kit': 3.29.0
-      '@tldraw/editor': 4.3.1(@floating-ui/dom@1.8.0)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@tldraw/store': 4.3.1(react@18.3.1)
-      classnames: 2.5.1
-      hotkeys-js: 3.13.15
-      idb: 7.1.1
-      lz-string: 1.5.0
-      radix-ui: 1.6.6(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      react: 18.3.1
-      react-dom: 18.3.1(react@18.3.1)
-    transitivePeerDependencies:
-      - '@floating-ui/dom'
-      - '@types/react'
-      - '@types/react-dom'
 
   tldraw@4.5.12(@floating-ui/dom@1.8.0)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
     dependencies:
