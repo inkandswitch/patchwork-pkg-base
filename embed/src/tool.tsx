@@ -15,7 +15,7 @@ import {
 import { getType } from "@inkandswitch/patchwork-filesystem";
 import { openDocument } from "@inkandswitch/patchwork-elements";
 import type { DocHandle } from "@automerge/automerge-repo";
-import { createSignal, For, onCleanup, Show, type JSX } from "solid-js";
+import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
 import { render } from "solid-js/web";
 import { version } from "../package.json";
 import "./embed.css";
@@ -140,6 +140,16 @@ function Frame(props: FrameProps) {
     return list;
   }
 
+  // Built imperatively rather than as JSX so we don't have to teach Solid's
+  // JSX types about the custom element.
+  const nestedView = document.createElement("patchwork-view");
+  nestedView.setAttribute("doc-url", handle.url);
+  createEffect(() => {
+    const toolId = pinnedToolId();
+    if (toolId) nestedView.setAttribute("tool-id", toolId);
+    else nestedView.removeAttribute("tool-id");
+  });
+
   // Load the datatype (for getTitle/setTitle and its tools).
   async function loadDatatype(): Promise<void> {
     const d = handle.doc();
@@ -210,12 +220,7 @@ function Frame(props: FrameProps) {
           }
         />
       </div>
-      <div class="content">
-        <patchwork-view
-          doc-url={handle.url}
-          tool-id={pinnedToolId() ?? undefined}
-        />
-      </div>
+      <div class="content">{nestedView}</div>
       <div
         class="tool-menu"
         popover="auto"
@@ -265,15 +270,3 @@ const openIcon = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" st
 	<polyline points="15 3 21 3 21 9"></polyline>
 	<line x1="10" y1="14" x2="21" y2="3"></line>
 </svg>`;
-
-declare module "solid-js" {
-  namespace JSX {
-    interface IntrinsicElements {
-      "patchwork-view": {
-        "doc-url"?: string;
-        "tool-id"?: string;
-        style?: JSX.CSSProperties | string;
-      };
-    }
-  }
-}

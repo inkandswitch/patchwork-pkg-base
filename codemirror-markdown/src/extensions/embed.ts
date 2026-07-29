@@ -45,8 +45,8 @@ class EmbedWidget extends WidgetType {
     container.className = "cm-embed";
 
     const patchworkView = document.createElement("patchwork-view");
-    // No heads in the url: OverlayRepo resolution pins the embed to the active
-    // checkpoint when one is checked out, and renders live otherwise.
+    // No heads in the url: the embed follows whatever version the host
+    // resolves — the active checkpoint when one is checked out, live otherwise.
     patchworkView.setAttribute("doc-url", `automerge:${this.docId}`);
     patchworkView.setAttribute("tool-id", "embed");
     if (this.toolId) patchworkView.setAttribute("embed-tool-id", this.toolId);
