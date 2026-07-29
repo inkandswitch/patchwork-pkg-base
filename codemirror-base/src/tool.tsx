@@ -260,7 +260,6 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
 
   return (
     <div style={{ width: '100%', height: '100%', overflow: 'hidden', position: 'relative', background: 'var(--studio-fill, white)' }}>
-      <div style={{ height: '100%' }}>
         <div style={{ display: 'flex', height: '100%' }}>
           <div style={{ position: 'relative', flex: 1, height: '100%' }}>
             <CodeMirror
@@ -275,7 +274,6 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
             />
           </div>
         </div>
-      </div>
     </div>
   );
 }
