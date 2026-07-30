@@ -151,6 +151,7 @@ export function TldrawTool({
     handle: handle as DocHandle<any>,
     store,
     userMetadata: contactInfo,
+    element,
   });
 
   const baseline = useSubscribe<Baseline>(

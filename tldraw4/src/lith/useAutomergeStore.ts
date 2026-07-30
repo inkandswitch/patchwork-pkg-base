@@ -124,16 +124,18 @@ export function useAutomergePresence({
   handle,
   store,
   userMetadata,
+  element,
 }: {
   handle: DocHandle<TLStoreSnapshot>;
   store: TLStoreWithStatus;
   userMetadata: any;
+  element: HTMLElement;
 }) {
   const innerStore = store?.store;
 
   const { userId, name, color } = userMetadata;
 
-  const isFocused = useIsFocused();
+  const isCursorActive = useIsCursorActive(element);
 
   const { peerStates, update, stop } = usePresence<PresenceChannels>({
     handle,
@@ -188,14 +190,14 @@ export function useAutomergePresence({
     let cancelled = false;
     let dispose: (() => void) | undefined;
 
-    if (isFocused) {
+    if (isCursorActive) {
       dispose = react("broadcast presence", () => {
         const presence = presenceDerivation.get();
         // rAF throttles broadcasts to frame rate.
         requestAnimationFrame(() => {
           if (cancelled) return;
-          // Stamp activity so refocusing shows the cursor without waiting for
-          // a pointer move to refresh the store's stale timestamp.
+          // Stamp activity so becoming active again shows the cursor without
+          // waiting for a pointer move to refresh the store's stale timestamp.
           update(
             "presence",
             presence ? { ...presence, lastActivityTimestamp: Date.now() } : null
@@ -203,37 +205,43 @@ export function useAutomergePresence({
         });
       });
     } else {
-      // While blurred, keep the record but drop the cursor, which tldraw
-      // renders as nothing. Removing the record would drop the collaborator
-      // count on peers, and tldraw only writes pointer updates while
-      // collaborators exist (InputsManager gates on getCollaborators()).
+      // Keep the record but clear the cursor when blurred or pointer leaves
       const presence = presenceDerivation.get();
       update("presence", presence ? { ...presence, cursor: null } : null);
     }
 
     return () => {
-      // Invalidate pending rAF broadcasts so a stale one can't overwrite the
-      // cursor-less broadcast sent when this effect re-runs on blur.
+      // Invalidate pending rAF broadcasts so stale updates don't overwrite deactivated cursors.
       cancelled = true;
       dispose?.();
       window.removeEventListener("pagehide", stop);
     };
-  }, [innerStore, userId, name, color, update, stop, isFocused]);
+  }, [innerStore, userId, name, color, update, stop, isCursorActive]);
 }
 
-function useIsFocused() {
+// The local cursor is active only when the window is focused and the pointer is over this tool.
+function useIsCursorActive(element: HTMLElement) {
   const [isFocused, setIsFocused] = useState(() => document.hasFocus());
+  const [isPointerOver, setIsPointerOver] = useState(() =>
+    element.matches(":hover")
+  );
 
   useEffect(() => {
     const onFocus = () => setIsFocused(true);
     const onBlur = () => setIsFocused(false);
+    const onEnter = () => setIsPointerOver(true);
+    const onLeave = () => setIsPointerOver(false);
     window.addEventListener("focus", onFocus);
     window.addEventListener("blur", onBlur);
+    element.addEventListener("mouseenter", onEnter);
+    element.addEventListener("mouseleave", onLeave);
     return () => {
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("blur", onBlur);
+      element.removeEventListener("mouseenter", onEnter);
+      element.removeEventListener("mouseleave", onLeave);
     };
-  }, []);
+  }, [element]);
 
-  return isFocused;
+  return isFocused && isPointerOver;
 }
