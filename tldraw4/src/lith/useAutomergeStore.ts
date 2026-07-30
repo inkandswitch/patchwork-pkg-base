@@ -80,9 +80,10 @@ export function useAutomergeStore({
     /* Automerge to TLDraw */
     const syncAutomergeDocChangesToStore = ({
       patches,
-    }: DocHandleChangePayload<any>) => {
+      doc,
+    }: DocHandleChangePayload<TLStoreSnapshot>) => {
       if (preventPatchApplications) return;
-      applyAutomergePatchesToTLStore(patches, store);
+      applyAutomergePatchesToTLStore(patches, store, doc ?? handle.doc());
     };
 
     handle.on("change", syncAutomergeDocChangesToStore);
@@ -96,8 +97,8 @@ export function useAutomergeStore({
 
     store.mergeRemoteChanges(() => {
       store.loadStoreSnapshot({
-        store: JSON.parse(JSON.stringify(doc.store)),
-        schema: JSON.parse(JSON.stringify(doc.schema)),
+        store: structuredClone(doc.store),
+        schema: structuredClone(doc.schema),
       });
     });
 
