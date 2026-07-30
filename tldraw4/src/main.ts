@@ -18,8 +18,11 @@ export const plugins = [
   {
     type: "patchwork:datatype",
     id: "tldraw4",
-    name: "tldraw",
+    name: "tldraw4",
     icon: "PenLine",
+    // New canvases are tldraw5 now; this datatype stays registered so existing
+    // documents still open, but is no longer offered for new ones.
+    unlisted: true,
     async load() {
       return (await import("./datatype.ts")).datatype;
     },
@@ -27,7 +30,7 @@ export const plugins = [
   {
     type: "patchwork:tool",
     id: "tldraw4",
-    name: "tldraw",
+    name: "tldraw4",
     supportedDatatypes: ["tldraw4"],
     async load(): Promise<ToolImplementation> {
       const { render } = await import("./tool.tsx");
