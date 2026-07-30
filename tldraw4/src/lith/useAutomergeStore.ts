@@ -13,6 +13,7 @@ import {
   computed,
   react,
   type TLStoreSnapshot,
+  type TLInstancePresence,
   sortById,
 } from "@tldraw/tldraw";
 import { useEffect, useState } from "react";
@@ -20,10 +21,7 @@ import {
   type DocHandle,
   type DocHandleChangePayload,
 } from "@automerge/automerge-repo/slim";
-import {
-  useLocalAwareness,
-  useRemoteAwareness,
-} from "@automerge/automerge-repo-react-hooks";
+import { usePresence } from "@automerge/automerge-repo-react-hooks";
 
 import { applyAutomergePatchesToTLStore } from "./AutomergeToTLStore.js";
 import { applyTLStoreChangesToAutomerge } from "./TLStoreToAutomerge.js";
@@ -118,6 +116,9 @@ export function useAutomergeStore({
   return storeWithStatus;
 }
 
+// Ephemeral state shared with peers: our tldraw presence record, or null if window is not focused
+type PresenceChannels = { presence: TLInstancePresence | null };
+
 export function useAutomergePresence({
   handle,
   store,
@@ -131,26 +132,24 @@ export function useAutomergePresence({
 
   const { userId, name, color } = userMetadata;
 
-  const [, updateLocalState] = useLocalAwareness({
+  const isFocused = useIsFocused();
+
+  const { peerStates, update, stop } = usePresence<PresenceChannels>({
     handle,
-    userId,
-    initialState: {},
+    initialState: { presence: null },
   });
 
-  const [peerStates] = useRemoteAwareness({
-    handle,
-    localUserId: userId,
-  });
-
-  /* ----------- Presence stuff ----------- */
   useEffect(() => {
     if (!innerStore) return;
 
-    const toPut: TLRecord[] = Object.values(peerStates).filter(
-      (record) => record && Object.keys(record).length !== 0
-    );
+    // Records are keyed by peerId so multiple sessions of the same user stay distinct.
+    const toPut: TLRecord[] = peerStates.peers
+      .filter((peer) => peer.value.presence)
+      .map((peer) => ({
+        ...peer.value.presence!,
+        id: InstancePresenceRecordType.createId(peer.peerId),
+      }));
 
-    // put / remove the records in the store
     const toRemove = innerStore.query
       .records("instance_presence")
       .get()
@@ -164,7 +163,6 @@ export function useAutomergePresence({
 
   useEffect(() => {
     if (!innerStore) return;
-    /* ----------- Presence stuff ----------- */
     setUserPreferences({ id: userId, color, name });
 
     const userPreferences = computed<{
@@ -180,18 +178,61 @@ export function useAutomergePresence({
       };
     });
 
-    const presenceId = InstancePresenceRecordType.createId(userId);
-    const presenceDerivation = createPresenceStateDerivation(
-      userPreferences,
-      presenceId
-    )(innerStore);
+    const presenceDerivation =
+      createPresenceStateDerivation(userPreferences)(innerStore);
 
-    return react("when presence changes", () => {
-      const presence = presenceDerivation.get();
-      requestAnimationFrame(() => {
-        updateLocalState(presence);
+    // Closing the page sends a goodbye, which removes our record from peers.
+    window.addEventListener("pagehide", stop);
+
+    let cancelled = false;
+    let dispose: (() => void) | undefined;
+
+    if (isFocused) {
+      dispose = react("broadcast presence", () => {
+        const presence = presenceDerivation.get();
+        // rAF throttles broadcasts to frame rate.
+        requestAnimationFrame(() => {
+          if (cancelled) return;
+          // Stamp activity so refocusing shows the cursor without waiting for
+          // a pointer move to refresh the store's stale timestamp.
+          update(
+            "presence",
+            presence ? { ...presence, lastActivityTimestamp: Date.now() } : null
+          );
+        });
       });
-    });
-  }, [innerStore, userId, updateLocalState]);
-  /* ----------- End presence stuff ----------- */
+    } else {
+      // While blurred, keep the record but drop the cursor, which tldraw
+      // renders as nothing. Removing the record would drop the collaborator
+      // count on peers, and tldraw only writes pointer updates while
+      // collaborators exist (InputsManager gates on getCollaborators()).
+      const presence = presenceDerivation.get();
+      update("presence", presence ? { ...presence, cursor: null } : null);
+    }
+
+    return () => {
+      // Invalidate pending rAF broadcasts so a stale one can't overwrite the
+      // cursor-less broadcast sent when this effect re-runs on blur.
+      cancelled = true;
+      dispose?.();
+      window.removeEventListener("pagehide", stop);
+    };
+  }, [innerStore, userId, name, color, update, stop, isFocused]);
+}
+
+function useIsFocused() {
+  const [isFocused, setIsFocused] = useState(() => document.hasFocus());
+
+  useEffect(() => {
+    const onFocus = () => setIsFocused(true);
+    const onBlur = () => setIsFocused(false);
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, []);
+
+  return isFocused;
 }
