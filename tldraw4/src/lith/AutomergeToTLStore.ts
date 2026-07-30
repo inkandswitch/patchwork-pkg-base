@@ -32,9 +32,6 @@ export function applyAutomergePatchesToTLStore(
     if (record === undefined) {
       toRemove.push(id as TLRecord["id"]);
     } else {
-      // The doc is a materialized (possibly frozen, structurally shared)
-      // snapshot; clone so the store owns an unfrozen copy, same as the
-      // initial snapshot load in useAutomergeStore.
       toPut.push(structuredClone(record) as TLRecord);
     }
   }
