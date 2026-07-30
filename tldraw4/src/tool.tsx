@@ -89,6 +89,7 @@ interface ContactDoc {
 }
 
 function useContactInfo() {
+  const repo = useRepo();
   const [contactUrl, setContactUrl] = useState<AutomergeUrl | undefined>();
 
   useEffect(() => {
@@ -105,9 +106,25 @@ function useContactInfo() {
   const [contactDoc] = useDocument<ContactDoc>(contactUrl);
 
   return {
-    userId: contactUrl ?? (window as any).repo?.peerId ?? "anonymous",
+    // Compose userId as `${contactUrl}-${repo.peerId}` to uniquely identify a session;
+    // this prevents tldraw from hiding local cursors across multiple sessions under the same account.
+    userId: contactUrl ? `${contactUrl}-${repo.peerId}` : repo.peerId,
     name: contactDoc?.name ?? "Anonymous",
     color: contactDoc?.color,
+  };
+}
+
+// Parses a userId of the form `${contactUrl}-${peerId}` to recover contactUrl and actorId.
+export function splitPresenceUserId(userId: string): {
+  contactUrl?: AutomergeUrl;
+  actorId?: string;
+} {
+  if (!userId.startsWith("automerge:")) return { actorId: userId };
+  const i = userId.indexOf("-");
+  if (i === -1) return { contactUrl: userId as AutomergeUrl };
+  return {
+    contactUrl: userId.slice(0, i) as AutomergeUrl,
+    actorId: userId.slice(i + 1),
   };
 }
 

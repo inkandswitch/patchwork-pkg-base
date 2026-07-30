@@ -144,7 +144,7 @@ export function useAutomergePresence({
 
     // Records are keyed by peerId so multiple sessions of the same user stay distinct.
     const toPut: TLRecord[] = peerStates.peers
-      .filter((peer) => peer.value.presence)
+      .filter((peer) => peer.value?.presence)
       .map((peer) => ({
         ...peer.value.presence!,
         id: InstancePresenceRecordType.createId(peer.peerId),
