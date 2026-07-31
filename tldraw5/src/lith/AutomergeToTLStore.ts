@@ -1,127 +1,43 @@
-import type { TLRecord, RecordId, TLStore } from "@tldraw/tldraw";
+import type { TLRecord, TLStore } from "@tldraw/tldraw";
 import * as Automerge from "@automerge/automerge/slim";
 
+/**
+ * Sync automerge doc changes into the tldraw store.
+ *
+ * The patches are only used to find out *which* records changed; the record
+ * contents are rebuilt wholesale from the doc. Replaying patch mechanics
+ * against store records would require modeling every patch shape automerge
+ * can emit (nested `del`, `splice`, `conflict`, ...) and any gap silently
+ * diverges the view from the doc until reload. Rebuilding from the doc makes
+ * the doc the single source of truth: after every change the store record is
+ * exactly what the doc says, regardless of what the patches looked like.
+ * tldraw records are small, so the per-record rebuild cost is negligible.
+ */
 export function applyAutomergePatchesToTLStore(
   patches: Automerge.Patch[],
-  store: TLStore
+  store: TLStore,
+  doc: { store: Record<string, unknown> }
 ) {
-  const toRemove: TLRecord["id"][] = [];
-  const updatedObjects: { [id: string]: TLRecord } = {};
-
-  patches.forEach((rawPatch) => {
-    let patch = rawPatch;
-
-    if (!isStorePatch(patch)) return;
-
-    const id = pathToId(patch.path.map((p) => `${p}`));
-    const record = updatedObjects[id] || structuredClone(store.get(id) || {});
-
-    switch (patch.action) {
-      case "insert": {
-        updatedObjects[id] = applyInsertToObject(patch, record);
-        break;
-      }
-      case "put":
-        updatedObjects[id] = applyPutToObject(patch, record);
-        break;
-      case "splice": {
-        updatedObjects[id] = applySpliceToObject(patch, record);
-        break;
-      }
-      case "del": {
-        toRemove.push(id);
-        break;
-      }
-      default: {
-        console.log("Unsupported patch:", patch);
-      }
+  const changedIds = new Set<string>();
+  for (const patch of patches) {
+    if (patch.path[0] === "store" && patch.path.length > 1) {
+      changedIds.add(`${patch.path[1]}`);
     }
-  });
-  const toPut = Object.values(updatedObjects);
+  }
 
-  // put / remove the records in the store
+  const toRemove: TLRecord["id"][] = [];
+  const toPut: TLRecord[] = [];
+  for (const id of changedIds) {
+    const record = doc.store[id];
+    if (record === undefined) {
+      toRemove.push(id as TLRecord["id"]);
+    } else {
+      toPut.push(structuredClone(record) as TLRecord);
+    }
+  }
 
   store.mergeRemoteChanges(() => {
     if (toRemove.length) store.remove(toRemove);
     if (toPut.length) store.put(toPut);
   });
 }
-
-const isStorePatch = (patch: Automerge.Patch): boolean => {
-  return patch.path[0] === "store" && patch.path.length > 1;
-};
-
-// path: ["store", "camera:page:page", "x"] => "camera:page:page"
-const pathToId = (path: string[]): RecordId<any> => {
-  return path[1] as RecordId<any>;
-};
-
-const applyInsertToObject = (
-  patch: Automerge.InsertPatch,
-  object: any
-): TLRecord => {
-  const { path, values } = patch;
-  let current = object;
-  const insertionPoint = path[path.length - 1];
-  const pathEnd = path[path.length - 2];
-  const parts = path.slice(2, -2);
-  for (const part of parts) {
-    if (current[part] === undefined) {
-      throw new Error("NO WAY");
-    }
-    current = current[part];
-  }
-  // splice is a mutator... yay.
-  const clone = current[pathEnd].slice(0);
-  clone.splice(insertionPoint, 0, ...values);
-  current[pathEnd] = clone;
-  return object;
-};
-
-const applyPutToObject = (patch: Automerge.PutPatch, object: any): TLRecord => {
-  const { path, value } = patch;
-  let current = object;
-  // special case
-  if (path.length === 2) {
-    // this would be creating the object, but we have done
-    return object;
-  }
-
-  const parts = path.slice(2, -2);
-  const property = path[path.length - 1];
-  const target = path[path.length - 2];
-
-  if (path.length === 3) {
-    return { ...object, [property]: value };
-  }
-
-  // default case
-  for (const part of parts) {
-    current = current[part];
-  }
-  current[target] = { ...current[target], [property]: value };
-  return object;
-};
-
-const applySpliceToObject = (
-  patch: Automerge.SpliceTextPatch,
-  object: any
-): TLRecord => {
-  const { path, value } = patch;
-  let current = object;
-  const insertionPoint = path[path.length - 1];
-  const pathEnd = path[path.length - 2];
-  const parts = path.slice(2, -2);
-  for (const part of parts) {
-    if (current[part] === undefined) {
-      throw new Error("NO WAY");
-    }
-    current = current[part];
-  }
-  // TODO: we're not supporting actual splices yet because TLDraw won't generate them natively
-  if (insertionPoint !== 0) {
-    throw new Error("Splices are not supported yet");
-  }
-  current[pathEnd] = value; // .splice(insertionPoint, 0, value)
-  return object;
-};
