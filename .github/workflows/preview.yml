@@ -22,6 +22,29 @@ jobs:
       run:
         working-directory: shell
     steps:
+      - uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.PATCHWORK_CROW_TOKEN }}
+          script: |
+            const marker = process.env.MARKER
+            const notice = `${marker}\n> [!NOTE]\n> _(caw caw rebuilding)_`
+            const {owner, repo} = context.repo
+            const issue_number = context.issue.number
+            const comments = await github.rest.issues.listComments({owner, repo, issue_number})
+            const existing = comments.data.find(c => c.body.startsWith(marker))
+            if (existing) {
+              const rest = existing.body
+                .slice(marker.length)
+                .replace(/^\s*> \[!NOTE\]\n> _\(caw caw rebuilding\)_/, "")
+                .trimStart()
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: existing.id,
+                body: `${notice}\n\n${rest}`,
+              })
+            } else {
+              await github.rest.issues.createComment({owner, repo, issue_number, body: notice})
+            }
+
       - uses: actions/checkout@v4
         with:
           path: base
