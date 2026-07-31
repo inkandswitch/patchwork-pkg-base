@@ -6,13 +6,18 @@ import { EditorState, type Extension, Compartment } from "@codemirror/state";
 
 /** Automerge */
 import type { Prop as AutomergeProp } from "@automerge/automerge/slim";
-import type { DocHandle, UrlHeads } from "@automerge/automerge-repo/slim";
+import type {
+  AutomergeUrl,
+  DocHandle,
+  UrlHeads,
+} from "@automerge/automerge-repo/slim";
 import {
   createSyncExtension,
   createReadOnlyExtension,
   createDecorationsExtension,
   createDiffExtension,
   createScrollHighlightIntoViewExtension,
+  createPresenceExtension,
 } from "./extensions";
 
 /** Utility function to lookup a value along the specified pathin an Automerge document */
@@ -39,6 +44,8 @@ type CodeMirrorProps<T> = {
   // When the returned range changes, the editor scrolls it into view -- unless
   // it's already visible. Used to follow focus driven by other views.
   scrollTarget?: () => readonly [number, number] | null;
+  // identify for remote cursors; `null` disables presence.
+  contactUrl?: () => AutomergeUrl | null;
   readOnly?: boolean;
   withView?(view: EditorView): void;
 };
@@ -72,6 +79,15 @@ export function CodeMirror<T>(props: CodeMirrorProps<T>) {
     () => props.scrollTarget?.() ?? null
   );
 
+  // Read-only views are typically pinned to fixed heads, so their positions
+  // don't line up with the live doc; they stay presence-free.
+  const [presenceExtension, createEffectReconfigurePresence] =
+    createPresenceExtension(
+      () => props.handle as DocHandle<unknown>,
+      () => props.path,
+      () => (props.readOnly ? null : (props.contactUrl?.() ?? null))
+    );
+
   // Create a compartment for user-provided extensions so they can be reconfigured
   const userExtensionsCompartment = new Compartment();
 
@@ -91,6 +107,7 @@ export function CodeMirror<T>(props: CodeMirrorProps<T>) {
     syncExtension,
     diffExtension,
     scrollHighlightIntoViewExtension,
+    presenceExtension,
     userExtensionsCompartment.of(props.extensions || []),
     readOnlyExtension,
   ].filter(Boolean) as Extension[];
@@ -112,6 +129,7 @@ export function CodeMirror<T>(props: CodeMirrorProps<T>) {
   createEffectReconfigureDecorations?.(view);
   createEffectReconfigureDiff(view);
   createEffectScrollHighlightIntoView(view);
+  createEffectReconfigurePresence(view);
 
   // Reconfigure user extensions when props.extensions changes
   createEffect(() => {
