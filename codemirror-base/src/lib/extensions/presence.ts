@@ -13,6 +13,7 @@ import {
   Compartment,
   StateEffect,
   StateField,
+  Transaction,
   type Extension,
   type Range,
 } from "@codemirror/state";
@@ -37,6 +38,8 @@ type PresenceSelection = {
   start: A.Cursor;
   end: A.Cursor;
   headAtStart: boolean;
+  // Sender's Date.now(); used only as a change marker (not for clock comparison)
+  lastMoved: number;
 };
 type PresenceChannels = { selection: PresenceSelection | null };
 
@@ -50,6 +53,9 @@ type RemoteSelection = {
   from: number;
   to: number;
   head: number;
+  // Changes exactly when the peer acts (moves, types, refocuses) -- the
+  // widget uses it to restart its nametag fade-out countdown.
+  lastMoved: number;
 };
 
 /**
@@ -85,16 +91,10 @@ export function createPresenceExtension(
 }
 
 /**
- * Live remote cursors for a collaboratively edited text field. Owns the whole
- * feature: transport via automerge-repo's `Presence` (heartbeats, snapshots
- * for new peers, goodbye on stop, stale-peer pruning -- matching tldraw4),
- * broadcasting the local selection as cursors, resolving peers' cursors, and
- * rendering a tinted range plus a caret carrying each peer's contact token
- * (the "contact-cursor" tool).
- *
- * Peers are keyed by peerId, so two sessions of the same account each show a
- * caret. The extension's lifetime is the editor's: reconfiguring or
- * destroying the view stops presence and says goodbye to peers.
+ * Live remote cursors for collaborative text, handling presence transport,
+ * broadcasting/resolving selections, rendering colored ranges and contact-cursor carets.
+ * Peers are keyed by session (peerId); idle carets hide their nametag after a timeout.
+ * Lifetime matches the editor: reconfiguring or closing stops presence.
  */
 function presence(
   handle: DocHandle<unknown>,
@@ -142,6 +142,12 @@ function presence(
       }
 
       update(update: ViewUpdate) {
+        // Typing is considered cursor movement; local edits may not set selection explicitly, so we also check userEvent annotations
+        const typed =
+          update.docChanged &&
+          update.transactions.some(
+            (tr) => tr.annotation(Transaction.userEvent) !== undefined
+          );
         if (update.focusChanged && !update.view.hasFocus) {
           // Hide our caret on peers while blurred; the peer record itself
           // stays alive via heartbeats.
@@ -150,6 +156,7 @@ function presence(
           }
         } else if (
           update.selectionSet ||
+          typed ||
           (update.focusChanged && update.view.hasFocus)
         ) {
           this.scheduleBroadcast();
@@ -189,6 +196,7 @@ function presence(
             start: A.getCursor(doc, path, sel.from),
             end: A.getCursor(doc, path, sel.to),
             headAtStart: sel.to > sel.from && sel.head === sel.from,
+            lastMoved: Date.now(),
           });
         });
       }
@@ -201,7 +209,8 @@ function presence(
         const doc = handle.doc();
         const resolved: RemoteSelection[] = [];
         for (const peer of this.presence.getPeerStates().peers) {
-          const selection = peer.value?.selection;
+          const peerId = String(peer.peerId);
+          const selection = peer.value?.selection ?? null;
           if (!selection) continue;
           try {
             const from = A.getCursorPosition(doc, path, selection.start);
@@ -209,16 +218,15 @@ function presence(
             const peerContactUrl =
               (peer.userId as AutomergeUrl | undefined) ?? null;
             resolved.push({
-              peerId: String(peer.peerId),
+              peerId,
               contactUrl: peerContactUrl,
               // Same rule as the contact-cursor token (palette hash of the
               // contact url), so the tint and the token can't drift apart.
-              color: generateColorFromString(
-                peerContactUrl ?? String(peer.peerId)
-              ),
+              color: generateColorFromString(peerContactUrl ?? peerId),
               from,
               to,
               head: selection.headAtStart ? from : to,
+              lastMoved: selection.lastMoved,
             });
           } catch {
             continue;
@@ -255,33 +263,46 @@ function buildDecorations(selections: RemoteSelection[]): DecorationSet {
   return Decoration.set(ranges, true);
 }
 
+// A peer's nametag fades out once its selection has been still for this
+// long -- the caret itself stays visible. Moving the cursor or typing
+// brings it back.
+const LABEL_TIMEOUT_MS = 2_000;
+
 class PresenceCaretWidget extends WidgetType {
   readonly peerId: string;
   readonly contactUrl: AutomergeUrl | null;
   readonly color: string;
+  readonly lastMoved: number;
+  private labelTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(sel: RemoteSelection) {
     super();
     this.peerId = sel.peerId;
     this.contactUrl = sel.contactUrl;
     this.color = sel.color;
+    this.lastMoved = sel.lastMoved;
   }
 
-  // Identity deliberately ignores position: as the caret moves, CodeMirror
-  // reuses the same DOM, keeping the embedded contact token mounted instead
-  // of remounting a <patchwork-view> on every keystroke.
+  // Position is deliberately ignored so edits by other people can move this
+  // caret without restarting its countdown. A new `lastMoved` makes the
+  // widgets unequal, so CodeMirror creates fresh DOM and starts a new timer.
   eq(other: PresenceCaretWidget) {
     return (
       other.peerId === this.peerId &&
       other.contactUrl === this.contactUrl &&
-      other.color === this.color
+      other.color === this.color &&
+      other.lastMoved === this.lastMoved
     );
   }
 
   toDOM() {
     const caret = document.createElement("span");
     caret.className = "cm-presence-caret";
+    caret.dataset.peerId = this.peerId;
     caret.style.setProperty("--cm-presence-color", this.color);
+    this.labelTimer = setTimeout(() => {
+      caret.classList.add("cm-presence-caret--idle");
+    }, LABEL_TIMEOUT_MS);
 
     if (this.contactUrl) {
       const label = document.createElement("span");
@@ -295,6 +316,10 @@ class PresenceCaretWidget extends WidgetType {
     }
 
     return caret;
+  }
+
+  destroy() {
+    clearTimeout(this.labelTimer);
   }
 }
 
@@ -317,6 +342,11 @@ const presenceTheme = EditorView.baseTheme({
     whiteSpace: "nowrap",
     pointerEvents: "none",
     userSelect: "none",
+    opacity: "1",
+    transition: "opacity 200ms ease-in-out",
+  },
+  ".cm-presence-caret--idle .cm-presence-caret-label": {
+    opacity: "0",
   },
 });
 
