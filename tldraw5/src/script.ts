@@ -9,7 +9,7 @@
 // documents rather than paths, so each file is rewritten and handed to the
 // browser as a blob module.
 
-import type { Repo } from "@automerge/react";
+import type { DocHandle, Repo } from "@automerge/react";
 import type {
   DocLink,
   FolderDoc,
@@ -153,6 +153,94 @@ export async function resolveScriptFiles(
   return files;
 }
 
+/**
+ * The script tree as the runner needs it: where each file lives, a version that
+ * moves whenever a file is edited, and every document involved so the tree can
+ * be watched.
+ */
+export type ScriptTree = {
+  /** archive-relative path → file document url */
+  files: Record<string, string>;
+  /** archive-relative path → version, changing on every edit to that file */
+  versions: Record<string, string>;
+  /** every document in the tree, the folders included */
+  handles: DocHandle<unknown>[];
+};
+
+export async function readScriptTree(
+  repo: Repo,
+  docs: DocLink[] | undefined,
+  prefix = ""
+): Promise<ScriptTree> {
+  const tree: ScriptTree = { files: {}, versions: {}, handles: [] };
+  for (const link of docs ?? []) {
+    const path = prefix ? `${prefix}/${link.name}` : link.name;
+    const handle = await repo.find<FolderDoc>(link.url);
+    tree.handles.push(handle as unknown as DocHandle<unknown>);
+    if (link.type === "folder") {
+      const nested = await readScriptTree(repo, handle.doc()?.docs, path);
+      Object.assign(tree.files, nested.files);
+      Object.assign(tree.versions, nested.versions);
+      tree.handles.push(...nested.handles);
+    } else {
+      tree.files[path] = link.url;
+      tree.versions[path] = handle.heads().join(",");
+    }
+  }
+  return tree;
+}
+
+/**
+ * Reads the tree and reads it again whenever any of its documents changes, so
+ * editing a script file in Patchwork takes effect on the canvas immediately.
+ * Reads are serialised: a burst of edits can't leave two readers racing to
+ * attach listeners to the same handles.
+ */
+export function watchScriptTree(
+  repo: Repo,
+  docs: DocLink[] | undefined,
+  onTree: (tree: ScriptTree) => void
+): () => void {
+  const watched = new Map<string, DocHandle<unknown>>();
+  let stopped = false;
+  let reading: Promise<void> = Promise.resolve();
+
+  const reread = () => {
+    reading = reading.then(async () => {
+      if (stopped) return;
+      const tree = await readScriptTree(repo, docs);
+      if (stopped) return;
+      const next = new Map<string, DocHandle<unknown>>(
+        tree.handles.map((handle) => [handle.url, handle])
+      );
+      for (const [url, handle] of watched) {
+        if (next.has(url)) continue;
+        handle.off("change", reread);
+        watched.delete(url);
+      }
+      for (const [url, handle] of next) {
+        if (watched.has(url)) continue;
+        handle.on("change", reread);
+        watched.set(url, handle);
+      }
+      onTree(tree);
+    });
+  };
+
+  reread();
+
+  return () => {
+    stopped = true;
+    for (const handle of watched.values()) handle.off("change", reread);
+    watched.clear();
+  };
+}
+
+/** The part of a tree's state a script actually depends on. */
+export function signatureOf(deps: string[], versions: Record<string, string>) {
+  return deps.map((path) => `${path}@${versions[path] ?? ""}`).join("|");
+}
+
 /** Reads the linked documents back out as archive bytes, keyed by path. */
 export async function readScriptFiles(
   repo: Repo,
@@ -275,16 +363,23 @@ async function buildModule(
       specifiers.set(specifier, shimUrl(specifier, shims, revoke));
     } else if (specifier.startsWith(".")) {
       const target = resolvePath(path, specifier);
-      // Non-JS siblings (wasm, json) are fetched by the script rather than
-      // imported, so they become plain blob urls.
       const targetUrl = files[target];
       if (!targetUrl) continue;
-      specifiers.set(
-        specifier,
-        TEXT_EXTENSIONS.has(extensionOf(target)) && extensionOf(target) !== "json"
-          ? await buildModule(repo, files, target, built, shims, revoke)
-          : await blobUrlFor(repo, targetUrl, target, revoke)
-      );
+      const cached = built.get(target);
+      if (cached) {
+        specifiers.set(specifier, cached);
+        continue;
+      }
+      // Non-JS siblings (wasm, json) are fetched by the script rather than
+      // imported, so they become plain blob urls.
+      const isModule =
+        TEXT_EXTENSIONS.has(extensionOf(target)) &&
+        extensionOf(target) !== "json";
+      const targetBlob = isModule
+        ? await buildModule(repo, files, target, built, shims, revoke)
+        : await blobUrlFor(repo, targetUrl, target, revoke);
+      built.set(target, targetBlob);
+      specifiers.set(specifier, targetBlob);
     }
   }
 
@@ -347,23 +442,24 @@ export async function runConfigScript(
   repo: Repo,
   files: Record<string, string>,
   config: TldrawConfig
-): Promise<{ config: TldrawConfig; dispose: () => void }> {
+): Promise<{ config: TldrawConfig; dispose: () => void; deps: string[] }> {
   const dispose = (urls: string[]) => () => {
     for (const url of urls) URL.revokeObjectURL(url);
   };
 
-  if (!(CONFIG in files)) return { config, dispose: dispose([]) };
+  if (!(CONFIG in files)) return { config, dispose: dispose([]), deps: [] };
 
   const revoke: string[] = [];
   const shims = new Map<string, string>();
+  const built = new Map<string, string>();
 
   try {
-    const url = await buildModule(repo, files, CONFIG, new Map(), shims, revoke);
+    const url = await buildModule(repo, files, CONFIG, built, shims, revoke);
     const module = (await import(/* @vite-ignore */ url)) as {
       default?: (ctx: { config: TldrawConfig }) => TldrawConfig | Promise<TldrawConfig>;
     };
     const result = (await module.default?.({ config })) ?? config;
-    return { config: result, dispose: dispose(revoke) };
+    return { config: result, dispose: dispose(revoke), deps: [...built.keys()] };
   } catch (error) {
     dispose(revoke)();
     throw error;
@@ -371,17 +467,18 @@ export async function runConfigScript(
 }
 
 /**
- * Runs a document's script against the editor. Returns a cleanup that revokes
- * the blob urls; the script itself is only run once per canvas mount, matching
- * the desktop app's run-on-mount behaviour.
+ * Runs a document's script against the editor. Returns the files it was built
+ * from — so a caller can re-run it when one of them is edited — and a cleanup
+ * that aborts the script's signal and revokes the blob urls.
  */
 export async function runScript(
   repo: Repo,
   files: Record<string, string>,
   editor: Editor
-): Promise<() => void> {
+): Promise<{ dispose: () => void; deps: string[] }> {
   const revoke: string[] = [];
   const shims = new Map<string, string>();
+  const built = new Map<string, string>();
   const aborter = new AbortController();
 
   try {
@@ -389,7 +486,7 @@ export async function runScript(
       repo,
       files,
       ENTRY,
-      new Map(),
+      built,
       shims,
       revoke
     );
@@ -409,8 +506,11 @@ export async function runScript(
     throw error;
   }
 
-  return () => {
-    aborter.abort();
-    for (const url of revoke) URL.revokeObjectURL(url);
+  return {
+    deps: [...built.keys()],
+    dispose: () => {
+      aborter.abort();
+      for (const url of revoke) URL.revokeObjectURL(url);
+    },
   };
 }

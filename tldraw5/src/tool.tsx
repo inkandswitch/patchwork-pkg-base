@@ -176,11 +176,14 @@ function TldrawCanvas({
 
   if (!config) return null;
 
+  // The editor is built from the config, so a rebuilt config only takes effect
+  // on a fresh editor: the version is the key that remounts it.
   return (
     <TldrawConfiguredCanvas
+      key={config.version}
       docUrl={docUrl}
       element={element}
-      config={config}
+      config={config.config}
     />
   );
 }
@@ -201,42 +204,81 @@ function baseConfig(): TldrawConfig {
   };
 }
 
+// Re-runs `config.js` whenever the files it imports are edited, and bumps the
+// version so the canvas remounts onto the new config.
 function useScriptConfig(repo: Repo, docs: DocLink[] | undefined) {
-  const [config, setConfig] = useState<TldrawConfig | null>(null);
+  const [config, setConfig] = useState<{
+    config: TldrawConfig;
+    version: number;
+  } | null>(null);
   // The doc object is new on every change, so key the effect on the links —
-  // otherwise every canvas edit would rebuild the config and remount the editor.
+  // otherwise every canvas edit would tear the watcher down and rebuild it.
   const key = docs?.length ? JSON.stringify(docs) : "";
 
   useEffect(() => {
     if (!key) {
-      setConfig(baseConfig());
+      setConfig({ config: baseConfig(), version: 0 });
       return;
     }
 
     let cancelled = false;
-    let dispose: (() => void) | undefined;
+    let unwatch: (() => void) | undefined;
+    let current: {
+      deps: string[];
+      signature: string;
+      dispose: () => void;
+    } | null = null;
+    const settle = (config: TldrawConfig) =>
+      setConfig((previous) => ({
+        config,
+        version: (previous?.version ?? 0) + 1,
+      }));
 
     void (async () => {
-      try {
-        const { resolveScriptFiles, runConfigScript } = await import(
-          "./script.ts"
-        );
-        const files = await resolveScriptFiles(repo, JSON.parse(key));
-        const result = await runConfigScript(repo, files, baseConfig());
-        if (cancelled) result.dispose();
-        else {
-          dispose = result.dispose;
-          setConfig(result.config);
-        }
-      } catch (error) {
-        console.error("[tldraw5] config script failed", error);
-        if (!cancelled) setConfig(baseConfig());
-      }
+      const { watchScriptTree, runConfigScript, signatureOf } = await import(
+        "./script.ts"
+      );
+      if (cancelled) return;
+
+      let queue: Promise<void> = Promise.resolve();
+      unwatch = watchScriptTree(repo, JSON.parse(key), (tree) => {
+        queue = queue.then(async () => {
+          if (cancelled) return;
+          // Only the files `config.js` imports matter: editing `main.js` mustn't
+          // remount the editor out from under it.
+          if (
+            current &&
+            signatureOf(current.deps, tree.versions) === current.signature
+          ) {
+            return;
+          }
+          try {
+            const result = await runConfigScript(repo, tree.files, baseConfig());
+            if (cancelled) {
+              result.dispose();
+              return;
+            }
+            current?.dispose();
+            current = {
+              deps: result.deps,
+              signature: signatureOf(result.deps, tree.versions),
+              dispose: result.dispose,
+            };
+            settle(result.config);
+          } catch (error) {
+            console.error("[tldraw5] config script failed", error);
+            if (cancelled || current) return;
+            current = { deps: [], signature: "", dispose: () => {} };
+            settle(baseConfig());
+          }
+        });
+      });
     })();
 
     return () => {
       cancelled = true;
-      dispose?.();
+      unwatch?.();
+      current?.dispose();
     };
   }, [repo, key]);
 
@@ -547,9 +589,9 @@ function TldrawInner(props: {
   return null;
 }
 
-// Runs the document's `script/main.js`, if it has one, once per canvas mount —
-// matching the desktop app, where main.js is the run-on-mount hook. Edits to
-// the script document don't re-run it; reopen the canvas for that.
+// Runs the document's `script/main.js`, if it has one, on canvas mount and
+// again whenever the script's own files are edited — the running script is
+// aborted first, so an edit takes effect on the canvas immediately.
 function useDocumentScript(
   docUrl: AutomergeUrl,
   editor: Editor | null,
@@ -563,29 +605,55 @@ function useDocumentScript(
 
   useEffect(() => {
     if (!editor || !key) return;
-    const docs: DocLink[] = JSON.parse(key);
 
-    let cleanup: (() => void) | undefined;
     let cancelled = false;
+    let unwatch: (() => void) | undefined;
+    let current: {
+      deps: string[];
+      signature: string;
+      dispose: () => void;
+    } | null = null;
 
     void (async () => {
-      try {
-        const { resolveScriptFiles, hasScript, runScript } = await import(
-          "./script.ts"
-        );
-        const files = await resolveScriptFiles(repo, docs);
-        if (cancelled || !hasScript(files)) return;
-        const dispose = await runScript(repo, files, editor);
-        if (cancelled) dispose();
-        else cleanup = dispose;
-      } catch (error) {
-        console.error("[tldraw5] document script failed", error);
-      }
+      const { watchScriptTree, hasScript, runScript, signatureOf } =
+        await import("./script.ts");
+      if (cancelled) return;
+
+      let queue: Promise<void> = Promise.resolve();
+      unwatch = watchScriptTree(repo, JSON.parse(key), (tree) => {
+        queue = queue.then(async () => {
+          if (cancelled || !hasScript(tree.files)) return;
+          // Nothing the script was built from moved, so leave it running.
+          if (
+            current &&
+            signatureOf(current.deps, tree.versions) === current.signature
+          ) {
+            return;
+          }
+          current?.dispose();
+          current = null;
+          try {
+            const result = await runScript(repo, tree.files, editor);
+            if (cancelled) {
+              result.dispose();
+              return;
+            }
+            current = {
+              deps: result.deps,
+              signature: signatureOf(result.deps, tree.versions),
+              dispose: result.dispose,
+            };
+          } catch (error) {
+            console.error("[tldraw5] document script failed", error);
+          }
+        });
+      });
     })();
 
     return () => {
       cancelled = true;
-      cleanup?.();
+      unwatch?.();
+      current?.dispose();
     };
   }, [editor, key, repo]);
 }
