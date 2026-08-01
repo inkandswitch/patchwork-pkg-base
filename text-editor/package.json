@@ -1,5 +1,5 @@
 {
-  "name": "@grjte/codemirror-base",
+  "name": "text-editor",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -13,9 +13,25 @@
       "import": "./dist/tool.js",
       "source": "./src/tool.tsx"
     },
-    "./component": {
+    "./datatype": {
+      "import": "./dist/datatype.js",
+      "source": "./src/datatype.ts"
+    },
+    "./editor": {
       "import": "./dist/lib/codemirror.js",
       "source": "./src/lib/codemirror.tsx"
+    },
+    "./component": {
+      "import": "./dist/component.js",
+      "source": "./src/component.tsx"
+    },
+    "./extensions": {
+      "import": "./dist/lib/extensions/index.js",
+      "source": "./src/lib/extensions/index.ts"
+    },
+    "./read-only": {
+      "import": "./dist/lib/read-only.js",
+      "source": "./src/lib/read-only.ts"
     }
   },
   "scripts": {
@@ -26,6 +42,8 @@
   },
   "dependencies": {
     "@automerge/automerge-codemirror": "^0.2.0",
+    "@codemirror/autocomplete": "^6.20.3",
+    "@codemirror/language": "^6.12.4",
     "@codemirror/state": "^6.5.2",
     "@codemirror/view": "^6.38.4",
     "@inkandswitch/patchwork-bootloader": "^0.2.8",
@@ -33,6 +51,7 @@
     "@inkandswitch/patchwork-plugins": "^0.0.11",
     "@inkandswitch/patchwork-providers": "0.3.0",
     "@inkandswitch/patchwork-providers-solid": "0.2.3",
+    "@lezer/highlight": "^1.2.3",
     "solid-automerge": "^2.0.0",
     "solid-js": "^1.9.9",
     "vite-plugin-wasm": "^3.5.0"
