@@ -66,8 +66,10 @@ function DatatypeMenuContent(props: {
 
   const filteredDatatypes = () => {
     const q = query().toLowerCase();
-    if (!q) return datatypes;
-    return datatypes.filter((d) => d.name.toLowerCase().includes(q));
+    const matching = q
+      ? datatypes.filter((d) => d.name.toLowerCase().includes(q))
+      : datatypes;
+    return [...matching].sort((a, b) => a.name.localeCompare(b.name));
   };
 
   // total number of selectable items (url item + datatypes)
