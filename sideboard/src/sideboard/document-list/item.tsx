@@ -88,6 +88,34 @@ function mimeForName(name: string): string | undefined {
   return ext ? EXT_MIME[ext] : undefined;
 }
 
+function scrollParent(el: HTMLElement): HTMLElement {
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const overflow = getComputedStyle(p).overflowY;
+    if (
+      (overflow === "auto" || overflow === "scroll") &&
+      p.scrollHeight > p.clientHeight
+    ) {
+      return p;
+    }
+  }
+  return (document.scrollingElement as HTMLElement) ?? document.body;
+}
+
+// the same document can appear many times in the tree, so all of its rows
+// become selected at once. only scroll if none of them are already on screen.
+function selectedItemIsVisible(el: HTMLElement): boolean {
+  const container = scrollParent(el);
+  const box = container.getBoundingClientRect();
+  const selected = container.querySelectorAll<HTMLElement>(
+    '.document-list-item[aria-selected="true"]'
+  );
+  for (const item of selected) {
+    const rect = item.getBoundingClientRect();
+    if (rect.top >= box.top && rect.bottom <= box.bottom) return true;
+  }
+  return false;
+}
+
 export default function Item(props: {
   "aria-label": string;
   id: string;
@@ -152,9 +180,9 @@ export default function Item(props: {
   createEffect((prev) => {
     if (props.pressed && !prev) {
       const el = untrack(trigger);
-      if (el) {
+      if (el && !selectedItemIsVisible(el)) {
         // @ts-expect-error scrollIntoViewIfNeeded is non-standard
-        el?.scrollIntoViewIfNeeded?.();
+        el.scrollIntoViewIfNeeded?.();
       }
     }
     return props.pressed;
