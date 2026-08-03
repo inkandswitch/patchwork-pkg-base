@@ -283,15 +283,13 @@ class PresenceCaretWidget extends WidgetType {
     this.lastMoved = sel.lastMoved;
   }
 
-  // Position is deliberately ignored so edits by other people can move this
-  // caret without restarting its countdown. A new `lastMoved` makes the
-  // widgets unequal, so CodeMirror creates fresh DOM and starts a new timer.
+  // Activity changes don't change the widget's identity. Keeping the widgets
+  // equal lets CodeMirror reuse the mounted contact token as the caret moves.
   eq(other: PresenceCaretWidget) {
     return (
       other.peerId === this.peerId &&
       other.contactUrl === this.contactUrl &&
-      other.color === this.color &&
-      other.lastMoved === this.lastMoved
+      other.color === this.color
     );
   }
 
