@@ -11,131 +11,118 @@ import {
 import * as Automerge from "@automerge/automerge/slim";
 
 import type {
-  CachedGroup,
-  ChangeGroupCacheDoc,
+  ChangeGroup,
+  ChangeGroupDoc,
   DraftDoc,
   DraftMemberDoc,
-  HasDrafts,
 } from "./draft-types.js";
 
-// Bump to discard every existing cache doc's contents (they self-rebuild).
-export const CHANGE_GROUP_CACHE_VERSION = 1;
+// Bump to discard every existing group doc's contents (they self-rebuild).
+export const CHANGE_GROUP_DOC_VERSION = 1;
 
 // A pause between consecutive changes longer than this starts a new group:
 // bursts of continuous editing read as a single row, however long they run,
-// and any ten-minute-plus lull splits the timeline. Baked into the cache
-// doc — changing it invalidates and rebuilds every cache.
+// and any ten-minute-plus lull splits the timeline. Baked into the group
+// doc — changing it invalidates and rebuilds every document.
 export const INACTIVITY_GAP_MS = 10 * 60 * 1000;
 
-// How long a fill may hold the main thread before yielding to idle time.
+// How long grouping may hold the main thread before yielding to idle time.
 const SLICE_BUDGET_MS = 8;
 
-// Coalesce bursts of member-doc change events into one incremental fill.
-const FILL_DEBOUNCE_MS = 250;
+// Coalesce bursts of member-doc change events into one grouping update.
+const GROUPING_DEBOUNCE_MS = 250;
 
 // Change-event sources that mean a LOCAL edit (made through this client's
 // doc instance), as opposed to synced/merged remote changes.
 const LOCAL_PATCH_SOURCES = new Set(["change", "changeAt", "emptyChange"]);
 
-// One timeline the filler is responsible for: the DraftDoc that owns it
+// One timeline the ChangeGrouper is responsible for: the DraftDoc that owns it
 // (main included — the main draft is always real), the member docs whose
 // interleaved changes make it up, and the host doc whose creation time is
 // the "before this document existed" cutoff.
-export type TimelineSpec = {
+export type TimelineGroupingSpec = {
   draftHandle: DocHandle<DraftDoc>;
   members: DraftMemberDoc[];
   rootDocUrl: AutomergeUrl;
 };
 
-export type ChangeGroupCacheFiller = {
-  // Reconcile the set of timelines to keep filled (ordered by priority:
-  // earlier specs fill first). Attaches member-doc change listeners that
-  // drive incremental fills; timelines absent from the list are torn down.
-  sync: (specs: TimelineSpec[]) => void;
+export type ChangeGrouper = {
+  // Reconcile the timelines to keep grouped (ordered by priority). Attaches
+  // member-doc change listeners that drive incremental grouping updates;
+  // timelines absent from the list are torn down.
+  setTimelines: (specs: TimelineGroupingSpec[]) => void;
   dispose: () => void;
 };
 
-export type ChangeGroupCacheFillerOpts = {
+export type ChangeGrouperOptions = {
   // Called when a watched member doc receives a local change — i.e. the
   // current user just wrote with that doc instance's actor id. Feeds the
-  // actor-attribution recorder (see actor-attribution.ts).
+  // ActorRecorder (see actor-attribution.ts).
   onLocalChange?: (doc: Automerge.Doc<unknown>) => void;
 };
 
-// Resolve the host doc's single main draft, creating it (and pointing
-// `@patchwork.mainDraftUrl` at it) the first time. The main draft is
-// bookkeeping only: the list provider seeds its identity `clones`, and its
-// `drafts` holds the top-level draft list. Check-then-create — the rare
-// concurrent-create orphan is accepted, same as always.
-export async function ensureMainDraft(
-  repo: Repo,
-  docHandle: DocHandle<HasDrafts>
-): Promise<DocHandle<DraftDoc>> {
-  const existingUrl = docHandle.doc()?.["@patchwork"]?.mainDraftUrl;
-  if (existingUrl) return repo.find<DraftDoc>(existingUrl);
-
-  const mainDraft = repo.create<DraftDoc>({
-    "@patchwork": { type: "draft" },
-    isMain: true,
-    parent: docHandle.url,
-    drafts: [],
-    clones: {},
-  });
-  docHandle.change((d) => {
-    // Mutate `@patchwork` in place. Spreading it into a fresh object and
-    // reassigning would carry over references to existing document objects,
-    // which Automerge rejects ("Cannot create a reference to an existing
-    // document object").
-    if (!d["@patchwork"]) d["@patchwork"] = {};
-    d["@patchwork"]!.mainDraftUrl = mainDraft.url;
-  });
-  return mainDraft;
-}
-
-// Resolve a draft's change-group cache doc, creating it and stamping
-// `changeGroupCacheUrl` the first time. A cache whose format version or
-// grouping parameter no longer matches is emptied in place (same url) and
-// left to rebuild.
-export async function ensureChangeGroupCache(
+// Resolve a draft's change-group doc, creating it and stamping
+// `changeGroupDocUrl` the first time. A document whose format version or
+// grouping parameter no longer matches is emptied in place and rebuilt.
+export async function ensureChangeGroupDoc(
   repo: Repo,
   draftHandle: DocHandle<DraftDoc>
-): Promise<DocHandle<ChangeGroupCacheDoc>> {
-  const existingUrl = draftHandle.doc()?.changeGroupCacheUrl;
+): Promise<DocHandle<ChangeGroupDoc>> {
+  const draft = draftHandle.doc();
+  const existingUrl = getChangeGroupDocUrl(draft);
   if (existingUrl && isValidAutomergeUrl(existingUrl)) {
-    const handle = await repo.find<ChangeGroupCacheDoc>(existingUrl);
+    const handle = await repo.find<ChangeGroupDoc>(existingUrl);
     const doc = handle.doc();
     if (
       doc &&
-      (doc.version !== CHANGE_GROUP_CACHE_VERSION ||
+      (doc.version !== CHANGE_GROUP_DOC_VERSION ||
         doc.inactivityGapMs !== INACTIVITY_GAP_MS)
     ) {
       handle.change((d) => {
-        d.version = CHANGE_GROUP_CACHE_VERSION;
+        d.version = CHANGE_GROUP_DOC_VERSION;
         d.inactivityGapMs = INACTIVITY_GAP_MS;
         d.groups = {};
         d.computedThrough = {};
       });
     }
+    if (!draft?.changeGroupDocUrl) {
+      draftHandle.change((d) => {
+        if (!d.changeGroupDocUrl) d.changeGroupDocUrl = existingUrl;
+      });
+    }
     return handle;
   }
 
-  const cache = repo.create<ChangeGroupCacheDoc>({
-    "@patchwork": { type: "change-group-cache" },
-    version: CHANGE_GROUP_CACHE_VERSION,
+  const changeGroupHandle = repo.create<ChangeGroupDoc>({
+    "@patchwork": { type: "change-group" },
+    version: CHANGE_GROUP_DOC_VERSION,
     inactivityGapMs: INACTIVITY_GAP_MS,
     groups: {},
     computedThrough: {},
   });
   draftHandle.change((d) => {
-    if (!d.changeGroupCacheUrl) d.changeGroupCacheUrl = cache.url;
+    if (!d.changeGroupDocUrl) d.changeGroupDocUrl = changeGroupHandle.url;
   });
   // A concurrent creator may have won the stamp; honor whichever pointer
   // settled (our fresh doc is then an accepted orphan, same as mainDraftUrl).
-  const settled = draftHandle.doc()?.changeGroupCacheUrl;
-  if (settled && settled !== cache.url && isValidAutomergeUrl(settled)) {
-    return repo.find<ChangeGroupCacheDoc>(settled);
+  const settled = draftHandle.doc()?.changeGroupDocUrl;
+  if (
+    settled &&
+    settled !== changeGroupHandle.url &&
+    isValidAutomergeUrl(settled)
+  ) {
+    return repo.find<ChangeGroupDoc>(settled);
   }
-  return cache;
+  return changeGroupHandle;
+}
+
+function getChangeGroupDocUrl(
+  draft: DraftDoc | undefined
+): AutomergeUrl | undefined {
+  const legacyDraft = draft as
+    | (DraftDoc & { changeGroupCacheUrl?: AutomergeUrl })
+    | undefined;
+  return draft?.changeGroupDocUrl ?? legacyDraft?.changeGroupCacheUrl;
 }
 
 // Work out one change's rough edit magnitude by diffing it against its parents
@@ -298,7 +285,7 @@ function collectMemberRows(
     metas = Automerge.getChangesMetaSince(doc, since);
   } catch (err) {
     console.warn(
-      "[drafts] change-group cache: failed to read changes for member:",
+      "[drafts] change grouping: failed to read changes for member:",
       member.url,
       err
     );
@@ -357,12 +344,12 @@ function createSlicer(isAborted: () => boolean, onYield: () => void): Slicer {
 }
 
 // Diff every change in a group (newest-first, sliced) and aggregate the
-// result down to the CachedGroup a timeline row renders. Returns null when
+// result down to the ChangeGroup a timeline row renders. Returns null when
 // the run was aborted mid-diff.
 async function buildGroup(
   rowsNewestFirst: PendingChange[],
   slicer: Slicer
-): Promise<CachedGroup | null> {
+): Promise<ChangeGroup | null> {
   let additions = 0;
   let deletions = 0;
   for (const row of rowsNewestFirst) {
@@ -397,15 +384,14 @@ function sameHeads(a: UrlHeads | undefined, b: UrlHeads | undefined): boolean {
   return a.every((h) => set.has(h));
 }
 
-// The write side of the grouping cache: owns one background task per
-// timeline, listens to member docs for edits, and fills each timeline's
-// ChangeGroupCacheDoc in idle-time slices — newest groups first, older
-// history backfilling behind them. One global runner processes timelines
-// sequentially in the priority order `sync` was given.
-export function createChangeGroupCacheFiller(
+// Groups each timeline's changes into its ChangeGroupDoc. It owns one
+// background task per timeline, listens to member docs for edits, and updates
+// newest groups first while older history backfills. One global runner
+// processes timelines sequentially in the priority order it was given.
+export function createChangeGrouper(
   repo: Repo,
-  opts: ChangeGroupCacheFillerOpts = {}
-): ChangeGroupCacheFiller {
+  options: ChangeGrouperOptions = {}
+): ChangeGrouper {
   // Change listeners on the docs a timeline reads (originals for main,
   // clones for drafts). `handle` is null while the doc is still resolving —
   // the slot is reserved up front so concurrent syncs don't double-attach.
@@ -416,7 +402,7 @@ export function createChangeGroupCacheFiller(
 
   type Task = {
     key: AutomergeUrl; // the DraftDoc url
-    spec: TimelineSpec;
+    spec: TimelineGroupingSpec;
     listeners: Map<AutomergeUrl, SourceListener>;
     queued: boolean;
     debounce: ReturnType<typeof setTimeout> | null;
@@ -438,7 +424,7 @@ export function createChangeGroupCacheFiller(
     return cached;
   };
 
-  function sync(specs: TimelineSpec[]): void {
+  function setTimelines(specs: TimelineGroupingSpec[]): void {
     if (disposed) return;
     const keep = new Set(specs.map((s) => s.draftHandle.url));
     for (const [key, task] of [...tasks]) {
@@ -466,7 +452,7 @@ export function createChangeGroupCacheFiller(
     queue.length = 0;
   }
 
-  return { sync, dispose };
+  return { setTimelines, dispose };
 
   function removeTask(task: Task): void {
     if (task.debounce) clearTimeout(task.debounce);
@@ -487,7 +473,7 @@ export function createChangeGroupCacheFiller(
   }
 
   // Keep exactly one change listener per member source doc; edits schedule a
-  // debounced incremental fill of the owning timeline.
+  // debounced grouping update for the owning timeline.
   async function ensureListeners(task: Task): Promise<void> {
     const wanted = new Set(
       task.spec.members.map((m) => m.cloneUrl ?? m.url)
@@ -502,17 +488,17 @@ export function createChangeGroupCacheFiller(
       if (task.listeners.has(url)) continue;
       const onChange = (payload: DocHandleChangePayload<unknown>) => {
         if (
-          opts.onLocalChange &&
+          options.onLocalChange &&
           LOCAL_PATCH_SOURCES.has(payload.patchInfo.source) &&
           payload.doc
         ) {
-          opts.onLocalChange(payload.doc);
+          options.onLocalChange(payload.doc);
         }
         if (task.debounce) clearTimeout(task.debounce);
         task.debounce = setTimeout(() => {
           task.debounce = null;
           schedule(task.key);
-        }, FILL_DEBOUNCE_MS);
+        }, GROUPING_DEBOUNCE_MS);
       };
       const slot: SourceListener = { handle: null, onChange };
       task.listeners.set(url, slot);
@@ -526,7 +512,7 @@ export function createChangeGroupCacheFiller(
       } catch (err) {
         if (task.listeners.get(url) === slot) task.listeners.delete(url);
         console.warn(
-          "[drafts] change-group cache: failed to watch member:",
+          "[drafts] change grouping: failed to watch member:",
           url,
           err
         );
@@ -553,10 +539,10 @@ export function createChangeGroupCacheFiller(
         if (!task) continue;
         task.queued = false;
         try {
-          await fillTimeline(task);
+          await updateTimelineGroups(task);
         } catch (err) {
           console.warn(
-            "[drafts] change-group cache fill failed for:",
+            "[drafts] change grouping failed for:",
             key,
             err
           );
@@ -567,18 +553,21 @@ export function createChangeGroupCacheFiller(
     }
   }
 
-  // One fill pass over a timeline. The common case appends the unconsumed
+  // Update one timeline. The common case appends the unconsumed
   // tail onto the newest group; anything that would reshape older groups
-  // (late-syncing changes, a fresh cache) falls back to a full rebuild that
-  // reuses stored groups wherever they come out identical.
-  async function fillTimeline(task: Task): Promise<void> {
+  // (late-syncing changes, a fresh document) falls back to a full rebuild
+  // that reuses stored groups wherever they come out identical.
+  async function updateTimelineGroups(task: Task): Promise<void> {
     const spec = task.spec;
     // The run is stale once the task was replaced or torn down (a newer spec
-    // re-queues itself), or the filler disposed.
+    // re-queues itself), or the ChangeGrouper was disposed.
     const isAborted = () => disposed || tasks.get(task.key) !== task;
 
     if (!spec.draftHandle.doc()) return;
-    const cacheHandle = await ensureChangeGroupCache(repo, spec.draftHandle);
+    const changeGroupHandle = await ensureChangeGroupDoc(
+      repo,
+      spec.draftHandle
+    );
     const createdAt = await creationTime(spec.rootDocUrl);
     if (isAborted()) return;
 
@@ -594,7 +583,7 @@ export function createChangeGroupCacheFiller(
         if (doc) sources.push({ member, doc: doc as Automerge.Doc<unknown> });
       } catch (err) {
         console.warn(
-          "[drafts] change-group cache: failed to resolve member:",
+          "[drafts] change grouping: failed to resolve member:",
           member,
           err
         );
@@ -602,9 +591,9 @@ export function createChangeGroupCacheFiller(
     }
     if (isAborted()) return;
 
-    const cacheDoc = cacheHandle.doc();
-    if (!cacheDoc) return;
-    const computedThrough = cacheDoc.computedThrough ?? {};
+    const changeGroupDoc = changeGroupHandle.doc();
+    if (!changeGroupDoc) return;
+    const computedThrough = changeGroupDoc.computedThrough ?? {};
 
     // Each member's frontier as of this gather; the consumed marker advances
     // to exactly these once the run completes, so the next run's
@@ -630,7 +619,7 @@ export function createChangeGroupCacheFiller(
         ([url, heads]) => !sameHeads(computedThrough[url as AutomergeUrl], heads)
       );
       if (stale.length > 0) {
-        cacheHandle.change((d) => {
+        changeGroupHandle.change((d) => {
           for (const [url, heads] of stale) {
             d.computedThrough[url as AutomergeUrl] = heads;
           }
@@ -646,7 +635,7 @@ export function createChangeGroupCacheFiller(
     // below it — the overwhelmingly common live-editing case. Everything else
     // (first build, members without a consumed marker, late-syncing changes
     // with old timestamps) rebuilds via the full pass.
-    const stored = Object.values(cacheDoc.groups ?? {}).sort(
+    const stored = Object.values(changeGroupDoc.groups ?? {}).sort(
       (a, b) => b.endTime - a.endTime
     );
     const newestStored = stored[0];
@@ -659,9 +648,21 @@ export function createChangeGroupCacheFiller(
         tailOldestMs - secondStored.endTime * 1000 > INACTIVITY_GAP_MS);
 
     if (fastOk) {
-      await appendTail(cacheHandle, newestStored, tails, frontier, isAborted);
+      await appendTail(
+        changeGroupHandle,
+        newestStored,
+        tails,
+        frontier,
+        isAborted
+      );
     } else {
-      await rebuildAll(cacheHandle, sources, createdAt, frontier, isAborted);
+      await rebuildAll(
+        changeGroupHandle,
+        sources,
+        createdAt,
+        frontier,
+        isAborted
+      );
     }
   }
 
@@ -669,8 +670,8 @@ export function createChangeGroupCacheFiller(
   // group (accumulate counts, union actors, bump the anchor) and/or open new
   // groups above it. No stored aggregate is ever decomposed.
   async function appendTail(
-    cacheHandle: DocHandle<ChangeGroupCacheDoc>,
-    newestStored: CachedGroup,
+    changeGroupHandle: DocHandle<ChangeGroupDoc>,
+    newestStored: ChangeGroup,
     tailsNewestFirst: PendingChange[],
     frontier: Record<AutomergeUrl, UrlHeads>,
     isAborted: () => boolean
@@ -686,7 +687,7 @@ export function createChangeGroupCacheFiller(
     const freshGroups = attaches ? tailGroups.slice(0, -1) : tailGroups;
 
     const slicer = createSlicer(isAborted, () => {});
-    const built: CachedGroup[] = [];
+    const built: ChangeGroup[] = [];
     for (const rows of freshGroups) {
       const group = await buildGroup(rows, slicer);
       if (group === null) return;
@@ -707,7 +708,7 @@ export function createChangeGroupCacheFiller(
     }
 
     if (isAborted()) return;
-    cacheHandle.change((d) => {
+    changeGroupHandle.change((d) => {
       for (const group of built) d.groups[group.id] = group;
       if (attaches && extensionSums) {
         extendGroup(d, newestStored, oldestGroup, extensionSums);
@@ -722,8 +723,8 @@ export function createChangeGroupCacheFiller(
   // re-read the group from the live doc so a concurrently synced extension is
   // extended further rather than clobbered.
   function extendGroup(
-    d: ChangeGroupCacheDoc,
-    storedSnapshot: CachedGroup,
+    d: ChangeGroupDoc,
+    storedSnapshot: ChangeGroup,
     tailNewestFirst: PendingChange[],
     sums: { additions: number; deletions: number }
   ): void {
@@ -758,7 +759,7 @@ export function createChangeGroupCacheFiller(
       ? [...tailActors, ...baseActors.filter((a) => !tailActors.includes(a))]
       : [...baseActors, ...tailActors.filter((a) => !baseActors.includes(a))];
 
-    const extended: CachedGroup = {
+    const extended: ChangeGroup = {
       id: newer ? `tg-${tailNewest.hash}` : base.id,
       startTime: Math.min(base.startTime, tailOldest.time),
       endTime: Math.max(base.endTime, tailNewest.time),
@@ -778,10 +779,10 @@ export function createChangeGroupCacheFiller(
   // slice ends so recent history paints while older history backfills. A
   // stored group whose id, span, and change count match is reused without
   // re-diffing (cheap warm restarts, and no redundant work when another
-  // client's fill syncs in). Stale ids and the consumed markers settle in the
-  // final write.
+  // client's grouping update syncs in). Stale ids and consumed markers settle
+  // in the final write.
   async function rebuildAll(
-    cacheHandle: DocHandle<ChangeGroupCacheDoc>,
+    changeGroupHandle: DocHandle<ChangeGroupDoc>,
     sources: { member: DraftMemberDoc; doc: Automerge.Doc<unknown> }[],
     createdAt: number | undefined,
     frontier: Record<AutomergeUrl, UrlHeads>,
@@ -796,10 +797,10 @@ export function createChangeGroupCacheFiller(
     const groupsRows = splitIntoGroups(rows);
     const expectedIds = new Set(groupsRows.map(groupId));
 
-    const batch: CachedGroup[] = [];
+    const batch: ChangeGroup[] = [];
     const flush = () => {
       if (batch.length === 0) return;
-      cacheHandle.change((d) => {
+      changeGroupHandle.change((d) => {
         for (const group of batch) d.groups[group.id] = group;
       });
       batch.length = 0;
@@ -808,7 +809,7 @@ export function createChangeGroupCacheFiller(
     const slicer = createSlicer(isAborted, flush);
     for (const groupRows of groupsRows) {
       const id = groupId(groupRows);
-      const existing = cacheHandle.doc()?.groups?.[id];
+      const existing = changeGroupHandle.doc()?.groups?.[id];
       if (
         existing &&
         existing.changeCount === groupRows.length &&
@@ -823,7 +824,7 @@ export function createChangeGroupCacheFiller(
     }
 
     if (isAborted()) return;
-    cacheHandle.change((d) => {
+    changeGroupHandle.change((d) => {
       for (const group of batch) d.groups[group.id] = group;
       for (const id of Object.keys(d.groups)) {
         if (!expectedIds.has(id)) delete d.groups[id];

@@ -9,34 +9,15 @@ import { subscribe } from "@inkandswitch/patchwork-providers";
 
 import type { ActorAttributionDoc, DraftDoc } from "./draft-types.js";
 
-const CONTACT_SELECTOR = "patchwork:contact";
-
-// The write side of author attribution. Only the writing client knows which
-// Automerge actor ids are its own (each doc instance gets a fresh one per
-// session), so attribution can't be derived after the fact: every local
-// change reveals one id, and the recorder stamps it into the host doc's
-// shared ActorAttributionDoc as actorId -> the current user's contact url.
-export type ActorRecorder = {
-  // Feed from the change-group filler: `doc` just received a LOCAL change,
-  // so its actor id belongs to the current user.
-  onLocalChange: (doc: Automerge.Doc<unknown>) => void;
-  // Point the recorder at the host doc's attribution doc once resolved.
-  setAttributionHandle: (handle: DocHandle<ActorAttributionDoc>) => void;
-  dispose: () => void;
-};
-
-// The current user's contact url comes from the `patchwork:contact` provider
-// (the AccountProvider above the document area). Actor ids seen before it —
-// or the attribution doc — resolves are buffered, not lost. If no provider
-// ever answers, the mapping simply isn't written and authors fall back to
-// raw actor rendering.
+// Only the writing client knows which Automerge actor ids are its own. Each
+// local change reveals one id, which the ActorRecorder attributes to the
+// current user's contact. Changes seen before dependencies resolve are
+// buffered.
 export function createActorRecorder(element: HTMLElement): ActorRecorder {
   let contactUrl: AutomergeUrl | null = null;
   let attributionHandle: DocHandle<ActorAttributionDoc> | null = null;
-  // Actor ids already written this session (skip cheaply) vs seen while the
-  // contact url or attribution doc was still resolving.
-  const recorded = new Set<string>();
-  const pending = new Set<string>();
+  const recordedActorIds = new Set<string>();
+  const pendingActorIds = new Set<string>();
   let disposed = false;
 
   const unsubscribe = subscribe<AutomergeUrl>(
@@ -46,13 +27,13 @@ export function createActorRecorder(element: HTMLElement): ActorRecorder {
       if (disposed || contactUrl) return;
       if (typeof value === "string" && isValidAutomergeUrl(value)) {
         contactUrl = value;
-        flush();
+        flushPendingActors();
       }
     }
   );
 
   return {
-    onLocalChange(doc) {
+    recordLocalChange(doc) {
       if (disposed) return;
       let actorId: string;
       try {
@@ -60,28 +41,28 @@ export function createActorRecorder(element: HTMLElement): ActorRecorder {
       } catch {
         return;
       }
-      if (recorded.has(actorId)) return;
-      pending.add(actorId);
-      flush();
+      if (recordedActorIds.has(actorId)) return;
+      pendingActorIds.add(actorId);
+      flushPendingActors();
     },
     setAttributionHandle(handle) {
       if (disposed) return;
       attributionHandle = handle;
-      flush();
+      flushPendingActors();
     },
     dispose() {
       disposed = true;
-      pending.clear();
+      pendingActorIds.clear();
       unsubscribe();
     },
   };
 
-  function flush(): void {
-    if (!attributionHandle || !contactUrl || pending.size === 0) return;
+  function flushPendingActors(): void {
+    if (!attributionHandle || !contactUrl || pendingActorIds.size === 0) return;
     const url = contactUrl;
-    const actorIds = [...pending];
-    pending.clear();
-    for (const id of actorIds) recorded.add(id);
+    const actorIds = [...pendingActorIds];
+    pendingActorIds.clear();
+    for (const id of actorIds) recordedActorIds.add(id);
     const existing = attributionHandle.doc()?.actors ?? {};
     const missing = actorIds.filter((id) => existing[id] !== url);
     if (missing.length === 0) return;
@@ -94,7 +75,7 @@ export function createActorRecorder(element: HTMLElement): ActorRecorder {
 // Resolve the host doc's actor-attribution doc, creating it and stamping
 // `actorAttributionUrl` on the main draft the first time. One per host doc
 // (actor ids span main and every draft), following the same check-then-create
-// pattern as `ensureChangeGroupCache`: the rare concurrent-create orphan is
+// pattern as `ensureChangeGroupDoc`: the rare concurrent-create orphan is
 // accepted.
 export async function ensureActorAttribution(
   repo: Repo,
@@ -113,10 +94,18 @@ export async function ensureActorAttribution(
     if (!d.actorAttributionUrl) d.actorAttributionUrl = attribution.url;
   });
   // A concurrent creator may have won the stamp; honor whichever pointer
-  // settled (our fresh doc is then an accepted orphan, same as the cache doc).
+  // settled (our fresh doc is then an accepted orphan, like a group doc).
   const settled = mainDraftHandle.doc()?.actorAttributionUrl;
   if (settled && settled !== attribution.url && isValidAutomergeUrl(settled)) {
     return repo.find<ActorAttributionDoc>(settled);
   }
   return attribution;
 }
+
+export type ActorRecorder = {
+  recordLocalChange: (doc: Automerge.Doc<unknown>) => void;
+  setAttributionHandle: (handle: DocHandle<ActorAttributionDoc>) => void;
+  dispose: () => void;
+};
+
+const CONTACT_SELECTOR = "patchwork:contact";

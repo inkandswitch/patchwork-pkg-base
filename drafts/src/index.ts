@@ -62,8 +62,8 @@ export const plugins: Plugin<any>[] = [
 export type {
   ActorAttributionDoc,
   Baseline,
-  CachedGroup,
-  ChangeGroupCacheDoc,
+  ChangeGroup,
+  ChangeGroupDoc,
   CheckedOutDraft,
   CloneEntry,
   DraftDoc,

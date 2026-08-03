@@ -27,8 +27,8 @@ import {
 } from "@inkandswitch/patchwork-providers-solid";
 import type {
   ActorAttributionDoc,
-  CachedGroup,
-  ChangeGroupCacheDoc,
+  ChangeGroup,
+  ChangeGroupDoc,
   CheckedOutDraft,
   CloneEntry,
   DraftCheckpoint,
@@ -41,9 +41,9 @@ import type {
 import {
   computeEditCounts,
   computeRangeEditCounts,
-  ensureMainDraft,
   getDocCreationTime,
 } from "./change-group-cache";
+import { ensureMainDraft } from "./draft-docs";
 
 // Seed for the read-only `draft:list` subscription until the provider answers.
 // `main.url` is a placeholder; the Main card displays the host doc url instead.
@@ -54,7 +54,7 @@ const EMPTY_DRAFT_LIST: DraftList = {
     members: [],
     childCount: 0,
     name: null,
-    changeGroupCacheUrl: null,
+    changeGroupDocUrl: null,
   },
   drafts: [],
   actorAttributionUrl: null,
@@ -599,7 +599,7 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
             hostDocUrl={hostDocHandle()?.url}
             isSelected={isMainSelected()}
             members={() => list().main.members}
-            changeGroupCacheUrl={list().main.changeGroupCacheUrl}
+            changeGroupDocUrl={list().main.changeGroupDocUrl}
             name={list().main.name}
             onRename={(name) => void onRename(null, name)}
             onSelect={() => selectDraft(null)}
@@ -628,7 +628,7 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
               <DraftCard
                 url={summary.url}
                 members={summary.members}
-                changeGroupCacheUrl={summary.changeGroupCacheUrl}
+                changeGroupDocUrl={summary.changeGroupDocUrl}
                 mainDocUrl={hostDocHandle()?.url}
                 isSelected={selected() === summary.url}
                 name={summary.name}
@@ -1068,7 +1068,7 @@ function MainCard(props: {
   hostDocUrl: AutomergeUrl | undefined;
   isSelected: boolean;
   members: Accessor<DraftMemberDoc[]>;
-  changeGroupCacheUrl: AutomergeUrl | null;
+  changeGroupDocUrl: AutomergeUrl | null;
   name: string | null;
   onRename: (name: string | null) => void;
   onSelect: () => void;
@@ -1148,7 +1148,7 @@ function MainCard(props: {
       <Show when={props.isSelected}>
         <DraftChangesList
           members={props.members}
-          changeGroupCacheUrl={props.changeGroupCacheUrl}
+          changeGroupDocUrl={props.changeGroupDocUrl}
           mainDocUrl={props.hostDocUrl}
           onScrub={props.onScrub}
           scrubber={props.scrubber}
@@ -1166,7 +1166,7 @@ function MainCard(props: {
 function DraftCard(props: {
   url: AutomergeUrl;
   members: DraftMemberDoc[];
-  changeGroupCacheUrl: AutomergeUrl | null;
+  changeGroupDocUrl: AutomergeUrl | null;
   mainDocUrl: AutomergeUrl | undefined;
   isSelected: boolean;
   name: string | null;
@@ -1263,7 +1263,7 @@ function DraftCard(props: {
       <Show when={props.isSelected}>
         <DraftChangesList
           members={() => props.members}
-          changeGroupCacheUrl={props.changeGroupCacheUrl}
+          changeGroupDocUrl={props.changeGroupDocUrl}
           mainDocUrl={props.mainDocUrl}
           onScrub={props.onScrub}
           scrubber={props.scrubber}
@@ -1660,7 +1660,7 @@ type ChangeRef = {
 };
 
 // Where the scrubber sits: the change whose heads the view displays,
-// anchored to its cached group. `offset` is the change's position within the
+// anchored to its persisted group. `offset` is the change's position within the
 // group, 0 = the group's newest change (what the scrubber geometry snaps
 // to); `head` identifies the exact change for the checkpoint machinery.
 // `groupStartTime` is the group's span start, carried so the checkpoint's
@@ -1692,7 +1692,7 @@ const BASELINE_GROUP_START = -1;
 // One change recovered by the on-demand scrub-resolution scan. `doc` is the
 // member doc it was read from (kept so the sticker can diff it on demand);
 // `seq` is the change's per-document causal index, used only to break
-// same-second timestamp ties — matching the fill engine's interleave order.
+// same-second timestamp ties — matching the ChangeGrouper's interleave order.
 type ScanChange = {
   docUrl: AutomergeUrl;
   doc: Automerge.Doc<unknown>;
@@ -1702,11 +1702,11 @@ type ScanChange = {
   seq: number;
 };
 
-// Renders a draft's (or main's) timeline straight from its change-group
-// cache doc: the provider's fill engine computes and persists the activity
-// groups (newest first, older history backfilling), and this component is a
-// pure reader — it paints from the cache before the member docs even load,
-// and live edits arrive through the cache doc's change signal. A gutter on
+// Renders a draft's (or main's) timeline straight from its ChangeGroupDoc.
+// The ChangeGrouper computes and persists activity groups (newest first, older
+// history backfilling), and this component is a pure reader: it paints before
+// the member docs even load, and live edits arrive through the group doc's
+// change signal. A gutter on
 // the left spans the whole history (top = latest version, bottom = first);
 // the indicator — a calendar-style dot + line — marks the version being
 // looked at and paints *on top* of everything in the changes area.
@@ -1718,7 +1718,7 @@ type ScanChange = {
 // time span (no diffs), memoized per group so dragging stays snappy.
 function DraftChangesList(props: {
   members: Accessor<DraftMemberDoc[]>;
-  changeGroupCacheUrl: AutomergeUrl | null;
+  changeGroupDocUrl: AutomergeUrl | null;
   mainDocUrl: AutomergeUrl | undefined;
   onScrub: (scrub: ScrubberState) => void;
   scrubber: Accessor<ScrubberState | null>;
@@ -1732,34 +1732,32 @@ function DraftChangesList(props: {
 }) {
   const repo = "repo" in window ? window.repo : undefined;
 
-  // The cache doc, resolved from the summary's changeGroupCacheUrl and read
-  // live: the fill engine's background writes stream in as timeline rows.
-  const [cacheHandle, setCacheHandle] =
-    createSignal<DocHandle<ChangeGroupCacheDoc>>();
+  // The group doc is read live, so ChangeGrouper writes stream in as rows.
+  const [changeGroupHandle, setChangeGroupHandle] =
+    createSignal<DocHandle<ChangeGroupDoc>>();
   createEffect(() => {
-    const url = props.changeGroupCacheUrl;
-    setCacheHandle(undefined);
+    const url = props.changeGroupDocUrl;
+    setChangeGroupHandle(undefined);
     if (!url || !repo) return;
     let disposed = false;
-    void repo.find<ChangeGroupCacheDoc>(url).then(
+    void repo.find<ChangeGroupDoc>(url).then(
       (handle) => {
-        if (!disposed) setCacheHandle(handle);
+        if (!disposed) setChangeGroupHandle(handle);
       },
       (err) => {
-        console.warn("[drafts] failed to load change-group cache:", url, err);
+        console.warn("[drafts] failed to load change-group doc:", url, err);
       }
     );
     onCleanup(() => {
       disposed = true;
     });
   });
-  const cacheDoc = createDocSignal(cacheHandle);
+  const changeGroupDoc = createDocSignal(changeGroupHandle);
 
-  // The rendered rows: cached groups newest-first. Groups whose changes
-  // carry no edits (metadata-only churn — zero +/- counts) are stored in the
-  // cache (the fill engine needs the newest one to extend) but filtered here.
-  const timeGroups = createMemo<CachedGroup[]>(() =>
-    Object.values(cacheDoc()?.groups ?? {})
+  // The rendered groups, newest-first. Metadata-only groups are retained so
+  // the ChangeGrouper can extend the newest one, but filtered from the UI.
+  const timeGroups = createMemo<ChangeGroup[]>(() =>
+    Object.values(changeGroupDoc()?.groups ?? {})
       .filter((g) => g.additions > 0 || g.deletions > 0)
       .sort((a, b) => b.endTime - a.endTime || (a.id < b.id ? -1 : 1))
   );
@@ -1806,13 +1804,13 @@ function DraftChangesList(props: {
   // Recover a group's member changes on demand: scan each member's post-fork
   // change metadata filtered to the group's span (spans are disjoint — groups
   // are separated by >gap lulls, so time containment recovers exactly the
-  // group's changes) and interleave with the same ordering the fill engine
-  // uses. Metadata only, no diffs. Memoized per group identity so dragging
-  // stays snappy; returns null until the member handles resolve. Must apply
-  // the same filters as the fill (notably the pre-creation cutoff), or the
-  // scrubber's index math drifts from the cached changeCount.
+  // group's changes) and interleave with the ChangeGrouper's ordering.
+  // Metadata only, no diffs. Memoized per group identity so dragging
+  // stays snappy; returns null until the member handles resolve. It must apply
+  // the same filters as grouping (notably the pre-creation cutoff), or the
+  // scrubber's index math drifts from the persisted changeCount.
   const scanCache = new Map<string, ScanChange[]>();
-  const resolveGroupChanges = (group: CachedGroup): ScanChange[] | null => {
+  const resolveGroupChanges = (group: ChangeGroup): ScanChange[] | null => {
     const key = `${group.id}:${group.changeCount}`;
     const hit = scanCache.get(key);
     if (hit) return hit;
@@ -1852,10 +1850,10 @@ function DraftChangesList(props: {
   };
 
   // Build the head scrub state for `offset` within `group` (0 = the group's
-  // newest change, which the cache anchors directly; deeper offsets resolve
+  // newest change, which the group doc anchors directly; deeper offsets resolve
   // through the on-demand scan). Null while the scan is still resolving.
   const buildHead = (
-    group: CachedGroup,
+    group: ChangeGroup,
     offset: number
   ): ScrubberState | null => {
     if (offset <= 0) {
@@ -1882,14 +1880,14 @@ function DraftChangesList(props: {
   };
 
   // Expand the BASELINE_GROUP_START sentinel to the group's oldest change.
-  const resolveOffset = (group: CachedGroup, offset: number): number =>
+  const resolveOffset = (group: ChangeGroup, offset: number): number =>
     offset === BASELINE_GROUP_START
       ? Math.max(0, group.changeCount - 1)
       : offset;
 
   // The change time at `offset` within `group` (0 = the group's newest
   // change). Used to resolve the baseline handle's `from` time.
-  const timeAt = (group: CachedGroup, offset: number): number => {
+  const timeAt = (group: ChangeGroup, offset: number): number => {
     const resolved = resolveOffset(group, offset);
     if (resolved <= 0) return group.endTime;
     const rows = resolveGroupChanges(group);
@@ -1916,7 +1914,7 @@ function DraftChangesList(props: {
   // stays put (absolute), except that dragging the head older than the
   // baseline pushes the baseline down with it — they can meet but not cross.
   // The baseline is pushed first so the diff never momentarily inverts.
-  const scrubTo = (group: CachedGroup, offset: number) => {
+  const scrubTo = (group: ChangeGroup, offset: number) => {
     const head = buildHead(group, offset);
     if (!head) return;
     if (props.eyeOpen()) {
@@ -1940,7 +1938,7 @@ function DraftChangesList(props: {
   // change, and — with the eye open — the baseline re-anchors to the group's
   // start, so the diff reads "everything this group changed". Dragging the
   // head, by contrast, leaves the baseline where it is (see `scrubTo`).
-  const selectGroup = (group: CachedGroup) => {
+  const selectGroup = (group: ChangeGroup) => {
     if (props.eyeOpen()) {
       props.onBaselineScrub({
         groupId: group.id,
@@ -1954,7 +1952,7 @@ function DraftChangesList(props: {
   // Move the baseline to `offset` within `group`, clamped so it never crosses
   // above (newer than) the head — the diff always reads old -> new. When the
   // clamp bites, the baseline snaps to the head (an empty diff).
-  const baselineScrubTo = (group: CachedGroup, offset: number) => {
+  const baselineScrubTo = (group: ChangeGroup, offset: number) => {
     const head = props.scrubber();
     if (!head) return;
     if (linearIndex(group.id, offset) < linearIndex(head.groupId, head.offset)) {
@@ -1975,7 +1973,7 @@ function DraftChangesList(props: {
   // The group the scrubber head sits in: by group identity when it still
   // exists, falling back to span containment (an extended group gets a new
   // id, but its span still covers the pinned change).
-  const groupForScrub = (s: ScrubberState): CachedGroup | null =>
+  const groupForScrub = (s: ScrubberState): ChangeGroup | null =>
     timeGroups().find((g) => g.id === s.groupId) ??
     timeGroups().find(
       (g) => s.head.time >= g.startTime && s.head.time <= g.endTime
@@ -2008,7 +2006,7 @@ function DraftChangesList(props: {
   });
 
   type Band = {
-    group: CachedGroup;
+    group: ChangeGroup;
     top: number;
     height: number;
   };
@@ -2025,7 +2023,7 @@ function DraftChangesList(props: {
   });
 
   // A scrub position's y in the track: offsets interpolate across their
-  // group's band, sized by the cached changeCount (the flat change list is
+  // group's band, sized by the persisted changeCount (the flat change list is
   // never materialized).
   const yForPosition = (band: Band, offset: number): number => {
     const count = Math.max(1, band.group.changeCount);
@@ -2036,7 +2034,7 @@ function DraftChangesList(props: {
   // coordinates).
   const positionForY = (
     y: number
-  ): { group: CachedGroup; offset: number } | null => {
+  ): { group: ChangeGroup; offset: number } | null => {
     const bs = bands();
     if (bs.length === 0) return null;
     for (const b of bs) {
@@ -2323,7 +2321,7 @@ function DraftChangesList(props: {
 // row parks the scrubber at the top of the group (the scrubber token is the
 // selection indicator — the row itself doesn't highlight).
 function TimeGroupRow(props: {
-  group: CachedGroup;
+  group: ChangeGroup;
   rowRef: (el: HTMLElement) => void;
   onSelect: () => void;
 }) {
