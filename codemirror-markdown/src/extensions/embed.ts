@@ -4,6 +4,7 @@ import {
   WidgetType,
   ViewPlugin,
   ViewUpdate,
+  dropCursor,
   type DecorationSet,
 } from "@codemirror/view";
 import { Range } from "@codemirror/state";
@@ -14,15 +15,17 @@ import {
   parseAutomergeUrl,
 } from "@automerge/automerge-repo/slim";
 import { embedTheme } from "../themes/embed.ts";
-import { openLinkIcon } from "./icons.ts";
 
 /**
- * Widget to render an embedded <patchwork-view> element in a CodeMirror editor.
+ * Renders an embedded doc through the shared "embed" tool, which draws the
+ * chrome and nests the content view. The inner tool travels via the
+ * `embed-tool-id` attribute; tool picks come back as
+ * `patchwork:embed-tool-changed` events and are persisted by rewriting the
+ * marker (which recreates the widget).
  */
 class EmbedWidget extends WidgetType {
   readonly docId: DocumentId;
-  // `null` means "no explicit tool": <patchwork-view> falls back to the
-  // default tool registered for the document's datatype.
+  // `null` = no pinned tool; the embed frame uses the datatype's fallback.
   readonly toolId: string | null;
   readonly embedText: string;
 
@@ -37,96 +40,67 @@ class EmbedWidget extends WidgetType {
     return other.docId === this.docId && other.toolId === this.toolId;
   }
 
-  toDOM() {
+  toDOM(view: EditorView) {
     const container = document.createElement("div");
     container.className = "cm-embed";
 
-    const label = document.createElement("div");
-    label.className = "cm-embed-label";
+    const patchworkView = document.createElement("patchwork-view");
+    // No heads in the url: the embed follows whatever version the host
+    // resolves — the active checkpoint when one is checked out, live otherwise.
+    patchworkView.setAttribute("doc-url", `automerge:${this.docId}`);
+    patchworkView.setAttribute("tool-id", "embed");
+    if (this.toolId) patchworkView.setAttribute("embed-tool-id", this.toolId);
+    // Explicit inline height: without it the element collapses to 0px (the
+    // stylesheet rule isn't reliably applied here).
+    patchworkView.style.display = "block";
+    patchworkView.style.height = "500px";
+    patchworkView.style.width = "100%";
 
-    const labelText = document.createElement("span");
-    labelText.className = "cm-embed-label-text";
-    labelText.textContent = this.embedText;
-    labelText.title = "Click to edit";
-
-    const openLink = document.createElement("button");
-    openLink.className = "cm-embed-open-link";
-    openLink.title = "Open document";
-    openLink.innerHTML = openLinkIcon;
-
-    openLink.onclick = (e) => {
-      e.preventDefault();
+    // Persist tool picks into the marker text. Stop propagation so nested
+    // embeds don't also change the outer embed's tool.
+    container.addEventListener("patchwork:embed-tool-changed", (e) => {
       e.stopPropagation();
-      const params = new URLSearchParams();
-      params.set("doc", this.docId);
-      // Tool-less embeds open with the datatype's default tool.
-      if (this.toolId) params.set("tool", this.toolId);
-      window.location.hash = params.toString();
-    };
+      const toolId = (e as CustomEvent<{ toolId?: string }>).detail?.toolId;
+      if (toolId) this.setTool(view, container, toolId);
+    });
 
-    label.appendChild(labelText);
-    label.appendChild(openLink);
-
-    const view = document.createElement("patchwork-view");
-    // Name the doc without heads. Resolution (OverlayRepo + the drafts
-    // `repo:handle-descriptor` answer) pins it to the active checkpoint when one
-    // is checked out, so the embed freezes with the document it lives in;
-    // otherwise it renders live.
-    view.setAttribute("doc-url", `automerge:${this.docId}`);
-    if (this.toolId) view.setAttribute("tool-id", this.toolId);
-    // The <patchwork-view> needs an explicit, non-zero height set inline:
-    // without it the element collapses to 0px and the embedded tool never
-    // renders. (The stylesheet rule isn't reliably applied here, so we set it
-    // directly on the element.)
-    view.style.display = "block";
-    view.style.height = "500px";
-    view.style.width = "100%";
-
-    container.appendChild(label);
-    container.appendChild(view);
-
+    container.appendChild(patchworkView);
     return container;
   }
 
-  ignoreEvent(e: Event) {
-    if (e.type === "mousedown" && e.target instanceof Element) {
-      // Allow clicks on the label text to pass through for editing
-      if (e.target.classList.contains("cm-embed-label-text")) {
-        return false; // Let the editor handle it
-      }
-      // Block clicks on the open link button (let button handle it)
-      if (
-        e.target.classList.contains("cm-embed-open-link") ||
-        e.target.closest(".cm-embed-open-link")
-      ) {
-        return true; // Block from editor
-      }
-    }
-    // Block other events from reaching the editor (let patchwork-view handle them)
+  private setTool(
+    view: EditorView,
+    container: HTMLElement,
+    toolId: string
+  ): void {
+    const from = view.posAtDOM(container);
+    const to = from + this.embedText.length;
+    // Only rewrite if the marker is still exactly where this widget maps to.
+    if (view.state.doc.sliceString(from, to) !== this.embedText) return;
+    view.dispatch({
+      changes: { from, to, insert: embedSyntax({ docId: this.docId, toolId }) },
+    });
+  }
+
+  ignoreEvent() {
+    // Atomic embed: the editor ignores all events; the frame handles them.
     return true;
   }
 }
 
-// Embed marker syntax: [patchwork:docId] or [patchwork:docId/toolId]. The tool
-// id is optional; when absent the embed falls back to the datatype's default
-// tool. The doc id / tool id cannot contain `/` or `]`.
-//
-// We scan the document text directly rather than walking the markdown syntax
-// tree on purpose: `@codemirror/language` is not a shared singleton across
-// patchwork's separately-bundled CodeMirror extensions, so `syntaxTree(state)`
-// here reads a different `Language` facet than the markdown tool populates and
-// always comes back empty. Plain-text scanning keeps this extension
-// self-contained and free of any `@codemirror/language` dependency.
+// Marker syntax: [patchwork:docId] or [patchwork:docId/toolId] (ids can't
+// contain `/` or `]`). We scan plain text instead of the markdown syntax tree
+// on purpose: `@codemirror/language` isn't a shared singleton across
+// patchwork's separately-bundled extensions, so `syntaxTree(state)` here would
+// read a different `Language` facet and always come back empty.
 const EMBED_PATTERN = /\[patchwork:([^/\]]+)(?:\/([^\]]+))?\]/g;
 
 function getEmbedLinks(view: EditorView) {
   const widgets: Range<Decoration>[] = [];
   const { state } = view;
-  const selection = state.selection.main;
 
-  // Scan only the visible ranges. Markers never span a line break, and
-  // CodeMirror's visible ranges are line-aligned, so a marker is either fully
-  // inside a range or fully outside it.
+  // Visible ranges are line-aligned and markers never span lines, so a marker
+  // is always fully inside or fully outside a range.
   for (const { from, to } of view.visibleRanges) {
     const text = state.doc.sliceString(from, to);
     EMBED_PATTERN.lastIndex = 0;
@@ -135,14 +109,6 @@ function getEmbedLinks(view: EditorView) {
       const matchFrom = from + m.index;
       const matchTo = matchFrom + m[0].length;
       const [matchText, docId, toolId] = m;
-
-      // Show raw text (no widget) while the cursor is on the marker or a
-      // selection spans it, so it can be edited.
-      const cursorInLink =
-        selection.from >= matchFrom && selection.from <= matchTo;
-      const selectionSpansLink =
-        selection.from < matchFrom && selection.to > matchTo;
-      if (cursorInLink || selectionSpansLink) continue;
 
       if (!isValidDocumentId(docId)) continue;
 
@@ -287,7 +253,13 @@ async function fileDropRefs(files: FileList): Promise<DocRef[]> {
 
 function insertRefs(view: EditorView, pos: number, refs: DocRef[]): void {
   if (refs.length === 0) return;
-  const text = refs.map(embedSyntax).join("\n\n");
+  let text = refs.map(embedSyntax).join("\n\n");
+  // On a non-empty line, add just enough breaks to put the embed on its own line.
+  const line = view.state.doc.lineAt(pos);
+  if (/\S/.test(line.text)) {
+    if (pos > line.from) text = "\n" + text;
+    if (pos < line.to) text = text + "\n";
+  }
   view.dispatch({
     changes: { from: pos, insert: text },
     selection: { anchor: pos + text.length },
@@ -314,9 +286,12 @@ function embedDropHandlers() {
 
   return EditorView.domEventHandlers({
     dragover(event) {
-      if (!wantsDragover(event.dataTransfer)) return false;
+      const dt = event.dataTransfer;
+      if (!wantsDragover(dt)) return false;
       event.preventDefault();
-      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+      // Doc drags insert a *reference* to the same automerge doc, so show the
+      // link cursor; OS file drags genuinely copy content into new docs.
+      if (dt) dt.dropEffect = dt.types.includes("Files") ? "copy" : "link";
       return true;
     },
     drop(event, view) {
@@ -353,18 +328,23 @@ const embedPlugin = ViewPlugin.fromClass(
     }
 
     update(update: ViewUpdate) {
-      // Recompute when the document changes, the selection moves, or the
-      // viewport scrolls (so newly-visible markers get decorated).
-      if (update.docChanged || update.selectionSet || update.viewportChanged) {
+      // Viewport too, so newly-visible markers get decorated.
+      if (update.docChanged || update.viewportChanged) {
         this.decorations = getEmbedLinks(update.view);
       }
     }
   },
   {
     decorations: (v) => v.decorations,
+    // Atomic: the cursor skips embeds and delete removes the whole marker.
+    provide: (plugin) =>
+      EditorView.atomicRanges.of(
+        (view) => view.plugin(plugin)?.decorations ?? Decoration.none
+      ),
   }
 );
 
 export function markdownEmbed() {
-  return [embedPlugin, embedTheme, embedDropHandlers()];
+  // `dropCursor` observes events, so it coexists with our dragover handler.
+  return [embedPlugin, embedTheme, embedDropHandlers(), dropCursor()];
 }

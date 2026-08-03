@@ -13,6 +13,7 @@ import {
   computed,
   react,
   type TLStoreSnapshot,
+  type TLInstancePresence,
   sortById,
   useEditor,
 } from "@tldraw/tldraw";
@@ -21,10 +22,7 @@ import {
   type DocHandle,
   type DocHandleChangePayload,
 } from "@automerge/automerge-repo/slim";
-import {
-  useLocalAwareness,
-  useRemoteAwareness,
-} from "@automerge/automerge-repo-react-hooks";
+import { usePresence } from "@automerge/automerge-repo-react-hooks";
 
 import { applyAutomergePatchesToTLStore } from "./AutomergeToTLStore.js";
 import { applyTLStoreChangesToAutomerge } from "./TLStoreToAutomerge.js";
@@ -210,39 +208,42 @@ export function useClearHistoryOnScopeSwap(handle: DocHandle<TLStoreSnapshot>) {
   }, [editor, handle]);
 }
 
+// Ephemeral state shared with peers: our tldraw presence record, or null if window is not focused
+type PresenceChannels = { presence: TLInstancePresence | null };
+
 export function useAutomergePresence({
   handle,
   store,
   userMetadata,
+  element,
 }: {
   handle: DocHandle<TLStoreSnapshot>;
   store: TLStoreWithStatus;
   userMetadata: any;
+  element: HTMLElement;
 }) {
   const innerStore = store?.store;
 
   const { userId, name, color } = userMetadata;
 
-  const [, updateLocalState] = useLocalAwareness({
+  const isCursorActive = useIsCursorActive(element);
+
+  const { peerStates, update, stop } = usePresence<PresenceChannels>({
     handle,
-    userId,
-    initialState: {},
+    initialState: { presence: null },
   });
 
-  const [peerStates] = useRemoteAwareness({
-    handle,
-    localUserId: userId,
-  });
-
-  /* ----------- Presence stuff ----------- */
   useEffect(() => {
     if (!innerStore) return;
 
-    const toPut: TLRecord[] = Object.values(peerStates).filter(
-      (record) => record && Object.keys(record).length !== 0
-    );
+    // Records are keyed by peerId so multiple sessions of the same user stay distinct.
+    const toPut: TLRecord[] = peerStates.peers
+      .filter((peer) => peer.value?.presence)
+      .map((peer) => ({
+        ...peer.value.presence!,
+        id: InstancePresenceRecordType.createId(peer.peerId),
+      }));
 
-    // put / remove the records in the store
     const toRemove = innerStore.query
       .records("instance_presence")
       .get()
@@ -256,7 +257,6 @@ export function useAutomergePresence({
 
   useEffect(() => {
     if (!innerStore) return;
-    /* ----------- Presence stuff ----------- */
     setUserPreferences({ id: userId, color, name });
 
     const userPreferences = computed<{
@@ -272,18 +272,67 @@ export function useAutomergePresence({
       };
     });
 
-    const presenceId = InstancePresenceRecordType.createId(userId);
-    const presenceDerivation = createPresenceStateDerivation(
-      userPreferences,
-      presenceId
-    )(innerStore);
+    const presenceDerivation =
+      createPresenceStateDerivation(userPreferences)(innerStore);
 
-    return react("when presence changes", () => {
-      const presence = presenceDerivation.get();
-      requestAnimationFrame(() => {
-        updateLocalState(presence);
+    // Closing the page sends a goodbye, which removes our record from peers.
+    window.addEventListener("pagehide", stop);
+
+    let cancelled = false;
+    let dispose: (() => void) | undefined;
+
+    if (isCursorActive) {
+      dispose = react("broadcast presence", () => {
+        const presence = presenceDerivation.get();
+        // rAF throttles broadcasts to frame rate.
+        requestAnimationFrame(() => {
+          if (cancelled) return;
+          // Stamp activity so becoming active again shows the cursor without
+          // waiting for a pointer move to refresh the store's stale timestamp.
+          update(
+            "presence",
+            presence ? { ...presence, lastActivityTimestamp: Date.now() } : null
+          );
+        });
       });
-    });
-  }, [innerStore, userId, updateLocalState]);
-  /* ----------- End presence stuff ----------- */
+    } else {
+      // Keep the record but clear the cursor when blurred or pointer leaves
+      const presence = presenceDerivation.get();
+      update("presence", presence ? { ...presence, cursor: null } : null);
+    }
+
+    return () => {
+      // Invalidate pending rAF broadcasts so stale updates don't overwrite deactivated cursors.
+      cancelled = true;
+      dispose?.();
+      window.removeEventListener("pagehide", stop);
+    };
+  }, [innerStore, userId, name, color, update, stop, isCursorActive]);
+}
+
+// The local cursor is active only when the window is focused and the pointer is over this tool.
+function useIsCursorActive(element: HTMLElement) {
+  const [isFocused, setIsFocused] = useState(() => document.hasFocus());
+  const [isPointerOver, setIsPointerOver] = useState(() =>
+    element.matches(":hover")
+  );
+
+  useEffect(() => {
+    const onFocus = () => setIsFocused(true);
+    const onBlur = () => setIsFocused(false);
+    const onEnter = () => setIsPointerOver(true);
+    const onLeave = () => setIsPointerOver(false);
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("blur", onBlur);
+    element.addEventListener("mouseenter", onEnter);
+    element.addEventListener("mouseleave", onLeave);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("blur", onBlur);
+      element.removeEventListener("mouseenter", onEnter);
+      element.removeEventListener("mouseleave", onLeave);
+    };
+  }, [element]);
+
+  return isFocused && isPointerOver;
 }

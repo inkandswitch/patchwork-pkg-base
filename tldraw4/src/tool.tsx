@@ -11,6 +11,7 @@ import {
   useEditor,
   getMediaAssetInfoPartial,
   atom,
+  createShapeId,
   type VecLike,
   type TLContent,
   type TLAssetId,
@@ -43,7 +44,6 @@ import {
   PatchworkDocShapeUtil,
   PATCHWORK_DOC_SHAPE_TYPE,
   getDefaultToolId,
-  makeShapeId,
 } from "./PatchworkDocShape.tsx";
 import {
   NewDocShapeTool,
@@ -91,6 +91,7 @@ interface ContactDoc {
 }
 
 function useContactInfo() {
+  const repo = useRepo();
   const [contactUrl, setContactUrl] = useState<AutomergeUrl | undefined>();
 
   useEffect(() => {
@@ -107,9 +108,25 @@ function useContactInfo() {
   const [contactDoc] = useDocument<ContactDoc>(contactUrl);
 
   return {
-    userId: contactUrl ?? (window as any).repo?.peerId ?? "anonymous",
+    // Compose userId as `${contactUrl}-${repo.peerId}` to uniquely identify a session;
+    // this prevents tldraw from hiding local cursors across multiple sessions under the same account.
+    userId: contactUrl ? `${contactUrl}-${repo.peerId}` : repo.peerId,
     name: contactDoc?.name ?? "Anonymous",
     color: contactDoc?.color,
+  };
+}
+
+// Parses a userId of the form `${contactUrl}-${peerId}` to recover contactUrl and actorId.
+export function splitPresenceUserId(userId: string): {
+  contactUrl?: AutomergeUrl;
+  actorId?: string;
+} {
+  if (!userId.startsWith("automerge:")) return { actorId: userId };
+  const i = userId.indexOf("-");
+  if (i === -1) return { contactUrl: userId as AutomergeUrl };
+  return {
+    contactUrl: userId.slice(0, i) as AutomergeUrl,
+    actorId: userId.slice(i + 1),
   };
 }
 
@@ -137,6 +154,7 @@ export function TldrawTool({
     handle: handle as DocHandle<any>,
     store,
     userMetadata: contactInfo,
+    element,
   });
 
   const baseline = useSubscribe<Baseline>(
@@ -426,13 +444,18 @@ function usePatchworkDrop(element: HTMLElement) {
     const isInsideEmbeddedPatchworkView = (e: DragEvent) => {
       for (const el of e.composedPath()) {
         if (el === element) break;
-        if ((el as Element).tagName?.toLowerCase() === "patchwork-view") return true;
+        if ((el as Element).tagName?.toLowerCase() === "patchwork-view")
+          return true;
       }
       return false;
     };
 
     const allowDrop = (e: DragEvent) => {
-      if (e.dataTransfer && isPatchworkDrag(e.dataTransfer.types)) e.preventDefault();
+      if (e.dataTransfer && isPatchworkDrag(e.dataTransfer.types)) {
+        e.preventDefault();
+        // Dropping embeds a *reference* to the same automerge doc, not a copy.
+        e.dataTransfer.dropEffect = "link";
+      }
     };
 
     const handleDrop = (e: DragEvent) => {
@@ -446,15 +469,13 @@ function usePatchworkDrop(element: HTMLElement) {
 
       const dropPoint = editor.screenToPage({ x: e.clientX, y: e.clientY });
       const STAGGER = 24;
+      const createdIds: TLShapeId[] = [];
 
       docs.forEach((item, i) => {
-        const shapeId = makeShapeId(item.url);
-
-        // Already embedded: select it rather than creating a duplicate.
-        if (editor.getShape(shapeId)) {
-          editor.select(shapeId);
-          return;
-        }
+        // Random id (not derived from the doc url) so the same document can be
+        // embedded on the canvas any number of times.
+        const shapeId = createShapeId();
+        createdIds.push(shapeId);
 
         const knownType = item.type ?? "";
         editor.createShape({
@@ -479,7 +500,9 @@ function usePatchworkDrop(element: HTMLElement) {
         if (!item.type || !item.name) {
           void (async () => {
             try {
-              const handle = await repo.find<{ "@patchwork"?: { type?: string } }>(item.url);
+              const handle = await repo.find<{
+                "@patchwork"?: { type?: string };
+              }>(item.url);
               const doc = handle.doc();
               const datatypeId = doc?.["@patchwork"]?.type ?? knownType;
               if (!editor.getShape(shapeId)) return;
@@ -499,7 +522,7 @@ function usePatchworkDrop(element: HTMLElement) {
         }
       });
 
-      editor.setSelectedShapes(docs.map((d) => makeShapeId(d.url)));
+      editor.setSelectedShapes(createdIds);
     };
 
     element.addEventListener("dragenter", allowDrop, { capture: true });

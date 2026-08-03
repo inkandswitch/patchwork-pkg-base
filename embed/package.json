@@ -1,0 +1,27 @@
+{
+  "name": "embed",
+  "version": "0.0.2",
+  "description": "Shared embed frame: title bar, tool picker, and open button around a nested patchwork-view",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "push": "pnpm build && pushwork sync",
+    "register": "pw-modules add \"$MODULE_SETTINGS_DOC_URL\" \"$(pushwork url)\""
+  },
+  "dependencies": {
+    "@inkandswitch/patchwork-bootloader": "^0.2.8",
+    "@inkandswitch/patchwork-elements": "1.0.0",
+    "@inkandswitch/patchwork-filesystem": "^0.0.8",
+    "@inkandswitch/patchwork-plugins": "^0.0.11",
+    "solid-js": "^1.9.11"
+  },
+  "devDependencies": {
+    "@automerge/automerge-repo": "^2.6.0-subduction.9",
+    "typescript": "~5.9.3",
+    "vite": "^5.4.21",
+    "vite-plugin-css-injected-by-js": "^3.5.2",
+    "vite-plugin-solid": "^2.11.10"
+  }
+}

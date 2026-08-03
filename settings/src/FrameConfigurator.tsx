@@ -194,7 +194,6 @@ function PreviewCardGrid(props: {
   value: string | undefined;
   onChange: (v: string) => void;
   options: ModuleOption[];
-  docUrl: string;
 }) {
   return (
     <div class="config-section">
@@ -211,14 +210,6 @@ function PreviewCardGrid(props: {
                 aria-checked={props.value === opt.id}
                 onClick={() => props.onChange(opt.id)}
               >
-                <div class="preview-card-thumbnail">
-                  <div class="preview-card-scaler">
-                    <patchwork-view
-                      doc-url={props.docUrl}
-                      tool-id={opt.id}
-                    />
-                  </div>
-                </div>
                 <div class="preview-card-label">
                   <span>{opt.name}</span>
                   <span class="preview-card-check">
@@ -255,7 +246,6 @@ function ToolbarStrip(props: {
   values: string[] | undefined;
   setValues: (next: string[]) => void;
   allOptions: ModuleOption[];
-  docUrl: string;
 }) {
   const [showAdd, setShowAdd] = createSignal(false);
   const [dragIndex, setDragIndex] = createSignal<number | null>(null);
@@ -331,13 +321,6 @@ function ToolbarStrip(props: {
               }}
               onDragEnd={() => handleDragEnd()}
             >
-              <div class="toolbar-box-preview">
-                <patchwork-view
-                  doc-url={props.docUrl}
-                  tool-id={id}
-                  style="pointer-events:none;width:100%;height:100%"
-                />
-              </div>
               <div class="toolbar-box-label">{nameOf(id)}</div>
               <button
                 class="toolbar-box-remove"
@@ -402,8 +385,6 @@ function FrameConfiguratorUI(props: {
     filterToolsByTag([...allTools], "titlebar-tool")
   );
 
-  const docUrl = props.handle.url;
-
   // Lane entries may be bare component ids (strings) as well as [toolId, docId]
   // tuples; the strip UI works in ids either way.
   const slotId = (slot: ToolSlot) => (typeof slot === "string" ? slot : slot[0]);
@@ -444,7 +425,6 @@ function FrameConfiguratorUI(props: {
             }, FRAME_RELOAD_DELAY_MS);
           }}
           options={frameOptions()}
-          docUrl={docUrl}
         />
 
         <Show
@@ -458,7 +438,6 @@ function FrameConfiguratorUI(props: {
             values={doctitleIds()}
             setValues={setDoctitle}
             allOptions={documentToolbarOptions()}
-            docUrl={docUrl}
           />
         </Show>
         <Show when={(accountDoc() as any)?.toolStorage?.["theme-preferences"]}>
