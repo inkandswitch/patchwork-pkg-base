@@ -25,7 +25,7 @@ import {
 } from "@inkandswitch/patchwork-providers-solid";
 
 /** Styles */
-import { createMemo, createResource, createSignal, onMount } from "solid-js";
+import { createMemo, createResource, Show } from "solid-js";
 import {
   createCommentForRange,
   type Comment,
@@ -243,20 +243,22 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
     });
   };
 
+  // The editor is only mounted once the datatype's extensions (themes, syntax
+  // highlighting) are in hand, so it never paints unthemed first.
+  const [datatypeExtensions] = createResource(() =>
+    loadCodeMirrorExtensionsForDoc(props.handle)
+  );
+
   // Base CodeMirror extensions (context-specific, not language-specific)
-  const [extensions, setExtensions] = createSignal<Extension[]>([
+  const extensions = (): Extension[] => [
     commentUI({
       createThreadForRange,
       threadAtPos,
       watchThreadForClose,
       onClose: onClosePopover,
     }),
-  ]);
-
-  onMount(async () => {
-    const loaded = await loadCodeMirrorExtensionsForDoc(props.handle);
-    setExtensions((exts) => [...exts, ...loaded]);
-  });
+    ...(datatypeExtensions() ?? []),
+  ];
 
   return (
     <div
@@ -270,17 +272,19 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
     >
       <div style={{ display: "flex", height: "100%" }}>
         <div style={{ position: "relative", flex: 1, height: "100%" }}>
-          <CodeMirror
-            handle={props.handle as DocHandle<TextDoc>}
-            path={PATH}
-            decorations={decorations}
-            baseline={() => baseline()?.heads ?? null}
-            extensions={extensions()}
+          <Show when={datatypeExtensions.state === "ready"}>
+            <CodeMirror
+              handle={props.handle as DocHandle<TextDoc>}
+              path={PATH}
+              decorations={decorations}
+              baseline={() => baseline()?.heads ?? null}
+              extensions={extensions()}
               readOnly={isReadOnly}
               onChangeSelection={onChangeSelection}
               scrollTarget={scrollTarget}
               contactUrl={() => contactUrl() ?? null}
             />
+          </Show>
         </div>
       </div>
     </div>
