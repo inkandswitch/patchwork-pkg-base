@@ -116,7 +116,7 @@ export type DocCheckpoint = {
 // absent from the map — they didn't exist yet, so they fall through to live.
 export type DraftCheckpoint = Record<AutomergeUrl, DocCheckpoint>;
 
-// Ephemeral, writeable state owned by the draft-list provider and handed to
+// Ephemeral, writeable state owned by the draft-state provider and handed to
 // the sidebar via `draft:checked-out`. It holds the selection: which draft is
 // currently checked out. `checkedOut = null` means "main" — i.e. the host doc
 // itself, no draft overlay. The derived drafts list lives separately in the
@@ -131,7 +131,7 @@ export type CheckedOutDraft = {
   at?: DraftCheckpoint | null;
 };
 
-// Response shape for `draft:baseline { url }`, served by the draft-list provider
+// Response shape for `draft:baseline { url }`, served by the draft-state provider
 // (see `currentBaseline`). `heads` is the doc's diff baseline: the checkpoint's
 // per-doc `from`, written by the sidebar's eye toggle and scrubber. `heads` is
 // `null` when the checkpoint has no entry for the doc or the entry carries no

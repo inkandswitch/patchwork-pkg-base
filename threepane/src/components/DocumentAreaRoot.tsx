@@ -154,27 +154,27 @@ export function DocumentAreaRoot(props: DocumentAreaRootProps) {
   );
 
   // Per-document draft scope. Keyed on the selected doc URL so the whole draft
-  // tree remounts when the user switches docs: the draft-list provider reads
+  // tree remounts when the user switches docs: the draft-state provider reads
   // its `doc-url` attribute once at mount (attribute changes are ignored while
   // a `component` attribute is set), so it cannot re-point in place.
-  const [draftListProviderHost, setDraftListProviderHost] =
+  const [draftStateProviderHost, setDraftStateProviderHost] =
     createSignal<HTMLElement>();
-  const isDraftListProviderReady = useProviderReady(
-    "patchwork-draft-list-provider",
-    draftListProviderHost
+  const isDraftStateProviderReady = useProviderReady(
+    "patchwork-draft-state-provider",
+    draftStateProviderHost
   );
-  const readyDraftListHost = () =>
-    isDraftListProviderReady() ? draftListProviderHost() : undefined;
+  const readyDraftStateHost = () =>
+    isDraftStateProviderReady() ? draftStateProviderHost() : undefined;
 
   return (
     <Show when={props.selectedDocUrl()} keyed>
       {(docUrl) => (
         <patchwork-view
-          component="patchwork-draft-list-provider"
+          component="patchwork-draft-state-provider"
           doc-url={docUrl}
-          ref={setDraftListProviderHost}
+          ref={setDraftStateProviderHost}
         >
-          <Show when={readyDraftListHost()}>
+          <Show when={readyDraftStateHost()}>
             {(host) => (
               <DraftDocumentArea
                 host={host()}
@@ -200,7 +200,7 @@ export function DocumentAreaRoot(props: DocumentAreaRootProps) {
 }
 
 // Renders the main document inside the draft-overlay provider. The provider
-// mounts once and follows the checked-out draft itself (via the draft-list
+// mounts once and follows the checked-out draft itself (via the draft-state
 // provider's `draft:checked-out` doc), re-pointing live document handles in
 // place — so neither a draft switch nor a history checkpoint move remounts
 // anything here. Checkpoint pins travel on the *backing* url inside the

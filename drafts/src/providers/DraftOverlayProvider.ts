@@ -28,7 +28,7 @@ const CHECKED_OUT_SELECTOR = "draft:checked-out";
 // per document. This provider always claims those subscriptions (even while
 // "main" is selected, where it answers a pass-through `{ url }`) and keeps the
 // `respond` callbacks registered. It follows the selection itself via the
-// ancestor draft-list provider's `draft:checked-out` doc: when
+// ancestor draft-state provider's `draft:checked-out` doc: when
 // `CheckedOutDraft.checkedOut` changes, every live subscription is re-answered
 // with the new mapping — `{ url, cloneUrl }` on a draft (the clone is forked
 // eagerly on first resolution and recorded in `DraftDoc.clones`), `{ url }` on
@@ -41,13 +41,13 @@ const CHECKED_OUT_SELECTOR = "draft:checked-out";
 // url. Checkpoint moves (history scrubbing rewrites `at` without changing
 // `checkedOut`) also re-answer every live subscription, so pins update by
 // swapping backings in place — no remount. The fork point lives in
-// `DraftDoc.clones[url].clonedAt`; the draft-list provider reads it to serve
+// `DraftDoc.clones[url].clonedAt`; the draft-state provider reads it to serve
 // `draft:baseline` (this provider no longer answers that).
 //
 // A `url` attribute, when present, seeds the initial selection. That is how
 // the chat preview iframe (see chat's `preview-frame.ts`) pins a
 // self-bootstrapped overlay to a specific draft in a realm that has no
-// draft-list provider to follow. The *current* selection is reflected onto the
+// draft-state provider to follow. The *current* selection is reflected onto the
 // (un-observed, so remount-free) `draft-url` attribute for outside readers.
 export const DraftOverlayProvider = (element: HTMLElement) => {
   const repo = "repo" in window ? window.repo : undefined;
@@ -85,7 +85,7 @@ export const DraftOverlayProvider = (element: HTMLElement) => {
   const descriptorSubscribers = new Set<DescriptorSubscriber>();
 
   // Seed the selection from the `url` attribute when present (the chat
-  // preview iframe mounts us with a pinned draft and no draft-list provider).
+  // preview iframe mounts us with a pinned draft and no draft-state provider).
   const rawSeed = element.getAttribute("url");
   if (rawSeed) {
     if (isValidAutomergeUrl(rawSeed)) {
@@ -98,7 +98,7 @@ export const DraftOverlayProvider = (element: HTMLElement) => {
     }
   }
 
-  // Follow the selection: the ancestor draft-list provider serves the
+  // Follow the selection: the ancestor draft-state provider serves the
   // ephemeral CheckedOutDraft doc url; we watch its `checkedOut` live. The
   // same doc carries the checkpoint (`at`), read at resolve time so
   // descriptors can pin a nested doc to its per-doc `to` heads — absent means

@@ -61,11 +61,11 @@ const EMPTY_HEADS: UrlHeads = encodeHeads([]);
 // to its drafts is `@patchwork.mainDraftUrl` → the main draft, whose `drafts`
 // roots the tree; each `DraftDoc` may have its own sub-drafts via
 // `DraftDoc.drafts`.
-export const DraftListProvider = (element: HTMLElement) => {
+export const DraftStateProvider = (element: HTMLElement) => {
   const rawUrl = element.getAttribute(ATTR_DOC_URL);
   if (!rawUrl || !isValidAutomergeUrl(rawUrl)) {
     console.warn(
-      `[drafts] <patchwork-view component="patchwork-draft-list-provider"> ` +
+      `[drafts] <patchwork-view component="patchwork-draft-state-provider"> ` +
         `is missing a valid ${ATTR_DOC_URL} attribute (got ${JSON.stringify(rawUrl)})`
     );
     return () => {};
@@ -75,7 +75,7 @@ export const DraftListProvider = (element: HTMLElement) => {
   const maybeRepo = "repo" in window ? window.repo : undefined;
   if (!maybeRepo) {
     console.warn(
-      "[drafts] window.repo is not set; draft-list provider disabled"
+      "[drafts] window.repo is not set; draft-state provider disabled"
     );
     return () => {};
   }
@@ -216,7 +216,7 @@ export const DraftListProvider = (element: HTMLElement) => {
     recomputeList();
   })();
   ready.catch((err) => {
-    console.error(`[drafts] failed to initialize draft-list provider:`, err);
+    console.error(`[drafts] failed to initialize draft-state provider:`, err);
   });
 
   const onSubscribe = (event: SubscribeEvent) => {
