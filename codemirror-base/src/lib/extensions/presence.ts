@@ -4,13 +4,15 @@ import { createEffect } from "solid-js";
 import {
   Decoration,
   EditorView,
+  RectangleMarker,
   ViewPlugin,
-  WidgetType,
+  layer,
   type DecorationSet,
   type ViewUpdate,
 } from "@codemirror/view";
 import {
   Compartment,
+  EditorSelection,
   StateEffect,
   StateField,
   Transaction,
@@ -54,7 +56,7 @@ type RemoteSelection = {
   to: number;
   head: number;
   // Changes exactly when the peer acts (moves, types, refocuses) -- the
-  // widget uses it to restart its nametag fade-out countdown.
+  // caret marker uses it to restart its nametag fade-out countdown.
   lastMoved: number;
 };
 
@@ -103,19 +105,62 @@ function presence(
 ): Extension {
   const setRemoteSelections = StateEffect.define<RemoteSelection[]>();
 
-  const field = StateField.define<DecorationSet>({
+  const field = StateField.define<RemoteSelection[]>({
     create() {
-      return Decoration.none;
+      return [];
     },
     update(value, tr) {
-      for (const e of tr.effects) {
-        if (e.is(setRemoteSelections)) return buildDecorations(e.value);
+      // Between re-resolutions, keep positions glued through edits.
+      if (tr.docChanged) {
+        value = value.map((sel) => ({
+          ...sel,
+          from: tr.changes.mapPos(sel.from),
+          to: tr.changes.mapPos(sel.to),
+          head: tr.changes.mapPos(sel.head),
+        }));
       }
-      // Between re-resolutions, keep the decorations glued through edits.
-      if (tr.docChanged) return value.map(tr.changes);
+      for (const e of tr.effects) {
+        if (e.is(setRemoteSelections)) value = e.value;
+      }
       return value;
     },
-    provide: (f) => EditorView.decorations.from(f),
+    // Selection tints are plain mark decorations: they carry no stateful
+    // DOM, so redrawing them is invisible.
+    provide: (f) => EditorView.decorations.from(f, buildSelectionTints),
+  });
+
+  // Carets and their nametags are rendered in a layer (not as widget decorations)
+  // to prevent remounts and visible flicker. This ensures the <patchwork-view>
+  // element stays mounted and updated in place, even during edits.
+  const caretLayer = layer({
+    above: true,
+    class: "cm-presence-layer",
+    update: (update) =>
+      update.docChanged ||
+      update.transactions.some((tr) =>
+        tr.effects.some((e) => e.is(setRemoteSelections))
+      ),
+    markers(view) {
+      // Stable order, so the layer's pairwise DOM reuse matches each marker
+      // with the same peer's existing element across redraws.
+      const selections = [...view.state.field(field)].sort((a, b) =>
+        a.peerId < b.peerId ? -1 : a.peerId > b.peerId ? 1 : 0
+      );
+      const markers: PresenceCaretMarker[] = [];
+      for (const sel of selections) {
+        // Reuse drawSelection's measurement for a caret rectangle at head.
+        const [rect] = RectangleMarker.forRange(
+          view,
+          "cm-presence-caret",
+          EditorSelection.cursor(sel.head)
+        );
+        if (!rect) continue; // outside the rendered viewport
+        markers.push(
+          new PresenceCaretMarker(sel, rect.left, rect.top, rect.height)
+        );
+      }
+      return markers;
+    },
   });
 
   const plugin = ViewPlugin.fromClass(
@@ -237,10 +282,10 @@ function presence(
     }
   );
 
-  return [field, plugin, presenceTheme];
+  return [field, caretLayer, plugin, presenceTheme];
 }
 
-function buildDecorations(selections: RemoteSelection[]): DecorationSet {
+function buildSelectionTints(selections: RemoteSelection[]): DecorationSet {
   const ranges: Range<Decoration>[] = [];
   for (const sel of selections) {
     if (sel.from < sel.to) {
@@ -253,12 +298,6 @@ function buildDecorations(selections: RemoteSelection[]): DecorationSet {
         }).range(sel.from, sel.to)
       );
     }
-    ranges.push(
-      Decoration.widget({
-        widget: new PresenceCaretWidget(sel),
-        side: -1,
-      }).range(sel.head)
-    );
   }
   return Decoration.set(ranges, true);
 }
@@ -268,68 +307,103 @@ function buildDecorations(selections: RemoteSelection[]): DecorationSet {
 // brings it back.
 const LABEL_TIMEOUT_MS = 2_000;
 
-class PresenceCaretWidget extends WidgetType {
-  readonly peerId: string;
-  readonly contactUrl: AutomergeUrl | null;
-  readonly color: string;
-  readonly lastMoved: number;
-  private labelTimer: ReturnType<typeof setTimeout> | undefined;
+// A layer marker for one peer's caret. Markers are throwaway value objects
+// (a fresh set arrives with every measure pass); the peer's DOM element is
+// what persists, via `update` mutating it in place. That persistence is the
+// point of the layer approach: the contact token inside must never remount.
+class PresenceCaretMarker {
+  private readonly sel: RemoteSelection;
+  private readonly left: number;
+  private readonly top: number;
+  private readonly height: number;
 
-  constructor(sel: RemoteSelection) {
-    super();
-    this.peerId = sel.peerId;
-    this.contactUrl = sel.contactUrl;
-    this.color = sel.color;
-    this.lastMoved = sel.lastMoved;
+  constructor(sel: RemoteSelection, left: number, top: number, height: number) {
+    this.sel = sel;
+    this.left = left;
+    this.top = top;
+    this.height = height;
   }
 
-  // Activity changes don't change the widget's identity. Keeping the widgets
-  // equal lets CodeMirror reuse the mounted contact token as the caret moves.
-  eq(other: PresenceCaretWidget) {
+  eq(other: PresenceCaretMarker): boolean {
     return (
-      other.peerId === this.peerId &&
-      other.contactUrl === this.contactUrl &&
-      other.color === this.color
+      other.sel.peerId === this.sel.peerId &&
+      other.sel.contactUrl === this.sel.contactUrl &&
+      other.sel.color === this.sel.color &&
+      other.sel.lastMoved === this.sel.lastMoved &&
+      other.left === this.left &&
+      other.top === this.top &&
+      other.height === this.height
     );
   }
 
-  toDOM() {
-    const caret = document.createElement("span");
+  draw(): HTMLElement {
+    const caret = document.createElement("div");
     caret.className = "cm-presence-caret";
-    caret.dataset.peerId = this.peerId;
-    caret.style.setProperty("--cm-presence-color", this.color);
-    this.labelTimer = setTimeout(() => {
-      caret.classList.add("cm-presence-caret--idle");
-    }, LABEL_TIMEOUT_MS);
-
-    if (this.contactUrl) {
+    caret.dataset.peerId = this.sel.peerId;
+    if (this.sel.contactUrl) {
       const label = document.createElement("span");
       label.className = "cm-presence-caret-label";
       const token = document.createElement("patchwork-view");
-      token.setAttribute("doc-url", this.contactUrl);
+      token.setAttribute("doc-url", this.sel.contactUrl);
       token.setAttribute("tool-id", "contact-cursor");
       token.style.display = "block";
       label.appendChild(token);
       caret.appendChild(label);
     }
-
+    this.adjust(caret);
+    restartIdleCountdown(caret);
     return caret;
   }
 
-  destroy() {
-    clearTimeout(this.labelTimer);
+  // Reposition the peer's existing element instead of redrawing it, keeping
+  // the mounted contact token alive (a remount re-renders asynchronously and
+  // flickers -- see the layer comment in `presence`).
+  update(dom: HTMLElement, prev: PresenceCaretMarker): boolean {
+    // A different peer means a different contact token, which genuinely has
+    // to remount. Only happens when peers join or leave.
+    if (
+      prev.sel.peerId !== this.sel.peerId ||
+      prev.sel.contactUrl !== this.sel.contactUrl
+    ) {
+      return false;
+    }
+    this.adjust(dom);
+    // Fresh activity restarts the nametag fade-out. Position shifts caused
+    // by other people's edits deliberately don't.
+    if (prev.sel.lastMoved !== this.sel.lastMoved) restartIdleCountdown(dom);
+    return true;
+  }
+
+  private adjust(dom: HTMLElement) {
+    dom.style.left = `${this.left}px`;
+    dom.style.top = `${this.top}px`;
+    dom.style.height = `${this.height}px`;
+    dom.style.setProperty("--cm-presence-color", this.sel.color);
   }
 }
 
+// Keyed on the DOM element rather than the marker, because marker instances
+// are replaced on every measure pass while the element lives on.
+const idleTimers = new WeakMap<HTMLElement, ReturnType<typeof setTimeout>>();
+
+function restartIdleCountdown(caret: HTMLElement) {
+  clearTimeout(idleTimers.get(caret));
+  caret.classList.remove("cm-presence-caret--idle");
+  idleTimers.set(
+    caret,
+    setTimeout(
+      () => caret.classList.add("cm-presence-caret--idle"),
+      LABEL_TIMEOUT_MS
+    )
+  );
+}
+
 const presenceTheme = EditorView.baseTheme({
-  // A zero-width caret line: 2px of left border cancelled out by the negative
-  // margins so surrounding text doesn't shift.
+  // Positioned absolutely by the layer (document-relative); -1px centers
+  // the 2px bar on the caret position.
   ".cm-presence-caret": {
-    position: "relative",
-    display: "inline",
     borderLeft: "2px solid var(--cm-presence-color)",
     marginLeft: "-1px",
-    marginRight: "-1px",
     pointerEvents: "none",
   },
   ".cm-presence-caret-label": {
