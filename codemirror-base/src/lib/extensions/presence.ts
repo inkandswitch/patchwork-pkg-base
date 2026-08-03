@@ -105,7 +105,7 @@ function presence(
 ): Extension {
   const setRemoteSelections = StateEffect.define<RemoteSelection[]>();
 
-  const field = StateField.define<RemoteSelection[]>({
+  const remoteSelectionField = StateField.define<RemoteSelection[]>({
     create() {
       return [];
     },
@@ -143,8 +143,8 @@ function presence(
     markers(view) {
       // Stable order, so the layer's pairwise DOM reuse matches each marker
       // with the same peer's existing element across redraws.
-      const selections = [...view.state.field(field)].sort((a, b) =>
-        a.peerId < b.peerId ? -1 : a.peerId > b.peerId ? 1 : 0
+      const selections = [...view.state.field(remoteSelectionField)].sort(
+        (a, b) => (a.peerId < b.peerId ? -1 : a.peerId > b.peerId ? 1 : 0)
       );
       const markers: PresenceCaretMarker[] = [];
       for (const sel of selections) {
@@ -282,7 +282,7 @@ function presence(
     }
   );
 
-  return [field, caretLayer, plugin, presenceTheme];
+  return [remoteSelectionField, caretLayer, plugin, presenceTheme];
 }
 
 function buildSelectionTints(selections: RemoteSelection[]): DecorationSet {
