@@ -121,20 +121,6 @@ function useContactInfo() {
   };
 }
 
-// Parses a userId of the form `${contactUrl}-${peerId}` to recover contactUrl and actorId.
-export function splitPresenceUserId(userId: string): {
-  contactUrl?: AutomergeUrl;
-  actorId?: string;
-} {
-  if (!userId.startsWith("automerge:")) return { actorId: userId };
-  const i = userId.indexOf("-");
-  if (i === -1) return { contactUrl: userId as AutomergeUrl };
-  return {
-    contactUrl: userId.slice(0, i) as AutomergeUrl,
-    actorId: userId.slice(i + 1),
-  };
-}
-
 export function TldrawTool({
   docUrl,
   element,
