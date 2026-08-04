@@ -22,8 +22,7 @@ Please be careful not to violate these isolation principles.
 ## Caveat
 
 - A few tools depend on sibling tools in this repo
-  (`codemirror-markdown` → `codemirror-base`, `tenfold` → `codemirror-base` and
-  `codemirror-markdown`, `account-picker` → `contact`). Those are referenced as
+  (`account-picker` → `contact`). Those are referenced as
   `link:../<sibling>` in the sibling's `package.json`, which creates a live
   symlink into `node_modules`. Building the sibling is enough — no publish
   step, no `workspace:*` protocol.
@@ -37,7 +36,7 @@ pnpm build
 ```
 
 For tools that `link:` to a sibling, build the sibling first so its `dist/`
-exists (e.g. `codemirror-base` before `tenfold`). Running `pnpm -r build` at
+exists (e.g. `contact` before `account-picker`). Running `pnpm -r build` at
 the root happens to go in alphabetical order, which puts dependencies ahead of
 dependents for the current set of links.
 

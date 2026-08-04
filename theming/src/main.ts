@@ -1,19 +1,8 @@
-import type {Extension} from "@codemirror/state"
 import lycheeCssUrl from "./lychee.css"
 import gloomCssUrl from "./gloom.css"
 ;(async function () {(await import("./active-theme.ts")).startActiveTheme()})();
 
 export const plugins = [
-	{
-		type: "codemirror:extension",
-		id: "codemirror-theme",
-		name: "Theme",
-		supportedDatatypes: "*",
-		async load(): Promise<Extension[]> {
-			const theme = await import("./codemirror-theme.ts")
-			return theme.default
-		},
-	},
 	{
 		type: "patchwork:theme" as const,
 		id: "lychee",

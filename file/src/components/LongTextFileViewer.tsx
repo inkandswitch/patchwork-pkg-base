@@ -1,59 +1,35 @@
 import {onCleanup} from "solid-js"
-import {
-	EditorView,
-	lineNumbers,
-	highlightSpecialChars,
-	highlightActiveLineGutter,
-	highlightActiveLine,
-	keymap,
-} from "@codemirror/view"
-import {EditorState} from "@codemirror/state"
-import {bracketMatching, foldGutter, foldKeymap} from "@codemirror/language"
-import {highlightSelectionMatches, searchKeymap} from "@codemirror/search"
-import {defaultKeymap} from "@codemirror/commands"
-import codemirrorTheme from "../codemirror-theme"
-import {getLanguageExtension} from "../languages"
+import {accept, type SubscribeEvent} from "@inkandswitch/patchwork-providers"
 import type {FileDoc} from "../types"
+import {pluginsAttribute} from "../plugins"
 
-export function LongTextFileViewer(props: {doc: FileDoc}) {
-	const languageExtension = getLanguageExtension(
-		props.doc.extension,
-		props.doc.mimeType,
-	)
+// Kept in step with text-editor/src/lib/read-only.ts. The editor asks whether
+// it's read-only and never learns why; here the reason is "this file is too big
+// to edit comfortably", which is nobody else's business.
+const READ_ONLY = "patchwork:read-only"
 
-	const view = new EditorView({
-		doc: props.doc.content?.toString() || "",
-		extensions: [
-			EditorState.readOnly.of(true),
-			EditorView.editable.of(false),
-			lineNumbers(),
-			highlightSpecialChars(),
-			highlightActiveLineGutter(),
-			highlightActiveLine(),
-			highlightSelectionMatches(),
-			foldGutter(),
-			bracketMatching(),
-			EditorState.tabSize.of(2),
-			EditorView.lineWrapping,
-			keymap.of([...searchKeymap, ...foldKeymap, ...defaultKeymap]),
-			languageExtension,
-			...codemirrorTheme,
-		],
-	})
-
-	onCleanup(() => {
-		view.destroy()
-	})
+export function LongTextFileViewer(props: {doc: FileDoc; handle: any}) {
+	const answerReadOnly = (event: Event) => {
+		const subscribeEvent = event as SubscribeEvent
+		if (subscribeEvent.detail.selector.type !== READ_ONLY) return
+		accept<boolean>(subscribeEvent, respond => respond(true))
+	}
 
 	return (
 		<div
-			ref={(el) => {
-				el.appendChild(view.dom)
+			ref={el => {
+				el.addEventListener("patchwork:subscribe", answerReadOnly)
+				onCleanup(() =>
+					el.removeEventListener("patchwork:subscribe", answerReadOnly),
+				)
 			}}
-			style={{
-				width: "100%",
-				height: "100%",
-			}}
-		/>
+			style={{width: "100%", height: "100%"}}>
+			<patchwork-view
+				component="text-editor"
+				doc-url={props.handle.url}
+				plugins={pluginsAttribute(props.doc)}
+				style={{width: "100%", height: "100%"}}
+			/>
+		</div>
 	)
 }

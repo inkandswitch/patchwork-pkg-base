@@ -1,11 +1,20 @@
-import { CodeMirror } from "./lib/codemirror.tsx";
+import { TextEditor } from "./lib/codemirror.tsx";
 import { render } from "solid-js/web";
 import type { ToolImplementation } from "@inkandswitch/patchwork-plugins";
 
 /** CodeMirror Extensions */
 import { RangeSet, type Extension, type Range } from "@codemirror/state";
-import { Decoration } from "@codemirror/view";
+import { Decoration, EditorView } from "@codemirror/view";
 import { commentUI } from "./lib/extensions/commentUI.ts";
+import {
+  commands,
+  pluginPanel,
+  createSyncExtension,
+  createReadOnlyExtension,
+  createDecorationsExtension,
+  createDiffExtension,
+  createScrollHighlightIntoViewExtension,
+} from "./lib/extensions/index.ts";
 
 /** Automerge */
 import type { PatchworkToolProps } from "./types.ts";
@@ -18,14 +27,26 @@ import {
 } from "@automerge/automerge-repo/slim";
 
 /** Patchwork */
-import { getRegistry } from "@inkandswitch/patchwork-plugins";
+import {
+  loadExtensions,
+  pluginIds,
+  docType,
+  type PluginDoc,
+} from "./lib/plugins.ts";
+import { READ_ONLY } from "./lib/read-only.ts";
 import {
   subscribeDoc,
   subscribe,
 } from "@inkandswitch/patchwork-providers-solid";
 
 /** Styles */
-import { createMemo, createResource, Show } from "solid-js";
+import {
+  createMemo,
+  createResource,
+  createSignal,
+  onCleanup,
+  Show,
+} from "solid-js";
 import {
   createCommentForRange,
   type Comment,
@@ -50,7 +71,14 @@ type Baseline = { heads: UrlHeads | null };
 const PATH = ["content"];
 
 export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
-  const isReadOnly = props.handle.isReadOnly();
+  // The handle's own answer, OR whatever the host says -- a history view showing
+  // old heads, a viewer that's a viewer by policy. See lib/read-only.ts.
+  const providedReadOnly = subscribe<boolean>(
+    props.element,
+    { type: READ_ONLY },
+    false
+  );
+  const isReadOnly = () => props.handle.isReadOnly() || providedReadOnly();
 
   // Diff baseline from the active draft overlay; plain JSON `{ heads }`. Fed to
   // the CodeMirror diff extension, which recomputes spans on every doc change
@@ -243,37 +271,95 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
     });
   };
 
-  // The editor is only mounted once the datatype's extensions (themes, syntax
-  // highlighting) are in hand, so it never paints unthemed first.
-  const [datatypeExtensions] = createResource(() =>
-    loadCodeMirrorExtensionsForDoc(props.handle)
+  // The document's `@text-editor.plugins` decides which registry extensions are on, so
+  // it has to be reactive -- toggling one reconfigures the editor in place.
+  const selection = () => {
+    const doc = props.handle.doc() as PluginDoc | undefined;
+    return { ids: pluginIds(doc), type: docType(doc) };
+  };
+  const [pluginSelection, setPluginSelection] = createSignal(selection(), {
+    equals: (a, b) => a.type === b.type && String(a.ids) === String(b.ids),
+  });
+  const onDocChange = () => setPluginSelection(selection());
+  props.handle.on("change", onDocChange);
+  onCleanup(() => props.handle.off("change", onDocChange));
+
+  // The editor is only mounted once the doc's extensions (syntax highlighting,
+  // link handling, …) are in hand, so it never paints unstyled first.
+  const [pluginExtensions] = createResource(pluginSelection, (s) =>
+    loadExtensions(s.ids, s.type, {
+      handle: props.handle as DocHandle<unknown>,
+      path: PATH,
+    })
   );
 
-  // Base CodeMirror extensions (context-specific, not language-specific)
+  // Everything that binds a bare editor to this document. These are stable
+  // instances built once; each returns an effect factory that wants the view,
+  // which `withView` hands over after the editor is constructed.
+  const initialDoc = () =>
+    (props.handle.doc() as TextDoc | undefined)?.content ?? "";
+
+  const [syncExtension, reconfigureSync] = createSyncExtension(
+    () => props.handle as DocHandle<TextDoc>,
+    () => PATH,
+    initialDoc
+  );
+  const [readOnlyExtension, reconfigureReadOnly] =
+    createReadOnlyExtension(isReadOnly);
+  const [decorationsExtension, reconfigureDecorations] =
+    createDecorationsExtension(decorations);
+  const [diffExtension, reconfigureDiff] = createDiffExtension(
+    () => props.handle as DocHandle<unknown>,
+    () => PATH,
+    () => baseline()?.heads ?? null
+  );
+  const [scrollExtension, reconfigureScroll] =
+    createScrollHighlightIntoViewExtension(scrollTarget);
+
+  const selectionExtension = EditorView.updateListener.of((update) => {
+    if (!update.selectionSet) return;
+    const sel = update.state.selection.main;
+    onChangeSelection(sel.from, sel.to);
+  });
+
   const extensions = (): Extension[] => [
+    commands(props.handle as DocHandle<unknown>, PATH),
+    pluginPanel(props.handle as DocHandle<unknown>),
+    selectionExtension,
+    decorationsExtension,
+    // syncExtension must come before diffExtension so diff stays in sync with edits.
+    syncExtension,
+    diffExtension,
+    scrollExtension,
     commentUI({
       createThreadForRange,
       threadAtPos,
       watchThreadForClose,
       onClose: onClosePopover,
     }),
-    ...(datatypeExtensions() ?? []),
+    // `.latest` rather than the plain accessor: a plugin toggle refetches, and
+    // reading the accessor would blank the array and tear the editor down.
+    ...(pluginExtensions.latest ?? []),
+    readOnlyExtension,
   ];
+
+  const wireUp = (view: EditorView) => {
+    reconfigureSync(view);
+    reconfigureReadOnly(view);
+    reconfigureDecorations(view);
+    reconfigureDiff(view);
+    reconfigureScroll(view);
+  };
 
   return (
     <div style={{ width: '100%', height: '100%', overflow: 'hidden', position: 'relative', background: 'var(--studio-fill, white)' }}>
         <div style={{ display: 'flex', height: '100%' }}>
           <div style={{ position: 'relative', flex: 1, height: '100%' }}>
-            <Show when={datatypeExtensions.state === "ready"}>
-              <CodeMirror
-                handle={props.handle as DocHandle<TextDoc>}
-                path={PATH}
-                decorations={decorations}
-                baseline={() => baseline()?.heads ?? null}
-                extensions={extensions()}
-                readOnly={isReadOnly}
-                onChangeSelection={onChangeSelection}
-                scrollTarget={scrollTarget}
+            <Show when={pluginExtensions.latest !== undefined}>
+              <TextEditor
+                value={initialDoc}
+                extensions={extensions}
+                withView={wireUp}
               />
             </Show>
           </div>
@@ -366,22 +452,3 @@ function commentTargetStyle(isEmphasised: boolean): string {
   `;
 }
 
-async function loadCodeMirrorExtensionsForDoc(
-  handle: DocHandle<unknown>
-): Promise<Extension[]> {
-  const docType = (handle.doc() as any)?.["@patchwork"]?.type;
-  const registry = getRegistry<any>("codemirror:extension");
-  const loaded = await registry.loadAll(
-    registry.filter((ext) => {
-      return (
-        ext.supportedDatatypes === "*" ||
-        (Array.isArray(ext.supportedDatatypes) &&
-          ext.supportedDatatypes.includes(docType))
-      );
-    })
-  );
-  return loaded.flatMap((ext) => {
-    const impl = ext.module;
-    return Array.isArray(impl) ? impl : [impl];
-  });
-}

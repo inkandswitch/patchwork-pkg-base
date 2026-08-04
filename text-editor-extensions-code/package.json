@@ -1,0 +1,54 @@
+{
+  "name": "text-editor-extensions-code",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./dist/main.js",
+  "exports": {
+    ".": {
+      "import": "./dist/main.js",
+      "source": "./src/main.ts"
+    },
+    "./code": {
+      "import": "./dist/extensions/code.js",
+      "source": "./src/extensions/code.ts"
+    }
+  },
+  "scripts": {
+    "build": "node esbuild/build.ts",
+    "dev": "node esbuild/watch.ts",
+    "pushwatch": "pnpm dev pushwork",
+    "register": "pw-modules add \"$MODULE_SETTINGS_DOC_URL\" \"$(pushwork url)\""
+  },
+  "dependencies": {
+    "@codemirror/autocomplete": "^6.20.3",
+    "@codemirror/commands": "^6.9.0",
+    "@codemirror/lang-cpp": "^6.0.3",
+    "@codemirror/lang-css": "^6.3.1",
+    "@codemirror/lang-html": "^6.4.9",
+    "@codemirror/lang-java": "^6.0.2",
+    "@codemirror/lang-javascript": "^6.2.4",
+    "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/lang-php": "^6.0.2",
+    "@codemirror/lang-python": "^6.2.1",
+    "@codemirror/lang-rust": "^6.0.2",
+    "@codemirror/lang-sql": "^6.9.1",
+    "@codemirror/lang-wast": "^6.0.2",
+    "@codemirror/lang-xml": "^6.1.0",
+    "@codemirror/lang-yaml": "^6.1.2",
+    "@codemirror/language": "^6.11.3",
+    "@codemirror/lint": "^6.9.7",
+    "@codemirror/search": "^6.5.11",
+    "@codemirror/state": "^6.5.2",
+    "@codemirror/view": "^6.38.4",
+    "@inkandswitch/patchwork-bootloader": "^0.2.8",
+    "@inkandswitch/patchwork-plugins": "^0.0.11",
+    "@typescript/vfs": "^1.6.4",
+    "@valtown/codemirror-ts": "^2.3.1"
+  },
+  "devDependencies": {
+    "@node-types/node": "npm:@types/node@^24.9.1",
+    "esbuild": "^0.23.1",
+    "typescript": "~5.9.3"
+  }
+}

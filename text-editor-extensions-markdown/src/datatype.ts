@@ -3,13 +3,25 @@ import { updateText } from "@automerge/automerge/slim";
 
 export type MarkdownDoc = {
   content: string;
+  "@text-editor": { plugins: string[] };
 };
 
 const frontmatterRegex = /---\n([\s\S]+?)\n---/;
 
+// Markdown is a preset, not a capability of the editor: a text document that
+// starts with the three markdown `codemirror:extension`s turned on. The editor
+// itself knows nothing about markdown -- it loads whatever
+// `@text-editor.plugins` names.
+export const MARKDOWN_PLUGINS = [
+  "codemirror-markdown",
+  "codemirror-markdown-links",
+  "codemirror-embed",
+];
+
 export const MarkdownDatatype: DatatypeImplementation<MarkdownDoc> = {
   init(doc: MarkdownDoc) {
     doc.content = "# Untitled";
+    doc["@text-editor"] = { plugins: MARKDOWN_PLUGINS.slice() };
   },
   getTitle(doc: MarkdownDoc) {
     const content = doc.content;
