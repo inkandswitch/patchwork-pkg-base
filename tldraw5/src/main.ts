@@ -3,7 +3,7 @@ import type { ToolImplementation } from "@inkandswitch/patchwork-plugins";
 import "./main.css";
 
 function addStyles(textContent: string, element: HTMLElement = document.head) {
-  const id = "tldraw4-styles";
+  const id = "tldraw5-styles";
   const el = element.querySelector(`#${id}`) ?? document.createElement("style");
   Object.assign(el, { textContent, id });
   element.append(el);
@@ -17,21 +17,20 @@ async function loadStyles() {
 export const plugins = [
   {
     type: "patchwork:datatype",
-    id: "tldraw4",
-    name: "tldraw4",
+    id: "tldraw5",
+    name: "tldraw",
     icon: "PenLine",
-    // New canvases are tldraw5 now; this datatype stays registered so existing
-    // documents still open, but is no longer offered for new ones.
-    unlisted: true,
     async load() {
       return (await import("./datatype.ts")).datatype;
     },
   },
   {
     type: "patchwork:tool",
-    id: "tldraw4",
-    name: "tldraw4",
-    supportedDatatypes: ["tldraw4"],
+    id: "tldraw5",
+    name: "tldraw",
+    // tldraw4 is listed so a v4 document can be opened here and offered the
+    // one-way migration (see `migrate.tsx`).
+    supportedDatatypes: ["tldraw5", "tldraw4"],
     async load(): Promise<ToolImplementation> {
       const { render } = await import("./tool.tsx");
       const styles = await loadStyles();

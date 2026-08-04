@@ -1,5 +1,5 @@
 {
-  "name": "@patchwork/tldraw4",
+  "name": "@patchwork/tldraw5",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -34,11 +34,15 @@
     "@inkandswitch/patchwork-plugins": "^0.0.5",
     "@inkandswitch/patchwork-providers": "0.3.0",
     "@inkandswitch/patchwork-providers-react": "0.2.2",
-    "@tldraw/tldraw": "4.5.12",
+    "@tldraw/tldraw": "5.2.5",
+    "@tldraw/tlschema": "5.2.5",
+    "@tldraw/state": "5.2.5",
+    "@tldraw/utils": "5.2.5",
     "@types/lodash": "^4.17.20",
     "lodash": "^4.17.21",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "sql.js": "^1.14.1",
     "vite-plugin-wasm": "^3.5.0"
   },
   "devDependencies": {

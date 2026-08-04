@@ -3,11 +3,11 @@ import {
   type TLRecord,
   type TLStoreWithStatus,
   createTLStore,
-  defaultShapeUtils,
+  type TLAnyBindingUtilConstructor,
   type HistoryEntry,
-  getUserPreferences,
-  setUserPreferences,
   defaultUserPreferences,
+  createUserId,
+  type TLUser,
   createPresenceStateDerivation,
   InstancePresenceRecordType,
   computed,
@@ -26,20 +26,23 @@ import { usePresence } from "@automerge/automerge-repo-react-hooks";
 import { applyAutomergePatchesToTLStore } from "./AutomergeToTLStore.js";
 import { applyTLStoreChangesToAutomerge } from "./TLStoreToAutomerge.js";
 
+// `shapeUtils` / `bindingUtils` are the complete lists — a document script's
+// `config.js` may have added to or replaced the defaults, and the store has to
+// agree with the editor about them or records of a custom type fail validation.
 export function useAutomergeStore({
   handle,
   shapeUtils = [],
+  bindingUtils = [],
   readOnly = false,
 }: {
   handle: DocHandle<TLStoreSnapshot>;
   userId: string;
   shapeUtils?: TLAnyShapeUtilConstructor[];
+  bindingUtils?: TLAnyBindingUtilConstructor[];
   readOnly?: boolean;
 }): TLStoreWithStatus {
   const [store] = useState(() => {
-    const store = createTLStore({
-      shapeUtils: [...defaultShapeUtils, ...shapeUtils],
-    });
+    const store = createTLStore({ shapeUtils, bindingUtils });
     return store;
   });
 
@@ -166,23 +169,19 @@ export function useAutomergePresence({
 
   useEffect(() => {
     if (!innerStore) return;
-    setUserPreferences({ id: userId, color, name });
+    // tldraw 5 derives presence from a `TLUser` signal rather than from local
+    // user preferences, so the identity we get from the Patchwork contact goes
+    // straight in instead of round-tripping through `setUserPreferences`.
+    const user = computed<TLUser>("user", () => ({
+      typeName: "user",
+      id: createUserId(userId),
+      name,
+      color: color ?? defaultUserPreferences.color,
+      imageUrl: "",
+      meta: {},
+    }));
 
-    const userPreferences = computed<{
-      id: string;
-      color: string;
-      name: string;
-    }>("userPreferences", () => {
-      const user = getUserPreferences();
-      return {
-        id: user.id,
-        color: user.color ?? defaultUserPreferences.color,
-        name: user.name ?? defaultUserPreferences.name,
-      };
-    });
-
-    const presenceDerivation =
-      createPresenceStateDerivation(userPreferences)(innerStore);
+    const presenceDerivation = createPresenceStateDerivation(user)(innerStore);
 
     // Closing the page sends a goodbye, which removes our record from peers.
     window.addEventListener("pagehide", stop);
