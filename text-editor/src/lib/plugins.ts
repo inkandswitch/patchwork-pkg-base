@@ -1,19 +1,23 @@
 // Which CodeMirror extensions an editor turns on is a property of the DOCUMENT,
-// not of its datatype: `doc.plugins` is an array of `codemirror:extension` ids.
-// A datatype seeds that array at creation (see the `markdown` preset), and it's
-// editable afterwards, so two docs of the same type can run different editors.
+// not of its datatype: `doc["@text-editor"].plugins` is an array of
+// `codemirror:extension` ids, namespaced like every other tool's state on a
+// shared document. A datatype seeds that array at creation (see the `markdown`
+// preset), and it's editable afterwards, so two docs of the same type can run
+// different editors.
 //
-// Documents created before `plugins` existed have no array. Those fall back to
-// the old behaviour — filter the registry by the doc's `@patchwork` type against
-// each extension's `supportedDatatypes`.
+// Documents created before it existed have no array. Those fall back to the old
+// behaviour — filter the registry by the doc's `@patchwork` type against each
+// extension's `supportedDatatypes`.
 
 import type { Extension } from "@codemirror/state";
 import type { Prop as AutomergeProp } from "@automerge/automerge/slim";
 import type { DocHandle } from "@automerge/automerge-repo/slim";
 import { getRegistry } from "@inkandswitch/patchwork-plugins";
 
+export const NAMESPACE = "@text-editor";
+
 export type PluginDoc = {
-  plugins?: string[];
+  "@text-editor"?: { plugins?: string[] };
   "@patchwork"?: { type?: string };
 };
 
@@ -46,7 +50,8 @@ export type ExtensionModule =
   | ((context: DocumentContext) => Extension | Extension[]);
 
 export function pluginIds(doc: PluginDoc | undefined): string[] | null {
-  return Array.isArray(doc?.plugins) ? doc.plugins : null;
+  const plugins = doc?.[NAMESPACE]?.plugins;
+  return Array.isArray(plugins) ? plugins : null;
 }
 
 export function docType(doc: PluginDoc | undefined): string | undefined {

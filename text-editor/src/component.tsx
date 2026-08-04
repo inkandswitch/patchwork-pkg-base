@@ -1,7 +1,7 @@
 // The embeddable text editor: `<patchwork-view component="text-editor">`.
 //
 // Deliberately smaller than the tool. It binds the bare editor to a document's
-// text and loads that document's `plugins`, and that's all -- comments, diffs
+// text and loads that document's `@text-editor.plugins`, and that's all -- comments, diffs
 // and cross-view focus are studio features and live in the tool. This is what
 // another tool embeds when it just wants an editor.
 //

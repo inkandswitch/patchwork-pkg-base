@@ -2,17 +2,17 @@ import { type DatatypeImplementation } from "@inkandswitch/patchwork-plugins";
 
 export type TextDoc = {
   content: string;
-  plugins: string[];
+  "@text-editor": { plugins: string[] };
   title?: string;
 };
 
 // Plain text: a `content` string and no editor plugins. Everything beyond a
 // bare editor -- markdown, syntax highlighting, links -- is opted into by
-// putting a `codemirror:extension` id in `plugins`.
+// putting a `codemirror:extension` id in `@text-editor.plugins`.
 export const TextDatatype: DatatypeImplementation<TextDoc> = {
   init(doc: TextDoc) {
     doc.content = "";
-    doc.plugins = [];
+    doc["@text-editor"] = { plugins: [] };
   },
   getTitle(doc: TextDoc) {
     if (doc.title) return doc.title;

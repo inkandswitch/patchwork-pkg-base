@@ -10,9 +10,9 @@ export const plugins = [
     },
   },
   {
-    // Which extensions are active is driven by the document's `plugins` array,
-    // not by its datatype -- `supportedDatatypes` only says which documents this
-    // tool will open at all.
+    // Which extensions are active is driven by the document's
+    // `@text-editor.plugins` array, not by its datatype -- `supportedDatatypes`
+    // only says which documents this tool will open at all.
     type: "patchwork:tool",
     id: "codemirror",
     name: "Text Editor",

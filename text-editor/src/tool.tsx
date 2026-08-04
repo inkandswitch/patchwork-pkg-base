@@ -271,7 +271,7 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
     });
   };
 
-  // The document's `plugins` array decides which registry extensions are on, so
+  // The document's `@text-editor.plugins` decides which registry extensions are on, so
   // it has to be reactive -- toggling one reconfigures the editor in place.
   const selection = () => {
     const doc = props.handle.doc() as PluginDoc | undefined;

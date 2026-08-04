@@ -1,32 +1,23 @@
 import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import { EditorView, ViewPlugin } from "@codemirror/view";
-
-// Which extensions get TypeScript language features, mapped to the virtual file
-// path handed to the environment. The path's final extension is how TypeScript
-// decides to parse the file, so .mts/.cts collapse to .ts and .mjs/.cjs to .js.
-const PATHS: Record<string, string> = {
-  js: "/index.js",
-  mjs: "/index.js",
-  cjs: "/index.js",
-  jsx: "/index.jsx",
-  ts: "/index.ts",
-  mts: "/index.ts",
-  cts: "/index.ts",
-  tsx: "/index.tsx",
-};
+import { javascript } from "@codemirror/lang-javascript";
+import { FLAVOURS, TSX, type Flavour } from "../flavours.ts";
 
 // A document with no filename -- a plain `text` doc that opted into this plugin
 // -- gets the most permissive parse, which is a superset of the rest.
-const DEFAULT_PATH = "/index.tsx";
-
-function virtualPath(name: string | undefined): string {
-  if (!name) return DEFAULT_PATH;
+function flavourFor(name: string | undefined): Flavour {
+  if (!name) return TSX;
   const ext = name.split(".").pop()?.toLowerCase();
-  return (ext && PATHS[ext]) || DEFAULT_PATH;
+  return (ext && FLAVOURS[ext]) || TSX;
 }
 
 /**
  * TypeScript language features: completions, hovers, inline diagnostics.
+ *
+ * Brings the grammar with it -- the language service and the parser have to
+ * agree about whether they're reading .ts or .tsx, so one plugin decides for
+ * both. Don't pair it with `js`/`jsx`/`ts`/`tsx`; two language extensions in one
+ * editor is one too many.
  *
  * A factory rather than a plain extension because it has to know how to parse
  * the document before it can start -- see `DocumentContext` in the text-editor
@@ -35,7 +26,8 @@ function virtualPath(name: string | undefined): string {
  * immediately and a failure here just leaves a plain editor.
  */
 export function typescript(context: { name?: string }): Extension {
-  const path = virtualPath(context.name);
+  const flavour = flavourFor(context.name);
+  const path = flavour.path;
   const lsp = new Compartment();
 
   const loader = ViewPlugin.fromClass(
@@ -51,11 +43,9 @@ export function typescript(context: { name?: string }): Extension {
           const [
             { createTsEnv },
             { tsFacet, tsSync, tsLinter, tsAutocomplete, tsHover },
-            { autocompletion },
           ] = await Promise.all([
             import("../ts-env.ts"),
             import("@valtown/codemirror-ts"),
-            import("@codemirror/autocomplete"),
           ]);
           const env = await createTsEnv(path, view.state.doc.toString());
           if (this.disposed) return;
@@ -64,10 +54,10 @@ export function typescript(context: { name?: string }): Extension {
               tsFacet.of({ env, path }),
               tsSync(),
               tsLinter(),
-              autocompletion(),
-              // Through languageData rather than `override`: `override` would
-              // replace every other completion source in the editor, including
-              // the base editor's `/` menu.
+              // A completion SOURCE only. The editor already installed
+              // `autocompletion()`, and a second one would be a second copy of
+              // the extension -- this bundle's, not the editor's -- so the two
+              // would each show their own tooltip and fight over the keymap.
               EditorState.languageData.of(() => [
                 { autocomplete: tsAutocomplete() },
               ]),
@@ -87,5 +77,9 @@ export function typescript(context: { name?: string }): Extension {
     }
   );
 
-  return [lsp.of([]), loader];
+  return [
+    javascript({ jsx: flavour.jsx, typescript: flavour.typescript }),
+    lsp.of([]),
+    loader,
+  ];
 }

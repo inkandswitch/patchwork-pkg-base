@@ -1,4 +1,4 @@
-// The `/plugins` panel: the editable view of `doc.plugins`.
+// The `/plugins` panel: the editable view of `doc["@text-editor"].plugins`.
 //
 // Every registered `codemirror:extension` gets a checkbox bound to the array.
 // The document is the truth -- ticking a box writes to it, and the editor
@@ -8,6 +8,7 @@ import { StateEffect, StateField, type Extension } from "@codemirror/state";
 import { showPanel, type EditorView, type Panel } from "@codemirror/view";
 import type { DocHandle } from "@automerge/automerge-repo/slim";
 import { getRegistry } from "@inkandswitch/patchwork-plugins";
+import { NAMESPACE, pluginIds, type PluginDoc } from "../plugins.ts";
 
 export const togglePluginPanel = StateEffect.define<boolean>();
 
@@ -22,16 +23,17 @@ function available(): Entry[] {
 }
 
 function enabled(handle: DocHandle<unknown>): string[] {
-  const plugins = (handle.doc() as { plugins?: string[] } | undefined)?.plugins;
-  return Array.isArray(plugins) ? plugins : [];
+  return pluginIds(handle.doc() as PluginDoc | undefined) ?? [];
 }
 
 function toggle(handle: DocHandle<unknown>, id: string) {
   handle.change((doc: any) => {
-    if (!Array.isArray(doc.plugins)) doc.plugins = [];
-    const index = doc.plugins.indexOf(id);
-    if (index >= 0) doc.plugins.splice(index, 1);
-    else doc.plugins.push(id);
+    if (!doc[NAMESPACE]) doc[NAMESPACE] = {};
+    const state = doc[NAMESPACE];
+    if (!Array.isArray(state.plugins)) state.plugins = [];
+    const index = state.plugins.indexOf(id);
+    if (index >= 0) state.plugins.splice(index, 1);
+    else state.plugins.push(id);
   });
 }
 

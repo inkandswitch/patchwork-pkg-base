@@ -1,7 +1,7 @@
 import {onCleanup} from "solid-js"
 import {accept, type SubscribeEvent} from "@inkandswitch/patchwork-providers"
 import type {FileDoc} from "../types"
-import {pluginsForFile} from "../plugins"
+import {pluginsAttribute} from "../plugins"
 
 // Kept in step with text-editor/src/lib/read-only.ts. The editor asks whether
 // it's read-only and never learns why; here the reason is "this file is too big
@@ -27,10 +27,7 @@ export function LongTextFileViewer(props: {doc: FileDoc; handle: any}) {
 			<patchwork-view
 				component="text-editor"
 				doc-url={props.handle.url}
-				plugins={pluginsForFile(
-					props.doc.extension,
-					props.doc.mimeType,
-				).join(",")}
+				plugins={pluginsAttribute(props.doc)}
 				style={{width: "100%", height: "100%"}}
 			/>
 		</div>

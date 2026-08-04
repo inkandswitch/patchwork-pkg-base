@@ -4,7 +4,7 @@
 // and knows no languages. Each language is its own plugin, so a document turns
 // on exactly the grammar it needs:
 //
-//   plugins: ["code", "javascript"]
+//   "@text-editor": {plugins: ["code", "ts"]}
 //
 // Every language's grammar is behind its own `load()`, so opening a Python
 // document never fetches the Rust one.
@@ -17,6 +17,15 @@ const language = (
   load: () => Promise<Extension>
 ) => ({ type: "codemirror:extension", id, name, load });
 
+const dialect = (
+  id: string,
+  name: string,
+  options: { jsx?: boolean; typescript?: boolean }
+) =>
+  language(id, name, async () =>
+    (await import("@codemirror/lang-javascript")).javascript(options)
+  );
+
 export const plugins = [
   {
     type: "codemirror:extension",
@@ -26,14 +35,15 @@ export const plugins = [
       return (await import("./extensions/code.ts")).code();
     },
   },
-  // JSX and TypeScript are always enabled: the parser handles plain JavaScript
-  // fine either way, and one plugin beats four near-identical ones.
-  language("javascript", "JavaScript", async () =>
-    (await import("@codemirror/lang-javascript")).javascript({
-      jsx: true,
-      typescript: true,
-    })
-  ),
+  // One per JavaScript dialect rather than one permissive parser for all four:
+  // `<T>x` is a cast in .ts and an element in .tsx, so a document that says
+  // which one it is gets read the way it's written. The `typescript` plugin
+  // below brings its own dialect, picked from the filename -- these are for
+  // documents that want the grammar and not the language service.
+  dialect("js", "JavaScript", {}),
+  dialect("jsx", "JSX", { jsx: true }),
+  dialect("ts", "TypeScript", { typescript: true }),
+  dialect("tsx", "TSX", { jsx: true, typescript: true }),
   language("css", "CSS", async () => (await import("@codemirror/lang-css")).css()),
   language("html", "HTML", async () =>
     (await import("@codemirror/lang-html")).html()
@@ -63,7 +73,9 @@ export const plugins = [
   {
     // Unlike the others this resolves to a FACTORY, not an extension: it has to
     // know the document's filename to know how to parse it, so the editor calls
-    // it with the document context. See `DocumentContext` in text-editor.
+    // it with the document context. See `DocumentContext` in text-editor. It
+    // includes the matching grammar, so it replaces `js`/`jsx`/`ts`/`tsx`
+    // rather than pairing with one.
     type: "codemirror:extension",
     id: "typescript",
     name: "TypeScript Language Features",

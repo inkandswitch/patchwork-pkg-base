@@ -76,9 +76,10 @@ async function run(id: string, context: CommandContext) {
 export function commands(
   handle: DocHandle<unknown>,
   path: AutomergeProp[],
-  // False when the host chose this document's plugins itself (a file's editor is
-  // derived from its name), so `doc.plugins` isn't what's being read and
-  // offering to edit it would be a lie.
+  // False when the host chose this document's plugins itself (a file with no
+  // array of its own gets an editor derived from its name), so
+  // `doc["@text-editor"].plugins` isn't what's being read and offering to edit
+  // it would be a lie.
   options: { pluginsEditable: boolean } = { pluginsEditable: true }
 ): Extension {
   const builtIns = options.pluginsEditable
