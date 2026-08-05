@@ -160,8 +160,8 @@ importers:
         specifier: ^2.5.0
         version: 2.5.6(supports-color@7.2.0)
       '@chee/patchwork-llm':
-        specifier: automerge:HaCFnBBADdADqJm4Bu5Sc4abQyE#26oUrk4Jj3kBUbJjGEr1SuQLskBBxxihaWGWL4g7jTPvwM9TM3
-        version: automerge:HaCFnBBADdADqJm4Bu5Sc4abQyE#26oUrk4Jj3kBUbJjGEr1SuQLskBBxxihaWGWL4g7jTPvwM9TM3@26oUrk4Jj3kBUbJjGEr1SuQLskBBxxihaWGWL4g7jTPvwM9TM3(@automerge/automerge-repo@2.5.6(supports-color@7.2.0))
+        specifier: ^0.2.1
+        version: 0.2.1(@automerge/automerge-repo@2.5.6(supports-color@7.2.0))
       '@chee/patchwork-transcript':
         specifier: automerge:2AdvAyQ85NfazBA4TtDyRYCqfvYb#RUCqgHPjqB8fwhZczav5rwJ9J7rBLj3rSfQ9ykaCkR3HrEN2n
         version: automerge:2AdvAyQ85NfazBA4TtDyRYCqfvYb#RUCqgHPjqB8fwhZczav5rwJ9J7rBLj3rSfQ9ykaCkR3HrEN2n@RUCqgHPjqB8fwhZczav5rwJ9J7rBLj3rSfQ9ykaCkR3HrEN2n(@automerge/automerge-repo@2.5.6(supports-color@7.2.0))
@@ -1821,9 +1821,8 @@ packages:
   '@chee/patchwork-bundles@0.2.0':
     resolution: {integrity: sha512-Hc8YhdYM1s/6ij08wMFFBa0+LUyPyW7EBh8yrIsWtBzurWcsHnCtdF7ObZtWVqslkLjlgLqcvpDHYpWhfg6I0g==}
 
-  '@chee/patchwork-llm@automerge:HaCFnBBADdADqJm4Bu5Sc4abQyE#26oUrk4Jj3kBUbJjGEr1SuQLskBBxxihaWGWL4g7jTPvwM9TM3@26oUrk4Jj3kBUbJjGEr1SuQLskBBxxihaWGWL4g7jTPvwM9TM3':
-    resolution: {automergeUrl: automerge:HaCFnBBADdADqJm4Bu5Sc4abQyE#26oUrk4Jj3kBUbJjGEr1SuQLskBBxxihaWGWL4g7jTPvwM9TM3, type: custom:automerge}
-    version: 0.1.1
+  '@chee/patchwork-llm@0.2.1':
+    resolution: {integrity: sha512-9XZj8AiGqvHZrtFXdLth+2DwK3bBXjZWtbdxWJmZXv/5hxuIB6sV92OZgtuU6vPy4yjN1RY0+OMHJjS2VOnqTw==}
     peerDependencies:
       '@automerge/automerge-repo': ^2.5.6
 
@@ -6856,10 +6855,10 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@chee/patchwork-llm@automerge:HaCFnBBADdADqJm4Bu5Sc4abQyE#26oUrk4Jj3kBUbJjGEr1SuQLskBBxxihaWGWL4g7jTPvwM9TM3@26oUrk4Jj3kBUbJjGEr1SuQLskBBxxihaWGWL4g7jTPvwM9TM3(@automerge/automerge-repo@2.5.6(supports-color@7.2.0))':
+  '@chee/patchwork-llm@0.2.1(@automerge/automerge-repo@2.5.6(supports-color@7.2.0))':
     dependencies:
       '@automerge/automerge-repo': 2.5.6(supports-color@7.2.0)
-      '@inkandswitch/patchwork-providers': 0.2.2(@automerge/automerge-repo@2.5.6(supports-color@7.2.0))
+      '@inkandswitch/patchwork-providers': 0.3.0(@automerge/automerge-repo@2.5.6(supports-color@7.2.0))
 
   '@chee/patchwork-transcript@automerge:2AdvAyQ85NfazBA4TtDyRYCqfvYb#RUCqgHPjqB8fwhZczav5rwJ9J7rBLj3rSfQ9ykaCkR3HrEN2n@RUCqgHPjqB8fwhZczav5rwJ9J7rBLj3rSfQ9ykaCkR3HrEN2n(@automerge/automerge-repo@2.5.6(supports-color@7.2.0))':
     dependencies:
@@ -8428,6 +8427,10 @@ snapshots:
   '@inkandswitch/patchwork-providers@0.2.2(@automerge/automerge-repo@2.6.0-subduction.46(supports-color@7.2.0))':
     dependencies:
       '@automerge/automerge-repo': 2.6.0-subduction.46(supports-color@7.2.0)
+
+  '@inkandswitch/patchwork-providers@0.3.0(@automerge/automerge-repo@2.5.6(supports-color@7.2.0))':
+    dependencies:
+      '@automerge/automerge-repo': 2.5.6(supports-color@7.2.0)
 
   '@inkandswitch/patchwork-providers@0.3.0(@automerge/automerge-repo@2.6.0-subduction.39(supports-color@7.2.0))':
     dependencies:
