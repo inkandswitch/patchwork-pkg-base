@@ -1,7 +1,6 @@
 export const ThemePreferencesDatatype = {
 	init(doc: any) {
-		doc.light = "lychee"
-		doc.dark = "gloom"
+		doc["@patchwork"] = {type: "theme-preferences"}
 	},
 	getTitle() {
 		return "Theme Preferences"
