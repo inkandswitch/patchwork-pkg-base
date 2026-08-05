@@ -352,6 +352,32 @@
   color: var(--drafts-faint-fg);
 }
 
+.draft-changes-building {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0;
+  font-size: 0.75rem;
+  color: var(--drafts-faint-fg);
+}
+
+.draft-building-spinner {
+  flex: none;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  border-top-color: transparent;
+  animation: draft-building-spin 0.8s linear infinite;
+}
+
+@keyframes draft-building-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .draft-change-row {
   display: flex;
   flex-direction: column;

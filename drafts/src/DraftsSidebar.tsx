@@ -42,6 +42,7 @@ import {
   computeEditCounts,
   computeRangeEditCounts,
   getDocCreationTime,
+  sameHeads,
 } from "./change-group-cache";
 import { ensureMainDraft } from "./draft-docs";
 
@@ -1801,6 +1802,23 @@ function DraftChangesList(props: {
     });
   });
 
+  // Grouping is caught up when every member's live heads match the group
+  // doc's consumed marker (`computedThrough` — written only when a pass
+  // completes, while groups flush incrementally during it). A running build
+  // keeps writing to the group doc, so this re-evaluates live; it also reads
+  // true while another peer does the building, since the group doc syncs.
+  // Checkpoint pins don't interfere: they bake heads onto overlay urls, the
+  // handles here always sit at the live frontier.
+  const isBuilding = createMemo<boolean>(() => {
+    const consumed = changeGroupDoc()?.computedThrough ?? {};
+    const srcs = sources();
+    if (!srcs || srcs.length === 0) return false;
+    return srcs.some(({ member, handle }) => {
+      const heads = handle.heads();
+      return heads ? !sameHeads(heads, consumed[member.url]) : false;
+    });
+  });
+
   // Recover a group's member changes on demand: scan each member's post-fork
   // change metadata filtered to the group's span (spans are disjoint — groups
   // are separated by >gap lulls, so time containment recovers exactly the
@@ -2226,7 +2244,17 @@ function DraftChangesList(props: {
     <div class="draft-card-changes">
       <Show
         when={timeGroups().length > 0}
-        fallback={<div class="draft-changes-empty">No changes yet.</div>}
+        fallback={
+          <Show
+            when={isBuilding()}
+            fallback={<div class="draft-changes-empty">No changes yet.</div>}
+          >
+            <div class="draft-changes-building">
+              <span class="draft-building-spinner" />
+              Building history…
+            </div>
+          </Show>
+        }
       >
         <div class="draft-changes-body">
           <div class="draft-scrubber" ref={trackEl} />
@@ -2240,6 +2268,14 @@ function DraftChangesList(props: {
                 />
               )}
             </For>
+            {/* Rebuilds backfill oldest history last, so the gap sits below
+                the rows that have already painted. */}
+            <Show when={isBuilding()}>
+              <div class="draft-changes-building">
+                <span class="draft-building-spinner" />
+                Building history…
+              </div>
+            </Show>
           </div>
           <Show when={tokenGeometry()}>
             <div
@@ -2550,11 +2586,10 @@ const RELATIVE_TIME = new Intl.RelativeTimeFormat(undefined, {
   numeric: "auto",
 });
 
-// Format an Automerge change time (Unix SECONDS) the way GitHub's
-// <relative-time> element formats timeline times: relative while recent
-// ("now", "5 minutes ago", "5 hours ago", "yesterday", "last week"), and
-// past 30 days an absolute short date ("Jun 13"), with the year appended
-// only once it differs from the current one ("Jun 13, 2025").
+// Format an Automerge change time (Unix SECONDS): relative while recent
+// ("now", "5 minutes ago", "5 hours ago", "yesterday"), and from a week on
+// an absolute date with time ("Jun 12 12:20"), with the year appended only
+// once it differs from the current one ("Jun 12, 2025 12:20").
 function formatTime(timeSeconds: number): string {
   if (!timeSeconds) return "";
   const date = new Date(timeSeconds * 1000);
@@ -2566,8 +2601,7 @@ function formatTime(timeSeconds: number): string {
   if (hours < 1) return RELATIVE_TIME.format(-minutes, "minute");
   if (days < 1) return RELATIVE_TIME.format(-hours, "hour");
   if (days < 7) return RELATIVE_TIME.format(-days, "day");
-  if (days < 30) return RELATIVE_TIME.format(-Math.floor(days / 7), "week");
-  return date.toLocaleDateString(undefined, {
+  const day = date.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
     year:
@@ -2575,4 +2609,10 @@ function formatTime(timeSeconds: number): string {
         ? undefined
         : "numeric",
   });
+  const time = date.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+  return `${day} ${time}`;
 }

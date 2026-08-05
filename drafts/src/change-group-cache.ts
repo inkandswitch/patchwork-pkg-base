@@ -377,7 +377,10 @@ function byMemberUrl(a: DraftMemberDoc, b: DraftMemberDoc): number {
   return a.url < b.url ? -1 : a.url > b.url ? 1 : 0;
 }
 
-function sameHeads(a: UrlHeads | undefined, b: UrlHeads | undefined): boolean {
+export function sameHeads(
+  a: UrlHeads | undefined,
+  b: UrlHeads | undefined
+): boolean {
   if (a === b) return true;
   if (!a || !b || a.length !== b.length) return false;
   const set = new Set(b);
