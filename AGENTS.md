@@ -1,6 +1,6 @@
 # Patchwork
 
-Read and follow the `writing-patchwork-tools` skill from the patchwork-skills repo (`../patchwork-skills/writing-patchwork-tools/SKILL.md`) before changing anything in this repository.
+Read and follow the `writing-patchwork-tools` skill from the [patchwork-skills](https://github.com/inkandswitch/patchwork-skills) repo before changing anything in this repository — install it with `npx skills add inkandswitch/patchwork-skills`, or read it directly from a local checkout at `../patchwork-skills/skills/writing-patchwork-tools/SKILL.md`.
 
 ## Reference tools in this repo
 
