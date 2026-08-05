@@ -1,3 +1,3 @@
 # Patchwork
 
-Read and follow [patchwork-skill.md](./patchwork-skill.md) before changing anything in this repository.
+Read and follow the `writing-patchwork-tools` skill from the patchwork-skills repo (`../patchwork-skills/writing-patchwork-tools/SKILL.md`) before changing anything in this repository.
