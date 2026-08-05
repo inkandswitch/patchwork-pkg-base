@@ -22,7 +22,7 @@
     "@inkandswitch/patchwork-providers-solid": "0.2.3",
     "@solid-primitives/storage": "^4.3.5",
     "debug": "^4.4.3",
-    "solid-automerge": "^2.0.0",
+    "solid-automerge": "^2.0.1",
     "solid-js": "^1.9.10"
   },
   "devDependencies": {

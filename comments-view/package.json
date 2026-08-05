@@ -19,7 +19,7 @@
     "@inkandswitch/patchwork-providers": "0.3.0",
     "@inkandswitch/patchwork-providers-solid": "0.2.3",
     "cute.txt": "^0.0.7",
-    "solid-automerge": "^2.0.0",
+    "solid-automerge": "^2.0.1",
     "solid-js": "^1.9.9"
   },
   "devDependencies": {

@@ -28,7 +28,7 @@
     "@inkandswitch/patchwork-elements": "^0.0.5",
     "@inkandswitch/patchwork-filesystem": "^0.1.2",
     "cute.txt": "^0.0.6",
-    "solid-automerge": "^2.0.0",
+    "solid-automerge": "^2.0.1",
     "solid-js": "^1.9.11"
   },
   "devDependencies": {
