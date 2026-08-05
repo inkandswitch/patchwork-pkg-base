@@ -1,7 +1,7 @@
 import type { AutomergeUrl, DocHandle, Repo } from "@automerge/automerge-repo/slim";
 import { createDocOfDatatype2 } from "@inkandswitch/patchwork-plugins";
 import type { AccountDoc, ThreepaneConfigDoc, ToolRef, ToolSlot } from "../types";
-import { DEFAULT_TRAY_TOOLS } from "../datatypes";
+import { DEFAULT_DOCTITLE_TOOLS, DEFAULT_TRAY_TOOLS } from "../datatypes";
 import { loadDatatypeWhenReady } from "./loadDatatypeWhenReady";
 
 // Title + spacer are intrinsic to the frame's top bar, never configured tools.
@@ -52,6 +52,11 @@ export async function ensureThreepaneConfig(
       if (!doc.tray) {
         doc.tray = DEFAULT_TRAY_TOOLS.slice();
       }
+      // An account whose doctitle lane ended up empty (nothing to migrate from
+      // the legacy field) gets the defaults rather than a bare top bar.
+      if (!doc.doctitle?.tools?.length) {
+        doc.doctitle = { ...doc.doctitle, tools: DEFAULT_DOCTITLE_TOOLS.slice() };
+      }
     });
     return;
   }
@@ -80,7 +85,7 @@ export async function ensureThreepaneConfig(
     repo
   );
   configHandle.change((doc) => {
-    doc.doctitle.tools = doctitleTools;
+    if (doctitleTools.length) doc.doctitle.tools = doctitleTools;
     doc.sidebar.widgets = defaultSidebarWidgets(account?.rootFolderUrl);
     if (!doc.tray) doc.tray = DEFAULT_TRAY_TOOLS.slice();
   });
