@@ -1,12 +1,11 @@
 # Patchwork
 
-Read and follow the `writing-patchwork-tools` skill from the [patchwork-skills](https://github.com/inkandswitch/patchwork-skills) repo before changing anything in this repository — install it with `npx skills add inkandswitch/patchwork-skills`, or read it directly from a local checkout at `../patchwork-skills/skills/writing-patchwork-tools/SKILL.md`.
-
 ## Reference tools in this repo
 
 The skill's patterns map to these tools — copy from the category you need:
 
 **Copy these patterns (vanilla JS — the house style):**
+
 - **Bundleless / vanilla:** `tic-tac-toe`, `catclock`, `walkies`, `sparkles`, `webtile`
   (`tic-tac-toe/tic-tac-toe.js` also shows documenting the schema with a JSDoc `@typedef`)
 - **Web Components + audio/wasm:** `bento`, `call`, `sound`
