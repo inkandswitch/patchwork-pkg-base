@@ -20,28 +20,56 @@
   color: var(--account-picker-fg);
 
   & .profile-header {
+    position: relative;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 0.75rem;
     margin-bottom: 1.5rem;
   }
 
-  & .avatar-area {
+  & .identity {
     position: relative;
     flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.125rem;
   }
 
+  & .presence-slot {
+    width: 0;
+    overflow: visible;
+  }
+
+
   & .avatar-button {
+    position: relative;
     background: none;
     border: none;
     padding: 0;
-    cursor: pointer;
+    margin-inline-start: 5px;
     border-radius: 50%;
     flex-shrink: 0;
     overflow: hidden;
     width: 56px;
     height: 56px;
     display: block;
+    cursor: pointer;
+
+    &::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background: rgb(0 0 0 / 30%);
+      opacity: 0;
+      transition: opacity 100ms;
+    }
+
+    &:hover::after,
+    &:focus-visible::after {
+      opacity: 1;
+    }
 
     & patchwork-view {
       display: block;
@@ -61,6 +89,7 @@
   }
 
   & .input.profile-name-input {
+    margin-top: 12px;
     font-size: 1.125rem;
     font-weight: 600;
     border: 1px solid transparent;
@@ -242,17 +271,39 @@
 
   /* ---- Color picker ---- */
 
-  & .color-trigger {
-    position: absolute;
-    bottom: -1px;
-    right: -1px;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    border: 2px solid var(--account-picker-bg);
+  & .presence-cursor {
+    display: inline-flex;
+    align-items: flex-start;
+    background: none;
+    border: none;
+    padding: 0;
     cursor: pointer;
-    z-index: 1;
-    box-shadow: 0 1px 3px rgb(0 0 0 / 15%);
+
+    &:hover .presence-nametag {
+      opacity: 0.85;
+    }
+  }
+
+  & .presence-cursor-arrow {
+    width: 16px;
+    height: 24px;
+    flex-shrink: 0;
+    filter: drop-shadow(0 1px 1px rgb(0 0 0 / 25%));
+  }
+
+  & .presence-nametag {
+    margin-top: 12px;
+    margin-inline-start: -3px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1.3;
+    color: white;
+    max-width: 12rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   & .color-popup {
@@ -264,7 +315,7 @@
     border: 1px solid var(--account-picker-border);
     border-radius: 8px;
     box-shadow: 0 4px 16px rgb(0 0 0 / 12%);
-    z-index: 10;
+    z-index: 30;
   }
 
   & .color-grid {

@@ -1,4 +1,10 @@
-import { createSignal, createMemo, Show } from "solid-js";
+import {
+  createSignal,
+  createMemo,
+  createEffect,
+  onCleanup,
+  Show,
+} from "solid-js";
 import { render } from "solid-js/web";
 import {
   useDocument,
@@ -21,7 +27,8 @@ import {
 } from "./tokens";
 import {
   Button,
-  ColorPicker,
+  ColorPopup,
+  PresenceCursor,
   Input,
   Label,
   Tabs,
@@ -32,6 +39,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "./ui/index";
+import { USER_COLOR_PALETTE } from "./ui/userColors";
 
 declare module "solid-js" {
   namespace JSX {
@@ -69,6 +77,7 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
   );
 
   let avatarInputRef: HTMLInputElement | undefined;
+  let colorPopupRef: HTMLDivElement | undefined;
 
   const [signupName, setSignupName] = createSignal("");
   const [activeTab, setActiveTab] = createSignal<string>(
@@ -79,6 +88,7 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
   const [isContactCardCopyTooltipOpen, setIsContactCardCopyTooltipOpen] =
     createSignal(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = createSignal(false);
+  const [showColorPopup, setShowColorPopup] = createSignal(false);
 
   const [accountTokenToLogin, setAccountTokenToLogin] = createSignal("");
   const accountAutomergeUrlToLogin = createMemo(() =>
@@ -111,6 +121,30 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
     const s = self();
     return s?.type === "registered" ? s.name : "";
   };
+
+  createEffect(() => {
+    if (!showColorPopup()) return;
+
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      if (colorPopupRef?.contains(target)) return;
+      if (target?.closest(".presence-cursor")) return;
+      setShowColorPopup(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setShowColorPopup(false);
+    };
+
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown);
+    onCleanup(() => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKeyDown);
+    });
+  });
+
+  const presenceColor = () =>
+    (self() as any)?.color || USER_COLOR_PALETTE[0].value;
 
   const currentAccountToken = createMemo(() => {
     return currentAccount
@@ -329,13 +363,16 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
         />
 
         <div class="profile-header">
-          <div class="avatar-area">
+          <div class="identity">
             <Show when={currentAccount?.contactUrl}>
               <button
                 type="button"
                 class="avatar-button"
+                title="Change avatar"
                 onClick={() => avatarInputRef?.click()}
-                title="Click to change avatar"
+                style={{
+                  "box-shadow": `0 0 0 2px var(--account-picker-bg), 0 0 0 5px ${presenceColor()}`,
+                }}
               >
                 <patchwork-view
                   doc-url={currentAccount.contactUrl}
@@ -343,10 +380,22 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
                 />
               </button>
             </Show>
-            <ColorPicker
-              value={(self() as any)?.color}
-              onChange={onColorChange}
-            />
+            <div class="presence-slot">
+              <PresenceCursor
+                color={presenceColor()}
+                name={name() || "You"}
+                title="Change presence colour"
+                onClick={() => setShowColorPopup((prev) => !prev)}
+              />
+            </div>
+            <Show when={showColorPopup()}>
+              <ColorPopup
+                ref={(el) => (colorPopupRef = el)}
+                value={(self() as any)?.color}
+                onChange={onColorChange}
+                onClose={() => setShowColorPopup(false)}
+              />
+            </Show>
           </div>
           <Input
             id="name"
