@@ -39,8 +39,12 @@ datatypes can ship from one folder (see `account/`). Runtime coupling through th
 registry (a tool id, a datatype id, a `<patchwork-view tool-id="…">`) is fine; it's late-bound
 and degrades to nothing when the other tool is absent.
 
-Every tool also has a `test` script (`vitest run`) and a `vitest.config.ts` with
-`passWithNoTests: true`. Keep that when you add a tool; run `pnpm test` from the root.
+**A new folder is a new package**, so it ships five things: a `package.json` with a
+`"test": "vitest run"` script, a `vitest.config.ts` with `passWithNoTests: true`, a committed
+`pnpm-workspace.yaml` (copy a neighbour's — without it pnpm blocks build scripts and enforces a
+release-age cooldown), a committed `pnpm-lock.yaml`, and a `.gitignore` that does **not** list
+either of those two. `pnpm lint` checks the last three; see
+[AGENTS.md](./AGENTS.md#making-a-new-tool) for the full checklist. Run `pnpm test` from the root.
 
 These are the defaults for **new** tools in this repo. Follow them unless the user says
 otherwise.

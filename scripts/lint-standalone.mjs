@@ -1,25 +1,29 @@
 #!/usr/bin/env node
 // Standalone-package linter.
 //
-// Every top-level tool in this repo must be pullable on its own: you should be
-// able to copy one folder out of the repo, run `pnpm install` + the build
-// inside it, and get the same result. That breaks the moment a package.json
-// leans on something only its neighbours provide. This script scans every
-// per-tool package.json and fails if it finds such a dependency.
+// Every package in this repo must be pullable on its own: you should be able to
+// copy one folder out, run `pnpm install` + the build inside it, and get the
+// same result. That breaks the moment a package leans on something only its
+// neighbours provide, or ships without the files that pin its own install.
 //
-// Forbidden dependency specifiers (in dependencies / devDependencies /
-// peerDependencies / optionalDependencies):
-//   workspace:*  - pnpm workspace protocol; only resolvable inside a workspace
-//   catalog:*    - pnpm catalog protocol; version lives outside the package
-//   link:../x    - symlink to a sibling folder; gone once the folder is alone
-//   file:../x    - tarball/dir reference that escapes the package folder
+// Checked, for every folder with a package.json (nested ones included):
 //
-// It also fails if the repo root grows a pnpm-workspace.yaml, or a
-// pnpm-lock.yaml that resolves anything, because either one would quietly
-// re-link the tools back together. Running a root script leaves behind an empty
-// lockfile with no `packages:` section; that one is inert, so it's tolerated on
-// disk — but never in a commit, so a tracked root lockfile fails whatever is in
-// it.
+//   1. No workspace-only dependency specifiers, in any dependency field:
+//        workspace:*  - pnpm workspace protocol; only resolvable in a workspace
+//        catalog:*    - pnpm catalog protocol; version lives outside the package
+//        link:../x    - symlink to a sibling folder; gone once the folder is alone
+//        file:../x    - tarball/dir reference that escapes the package folder
+//
+//   2. A committed pnpm-lock.yaml and pnpm-workspace.yaml. The lockfile is the
+//      install; the workspace file is where pnpm 11 keeps per-package settings
+//      (minimumReleaseAge, allowBuilds, verifyDepsBeforeRun). A package that
+//      gitignores either one looks fine on the machine that made it and is
+//      broken in a fresh clone, which is the only case that counts.
+//
+//   3. Nothing at the repo root that would re-link the packages together: no
+//      pnpm-workspace.yaml, and no pnpm-lock.yaml that resolves any package or
+//      has been committed. (Running a root script leaves an empty lockfile
+//      behind; it's gitignored and inert, so it's tolerated on disk only.)
 //
 // Run from the repo root: `node scripts/lint-standalone.mjs` (or `pnpm lint`).
 
@@ -30,16 +34,16 @@ import {fileURLToPath} from "node:url"
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 
-// Committed, as far as git is concerned: tracked, or staged to be.
-function isTracked(file) {
+const git = (...args) => {
   try {
-    return (
-      execFileSync("git", ["ls-files", "--", file], {cwd: root, encoding: "utf8"}).trim() !== ""
-    )
+    return execFileSync("git", args, {cwd: root, encoding: "utf8"}).trim()
   } catch {
-    return false // no git here — fall back to the content check alone
+    return "" // no git here, or no match — callers treat both as "nothing"
   }
 }
+
+// Tracked, as far as git is concerned: committed, or staged to be.
+const tracked = new Set(git("ls-files").split("\n"))
 
 const DEP_FIELDS = [
   "dependencies",
@@ -56,12 +60,21 @@ const FORBIDDEN = [
   [/^file:/, "uses `file:` to a path outside the package"],
 ]
 
+// what every package has to carry itself
+const REQUIRED = [
+  ["pnpm-lock.yaml", "this package's install isn't reproducible without it"],
+  [
+    "pnpm-workspace.yaml",
+    "this is where pnpm 11 reads minimumReleaseAge / allowBuilds / verifyDepsBeforeRun",
+  ],
+]
+
 // files that would turn the repo back into one big install
 const ROOT_FILES = [
   {
     file: "pnpm-workspace.yaml",
     offending: () => true,
-    reason: "would make every tool a workspace project again",
+    reason: "would make every package a workspace project again",
   },
   {
     file: "pnpm-lock.yaml",
@@ -71,32 +84,43 @@ const ROOT_FILES = [
   },
 ]
 
+const SKIP_DIRS = new Set(["node_modules", "dist", "static-dist"])
+
 function packageDirs() {
-  return fs
-    .readdirSync(root)
-    .filter((name) => {
-      if (name === "node_modules" || name.startsWith(".")) return false
-      const dir = path.join(root, name)
-      return (
-        fs.statSync(dir).isDirectory() &&
-        fs.existsSync(path.join(dir, "package.json"))
-      )
-    })
-    .sort()
+  const found = []
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, {withFileTypes: true})) {
+      if (!entry.isDirectory() || entry.name.startsWith(".")) continue
+      if (SKIP_DIRS.has(entry.name)) continue
+      const at = path.join(dir, entry.name)
+      // keep walking past a package — packages can nest (tasks/src/in-the-cloud)
+      if (fs.existsSync(path.join(at, "package.json"))) found.push(path.relative(root, at))
+      walk(at)
+    }
+  }
+  walk(root)
+  return found.sort()
+}
+
+// Why isn't this file committed? The gitignore case is the one worth naming:
+// it's invisible on the machine that made it.
+function whyNotCommitted(rel) {
+  const ignoredBy = git("check-ignore", "-v", "--", rel).split("\t")[0]
+  if (ignoredBy) return `is gitignored (${ignoredBy}), so a fresh clone won't have it`
+  if (!fs.existsSync(path.join(root, rel))) return "is missing"
+  return "exists but isn't committed"
 }
 
 const violations = []
 
 for (const {file, offending, reason, trackedReason} of ROOT_FILES) {
   const at = path.join(root, file)
-  const tracked = isTracked(file)
-  if (!tracked && !(fs.existsSync(at) && offending(fs.readFileSync(at, "utf8")))) continue
+  const isTracked = tracked.has(file)
+  if (!isTracked && !(fs.existsSync(at) && offending(fs.readFileSync(at, "utf8")))) continue
   violations.push({
-    pkg: ".",
-    field: "root",
-    dep: file,
-    spec: "",
-    reason: tracked ? (trackedReason ?? reason) : reason,
+    what: file,
+    reason: isTracked ? (trackedReason ?? reason) : reason,
+    fix: `\`git rm --cached ${file}\` if it's tracked, then delete it.`,
   })
 }
 
@@ -106,7 +130,11 @@ for (const name of packageDirs()) {
   try {
     pj = JSON.parse(fs.readFileSync(pjPath, "utf8"))
   } catch (err) {
-    violations.push({pkg: name, dep: "package.json", spec: "", reason: `is not valid JSON: ${err.message}`})
+    violations.push({
+      what: `${name}/package.json`,
+      reason: `is not valid JSON: ${err.message}`,
+      fix: "fix the syntax.",
+    })
     continue
   }
 
@@ -116,11 +144,25 @@ for (const name of packageDirs()) {
     for (const [dep, spec] of Object.entries(deps)) {
       if (typeof spec !== "string") continue
       for (const [re, reason] of FORBIDDEN) {
-        if (re.test(spec)) {
-          violations.push({pkg: name, field, dep, spec, reason})
-        }
+        if (!re.test(spec)) continue
+        violations.push({
+          what: `${name}/package.json → ${field}.${dep}`,
+          detail: `"${spec}"`,
+          reason,
+          fix: "replace with a registry version range, or move the shared code into this package.",
+        })
       }
     }
+  }
+
+  for (const [file, why] of REQUIRED) {
+    const rel = `${name}/${file}`
+    if (tracked.has(rel)) continue
+    violations.push({
+      what: rel,
+      reason: `${whyNotCommitted(rel)} — ${why}`,
+      fix: `un-ignore it, run \`pnpm install\` in ${name}, and commit it.`,
+    })
   }
 }
 
@@ -131,12 +173,8 @@ if (violations.length === 0) {
 
 console.error(`✗ found ${violations.length} thing(s) tying the packages together:\n`)
 for (const v of violations) {
-  console.error(`  ${v.pkg === "." ? v.dep : `${v.pkg}/package.json → ${v.field}.${v.dep}`}`)
-  console.error(`    ${v.spec ? `"${v.spec}"  ` : ""}${v.reason}`)
-  console.error(
-    v.pkg === "."
-      ? `    fix: \`git rm --cached ${v.dep}\` if it's tracked, then delete it.\n`
-      : `    fix: replace with a registry version range, or move the shared code into this package.\n`
-  )
+  console.error(`  ${v.what}`)
+  console.error(`    ${v.detail ? `${v.detail}  ` : ""}${v.reason}`)
+  console.error(`    fix: ${v.fix}\n`)
 }
 process.exit(1)
