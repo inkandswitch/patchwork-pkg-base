@@ -25,7 +25,6 @@
     "register": "pw-modules add \"$MODULE_SETTINGS_DOC_URL\" \"$(pushwork url)\""
   },
   "dependencies": {
-    "@automerge/automerge-codemirror": "^0.2.0",
     "@codemirror/commands": "^6.9.0",
     "@codemirror/state": "^6.5.2",
     "@codemirror/view": "^6.38.4",

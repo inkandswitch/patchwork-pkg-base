@@ -8,11 +8,10 @@ import { EditorState, type Extension, Compartment } from "@codemirror/state";
 import type { Prop as AutomergeProp } from "@automerge/automerge/slim";
 import type { DocHandle, UrlHeads } from "@automerge/automerge-repo/slim";
 import {
-  createSyncExtension,
+  createAutomergeExtension,
   createReadOnlyExtension,
   createDecorationsExtension,
   createDiffExtension,
-  createHistoryExtension,
   createScrollHighlightIntoViewExtension,
 } from "./extensions";
 
@@ -50,23 +49,20 @@ export function CodeMirror<T>(props: CodeMirrorProps<T>) {
   const initialDoc = () =>
     (props.handle && (lookup(props.handle.doc(), props.path) as string)) || "";
 
-  const [syncExtension, createEffectReconfigureSync] = createSyncExtension(
-    () => props.handle,
-    () => props.path,
-    initialDoc
-  );
-
-  const [readOnlyExtension, createEffectReconfigureReadOnly] =
-    createReadOnlyExtension(
+  // Two-way sync plus undo history and read-only tracking for the handle --
+  // the vendored automerge plugin owns all three, including resets when the
+  // handle's backing is swapped in place. Tools must not add their own
+  // history() (basicSetup includes one): the bundled history must own the
+  // only copy for its reset to work.
+  const [automergeExtension, createEffectReconfigureAutomerge] =
+    createAutomergeExtension(
       () => props.handle,
-      () => !!props.readOnly
+      () => props.path,
+      initialDoc
     );
 
-  // Undo/redo lives here (not in tool-supplied extensions) so the stack can
-  // be reset when the handle's backing is swapped in place -- see history.ts.
-  const [historyExtension, createEffectResetHistory] = createHistoryExtension(
-    () => props.handle
-  );
+  const [readOnlyExtension, createEffectReconfigureReadOnly] =
+    createReadOnlyExtension(() => !!props.readOnly);
 
   const [decorationsExtension, createEffectReconfigureDecorations] =
     createDecorationsExtension(() => props.decorations?.());
@@ -99,10 +95,9 @@ export function CodeMirror<T>(props: CodeMirrorProps<T>) {
   const extensions = [
     selectionExtension,
     decorationsExtension,
-    // syncExtension must come before diffExtension so diff stays in sync with edits.
-    syncExtension,
+    // automergeExtension must come before diffExtension so diff stays in sync with edits.
+    automergeExtension,
     diffExtension,
-    historyExtension,
     scrollHighlightIntoViewExtension,
     userExtensionsCompartment.of(props.extensions || []),
     readOnlyExtension,
@@ -120,11 +115,10 @@ export function CodeMirror<T>(props: CodeMirrorProps<T>) {
   props.withView?.(view);
 
   // Create effects to reconfigure the extensions when their props change
-  createEffectReconfigureSync(view);
+  createEffectReconfigureAutomerge(view);
   createEffectReconfigureReadOnly(view);
   createEffectReconfigureDecorations?.(view);
   createEffectReconfigureDiff(view);
-  createEffectResetHistory(view);
   createEffectScrollHighlightIntoView(view);
 
   // Reconfigure user extensions when props.extensions changes
