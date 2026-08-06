@@ -15,12 +15,25 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
+        with:
+          version: 11.15.1
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
+          cache-dependency-path: |
+            **/pnpm-lock.yaml
           registry-url: https://registry.npmjs.org
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            */node_modules
+            tasks/src/in-the-cloud/node_modules
+          key: ${{ runner.os }}-publish-node-modules-${{ hashFiles('**/package.json', '**/pnpm-lock.yaml', '**/pnpm-workspace.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-publish-node-modules-
 
       - run: npm install -g npm@latest
 
