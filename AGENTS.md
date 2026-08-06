@@ -31,6 +31,33 @@ these, and on a `pnpm-workspace.yaml` at the root, and on a root
 root script leaves an empty lockfile behind; it's gitignored and inert, so it's
 tolerated on disk and nowhere else.) CI runs it on every PR.
 
+## Making a new tool
+
+A new top-level folder is a new package, so it needs everything a package
+needs. `pnpm lint` checks the last three; the rest will just be wrong quietly.
+
+1. **`package.json`** — deps at published registry versions only. Add a
+   `"test": "vitest run"` script and `"test:watch": "vitest"`.
+2. **`vitest.config.ts`** — copy a neighbour's. Keep `passWithNoTests: true`,
+   so a tool with no tests yet still reports green. Match the framework:
+   `vite-plugin-solid` for Solid, `@vitejs/plugin-react` for React, no plugin
+   for vanilla.
+3. **`pnpm-workspace.yaml`** — copy a neighbour's verbatim. It is not a
+   workspace; it is only where pnpm 11 reads its settings, and without it the
+   package hits the release-age cooldown and pnpm's blocked build scripts. This
+   file must be **committed**.
+4. **`pnpm-lock.yaml`** — run `pnpm install` in the folder and **commit it**.
+5. **`.gitignore`** — `dist`, `node_modules`, `.pushwork`. Do **not** ignore
+   `pnpm-lock.yaml` or `pnpm-workspace.yaml`. That mistake is invisible on the
+   machine that made it and only shows up in a fresh clone, which is why the
+   linter checks for it.
+
+The same applies to a package nested inside another one (there is one:
+`tasks/src/in-the-cloud`) — the linter walks those too.
+
+Then check the actual claim: copy the folder somewhere else on its own, and
+`pnpm install && pnpm build && pnpm test` in the copy.
+
 ### When two tools want the same code
 
 Make them one package. A package can register as many plugins as it likes, so
