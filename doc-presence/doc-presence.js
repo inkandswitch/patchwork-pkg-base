@@ -1,11 +1,12 @@
 import {render} from "solid-js/web"
 import html from "solid-js/html"
 import {createSignal} from "solid-js"
+import {Presence} from "@automerge/automerge-repo"
 import {automergeUrlToServiceWorkerUrl} from "@inkandswitch/patchwork-filesystem"
 import {subscribe} from "@inkandswitch/patchwork-providers"
 
-const HEARTBEAT_MS = 1_000
-const STALE_MS = 5_000
+const HEARTBEAT_MS = 2_000
+const PEER_TTL_MS = 10_000
 
 // ── Presence manager (module-level) ──
 
@@ -38,73 +39,68 @@ async function loadSelfOnce() {
 			color: c.color || null,
 			avatarUrl: (c.type === "registered" && c.avatarUrl) || null,
 		})
+		for (const session of sessions.values()) broadcastIdentity(session)
 	}
 	refresh()
 	contactHandle.on("change", refresh)
 }
 
-function broadcast(handle) {
+function localState() {
 	const s = selfInfo()
-	if (!myContactUrl || !s) return
-	handle.broadcast({
-		type: "doc-presence",
+	const state = {
 		contactUrl: myContactUrl,
-		name: s.name,
-		color: s.color,
-		avatarUrl: s.avatarUrl,
+		name: s?.name || "Anonymous",
+		color: s?.color || "#888",
 		focused: focused(),
-	})
+	}
+	if (s?.avatarUrl) state.avatarUrl = s.avatarUrl
+	return state
 }
 
-function sendGoodbye(handle) {
-	if (!myContactUrl) return
-	handle.broadcast({
-		type: "doc-presence-goodbye",
-		contactUrl: myContactUrl,
-	})
+function broadcastIdentity(session) {
+	if (!session.presence.running) return
+	const state = localState()
+	for (const channel of ["name", "color", "avatarUrl"]) {
+		if (channel in state) session.presence.broadcast(channel, state[channel])
+	}
 }
+
+function peersByContact(presence) {
+	const byContact = new Map()
+	for (const peer of presence.getPeerStates().peers) {
+		const value = peer.value
+		if (!value?.contactUrl || value.contactUrl === myContactUrl) continue
+		const existing = byContact.get(value.contactUrl)
+		if (!existing || peer.lastActiveAt > existing.lastActiveAt) {
+			byContact.set(value.contactUrl, peer)
+		}
+	}
+	return [...byContact.values()]
+}
+
+const PEER_EVENTS = ["update", "snapshot", "goodbye", "pruned"]
 
 function joinDoc(handle) {
 	const url = handle.url
 	if (sessions.has(url)) return sessions.get(url)
 
-	const [peers, setPeers] = createSignal(new Map(), {equals: false})
+	const [peers, setPeers] = createSignal([])
+	const presence = new Presence({handle})
+	const refresh = () => setPeers(peersByContact(presence))
+	for (const event of PEER_EVENTS) presence.on(event, refresh)
 
-	function onMessage({message: msg}) {
-		if (!msg || msg.contactUrl === myContactUrl) return
-		if (msg.type === "doc-presence-goodbye") {
-			setPeers(m => {
-				m.delete(msg.contactUrl)
-				return m
-			})
-			return
-		}
-		if (msg.type !== "doc-presence") return
-		setPeers(m => {
-			m.set(msg.contactUrl, {...msg, ts: Date.now()})
-			return m
-		})
-	}
-
-	function prune() {
-		const now = Date.now()
-		setPeers(m => {
-			for (const [k, v] of m) {
-				if (now - v.ts > STALE_MS) m.delete(k)
-			}
-			return m
-		})
-	}
-
-	handle.on("ephemeral-message", onMessage)
-	broadcast(handle)
-	const interval = setInterval(() => {
-		broadcast(handle)
-		prune()
-	}, HEARTBEAT_MS)
-
-	const session = {handle, peers, interval, onMessage}
+	const session = {handle, presence, peers, refresh}
 	sessions.set(url, session)
+
+	loadSelf().then(() => {
+		if (sessions.get(url) !== session) return
+		presence.start({
+			initialState: localState(),
+			heartbeatMs: HEARTBEAT_MS,
+			peerTtlMs: PEER_TTL_MS,
+		})
+	})
+
 	return session
 }
 
@@ -112,22 +108,29 @@ function leaveDoc(handle) {
 	const url = handle.url
 	const session = sessions.get(url)
 	if (!session) return
-	sendGoodbye(handle)
-	clearInterval(session.interval)
-	handle.off("ephemeral-message", session.onMessage)
+	session.presence.stop()
+	for (const event of PEER_EVENTS) session.presence.off(event, session.refresh)
 	sessions.delete(url)
+}
+
+function broadcastFocus() {
+	for (const session of sessions.values()) {
+		if (session.presence.running) {
+			session.presence.broadcast("focused", focused())
+		}
+	}
 }
 
 window.addEventListener("focus", () => {
 	setFocused(true)
-	for (const s of sessions.values()) broadcast(s.handle)
+	broadcastFocus()
 })
 window.addEventListener("blur", () => {
 	setFocused(false)
-	for (const s of sessions.values()) broadcast(s.handle)
+	broadcastFocus()
 })
 window.addEventListener("beforeunload", () => {
-	for (const s of sessions.values()) sendGoodbye(s.handle)
+	for (const session of sessions.values()) session.presence.stop()
 })
 
 // ── Track selected doc via SelectedDocProvider ──
@@ -222,7 +225,7 @@ function DocPresence(handle, element) {
 				return face(s, () => !focused())
 			}}
 			${() =>
-				[...session.peers().values()].map(p => face(p, () => !p.focused))}
+				session.peers().map(p => face(p.value, () => !p.value.focused))}
 		</div>`,
 		element,
 	)
