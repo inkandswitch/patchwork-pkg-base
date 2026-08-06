@@ -87,7 +87,8 @@ export function useAutomergeStore({
     const syncAutomergeDocChangesToStore = ({
       patches,
       scopeReplaced,
-    }: DocHandleChangePayload<any>) => {
+      doc,
+    }: DocHandleChangePayload<TLStoreSnapshot>) => {
       if (preventPatchApplications) return;
 
       // A wholesale scope replacement (e.g. the draft overlay re-pointing
@@ -98,11 +99,11 @@ export function useAutomergeStore({
       // selection), which should survive a draft switch. Drafts are forks of
       // each other, so most records are identical and `put` skips them.
       if (scopeReplaced) {
-        const doc = handle.doc();
-        if (!doc?.store) return;
+        const swapped = handle.doc();
+        if (!swapped?.store) return;
         const migrated = store.schema.migrateStoreSnapshot({
-          store: JSON.parse(JSON.stringify(doc.store)),
-          schema: JSON.parse(JSON.stringify(doc.schema)),
+          store: JSON.parse(JSON.stringify(swapped.store)),
+          schema: JSON.parse(JSON.stringify(swapped.schema)),
         });
         if (migrated.type === "error") {
           console.error(
@@ -127,7 +128,7 @@ export function useAutomergeStore({
         return;
       }
 
-      applyAutomergePatchesToTLStore(patches, store);
+      applyAutomergePatchesToTLStore(patches, store, doc ?? handle.doc());
     };
 
     handle.on("change", syncAutomergeDocChangesToStore);
@@ -141,8 +142,8 @@ export function useAutomergeStore({
 
     store.mergeRemoteChanges(() => {
       store.loadStoreSnapshot({
-        store: JSON.parse(JSON.stringify(doc.store)),
-        schema: JSON.parse(JSON.stringify(doc.schema)),
+        store: structuredClone(doc.store),
+        schema: structuredClone(doc.schema),
       });
     });
 

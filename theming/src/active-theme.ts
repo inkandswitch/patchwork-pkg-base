@@ -22,6 +22,27 @@ type ThemePreferencesHandle = {
 
 export const CURRENT_THEME_SELECTOR = "patchwork:current-theme"
 
+/**
+ * Which themes an account that has not chosen one starts on. A site states
+ * this on its root element — `<html data-theme-light="warm" data-theme-dark="dark">`
+ * — so the answer comes from the site itself rather than from whichever
+ * module happened to load last. `lychee`/`gloom` apply when it says nothing.
+ *
+ * Nothing is written to the preferences document: an unset preference resolves
+ * through here at read time, so the theme a user picked explicitly is never
+ * overwritten, and a site changing its defaults moves everyone who never
+ * picked one.
+ */
+const FALLBACK_DEFAULTS = {light: "lychee", dark: "gloom"}
+
+function defaultThemeIds() {
+	const root = document.documentElement
+	return {
+		light: root.getAttribute("data-theme-light") || FALLBACK_DEFAULTS.light,
+		dark: root.getAttribute("data-theme-dark") || FALLBACK_DEFAULTS.dark,
+	}
+}
+
 const bundledStyleUrls = [themeCssUrl, lycheeCssUrl, gloomCssUrl].map(
 	(href) => new URL(href, import.meta.url).href
 )
@@ -66,17 +87,18 @@ function getMode(): "light" | "dark" {
 function getPreferredThemeId(prefs: any): string {
 	const mode = getMode()
 	const themeId = prefs ? (mode === "dark" ? prefs.dark : prefs.light) : undefined
-	return themeId || (mode === "dark" ? "gloom" : "lychee")
+	return themeId || defaultThemeIds()[mode]
 }
 
 function snapshot(): ActiveThemeState {
 	const prefs = currentPrefsHandle?.doc()
 	const mode = getMode()
+	const defaults = defaultThemeIds()
 	return {
 		mode,
 		themeId: getPreferredThemeId(prefs),
-		light: prefs?.light || "lychee",
-		dark: prefs?.dark || "gloom",
+		light: prefs?.light || defaults.light,
+		dark: prefs?.dark || defaults.dark,
 		preferencesUrl: currentPrefsHandle?.url,
 	}
 }
@@ -138,8 +160,6 @@ function subscribeToProvider<T>(
 function ensureThemePreferencesShape(prefsHandle: ThemePreferencesHandle) {
 	prefsHandle.change((doc: any) => {
 		doc["@patchwork"] = {type: "theme-preferences"}
-		if (!doc.light) doc.light = "lychee"
-		if (!doc.dark) doc.dark = "gloom"
 	})
 }
 

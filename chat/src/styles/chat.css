@@ -760,8 +760,8 @@
     .chat-msg-file-icon { flex-shrink:0; }
 
     .chat-input-row {
-      display:flex; gap:0; background:var(--bg-input); border-radius:8px;
-      padding:4px; align-items:flex-end;
+      display:flex; gap:0; background:var(--bg-mid); border:1px solid var(--border);
+      border-radius:8px; padding:3px; align-items:flex-end;
     }
     .chat-input {
       width:100%; padding:8px 12px; border:none; font-size:15px; outline:none;

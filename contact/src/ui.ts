@@ -27,8 +27,9 @@ export const USER_COLOR_PALETTE = [
 ] as const;
 
 /**
- * Generate a deterministic color from a string (like userId)
- * Useful for fallback when user hasn't chosen a color
+ * Generate a deterministic color from a string (like a contact url).
+ * The single source of presence colors: cursors, avatars, and selection
+ * tints all hash the contact url through this palette.
  */
 export function generateColorFromString(str: string): string {
   const hash = Math.abs(

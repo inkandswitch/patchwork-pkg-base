@@ -120,6 +120,7 @@ export function ChatRoot(props: {
 	let modelPickerEl: HTMLElement | null = null
 	async function openModelPicker() {
 		if (modelPickerEl) return
+		await llmEnsureConfig(llmScope(), props.element)
 		// Surface @computer's built-in system prompt in the picker so it's visible
 		// and can be forked into an editable override.
 		const el = llmPopup({
@@ -705,9 +706,10 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 	// tools would show checked while actually being off. Seed them to `false` once
 	// (only if unset — a user who turns one ON stays ON) so the picker shows them
 	// unchecked, matching enabledComputerTools().
-	onMount(() => {
+	onMount(async () => {
 		if (!has("computer")) return
 		try {
+			await llmEnsureConfig(llmScope(), props.element)
 			const tg = {...((llmReadConfig() as any)?.toolToggles || {})}
 			let changed = false
 			for (const n of [...GLOBAL_DEFAULT_OFF, ...CONTEXT_DEFAULT_OFF]) {
@@ -757,7 +759,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 	// OpenRouter catalogue can't be read.
 	async function describeCurrentModel(): Promise<string> {
 		try {
-			await llmEnsureConfig(llmScope())
+			await llmEnsureConfig(llmScope(), props.element)
 			const cfg = scopedCfg()
 			let openrouterModels: any[] = []
 			if (cfg.provider === "openrouter") {

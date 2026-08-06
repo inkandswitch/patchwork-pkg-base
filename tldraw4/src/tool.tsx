@@ -52,6 +52,12 @@ import {
   setNewDocToolContext,
 } from "./NewDocTool.tsx";
 import { isPatchworkDrag, parseDroppedDocs } from "./dnd.ts";
+import {
+  ContactCollaboratorCursor,
+  generateColorFromString,
+} from "./CollaboratorCursor.tsx";
+
+export { splitPresenceUserId } from "./CollaboratorCursor.tsx";
 
 // Custom shapes / tools that let a tldraw canvas embed other Patchwork
 // documents. These must be registered both on the Automerge-backed store (so
@@ -87,7 +93,6 @@ function extensionForMimeType(mimeType: string): string {
 interface ContactDoc {
   type: string;
   name?: string;
-  color?: string;
 }
 
 function useContactInfo() {
@@ -112,21 +117,9 @@ function useContactInfo() {
     // this prevents tldraw from hiding local cursors across multiple sessions under the same account.
     userId: contactUrl ? `${contactUrl}-${repo.peerId}` : repo.peerId,
     name: contactDoc?.name ?? "Anonymous",
-    color: contactDoc?.color,
-  };
-}
-
-// Parses a userId of the form `${contactUrl}-${peerId}` to recover contactUrl and actorId.
-export function splitPresenceUserId(userId: string): {
-  contactUrl?: AutomergeUrl;
-  actorId?: string;
-} {
-  if (!userId.startsWith("automerge:")) return { actorId: userId };
-  const i = userId.indexOf("-");
-  if (i === -1) return { contactUrl: userId as AutomergeUrl };
-  return {
-    contactUrl: userId.slice(0, i) as AutomergeUrl,
-    actorId: userId.slice(i + 1),
+    // Derived from the contact url with the same rule the contact-cursor
+    // token uses, so the cursor arrow and the token always match.
+    color: contactUrl ? generateColorFromString(contactUrl) : undefined,
   };
 }
 
@@ -179,7 +172,11 @@ export function TldrawTool({
   useDeletedGhosts(store, handle, diff);
 
   const components = useMemo<TLComponents>(
-    () => ({ ShapeWrapper: DiffShapeWrapper, Toolbar: NewDocToolbar }),
+    () => ({
+      ShapeWrapper: DiffShapeWrapper,
+      Toolbar: NewDocToolbar,
+      CollaboratorCursor: ContactCollaboratorCursor,
+    }),
     []
   );
 

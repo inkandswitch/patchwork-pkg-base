@@ -8,6 +8,18 @@ import type { AccountDoc, ThreepaneConfigDoc } from "./types";
  */
 export const DEFAULT_TRAY_TOOLS: string[] = ["theme-tray"];
 
+/**
+ * The default doctitle tools for a fresh (or empty) account. Title + spacer are
+ * intrinsic to the frame's top bar, so only the right-hand tools are listed.
+ */
+export const DEFAULT_DOCTITLE_TOOLS: string[] = [
+  "add-doc-to-sidebar-button",
+  "doc-openwith",
+  "doc-presence",
+  "sync-indicator",
+  "theme-titlebar",
+];
+
 /** Default scalar configuration for a fresh account. */
 export const AccountDatatype: DatatypeImplementation<AccountDoc> = {
   init(doc) {
@@ -17,13 +29,7 @@ export const AccountDatatype: DatatypeImplementation<AccountDoc> = {
     // registry-driven now, so there's nothing to seed for it.
     // Title + spacer are rendered intrinsically by the frame's top bar; only the
     // right-hand doctitle tools are configured here.
-    doc.documentToolbarToolIds = [
-      "add-doc-to-sidebar-button",
-      "doc-openwith",
-      "doc-presence",
-      "sync-indicator",
-      "theme-titlebar",
-    ];
+    doc.documentToolbarToolIds = DEFAULT_DOCTITLE_TOOLS.slice();
   },
   getTitle: () => "Patchwork Account",
 };
@@ -33,7 +39,7 @@ export const ThreepaneConfigDatatype: DatatypeImplementation<ThreepaneConfigDoc>
   {
     init(doc) {
       doc.sidebar = { widgets: [] };
-      doc.doctitle = { tools: [] };
+      doc.doctitle = { tools: DEFAULT_DOCTITLE_TOOLS.slice() };
       doc.tray = DEFAULT_TRAY_TOOLS.slice();
     },
     getTitle: () => "Threepane Config",

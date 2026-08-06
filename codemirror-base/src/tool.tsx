@@ -259,22 +259,31 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
   ];
 
   return (
-    <div style={{ width: '100%', height: '100%', overflow: 'hidden', position: 'relative', background: 'var(--studio-fill, white)' }}>
-        <div style={{ display: 'flex', height: '100%' }}>
-          <div style={{ position: 'relative', flex: 1, height: '100%' }}>
-            <Show when={datatypeExtensions.state === "ready"}>
-              <CodeMirror
-                handle={props.handle as DocHandle<TextDoc>}
-                path={PATH}
-                decorations={decorations}
-                baseline={() => baseline()?.heads ?? null}
-                extensions={extensions()}
-                onChangeSelection={onChangeSelection}
-                scrollTarget={scrollTarget}
-              />
-            </Show>
-          </div>
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        overflow: "hidden",
+        position: "relative",
+        background: "var(--studio-fill, white)",
+      }}
+    >
+      <div style={{ display: "flex", height: "100%" }}>
+        <div style={{ position: "relative", flex: 1, height: "100%" }}>
+          <Show when={datatypeExtensions.state === "ready"}>
+            <CodeMirror
+              handle={props.handle as DocHandle<TextDoc>}
+              path={PATH}
+              decorations={decorations}
+              baseline={() => baseline()?.heads ?? null}
+              extensions={extensions()}
+              onChangeSelection={onChangeSelection}
+              scrollTarget={scrollTarget}
+              contactUrl={() => contactUrl() ?? null}
+            />
+          </Show>
         </div>
+      </div>
     </div>
   );
 }
