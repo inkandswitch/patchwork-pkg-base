@@ -22,7 +22,8 @@
     Access-Control-Allow-Origin = "*"
 
 [build.environment]
-  # Match the local toolchain. Netlify auto-detects pnpm from pnpm-lock.yaml;
-  # pin PNPM_VERSION here too if you need an exact pnpm.
+  # Match the local toolchain. There is no lockfile at the repo root for
+  # Netlify to auto-detect a package manager from — every tool installs itself
+  # during `build:ci` — so PNPM_VERSION is pinned here.
   NODE_VERSION = "22"
   PNPM_VERSION = "11.12.0"

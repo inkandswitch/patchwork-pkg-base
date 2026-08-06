@@ -3,6 +3,8 @@
 
 const MAX_BYTES = 512;
 
+const PDF_HEADER = [0x25, 0x50, 0x44, 0x46, 0x2d];
+
 export function isBinaryCheck(
   fileBuffer: Uint8Array,
   bytesRead: number
@@ -58,7 +60,7 @@ export function isBinaryCheck(
     return false;
   }
 
-  if (totalBytes >= 5 && fileBuffer.slice(0, 5).toString() === "%PDF-") {
+  if (totalBytes >= 5 && PDF_HEADER.every((byte, i) => fileBuffer[i] === byte)) {
     /* PDF. This is binary. */
     return true;
   }

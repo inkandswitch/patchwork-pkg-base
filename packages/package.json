@@ -12,7 +12,9 @@
     "dev": "vite build --watch",
     "build": "vite build",
     "push": "pushwork sync",
-    "sync": "vite build && pushwork sync"
+    "sync": "vite build && pushwork sync",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [],
   "author": "Ink & Switch",
@@ -23,9 +25,11 @@
   },
   "devDependencies": {
     "@inkandswitch/patchwork-bootloader": "^0.0.3",
+    "happy-dom": "^15.11.7",
     "typescript": "^5.8.3",
     "vite": "^7.3.1",
     "vite-plugin-css-injected-by-js": "^3.5.2",
-    "vite-plugin-solid": "^2.10.2"
+    "vite-plugin-solid": "^2.10.2",
+    "vitest": "^3.2.4"
   }
 }
