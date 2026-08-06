@@ -70,4 +70,19 @@ export const plugins = [
       };
     },
   },
+  {
+    type: "patchwork:tool",
+    id: "contact-cursor",
+    name: "Contact Cursor",
+    supportedDatatypes: ["contact"],
+    async load(): Promise<ToolImplementation> {
+      const { renderContactCursor } =
+        await import("./components/ContactCursor");
+      const css = await loadStyles();
+      return (handle, element) => {
+        addStyles(document.head, css);
+        return renderContactCursor(handle, element);
+      };
+    },
+  },
 ];
