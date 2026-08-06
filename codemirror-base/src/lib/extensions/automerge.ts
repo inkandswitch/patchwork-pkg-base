@@ -10,24 +10,9 @@ import type { DocHandle } from "@automerge/automerge-repo/slim";
 import { automergePlugin } from "../../vendor/automerge-codemirror/index.js";
 
 /**
- * Install the vendored automerge plugin — two-way sync plus the undo history
- * and read-only tracking entangled with it — behind a Compartment so it can
- * be swapped out when the reactive `handle`/`path` props change.
- *
- * In-place backing swaps (a `change` event with `scopeReplaced: true`, e.g.
- * scrubbing history or switching drafts re-pointing the handle at a
- * different clone) need no handling here: the vendored plugin diffs through
- * them itself — preserving the selection when the backings share history —
- * its bundled history resets, and its read-only tracking re-reads the
- * handle. The compartment only exists for *identity* changes: a different
- * handle object or path, which the plugin bound at construction cannot
- * follow.
- *
- * @param handle The Automerge document handle.
- * @param path The path to the specific document property to synchronize.
- * @param initialDoc The text at `path`, read fresh on each rebuild.
- * @returns A tuple containing the extension and a function to create an
- * effect for reconfiguring the extension when the handle or path change.
+ * Returns a [Compartment extension, reconfig effect] tuple to sync a CodeMirror editor
+ * with an Automerge handle+path. When reactive `handle` or `path` change, swaps the
+ * plugin via Compartment and resets the doc from `initialDoc()` (kept off undo stack).
  */
 export function createAutomergeExtension<T>(
   handle: () => DocHandle<T>,
@@ -44,18 +29,10 @@ export function createAutomergeExtension<T>(
         })
       : [];
 
-  // Reconfiguring replaces the plugin wholesale (the old instance is
-  // destroyed without seeing this transaction, so the full-doc reset below
-  // is not echoed back into the automerge doc) and the fresh plugin
-  // re-seeds its reconciled heads from the current doc. The reset is a
-  // synthetic remote transaction, not a user edit: it must not land on the
-  // undo stack (undoing it would restore a different document's text and
-  // write it back into the doc).
+  // Reconfigures the plugin and resets the doc to initialDoc() on reactive changes; this is synthetic remote state, so it bypasses the undo stack.
   const createReconfigureEffect = (view: EditorView) =>
     createEffect(() => {
-      // The `handle()`/`path()` reads inside `extension()` and the
-      // `initialDoc()` read are tracked, so a reactive prop change re-runs
-      // this whole rebuild.
+      // handle()/path()/initialDoc() are tracked; changes rerun the rebuild.
       view.dispatch({
         effects: compartment.reconfigure(extension()),
         changes: {
