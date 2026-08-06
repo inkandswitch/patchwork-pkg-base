@@ -15,18 +15,27 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
+        with:
+          version: 11.15.1
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
+          cache-dependency-path: |
+            **/pnpm-lock.yaml
           registry-url: https://registry.npmjs.org
 
-      - run: npm install -g npm@latest
+      - uses: actions/cache@v4
+        with:
+          path: |
+            */node_modules
+            tasks/src/in-the-cloud/node_modules
+          key: ${{ runner.os }}-publish-node-modules-${{ hashFiles('**/package.json', '**/pnpm-lock.yaml', '**/pnpm-workspace.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-publish-node-modules-
 
-      - run: pnpm install --frozen-lockfile
-        env:
-          PATCHWORK_EXIT_IDLE_MS: 120000
+      - run: npm install -g npm@latest
 
       - name: update preview.patchwork.inkandswitch.com
         env:
@@ -37,7 +46,10 @@ jobs:
             -f event_type=base-main \
             -F "client_payload[sha]=$GITHUB_SHA"
 
-      - run: pnpm build:static:fresh --strict
+      # installs and builds each tool in its own folder
+      - run: pnpm build:ci --strict
+        env:
+          PATCHWORK_EXIT_IDLE_MS: 120000
 
       - name: prepare static-dist/package.json
         run: |

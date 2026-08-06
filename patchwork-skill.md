@@ -25,6 +25,27 @@ Namespace your CSS class names and inject styles with the JS bundle (see Build).
 
 ## 0. House style (read this first)
 
+**Every top-level folder in this repo is a separate package.** Its own dependencies, its own
+`pnpm-lock.yaml`, its own `node_modules`, its own `pnpm-workspace.yaml` (that's just where pnpm
+11 keeps its settings), its own build system. There is no workspace and no lockfile at the repo
+root — nothing installs there, and `pnpm -r` has nothing to recurse over. To run something in
+every tool, use `node scripts/each.mjs <script>`.
+
+So: a tool may **never** depend on a sibling folder. No `workspace:`/`catalog:`/`link:`/`file:`
+specifiers, no importing another tool's source or `dist/`, no assuming a sibling installed or
+built first. `pnpm lint` fails on all of it, and CI runs it. If two tools need the same code,
+put them in one package — a package can register any number of plugins, so several tools and
+datatypes can ship from one folder (see `account/`). Runtime coupling through the plugin
+registry (a tool id, a datatype id, a `<patchwork-view tool-id="…">`) is fine; it's late-bound
+and degrades to nothing when the other tool is absent.
+
+**A new folder is a new package**, so it ships five things: a `package.json` with a
+`"test": "vitest run"` script, a `vitest.config.ts` with `passWithNoTests: true`, a committed
+`pnpm-workspace.yaml` (copy a neighbour's — without it pnpm blocks build scripts and enforces a
+release-age cooldown), a committed `pnpm-lock.yaml`, and a `.gitignore` that does **not** list
+either of those two. `pnpm lint` checks the last three; see
+[AGENTS.md](./AGENTS.md#making-a-new-tool) for the full checklist. Run `pnpm test` from the root.
+
 These are the defaults for **new** tools in this repo. Follow them unless the user says
 otherwise.
 
