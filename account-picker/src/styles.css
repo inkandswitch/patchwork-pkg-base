@@ -461,6 +461,49 @@
     box-shadow: 0 8px 30px rgb(0 0 0 / 10%);
   }
 
+  & .cropper-modal {
+    width: auto;
+    align-items: center;
+  }
+
+  & .cropper-viewport {
+    position: relative;
+    width: 260px;
+    height: 260px;
+    overflow: hidden;
+    border-radius: 6px;
+    background: var(--account-picker-border);
+    cursor: grab;
+    touch-action: none;
+
+    &:active {
+      cursor: grabbing;
+    }
+  }
+
+  & .cropper-image {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-origin: 0 0;
+    max-width: none;
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+
+  & .cropper-mask {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    box-shadow: 0 0 0 9999px rgb(0 0 0 / 45%);
+    pointer-events: none;
+  }
+
+  & .cropper-zoom {
+    width: 260px;
+    accent-color: var(--account-picker-fg);
+  }
+
   & .modal-title {
     font-size: 0.875rem;
     font-weight: 600;

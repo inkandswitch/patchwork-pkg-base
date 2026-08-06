@@ -26,6 +26,8 @@ import {
   accountTokenToAutomergeUrl,
 } from "./tokens";
 import {
+  AvatarCropper,
+  type Crop,
   Button,
   ColorPopup,
   PresenceCursor,
@@ -89,6 +91,8 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
     createSignal(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = createSignal(false);
   const [showColorPopup, setShowColorPopup] = createSignal(false);
+  const [pendingAvatar, setPendingAvatar] =
+    createSignal<{ file: File; url: string }>();
 
   const [accountTokenToLogin, setAccountTokenToLogin] = createSignal("");
   const accountAutomergeUrlToLogin = createMemo(() =>
@@ -170,15 +174,27 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
     });
   };
 
-  const onAvatarChange = async (e: Event) => {
+  const onAvatarChange = (e: Event) => {
     const target = e.target as HTMLInputElement;
-    const s = self();
-    if (!currentAccount || !s || s.type !== "registered") return;
-
     const avatarFile = !target.files ? undefined : target.files[0];
+    target.value = "";
     if (!avatarFile) return;
+    setPendingAvatar({ file: avatarFile, url: URL.createObjectURL(avatarFile) });
+  };
 
-    const compressed = await compressAvatar(avatarFile);
+  const onCancelCrop = () => {
+    const pending = pendingAvatar();
+    if (pending) URL.revokeObjectURL(pending.url);
+    setPendingAvatar(undefined);
+  };
+
+  const onCropAvatar = async (crop: Crop) => {
+    const pending = pendingAvatar();
+    const s = self();
+    if (!pending || !currentAccount || !s || s.type !== "registered") return;
+    onCancelCrop();
+
+    const compressed = await compressAvatar(pending.file, crop);
     if (!compressed) return;
 
     const repo = props.element.repo as Repo;
@@ -189,7 +205,7 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
     imageHandle.change((doc) => {
       doc.content = compressed.content;
       doc.mimeType = compressed.mimeType;
-      (doc as any).name = avatarFile.name;
+      (doc as any).name = pending.file.name;
       (doc as any).extension = "webp";
     });
 
@@ -446,6 +462,16 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
           </Button>
         </div>
 
+        <Show when={pendingAvatar()}>
+          {(pending) => (
+            <AvatarCropper
+              src={pending().url}
+              onCancel={onCancelCrop}
+              onConfirm={onCropAvatar}
+            />
+          )}
+        </Show>
+
         <Show when={showSignOutConfirm()}>
           <div class="modal-backdrop" onClick={() => setShowSignOutConfirm(false)} />
           <div class="modal">
@@ -506,16 +532,25 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
 const AVATAR_MAX_SIZE = 512;
 
 async function compressAvatar(
-  file: File
+  file: File,
+  crop: Crop
 ): Promise<{ content: Uint8Array; mimeType: string } | undefined> {
   const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, AVATAR_MAX_SIZE / Math.max(bitmap.width, bitmap.height));
-  const width = Math.round(bitmap.width * scale);
-  const height = Math.round(bitmap.height * scale);
+  const side = Math.round(Math.min(AVATAR_MAX_SIZE, crop.size));
 
-  const canvas = new OffscreenCanvas(width, height);
+  const canvas = new OffscreenCanvas(side, side);
   const ctx = canvas.getContext("2d")!;
-  ctx.drawImage(bitmap, 0, 0, width, height);
+  ctx.drawImage(
+    bitmap,
+    crop.x,
+    crop.y,
+    crop.size,
+    crop.size,
+    0,
+    0,
+    side,
+    side
+  );
   bitmap.close();
 
   const blob = await canvas.convertToBlob({ type: "image/webp", quality: 0.8 });

@@ -1,3 +1,4 @@
+export { AvatarCropper, type Crop } from "./avatar-cropper";
 export { Button } from "./button";
 export { ColorPopup } from "./color-picker";
 export { PresenceCursor } from "./presence-cursor";
