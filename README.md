@@ -22,7 +22,8 @@ Please be careful not to violate these isolation principles.
   and no root lockfile; each tool carries its own `pnpm-lock.yaml` and its own
   `pnpm-workspace.yaml` (which is only where pnpm 11 keeps per-package
   settings). `pnpm lint` fails on any `workspace:`/`catalog:`/`link:`/`file:`
-  specifier, and on a workspace or lockfile appearing at the root.
+  specifier, on a `pnpm-workspace.yaml` at the root, and on a root
+  `pnpm-lock.yaml` that resolves any package or has been committed.
 - When two tools genuinely need the same code, they become one package. A
   package registers as many plugins as it likes, so several tools and datatypes
   can ship from one folder — `account/` is the contact datatype and its views
