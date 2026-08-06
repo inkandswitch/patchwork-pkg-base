@@ -16,16 +16,30 @@
 //
 // It also fails if the repo root grows a pnpm-workspace.yaml, or a
 // pnpm-lock.yaml that resolves anything, because either one would quietly
-// re-link the tools back together. (Running a root script leaves behind an
-// empty lockfile with no `packages:` section; that one is inert and ignored.)
+// re-link the tools back together. Running a root script leaves behind an empty
+// lockfile with no `packages:` section; that one is inert, so it's tolerated on
+// disk — but never in a commit, so a tracked root lockfile fails whatever is in
+// it.
 //
 // Run from the repo root: `node scripts/lint-standalone.mjs` (or `pnpm lint`).
 
 import fs from "node:fs"
 import path from "node:path"
+import {execFileSync} from "node:child_process"
 import {fileURLToPath} from "node:url"
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
+
+// Committed, as far as git is concerned: tracked, or staged to be.
+function isTracked(file) {
+  try {
+    return (
+      execFileSync("git", ["ls-files", "--", file], {cwd: root, encoding: "utf8"}).trim() !== ""
+    )
+  } catch {
+    return false // no git here — fall back to the content check alone
+  }
+}
 
 const DEP_FIELDS = [
   "dependencies",
@@ -44,12 +58,17 @@ const FORBIDDEN = [
 
 // files that would turn the repo back into one big install
 const ROOT_FILES = [
-  ["pnpm-workspace.yaml", "would make every tool a workspace project again", () => true],
-  [
-    "pnpm-lock.yaml",
-    "resolves dependencies at the root, where nothing should install",
-    (contents) => /^packages:/m.test(contents),
-  ],
+  {
+    file: "pnpm-workspace.yaml",
+    offending: () => true,
+    reason: "would make every tool a workspace project again",
+  },
+  {
+    file: "pnpm-lock.yaml",
+    offending: (contents) => /^packages:/m.test(contents),
+    reason: "resolves dependencies at the root, where nothing should install",
+    trackedReason: "is committed at the root, where nothing should install",
+  },
 ]
 
 function packageDirs() {
@@ -68,11 +87,17 @@ function packageDirs() {
 
 const violations = []
 
-for (const [file, reason, offending] of ROOT_FILES) {
+for (const {file, offending, reason, trackedReason} of ROOT_FILES) {
   const at = path.join(root, file)
-  if (fs.existsSync(at) && offending(fs.readFileSync(at, "utf8"))) {
-    violations.push({pkg: ".", field: "root", dep: file, spec: "", reason})
-  }
+  const tracked = isTracked(file)
+  if (!tracked && !(fs.existsSync(at) && offending(fs.readFileSync(at, "utf8")))) continue
+  violations.push({
+    pkg: ".",
+    field: "root",
+    dep: file,
+    spec: "",
+    reason: tracked ? (trackedReason ?? reason) : reason,
+  })
 }
 
 for (const name of packageDirs()) {
@@ -110,7 +135,7 @@ for (const v of violations) {
   console.error(`    ${v.spec ? `"${v.spec}"  ` : ""}${v.reason}`)
   console.error(
     v.pkg === "."
-      ? `    fix: delete it.\n`
+      ? `    fix: \`git rm --cached ${v.dep}\` if it's tracked, then delete it.\n`
       : `    fix: replace with a registry version range, or move the shared code into this package.\n`
   )
 }

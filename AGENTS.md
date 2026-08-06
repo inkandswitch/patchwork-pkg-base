@@ -26,8 +26,10 @@ You should be able to copy any one of these folders out of the repo, run
 - No shared root config for tools to inherit.
 
 `node scripts/lint-standalone.mjs` (`pnpm lint`) fails the build on any of
-these, and on a `pnpm-workspace.yaml` or `pnpm-lock.yaml` appearing at the root.
-CI runs it on every PR.
+these, and on a `pnpm-workspace.yaml` at the root, and on a root
+`pnpm-lock.yaml` that either resolves any package or is committed. (Running a
+root script leaves an empty lockfile behind; it's gitignored and inert, so it's
+tolerated on disk and nowhere else.) CI runs it on every PR.
 
 ### When two tools want the same code
 
