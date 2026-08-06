@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.15.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: "*/pnpm-lock.yaml"
+
+      # Every top-level folder must stay pullable on its own — no
+      # workspace-only dependency specifiers (workspace:/catalog:/link:/file:),
+      # and no workspace or lockfile at the repo root.
+      - name: Lint standalone packages
+        run: pnpm lint
+
+      # One install per package, into its own node_modules. If a tool only
+      # builds because a sibling installed something for it, this is where it
+      # falls over.
+      - name: Install each package
+        run: pnpm each install
+
+      - name: Test each package
+        run: pnpm test

@@ -9,6 +9,10 @@
     "url": "git+https://github.com/inkandswitch/patchwork-pkg-base.git"
   },
   "scripts": {
+    "lint": "node scripts/lint-standalone.mjs",
+    "test": "node scripts/each.mjs test",
+    "build": "node scripts/each.mjs build",
+    "each": "node scripts/each.mjs",
     "build:static": "node scripts/build-static.mjs",
     "build:static:fresh": "node scripts/build-static.mjs --build",
     "build:ci": "node scripts/build-static.mjs --install",

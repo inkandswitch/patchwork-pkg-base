@@ -8,27 +8,31 @@
     "dev": "vite build --watch",
     "build": "vite build",
     "sync": "vite build && pushwork sync",
-    "register": "pw-modules add \"$MODULE_SETTINGS_DOC_URL\" \"$(pushwork url)\""
+    "register": "pw-modules add \"$MODULE_SETTINGS_DOC_URL\" \"$(pushwork url)\"",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@automerge/automerge": "3.3.0-fragments.1",
-    "@automerge/automerge-repo": "^2.6.0-subduction.26",
+    "@automerge/automerge-repo": "2.6.0-subduction.47",
     "@inkandswitch/patchwork-elements": "1.0.0",
     "@inkandswitch/patchwork-plugins": "^0.0.11",
-    "@inkandswitch/patchwork-providers": "0.2.2",
-    "@inkandswitch/patchwork-providers-solid": "0.2.3",
+    "@inkandswitch/patchwork-providers": "0.5.1",
+    "@inkandswitch/patchwork-providers-solid": "0.2.7",
     "solid-automerge": "^2.0.1",
-    "solid-js": "^1.9.9"
+    "solid-js": "^1.9.14"
   },
   "devDependencies": {
-    "@eslint/js": "^9.37.0",
+    "@eslint/js": "^9.39.5",
     "@inkandswitch/patchwork-bootloader": "^0.2.8",
-    "@typescript-eslint/parser": "^8.40.0",
-    "eslint": "^9.34.0",
-    "globals": "^16.4.0",
-    "typescript-eslint": "^8.41.0",
-    "vite": "^7.1.9",
+    "@typescript-eslint/parser": "^8.66.0",
+    "eslint": "^9.39.5",
+    "globals": "^16.5.0",
+    "happy-dom": "^15.11.7",
+    "typescript-eslint": "^8.66.0",
+    "vite": "^7.3.6",
     "vite-plugin-css-injected-by-js": "^3.5.2",
-    "vite-plugin-solid": "^2.11.10"
+    "vite-plugin-solid": "^2.11.14",
+    "vitest": "^3.2.4"
   }
 }
