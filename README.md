@@ -18,15 +18,15 @@ Please be careful not to violate these isolation principles.
 
 - External deps (`@inkandswitch/patchwork-*`, `solid-js`, etc.) are pinned to
   normal published npm versions.
-
-## Caveat
-
-- A few tools depend on sibling tools in this repo
-  (`codemirror-markdown` → `codemirror-base`, `tenfold` → `codemirror-base` and
-  `codemirror-markdown`, `account-picker` → `contact`). Those are referenced as
-  `link:../<sibling>` in the sibling's `package.json`, which creates a live
-  symlink into `node_modules`. Building the sibling is enough — no publish
-  step, no `workspace:*` protocol.
+- No tool depends on another folder in this repo. There is no root workspace
+  and no root lockfile; each tool carries its own `pnpm-lock.yaml` and its own
+  `pnpm-workspace.yaml` (which is only where pnpm 11 keeps per-package
+  settings). `pnpm lint` fails on any `workspace:`/`catalog:`/`link:`/`file:`
+  specifier, and on a workspace or lockfile appearing at the root.
+- When two tools genuinely need the same code, they become one package. A
+  package registers as many plugins as it likes, so several tools and datatypes
+  can ship from one folder — `account/` is the contact datatype and its views
+  plus the account picker.
 
 ## Building one tool
 
@@ -36,27 +36,24 @@ pnpm install
 pnpm build
 ```
 
-For tools that `link:` to a sibling, build the sibling first so its `dist/`
-exists (e.g. `codemirror-base` before `tenfold`). Running `pnpm -r build` at
-the root happens to go in alphabetical order, which puts dependencies ahead of
-dependents for the current set of links.
+That works from a copy of the folder anywhere on disk, with nothing else
+checked out. If it doesn't, that's the bug.
 
 ## Building everything
 
 From the repo root:
 
 ```sh
-pnpm install   # install in every tool
-pnpm build     # build every tool that has a build script
+pnpm lint          # check nothing has been wired together
+pnpm each install  # pnpm install in every tool
+pnpm build         # pnpm build in every tool that has a build script
+pnpm test          # pnpm test in every tool
 ```
 
-There is no root workspace — these just run `pnpm` recursively over each tool
-directory. The filter (`--filter './*' --filter '!./static-dist/**'`) excludes
-the `static-dist/` output folder, so they're safe to run even when a previous
-bundle is still present. (A bare `pnpm -r build` would instead try to "build"
-the copied bundles under `static-dist/packages/*` and fail, since those have no
-`node_modules`.) Because `install` is a real script, plain `pnpm install` at the
-root installs all the tools too.
+`scripts/each.mjs` walks the top-level folders and runs `pnpm <script>` in each
+one that declares it, up to CPUs-1 at a time, buffering each tool's output so
+the interleaved logs stay readable. It exits non-zero if any tool failed.
+Add `--filter <name>` to restrict it.
 
 ## Static-HTTP deployment (shell + tools bundle)
 
@@ -84,9 +81,12 @@ override.
 ### Build / serve / deploy the tools bundle
 
 ```sh
-pnpm install          # install every tool (skips static-dist/)
-pnpm build            # build every tool (skips static-dist/)
+pnpm each install     # install every tool
+pnpm build            # build every tool
 pnpm bundle           # aggregate built tool dist/ -> static-dist/ + modules.json
+
+pnpm build:static     # bundle whatever is already built
+pnpm build:ci         # install + build every tool, then bundle
 
 pnpm serve:tools      # serve static-dist/ on :4455 with CORS (local tools host)
 pnpm dev:tools        # bundle + serve:tools
@@ -94,8 +94,9 @@ pnpm dev:tools        # bundle + serve:tools
 pnpm deploy:tools     # bundle + netlify deploy --prod (static-dist/)
 ```
 
-A clean bundle from scratch is `pnpm install && pnpm build && pnpm bundle`
-(which is exactly what Netlify runs).
+A clean bundle from scratch is `pnpm build:ci` (which is exactly what Netlify
+runs). One tool failing to build doesn't abort it — `bundle.mjs` skips any tool
+with no built entry point, and `--strict` makes the whole thing exit non-zero.
 
 `modules.json` uses relative `./packages/…` URLs that resolve against the
 manifest's own URL, so the bundle works at any host or base path.
@@ -146,8 +147,8 @@ Right now this is a bit janky, but once you have the pushwork and the patchwork-
 
 ```sh
 export MODULE_SETTINGS_DOC_URL=`pw-modules init`
-pnpm -r exec pushwork init
-pnpm -r register
+for tool in */package.json; do (cd "${tool%/*}" && pushwork init); done
+pnpm each register
 ```
 
 Of course, if you already have a patchwork modules document, you can supply it.

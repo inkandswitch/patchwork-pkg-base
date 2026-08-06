@@ -8,7 +8,9 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "push": "pnpm build && pushwork sync",
-    "register": "pw-modules add \"$MODULE_SETTINGS_DOC_URL\" \"$(pushwork url)\""
+    "register": "pw-modules add \"$MODULE_SETTINGS_DOC_URL\" \"$(pushwork url)\"",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@inkandswitch/patchwork-bootloader": "^0.2.8",
@@ -19,9 +21,11 @@
   },
   "devDependencies": {
     "@automerge/automerge-repo": "^2.6.0-subduction.9",
+    "happy-dom": "^15.11.7",
     "typescript": "~5.9.3",
     "vite": "^5.4.21",
     "vite-plugin-css-injected-by-js": "^3.5.2",
-    "vite-plugin-solid": "^2.11.10"
+    "vite-plugin-solid": "^2.11.10",
+    "vitest": "^3.2.4"
   }
 }
