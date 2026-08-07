@@ -6,25 +6,21 @@
  * (`build:static`, `build:static:fresh`, `build:tools:ci`) point at; the actual
  * aggregation lives in scripts/bundle.mjs.
  *
- * patchwork-base IS a pnpm workspace (`pnpm-workspace.yaml: packages: ["*"]`),
- * so installs are done once at the root (`pnpm install` wires every tool +
- * the `link:../sibling` symlinks at the same time). Builds, however, are run
- * per-tool rather than via `pnpm -r build`, for two reasons:
- *   1. Resilience — one tool failing to build shouldn't abort the whole bundle;
- *      bundle.mjs simply skips any tool without a built entry point.
- *   2. Order — a tool that `link:`s a sibling (e.g. account-picker → contact)
- *      must not build until that sibling has built. We derive this dependency
- *      graph from each tool's `link:../sibling` deps and build in parallel,
- *      gating each tool on its siblings, instead of relying on directory order.
+ * patchwork-base is NOT a workspace — every top-level folder is a package that
+ * installs and builds on its own, into its own node_modules. So both the
+ * install and the build run per-tool, in any order: no tool may depend on
+ * another one having been installed or built first (scripts/lint-standalone.mjs
+ * enforces that). One tool failing doesn't abort the bundle; bundle.mjs simply
+ * skips any tool without a built entry point.
  *
- * Tools build concurrently (up to `BUILD_CONCURRENCY`, default = CPUs - 1).
- * Each tool's output is buffered and flushed as a block when it finishes so the
- * interleaved logs stay readable.
+ * Tools install and build concurrently (up to `BUILD_CONCURRENCY`, default =
+ * CPUs - 1). Each tool's output is buffered and flushed as a block when it
+ * finishes so the interleaved logs stay readable.
  *
  * Usage:
  *   node scripts/build-static.mjs                 # bundle already-built tools
  *   node scripts/build-static.mjs --build         # build each tool, then bundle
- *   node scripts/build-static.mjs --install       # root install + build each tool, then bundle
+ *   node scripts/build-static.mjs --install       # install + build each tool, then bundle
  *   node scripts/build-static.mjs --filter <name> # restrict to tools whose dir name includes <name> (repeatable)
  *   node scripts/build-static.mjs --strict         # exit non-zero if any tool fails
  *   node scripts/build-static.mjs --out <dir>      # output dir (default: static-dist)
@@ -114,117 +110,64 @@ function runBuffered(cmd, args, cwd) {
   });
 }
 
-// The subset of `link:../sibling` deps that point at another tool in the build
-// set — these must build before this tool does.
-function linkDeps(dir, toolSet) {
-  const pkg = readPkg(dir);
-  const all = { ...pkg?.dependencies, ...pkg?.devDependencies };
-  const deps = new Set();
-  for (const spec of Object.values(all)) {
-    if (typeof spec === "string" && spec.startsWith("link:")) {
-      const base = spec.slice("link:".length).split("/").pop();
-      if (toolSet.has(base)) deps.add(base);
-    }
-  }
-  return [...deps];
-}
-
 /**
- * Build every tool with a `build` script concurrently, respecting `link:`
- * sibling ordering and a concurrency cap. Returns { built, noBuild, failures }.
+ * Run `pnpm <script>` in each named tool, up to `concurrency` at a time and in
+ * no particular order. Returns { succeeded, failures }.
  */
-async function buildTools(tools, concurrency) {
-  const buildable = [];
-  const noBuild = [];
-  for (const name of tools) {
-    if (readPkg(join(ROOT, name))?.scripts?.build) buildable.push(name);
-    else noBuild.push(name); // bundleless tools (single .js at root)
+async function runEach(script, names, concurrency) {
+  const queue = [...names];
+  const succeeded = [];
+  const failures = [];
+
+  async function worker() {
+    for (let name = queue.shift(); name; name = queue.shift()) {
+      const { ok, output } = await runBuffered(
+        "npx",
+        [PNPM, script],
+        join(ROOT, name)
+      );
+      process.stdout.write(`\n── ${script} ${name} ──\n${output}`);
+      if (ok) succeeded.push(name);
+      else {
+        console.error(`[fail]  ${name}: pnpm ${script}`);
+        failures.push(`${name} (${script})`);
+      }
+    }
   }
 
-  const toolSet = new Set(buildable);
-  const depsOf = new Map(buildable.map((n) => [n, linkDeps(join(ROOT, n), toolSet)]));
-  const done = new Set();
-  const built = [];
-  const failures = [];
-  const remaining = new Set(buildable);
-  const inFlight = new Set();
-
-  await new Promise((resolveAll) => {
-    function launch(name) {
-      remaining.delete(name);
-      inFlight.add(name);
-      runBuffered("npx", [PNPM, "build"], join(ROOT, name)).then(({ ok, output }) => {
-        process.stdout.write(`\n── build ${name} ──\n${output}`);
-        if (ok) built.push(name);
-        else {
-          console.error(`[fail]  ${name}: pnpm build`);
-          failures.push(`${name} (build)`);
-        }
-        inFlight.delete(name);
-        done.add(name);
-        schedule();
-      });
-    }
-
-    function schedule() {
-      if (remaining.size === 0 && inFlight.size === 0) {
-        resolveAll();
-        return;
-      }
-      let launchedAny = false;
-      for (const name of [...remaining]) {
-        if (inFlight.size >= concurrency) break;
-        // Gate on completion (not success): the link symlink already exists;
-        // we only need the sibling's own build to have run first.
-        if (!depsOf.get(name).every((d) => done.has(d))) continue;
-        launch(name);
-        launchedAny = true;
-      }
-      // Deadlock guard: if nothing is running and nothing became eligible (e.g.
-      // a link cycle), force the remaining tools rather than hang forever.
-      if (!launchedAny && inFlight.size === 0 && remaining.size > 0) {
-        for (const name of [...remaining]) {
-          if (inFlight.size >= concurrency) break;
-          launch(name);
-        }
-      }
-    }
-
-    schedule();
-  });
-
-  return { built, noBuild, failures };
+  await Promise.all(Array.from({ length: concurrency }, worker));
+  return { succeeded, failures };
 }
 
 async function main() {
   const { out, install, build, strict, filters } = parseArgs(process.argv.slice(2));
   const tools = listToolDirs(filters);
+  const concurrency = Math.max(
+    1,
+    Number(process.env.BUILD_CONCURRENCY) || availableParallelism() - 1
+  );
 
-  // Workspace install once at the root — wires every tool + link: siblings.
+  const failures = [];
+  let built = [];
+  // bundleless tools (single .js at root)
+  const noBuild = tools.filter((n) => !readPkg(join(ROOT, n))?.scripts?.build);
+
   if (install) {
-    console.log("\n── pnpm install (workspace) ──");
-    if (!run("npx", [PNPM, "install"], ROOT)) {
-      console.error("[fail]  root pnpm install");
-      process.exit(1);
-    }
+    console.log(`\nInstalling ${tools.length} tool(s) (concurrency: ${concurrency})\n`);
+    failures.push(...(await runEach("install", tools, concurrency)).failures);
   }
 
-  let failures = [];
-  let built = [];
-  let noBuild = [];
-
   if (build) {
-    const concurrency = Math.max(
-      1,
-      Number(process.env.BUILD_CONCURRENCY) || availableParallelism() - 1
-    );
+    const buildable = tools.filter((n) => !noBuild.includes(n));
     console.log(
-      `\nBuilding ${tools.length} tool(s) (concurrency: ${concurrency})` +
+      `\nBuilding ${buildable.length} tool(s) (concurrency: ${concurrency})` +
         (filters.length ? ` (filter: ${filters.join(", ")})` : "") +
         "\n"
     );
 
-    ({ built, noBuild, failures } = await buildTools(tools, concurrency));
+    const result = await runEach("build", buildable, concurrency);
+    built = result.succeeded;
+    failures.push(...result.failures);
   }
 
   // Aggregate whatever built into static-dist/.

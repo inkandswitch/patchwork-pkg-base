@@ -22,7 +22,9 @@
     "build": "node esbuild/build.ts",
     "dev": "node esbuild/watch.ts",
     "pushwatch": "pnpm dev pushwork",
-    "register": "pw-modules add \"$MODULE_SETTINGS_DOC_URL\" \"$(pushwork url)\""
+    "register": "pw-modules add \"$MODULE_SETTINGS_DOC_URL\" \"$(pushwork url)\"",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@inkandswitch/patchwork-bootloader": "^0.0.4",
@@ -31,7 +33,7 @@
     "@kobalte/core": "^0.13.11",
     "@types/debug": "^4.1.12",
     "debug": "^4.4.3",
-    "solid-automerge": "^2.0.0",
+    "solid-automerge": "^2.0.1",
     "solid-js": "^1.9.9"
   },
   "devDependencies": {
@@ -47,8 +49,12 @@
     "@types/babel__core": "^7.20.5",
     "babel-preset-solid": "^1.9.9",
     "esbuild": "^0.23.1",
+    "happy-dom": "^15.11.7",
     "solid-devtools": "^0.34.4",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vite": "^7.1.9",
+    "vite-plugin-solid": "^2.11.10",
+    "vitest": "^3.2.4"
   },
   "volta": {
     "node": "22.21.0"
