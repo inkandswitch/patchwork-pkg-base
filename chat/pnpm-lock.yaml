@@ -39,8 +39,8 @@ importers:
         specifier: ^0.2.1
         version: 0.2.1(@automerge/automerge-repo@2.5.6)
       '@chee/patchwork-transcript':
-        specifier: automerge:2AdvAyQ85NfazBA4TtDyRYCqfvYb#RUCqgHPjqB8fwhZczav5rwJ9J7rBLj3rSfQ9ykaCkR3HrEN2n
-        version: automerge:2AdvAyQ85NfazBA4TtDyRYCqfvYb#RUCqgHPjqB8fwhZczav5rwJ9J7rBLj3rSfQ9ykaCkR3HrEN2n@RUCqgHPjqB8fwhZczav5rwJ9J7rBLj3rSfQ9ykaCkR3HrEN2n(@automerge/automerge-repo@2.5.6)
+        specifier: ^0.1.0
+        version: 0.1.0(@automerge/automerge-repo@2.5.6)
       '@inkandswitch/patchwork-elements':
         specifier: ^0.0.5
         version: 0.0.5
@@ -249,9 +249,8 @@ packages:
     peerDependencies:
       '@automerge/automerge-repo': ^2.5.6
 
-  '@chee/patchwork-transcript@automerge:2AdvAyQ85NfazBA4TtDyRYCqfvYb#RUCqgHPjqB8fwhZczav5rwJ9J7rBLj3rSfQ9ykaCkR3HrEN2n@RUCqgHPjqB8fwhZczav5rwJ9J7rBLj3rSfQ9ykaCkR3HrEN2n':
-    resolution: {automergeUrl: automerge:2AdvAyQ85NfazBA4TtDyRYCqfvYb#RUCqgHPjqB8fwhZczav5rwJ9J7rBLj3rSfQ9ykaCkR3HrEN2n, type: custom:automerge}
-    version: 0.1.0
+  '@chee/patchwork-transcript@0.1.0':
+    resolution: {integrity: sha512-yBBBAS7OP+3dlUt11LqGW95VhIbZDlAJUN53xUNb99Lf4XFwGHNPkSpLpTM9chbWcDciaMr3h4ZNzfRjtXfqYw==}
     peerDependencies:
       '@automerge/automerge-repo': ^2.5.6
 
@@ -416,11 +415,6 @@ packages:
 
   '@inkandswitch/patchwork-plugins@0.0.5':
     resolution: {integrity: sha512-pQv5M7asDdN8J2moTmLoSnqA8FC/vcOuNJnKveL3MzjEhH0GQdIl6vV3k5jxs83ZpB8stwceE85Zsve/QRnVSA==}
-
-  '@inkandswitch/patchwork-providers@0.2.2':
-    resolution: {integrity: sha512-Yh/21N+1gBbtZmf2MRqmkK9y0PGS7LIHHq7fgzVS07IfDtELS36fhasODtHCUQ7+LDKTdNNlw9CkFLHSMlZY8Q==}
-    peerDependencies:
-      '@automerge/automerge-repo': '*'
 
   '@inkandswitch/patchwork-providers@0.3.0':
     resolution: {integrity: sha512-CUxWbONfOiz5SCzOpX/7zDTMePWgq7e4778eBJpbjC5Et4lnyL2/UrOZ6YJ4HiCG7r7MbfM86GUi63bqjTeutg==}
@@ -1431,10 +1425,10 @@ snapshots:
       '@automerge/automerge-repo': 2.5.6
       '@inkandswitch/patchwork-providers': 0.3.0(@automerge/automerge-repo@2.5.6)
 
-  '@chee/patchwork-transcript@automerge:2AdvAyQ85NfazBA4TtDyRYCqfvYb#RUCqgHPjqB8fwhZczav5rwJ9J7rBLj3rSfQ9ykaCkR3HrEN2n@RUCqgHPjqB8fwhZczav5rwJ9J7rBLj3rSfQ9ykaCkR3HrEN2n(@automerge/automerge-repo@2.5.6)':
+  '@chee/patchwork-transcript@0.1.0(@automerge/automerge-repo@2.5.6)':
     dependencies:
       '@automerge/automerge-repo': 2.5.6
-      '@inkandswitch/patchwork-providers': 0.2.2(@automerge/automerge-repo@2.5.6)
+      '@inkandswitch/patchwork-providers': 0.3.0(@automerge/automerge-repo@2.5.6)
 
   '@esbuild/aix-ppc64@0.21.5':
     optional: true
@@ -1588,10 +1582,6 @@ snapshots:
       resolve.exports: 2.0.3
     transitivePeerDependencies:
       - supports-color
-
-  '@inkandswitch/patchwork-providers@0.2.2(@automerge/automerge-repo@2.5.6)':
-    dependencies:
-      '@automerge/automerge-repo': 2.5.6
 
   '@inkandswitch/patchwork-providers@0.3.0(@automerge/automerge-repo@2.5.6)':
     dependencies:

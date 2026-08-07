@@ -12,7 +12,7 @@ import type {
   UrlHeads,
 } from "@automerge/automerge-repo/slim";
 import {
-  createSyncExtension,
+  createAutomergeExtension,
   createReadOnlyExtension,
   createDecorationsExtension,
   createDiffExtension,
@@ -46,6 +46,8 @@ type CodeMirrorProps<T> = {
   scrollTarget?: () => readonly [number, number] | null;
   // identify for remote cursors; `null` disables presence.
   contactUrl?: () => AutomergeUrl | null;
+  // Forces the editor read-only. A heads-pinned handle makes it read-only
+  // regardless (tracked internally), so this is only needed as an override.
   readOnly?: boolean;
   withView?(view: EditorView): void;
 };
@@ -54,11 +56,17 @@ export function CodeMirror<T>(props: CodeMirrorProps<T>) {
   const initialDoc = () =>
     (props.handle && (lookup(props.handle.doc(), props.path) as string)) || "";
 
-  const [syncExtension, createEffectReconfigureSync] = createSyncExtension(
-    () => props.handle,
-    () => props.path,
-    initialDoc
-  );
+  // Two-way sync plus undo history and read-only tracking for the handle --
+  // the vendored automerge plugin owns all three, including resets when the
+  // handle's backing is swapped in place. Tools must not add their own
+  // history() (basicSetup includes one): the bundled history must own the
+  // only copy for its reset to work.
+  const [automergeExtension, createEffectReconfigureAutomerge] =
+    createAutomergeExtension(
+      () => props.handle,
+      () => props.path,
+      initialDoc
+    );
 
   const [readOnlyExtension, createEffectReconfigureReadOnly] =
     createReadOnlyExtension(() => !!props.readOnly);
@@ -80,12 +88,18 @@ export function CodeMirror<T>(props: CodeMirrorProps<T>) {
   );
 
   // Read-only views are typically pinned to fixed heads, so their positions
-  // don't line up with the live doc; they stay presence-free.
+  // don't line up with the live doc; they stay presence-free. The handle is
+  // consulted directly (tools no longer pass `readOnly` for pinned handles —
+  // the automerge extension tracks that internally), with `props.readOnly`
+  // kept as an additional override.
   const [presenceExtension, createEffectReconfigurePresence] =
     createPresenceExtension(
       () => props.handle as DocHandle<unknown>,
       () => props.path,
-      () => (props.readOnly ? null : (props.contactUrl?.() ?? null))
+      () =>
+        props.readOnly || props.handle.isReadOnly()
+          ? null
+          : (props.contactUrl?.() ?? null)
     );
 
   // Create a compartment for user-provided extensions so they can be reconfigured
@@ -103,8 +117,8 @@ export function CodeMirror<T>(props: CodeMirrorProps<T>) {
   const extensions = [
     selectionExtension,
     decorationsExtension,
-    // syncExtension must come before diffExtension so diff stays in sync with edits.
-    syncExtension,
+    // automergeExtension must come before diffExtension so diff stays in sync with edits.
+    automergeExtension,
     diffExtension,
     scrollHighlightIntoViewExtension,
     presenceExtension,
@@ -124,7 +138,7 @@ export function CodeMirror<T>(props: CodeMirrorProps<T>) {
   props.withView?.(view);
 
   // Create effects to reconfigure the extensions when their props change
-  createEffectReconfigureSync(view);
+  createEffectReconfigureAutomerge(view);
   createEffectReconfigureReadOnly(view);
   createEffectReconfigureDecorations?.(view);
   createEffectReconfigureDiff(view);

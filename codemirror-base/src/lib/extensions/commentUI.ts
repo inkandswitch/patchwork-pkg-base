@@ -153,7 +153,8 @@ const buttonTooltip = (
   options: CommentUIOptions
 ): Tooltip | null => {
   const sel = state.selection.main;
-  if (sel.empty) return null;
+  // A read-only editor can't take the comment write, so don't offer the button.
+  if (sel.empty || state.readOnly) return null;
 
   // Anchor the button at the drag tail (the selection head) rather than the
   // start, so dragging left-to-right lands it on the right and right-to-left
@@ -203,6 +204,15 @@ const commentUIField = (options: CommentUIOptions, ui: CommentUIState) =>
       let buttonDismissed = value.buttonDismissed;
       let popoverChanged = false;
 
+      // Read-only can flip mid-session: entering it closes any open popover —
+      // its reply box writes to a doc that rejects writes — and the flip
+      // itself must recompute the tooltip so the button hides/re-arms.
+      const readOnlyChanged = tr.startState.readOnly !== tr.state.readOnly;
+      if (readOnlyChanged && tr.state.readOnly && popover) {
+        popover = null;
+        popoverChanged = true;
+      }
+
       // Keep the popover pinned to its text as the document shifts under it.
       if (popover && tr.docChanged) {
         popover = { ...popover, anchor: tr.changes.mapPos(popover.anchor) };
@@ -248,6 +258,7 @@ const commentUIField = (options: CommentUIOptions, ui: CommentUIState) =>
         !popoverChanged &&
         !tr.docChanged &&
         !tr.selection &&
+        !readOnlyChanged &&
         buttonDismissed === value.buttonDismissed
       ) {
         return value;
@@ -283,6 +294,9 @@ const commentInteractions = (
       if ((event.target as HTMLElement | null)?.closest("." + POPOVER_CLASS)) {
         return false;
       }
+      // Read-only: don't open threads either — the popover's reply box would
+      // write into a doc that rejects writes.
+      if (view.state.readOnly) return false;
       const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
       if (pos == null) return false;
       const hit = options.threadAtPos(pos);

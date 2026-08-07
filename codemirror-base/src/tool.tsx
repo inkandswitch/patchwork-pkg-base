@@ -50,8 +50,6 @@ type Baseline = { heads: UrlHeads | null };
 const PATH = ["content"];
 
 export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
-  const isReadOnly = props.handle.isReadOnly();
-
   // Diff baseline from the active draft overlay; plain JSON `{ heads }`. Fed to
   // the CodeMirror diff extension, which recomputes spans on every doc change
   // (driven by the sync plugin's transactions, so no manual tick is needed).
@@ -279,7 +277,6 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
               decorations={decorations}
               baseline={() => baseline()?.heads ?? null}
               extensions={extensions()}
-              readOnly={isReadOnly}
               onChangeSelection={onChangeSelection}
               scrollTarget={scrollTarget}
               contactUrl={() => contactUrl() ?? null}

@@ -12,13 +12,22 @@
   --drafts-font: var(--studio-family-sans, system-ui, sans-serif);
   --drafts-mono: var(--studio-family-code, ui-monospace, monospace);
   --drafts-primary: var(--studio-primary-fill, var(--studio-primary, #3b82f6));
-  --drafts-primary-line: var(--studio-primary-line, var(--studio-fill, white));
-  --drafts-primary-fg: var(--drafts-primary-line);
-  --drafts-warning: var(--studio-warning-fill, var(--studio-warning, #f59e0b));
-  --drafts-warning-fg: var(--studio-warning-line, var(--studio-fill, white));
+  /* The accent used as ink on the ambient background (accent-coloured text,
+     not a filled surface); contrast-tuned separately from the fill. */
+  --drafts-primary-text: var(--studio-primary-text, #2563eb);
+  /* Danger as ink (the menu's delete item). */
+  --drafts-danger-text: var(--studio-danger-text, var(--studio-danger, #dc2626));
+  /* Diff edit-size colors, from the theme's diff palette. */
+  --drafts-added: var(--studio-added, #16a34a);
+  --drafts-deleted: var(--studio-deleted, #dc2626);
   --drafts-radius: var(--studio-radius-md, 0.5rem);
   --drafts-radius-sm: var(--studio-radius-sm, 0.25rem);
   --drafts-shadow-sm: var(--studio-shadow-sm, 0 1px 2px 0 rgb(0 0 0 / 0.05));
+  --drafts-shadow-md: var(
+    --studio-shadow-md,
+    0 4px 6px -1px rgb(0 0 0 / 0.1),
+    0 2px 4px -2px rgb(0 0 0 / 0.1)
+  );
 }
 }
 
@@ -37,80 +46,18 @@
   color: var(--drafts-faint-fg);
 }
 
+/* Build stamp pinned below the list so deployed versions are identifiable. */
+.drafts-version {
+  margin-top: auto;
+  font-size: 0.65rem;
+  color: var(--drafts-faint-fg);
+  text-align: right;
+}
+
 .drafts-list {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-}
-
-.drafts-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.25rem;
-}
-
-/* The panel-level actions row above the cards (the "New draft" button). */
-.drafts-actions--top {
-  align-items: stretch;
-}
-
-.drafts-hint {
-  font-size: 0.75rem;
-  font-style: italic;
-  color: var(--drafts-faint-fg);
-}
-
-/* Drop target for a version dragged out of a history timeline (group row or
-   scrubber sticker); only rendered while such a drag is in flight. Dropping
-   forks a new draft at that version. */
-.drafts-dropzone {
-  align-self: stretch;
-  padding: 0.75rem 0.5rem;
-  border: 1.5px dashed var(--drafts-primary);
-  border-radius: var(--drafts-radius-sm);
-  font-size: 0.75rem;
-  color: var(--drafts-primary);
-  text-align: center;
-}
-
-.drafts-dropzone[data-over] {
-  background: color-mix(in srgb, var(--drafts-primary) 12%, transparent);
-}
-
-.drafts-btn {
-  font-family: inherit;
-  font-size: 0.875rem;
-  line-height: 1.25rem;
-  padding: 0.25rem 0.75rem;
-  border: 1px solid transparent;
-  border-radius: var(--drafts-radius-sm);
-  cursor: pointer;
-}
-
-.drafts-btn:not(:disabled):hover {
-  filter: brightness(0.95);
-}
-
-.drafts-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.drafts-btn--primary {
-  background: var(--drafts-primary);
-  color: var(--drafts-primary-fg);
-}
-
-.drafts-btn--warning {
-  background: var(--drafts-warning);
-  color: var(--drafts-warning-fg);
-}
-
-.drafts-btn--ghost {
-  background: transparent;
-  border-color: var(--drafts-border);
-  color: var(--drafts-fg);
 }
 
 .draft-card {
@@ -120,13 +67,29 @@
   box-shadow: var(--drafts-shadow-sm);
   overflow: hidden;
   transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
+    border-color var(--studio-transition, 0.15s ease),
+    box-shadow var(--studio-transition, 0.15s ease);
 }
 
+/* Selection reads as a soft accent-tinted border, no extra ring — the open
+   changes list already sets the selected card apart. */
 .draft-card[data-selected] {
-  border-color: var(--drafts-primary-line);
-  box-shadow: 0 0 0 1px var(--drafts-primary-line);
+  border-color: color-mix(in oklch, var(--drafts-primary) 35%, var(--drafts-border));
+}
+
+/* While the context menu is showing, lift the card's clipping so the
+   dropdown can extend past a short card. */
+.draft-card[data-menu-open] {
+  overflow: visible;
+}
+
+/* While the menu's "Merge into …" item is hovered, the target card (the
+   draft's parent) lights up so you can see where the changes will land. */
+.draft-card[data-merge-target] {
+  border-color: var(--drafts-primary);
+  box-shadow:
+    0 0 0 1px var(--drafts-primary),
+    var(--drafts-shadow-sm);
 }
 
 .draft-card-header {
@@ -142,18 +105,17 @@
   text-align: left;
   background: transparent;
   border: none;
+  /* Round the top corners itself: the card's overflow clipping is lifted
+     while the menu is open, so the hover background can't rely on it. */
+  border-radius: calc(var(--drafts-radius) - 1px) calc(var(--drafts-radius) - 1px) 0 0;
   cursor: pointer;
   font-family: inherit;
   color: inherit;
-  transition: background 0.15s ease;
+  transition: background var(--studio-transition, 0.15s ease);
 }
 
 .draft-card-header:hover {
   background: var(--drafts-hover-bg);
-}
-
-.draft-card[data-selected] .draft-card-header {
-  background: var(--drafts-selected-bg);
 }
 
 .draft-card-title {
@@ -184,16 +146,6 @@
   outline: none;
 }
 
-.draft-badge {
-  flex-shrink: 0;
-  font-size: 0.625rem;
-  line-height: 1;
-  padding: 0.125rem 0.375rem;
-  border-radius: var(--studio-radius-round, 9999px);
-  background: var(--drafts-primary);
-  color: var(--drafts-primary-fg);
-}
-
 .draft-card-url {
   font-size: 0.75rem;
   font-family: var(--drafts-mono);
@@ -211,7 +163,10 @@
   flex-direction: column;
   gap: 0.125rem;
   border-top: 1px solid var(--drafts-border);
-  padding: 0.25rem;
+  /* Extra top headroom: the scrubber's dot (5px) and sticker (10px) overhang
+     above the head line, which sits at 0 on the latest version — without
+     this they'd crowd into the card header. */
+  padding: 0.75rem 0.25rem 0.25rem;
   max-height: 12rem;
   overflow-y: auto;
 }
@@ -222,19 +177,138 @@
   max-height: 32rem;
 }
 
-/* Card footer while the timeline is pinned: sits under the (scrollable)
-   changes area, so it stays reachable however long the history is. */
-.draft-card-return {
-  display: block;
+/* Right-aligned icon cluster in the selected card's title: the eye, fork,
+   and (on drafts) merge-up buttons. */
+.draft-card-tools {
+  flex-shrink: 0;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.125rem;
+}
+
+/* Icon actions in the card title (fork, merge): same look as the eye. */
+.draft-card-action {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  border: none;
+  border-radius: var(--studio-radius, 0.25rem);
+  background: transparent;
+  color: var(--drafts-faint-fg);
+  cursor: pointer;
+}
+
+.draft-card-action:hover:not(:disabled) {
+  background: var(--drafts-hover-bg);
+  color: var(--drafts-primary-text);
+}
+
+.draft-card-action:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* The menu trigger stays lit while its dropdown is showing. */
+.draft-card-action[data-active] {
+  background: var(--drafts-hover-bg);
+  color: var(--drafts-primary-text);
+}
+
+/* ---- The card-title context menu (⋯): trigger + dropdown ---- */
+
+/* Anchor for the absolutely positioned dropdown. */
+.draft-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+/* Invisible click-catcher behind the dropdown; closes the menu. */
+.draft-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.draft-menu-list {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  right: 0;
+  z-index: 41;
+  min-width: 13rem;
+  display: flex;
+  flex-direction: column;
+  padding: 0.25rem;
+  background: var(--drafts-bg);
+  border: 1px solid var(--drafts-border);
+  border-radius: var(--drafts-radius-sm);
+  box-shadow: var(--drafts-shadow-md);
+}
+
+.draft-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   width: 100%;
   padding: 0.375rem 0.5rem;
   border: none;
-  border-top: 1px solid var(--drafts-border);
+  border-radius: var(--drafts-radius-sm);
   background: transparent;
   font-family: inherit;
-  font-size: 0.75rem;
-  color: var(--drafts-primary);
-  text-align: center;
+  font-size: 0.8125rem;
+  text-align: left;
+  color: var(--drafts-fg);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.draft-menu-item:hover:not(:disabled) {
+  background: var(--drafts-hover-bg);
+}
+
+.draft-menu-item:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.draft-menu-item svg {
+  flex: none;
+  color: var(--drafts-muted-fg);
+}
+
+/* The destructive delete item (and its confirm step) reads in danger ink. */
+.draft-menu-item--danger {
+  color: var(--drafts-danger-text);
+}
+
+.draft-menu-item--danger:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--drafts-danger-text) 12%, transparent);
+}
+
+.draft-menu-item--danger svg {
+  color: inherit;
+}
+
+.draft-menu-separator {
+  height: 1px;
+  margin: 0.25rem;
+  background: var(--drafts-border);
+}
+
+/* Sits in the card title, left-aligned right after the name, while the
+   timeline is pinned; drops the pin and returns to the latest version. */
+.draft-card-return {
+  flex-shrink: 0;
+  padding: 0.125rem 0.5rem;
+  border: 1px solid var(--drafts-border);
+  border-radius: var(--studio-radius-round, 9999px);
+  background: transparent;
+  font-family: inherit;
+  font-size: 0.6875rem;
+  line-height: 1.2;
+  color: var(--drafts-primary-text);
   cursor: pointer;
 }
 
@@ -242,9 +316,66 @@
   background: var(--drafts-hover-bg);
 }
 
+/* The diff toggle (eye) in the card title's tool cluster. Active = diff
+   highlighting showing (the checkpoint carries baselines). */
+.draft-card-eye {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  border: none;
+  border-radius: var(--studio-radius, 0.25rem);
+  background: transparent;
+  color: var(--drafts-faint-fg);
+  cursor: pointer;
+}
+
+.draft-card-eye:hover:not([data-disabled]) {
+  background: var(--drafts-hover-bg);
+  color: var(--drafts-primary-text);
+}
+
+.draft-card-eye[data-active] {
+  color: var(--drafts-primary-text);
+}
+
+/* Kept hoverable while disabled (aria-disabled, not the attribute) so the
+   explanatory tooltip shows; clicks are ignored in the handler. */
+.draft-card-eye[data-disabled] {
+  opacity: 0.35;
+  cursor: default;
+}
+
 .draft-changes-empty {
   font-size: 0.75rem;
   color: var(--drafts-faint-fg);
+}
+
+.draft-changes-building {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0;
+  font-size: 0.75rem;
+  color: var(--drafts-faint-fg);
+}
+
+.draft-building-spinner {
+  flex: none;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  border-top-color: transparent;
+  animation: draft-building-spin 0.8s linear infinite;
+}
+
+@keyframes draft-building-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .draft-change-row {
@@ -332,15 +463,10 @@
   cursor: pointer;
 }
 
-/* Group backgrounds stay semi-transparent so the scrubber lines painted
-   underneath the rows remain visible through them. */
+/* Group backgrounds stay lightly translucent so the row highlight reads as a
+   soft wash rather than a hard block. */
 .draft-group-row:hover {
-  background: color-mix(in srgb, var(--drafts-hover-bg) 60%, transparent);
-}
-
-.draft-group-row[data-selected] {
-  background: color-mix(in srgb, var(--drafts-selected-bg) 60%, transparent);
-  box-shadow: inset 0 0 0 1px var(--drafts-primary);
+  background: color-mix(in oklch, var(--drafts-hover-bg) 60%, transparent);
 }
 
 .draft-group-spacer {
@@ -380,14 +506,32 @@
   background: var(--drafts-faint-fg);
 }
 
+/* An attributed author embeds the contact tool's avatar (a <patchwork-view
+   tool-id="contact-inline">, see AuthorAvatars); size it to the stack slot —
+   the wrapper keeps the stack geometry (overlap + z-index). */
+.draft-avatar > patchwork-view {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+
+.draft-avatar .contact-avatar {
+  width: 100%;
+  height: 100%;
+}
+
 /* ---- Scrubber: the history gutter left of the group rows ---- */
 
 /* Two-column body inside the scrollable changes area: gutter + group rows,
    with the indicator overlaid across both. Positioned so the rows'
    offsetTop measurements (used to map changes onto the gutter) are relative
-   to this box. Isolated so the indicator's negative-z lines paint above the
-   card background yet below the rows (instead of escaping behind the card). */
+   to this box, and isolated so the indicator's own stacking context stays
+   contained to this card. */
 .draft-changes-body {
+  /* One softened ink for every scrubber mark (head, baseline, connector,
+     sticker border): mixed toward the background so the lines read as
+     annotations, not hard rules. Defined here so all of them share it. */
+  --scrub-color: color-mix(in oklch, var(--drafts-fg) 55%, var(--drafts-bg));
   position: relative;
   isolation: isolate;
   display: flex;
@@ -413,23 +557,16 @@
 }
 
 /* The indicator sits at the head like a calendar's now-line: a dot in the
-   gutter plus a line across the rows (the version being looked at). The line
-   paints *under* the group rows (negative z-index; the rows' backgrounds are
-   semi-transparent), while the handles and the sticker paint above. The box
-   itself ignores pointer events so rows stay clickable; the handles
-   re-enable them. */
+   gutter plus a line across the rows (the version being looked at). It paints
+   on top of everything else in the changes area (high z-index), always drawn
+   in the foreground color. The box itself ignores pointer events so rows stay
+   clickable; the handles re-enable them. */
 .draft-scrubber-token {
-  --scrub-color: var(--studio-danger, #dc2626);
   position: absolute;
   left: 0;
   right: 0;
+  z-index: 20;
   pointer-events: none;
-}
-
-/* Nothing pinned: the indicator idles at the top (live latest), drawn
-   muted. */
-.draft-scrubber-token[data-live] {
-  --scrub-color: var(--drafts-faint-fg);
 }
 
 .draft-scrubber-dot {
@@ -449,7 +586,7 @@
   cursor: grabbing;
 }
 
-/* The visible head line, spanning into the rows but painted behind them. */
+/* The visible head line, spanning across the rows on top of them. */
 .draft-scrubber-line {
   position: absolute;
   top: 0;
@@ -459,7 +596,12 @@
   margin-top: -1px;
   border-radius: 1px;
   background: var(--scrub-color);
-  z-index: -1;
+}
+
+/* The baseline's line reads fainter than the head's, so the version being
+   viewed stays the dominant mark. */
+.draft-scrubber-token--baseline .draft-scrubber-line {
+  opacity: 0.55;
 }
 
 /* Invisible grab strip over the line's gutter end; dragging only starts
@@ -475,12 +617,44 @@
   touch-action: none;
 }
 
+/* The diff baseline handle: a hollow circle (vs the head's solid dot) in the
+   gutter, sharing the head's line style across the rows. Only rendered with
+   the eye open and a version pinned. */
+.draft-scrubber-baseline {
+  position: absolute;
+  top: -5px;
+  left: 3px;
+  width: 10px;
+  height: 10px;
+  box-sizing: border-box;
+  border: 2px solid var(--scrub-color);
+  border-radius: 50%;
+  background: var(--studio-fill, white);
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+}
+
+.draft-scrubber-baseline:active {
+  cursor: grabbing;
+}
+
+/* Joins the head and baseline handles down the gutter so the two read as one
+   diff range. Above the rows, below the handles. */
+.draft-scrubber-connector {
+  position: absolute;
+  left: 7px;
+  width: 2px;
+  z-index: 10;
+  background: var(--scrub-color);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
 /* While pinned, a chip anchored to the head line overlays the group row's
    time/summary with the exact change the line sits on. Painted above
    everything in the changes body (opaque, topmost z-index) so neither the
-   head line nor the row content shows through. Interactive as a drag handle:
-   dragging it out of the timeline forks a new draft at that version (which
-   is why it takes pointer events, shadowing the row beneath it). */
+   head line nor the row content shows through. */
 .draft-scrubber-sticker {
   position: absolute;
   top: -10px;
@@ -498,25 +672,11 @@
   font-size: 0.6875rem;
   white-space: nowrap;
   overflow: hidden;
-  pointer-events: auto;
-  cursor: grab;
-}
-
-.draft-scrubber-sticker:active {
-  cursor: grabbing;
 }
 
 .draft-sticker-time {
   flex: none;
   color: var(--drafts-muted-fg);
-}
-
-.draft-sticker-title {
-  flex: 0 1 auto;
-  min-width: 0;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .draft-sticker-spacer {
@@ -537,17 +697,10 @@
 }
 
 .draft-count--add {
-  color: var(--studio-success, #16a34a);
+  color: var(--drafts-added);
 }
 
 .draft-count--del {
-  color: var(--studio-danger, #dc2626);
+  color: var(--drafts-deleted);
 }
 
-.drafts-version {
-  padding: 0.25rem 0.5rem;
-  font-family: var(--drafts-mono);
-  font-size: 0.625rem;
-  color: var(--drafts-faint-fg);
-  text-align: right;
-}

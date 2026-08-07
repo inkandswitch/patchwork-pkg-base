@@ -5,30 +5,31 @@ import { EditorView } from "@codemirror/view";
 import { Compartment, EditorState } from "@codemirror/state";
 
 /**
- * Create a CodeMirror extension for controlling read-only mode using a CodeMirror Compartment.
- * @param readOnly Whether the editor should be read-only.
- * @returns A tuple containing the extension and a function to create an effect for reconfiguring
- the extension when the readOnly prop changes.
+ * Force the editor read-only regardless of the handle's state.
+ *
+ * This is only the override: the handle's own read-only state (e.g. a
+ * heads-pinned view, including flips when its backing is swapped in place)
+ * is tracked by the vendored `automergeReadOnly`, installed via
+ * `createAutomergeExtension`.
+ *
+ * @param force Forces read-only.
+ * @returns A tuple containing the extension and a function to create the
+ * effect that reconfigures the extension when `force` changes.
  */
-export function createReadOnlyExtension(readOnly: () => boolean) {
-  const readOnlyCompartment = new Compartment();
+export function createReadOnlyExtension(force: () => boolean) {
+  const compartment = new Compartment();
 
-  // Function to get the desired state of the read-only extensions based on the readOnly parameter
-  const readOnlyExtensions = () =>
-    readOnly()
+  const extensions = () =>
+    force()
       ? [EditorState.readOnly.of(true), EditorView.editable.of(false)]
       : [];
 
-  // Function to create an effect that reconfigures the read-only compartment
   const createReconfigureEffect = (view: EditorView) =>
     createEffect(() => {
       view.dispatch({
-        effects: readOnlyCompartment.reconfigure(readOnlyExtensions()),
+        effects: compartment.reconfigure(extensions()),
       });
     });
 
-  return [
-    readOnlyCompartment.of(readOnlyExtensions()),
-    createReconfigureEffect,
-  ] as const;
+  return [compartment.of(extensions()), createReconfigureEffect] as const;
 }
