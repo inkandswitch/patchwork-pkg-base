@@ -9,7 +9,7 @@ importers:
   .:
     dependencies:
       '@automerge/automerge-repo-react-hooks':
-        specifier: 2.6.0-subduction.46
+        specifier: ^2.6.0-subduction.46
         version: 2.6.0-subduction.46(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(supports-color@7.2.0)
       '@automerge/react':
         specifier: ^2.6.0-subduction.9
@@ -52,7 +52,7 @@ importers:
         specifier: ^3.2.5
         version: 3.2.5
       '@automerge/automerge-repo':
-        specifier: 2.6.0-subduction.46
+        specifier: ^2.6.0-subduction.46
         version: 2.6.0-subduction.46(supports-color@7.2.0)
       '@eslint/js':
         specifier: ^9.36.0
@@ -3203,7 +3203,7 @@ snapshots:
       isomorphic-ws: 5.0.0(ws@8.21.0)
       uuid: 9.0.1
       ws: 8.21.0
-      xstate: 5.30.0
+      xstate: 5.32.5
     transitivePeerDependencies:
       - bufferutil
       - supports-color
@@ -3221,7 +3221,7 @@ snapshots:
       isomorphic-ws: 5.0.0(ws@8.21.0)
       uuid: 14.0.1
       ws: 8.21.0
-      xstate: 5.30.0
+      xstate: 5.32.5
     transitivePeerDependencies:
       - bufferutil
       - supports-color
