@@ -2,6 +2,20 @@
 
 A collection of the core tools that comprise the Patchwork system.
 
+## Creating tools with an LLM
+
+To create your own Patchwork tools with an LLM, install the `writing-patchwork-tools`
+skill from [patchwork-skills](https://github.com/inkandswitch/patchwork-skills) into
+your coding agent's skills directory:
+
+```sh
+npx @inkandswitch/patchwork-skills install <dir>   # e.g. .claude/skills or .cursor/skills
+```
+
+The skill teaches the agent the whole workflow — plugin registration, the render
+contract, build & sync — and ships reference checkouts of this repo and
+patchwork-experiments.
+
 ## Engineering Notes
 
 Tools in this collection should be reliable and maintained: these are the core tools, after all.
