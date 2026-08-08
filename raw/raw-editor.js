@@ -743,10 +743,25 @@ function CodeMirrorOverlay(props) {
     view?.destroy()
   })
 
+  // Anchor coordinates are relative to the wrapper (our offset parent). Clamp
+  // after CodeMirror has laid out, so the overlay can't hang off the bottom or
+  // the right edge of the tool.
+  function place(el) {
+    requestAnimationFrame(() => {
+      let parent = el.offsetParent
+      if (!parent) return
+      let top = Math.min(props.anchorRect.top, parent.clientHeight - el.offsetHeight - 8)
+      let left = Math.min(props.anchorRect.left, parent.clientWidth - el.offsetWidth - 8)
+      el.style.top = Math.max(8, top) + "px"
+      el.style.left = Math.max(8, left) + "px"
+    })
+  }
+
   let r = props.anchorRect
   let style = `top:${r.top}px;left:${r.left}px`
 
-  return html`<div class="re-cm-overlay" style=${style}>
+  return html`<div class="re-cm-overlay" style=${style} ref=${place}
+    onKeyDown=${e => e.stopPropagation()}>
     <div class="re-cm-host" ref=${mount}></div>
     <div class="re-text-overlay-buttons">
       <span style="font-size:0.7em;opacity:0.5">Live · Esc to close</span>
@@ -839,7 +854,9 @@ function RawEditorApp(props) {
 
   // ── keyboard ──
   function onKeyDown(e) {
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+    if (!element.contains(e.target)) return
+    let inOverlay = e.target.closest?.(".re-cm-overlay")
+    if (!inOverlay && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
       e.preventDefault()
       e.shiftKey ? redo() : undo()
     }
@@ -860,9 +877,8 @@ function RawEditorApp(props) {
       let el = anchorEl || wrapperEl
       let valRect = el.getBoundingClientRect()
       let wrapRect = wrapperEl.getBoundingClientRect()
-      let st = scrollEl ? scrollEl.scrollTop : 0
       setEditing({pk: row.id, path: row.path, value: row.value, mode: "text",
-        anchorRect: {top: valRect.top - wrapRect.top + st, left: valRect.left - wrapRect.left}})
+        anchorRect: {top: valRect.top - wrapRect.top, left: valRect.left - wrapRect.left}})
     } else {
       setEditing({pk: row.id, path: row.path, value: row.value, mode: "value"})
     }
@@ -1099,15 +1115,14 @@ function RawEditorApp(props) {
         </button>
       </div>
     </div>
-    ${() => !doc() ? html`<div class="re-loading">Loading...</div>` : html`
-      <div class="re-scroll" onScroll=${onScroll} ref=${setupScroll}>
-        <div style=${() => `height:${totalH()}px;position:relative`}>
-          <div style=${() => `position:absolute;top:${slabTop()}px;left:0;right:0`}>
-            ${() => visibleRows().map(row => renderRow(row))}
-          </div>
+    ${() => !doc() ? html`<div class="re-loading">Loading...</div>` : ""}
+    <div class="re-scroll" onScroll=${onScroll} ref=${setupScroll}>
+      <div style=${() => `height:${totalH()}px;position:relative`}>
+        <div style=${() => `position:absolute;top:${slabTop()}px;left:0;right:0`}>
+          ${() => visibleRows().map(row => renderRow(row))}
         </div>
       </div>
-    `}
+    </div>
     ${() => {
       let ed = editing()
       return ed && ed.mode === "text" ? html`<${CodeMirrorOverlay}
