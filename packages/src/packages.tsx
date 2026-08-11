@@ -112,7 +112,7 @@ async function previewPackage(url: string): Promise<PackagePreview> {
   };
 }
 type OriginFilter = "all" | Origin;
-type SortKey = "name" | "registry" | "id" | "package" | "origin";
+type SortKey = "name" | "registry" | "id" | "package" | "origin" | "unlisted";
 
 interface Enriched extends RegistryEntry {
   origin: Origin;
@@ -441,6 +441,10 @@ export function Packages(props: {
           return e.pkgName;
         case "origin":
           return String(originRank(e.origin));
+        // Ascending groups the unlisted ones first — that's what you sort by
+        // this column to find.
+        case "unlisted":
+          return e.unlisted ? "0" : "1";
         default:
           return e.name;
       }
@@ -1013,6 +1017,7 @@ export function Packages(props: {
                         ["id", "Id"],
                         ["package", "Package"],
                         ["origin", "Origin"],
+                        ["unlisted", "Unlisted"],
                       ] as [SortKey, string][]
                     }
                   >
@@ -1040,10 +1045,6 @@ export function Packages(props: {
                     <tr class="pw-table__row" data-origin={e.origin}>
                       <td class="pw-table__name">
                         {e.name}
-                        <Show when={e.unlisted}>
-                          {" "}
-                          <UnlistedBadge />
-                        </Show>
                         <Show when={datatypesLabel(e.supportedDatatypes)}>
                           <span class="pw-table__supports">
                             {datatypesLabel(e.supportedDatatypes)}
@@ -1057,6 +1058,13 @@ export function Packages(props: {
                       <td class="pw-table__pkg">{e.pkgName}</td>
                       <td>
                         <OriginBadge origin={e.origin} />
+                      </td>
+                      <td class="pw-table__flag">
+                        <Show when={e.unlisted}>
+                          <span title="Hidden from new-document menus and pickers">
+                            ✓
+                          </span>
+                        </Show>
                       </td>
                       <td class="pw-table__url">
                         <div class="pw-source">

@@ -691,6 +691,10 @@
 .pw-table__id {
   white-space: nowrap;
 }
+.pw-table__flag {
+  text-align: center;
+  color: var(--pw-packages-muted);
+}
 .pw-table__url {
   max-width: 22rem;
 }
