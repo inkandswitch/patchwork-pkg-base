@@ -1420,9 +1420,9 @@ function CardMenu(props: {
 }
 
 // "Jul 24, 3:12 PM" (with the year when it isn't the current one), for the
-// fork-from-version menu item.
-function formatVersionTime(ms: number): string {
-  const date = new Date(ms);
+// fork-from-version menu item. Takes an Automerge change time (Unix SECONDS).
+function formatVersionTime(timeSeconds: number): string {
+  const date = new Date(timeSeconds * 1000);
   const sameYear = date.getFullYear() === new Date().getFullYear();
   return date.toLocaleString(undefined, {
     month: "short",
@@ -2112,18 +2112,21 @@ function DraftChangesList(props: {
     return ev.clientY - rect.top;
   };
 
-  // Begin an indicator drag: the head follows the pointer (offset by where
-  // the indicator was grabbed). Scrubbing starts only from the indicator's
-  // own handles (dot, line) — the bare gutter and the rows don't scrub.
+  // Begin an indicator drag: the head follows the pointer. Grabbing one of
+  // the indicator's own handles (dot, line) keeps the grab point under the
+  // pointer; pressing the bare gutter (`jumpToPointer`) lands the head where
+  // you pressed and scrubs from there. The rows themselves don't scrub.
   // Every position snaps to an individual change, so the indicator can rest
   // anywhere in history — between groups or in the middle of one. Dragging
   // all the way to the top (the newest change) means "return to the latest
   // version": it drops the pin rather than freezing at the newest change.
-  const beginDrag = (ev: PointerEvent) => {
+  const beginDrag = (ev: PointerEvent, jumpToPointer = false) => {
     if (!trackEl || bands().length === 0) return;
     ev.preventDefault();
     ev.stopPropagation();
-    const grabOffset = yInTrack(ev) - (tokenGeometry()?.top ?? 0);
+    const grabOffset = jumpToPointer
+      ? 0
+      : yInTrack(ev) - (tokenGeometry()?.top ?? 0);
 
     const s = props.scrubber();
     let last = s ? `${s.groupId}:${s.offset}` : null;
@@ -2140,6 +2143,8 @@ function DraftChangesList(props: {
         scrubTo(pos.group, pos.offset);
       }
     };
+    // A gutter press must land before any movement, so a plain click jumps.
+    if (jumpToPointer) onMove(ev);
 
     const target = ev.currentTarget as HTMLElement;
     target.setPointerCapture(ev.pointerId);
@@ -2257,7 +2262,12 @@ function DraftChangesList(props: {
         }
       >
         <div class="draft-changes-body">
-          <div class="draft-scrubber" ref={trackEl} />
+          <div
+            class="draft-scrubber"
+            ref={trackEl}
+            title="Click or drag anywhere in the gutter to scrub through history"
+            onPointerDown={(ev) => beginDrag(ev, true)}
+          />
           <div class="draft-changes-rows" ref={setRowsEl}>
             <For each={timeGroups()}>
               {(group) => (
