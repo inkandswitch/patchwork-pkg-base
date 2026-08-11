@@ -308,6 +308,20 @@
   color: var(--pw-packages-unknown-text);
 }
 
+.pw-packages__unlisted {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.05rem 0.4rem;
+  border-radius: var(--studio-radius-sm, 4px);
+  font-size: 0.6875rem;
+  font-weight: 550;
+  letter-spacing: 0.01em;
+  color: var(--pw-packages-muted);
+  background: transparent;
+  border: 1px dashed var(--pw-packages-border-strong);
+  white-space: nowrap;
+}
+
 .pw-packages__copy {
   font-family: var(--pw-packages-family-code);
   font-size: 0.75rem;

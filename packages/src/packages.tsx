@@ -356,6 +356,7 @@ export function Packages(props: {
           e.importUrl,
           e.pkgName,
           datatypesLabel(e.supportedDatatypes),
+          e.unlisted ? "unlisted" : "",
         ]
           .filter(Boolean)
           .join(" ")
@@ -616,6 +617,15 @@ export function Packages(props: {
     </span>
   );
 
+  const UnlistedBadge = () => (
+    <span
+      class="pw-packages__unlisted"
+      title="Hidden from new-document menus and pickers"
+    >
+      unlisted
+    </span>
+  );
+
   const Copyable = (p: {
     value: string;
     label?: string;
@@ -639,6 +649,9 @@ export function Packages(props: {
         <span class="pw-plugin__dot" data-origin={p.plugin.origin} />
         <span class="pw-plugin__name">{p.plugin.name}</span>
         <span class="pw-plugin__type">{prettyType(p.plugin.type)}</span>
+        <Show when={p.plugin.unlisted}>
+          <UnlistedBadge />
+        </Show>
         <Copyable value={p.plugin.id} class="pw-plugin__id" title="Plugin id — click to copy" />
         <Show when={dts()}>
           <span class="pw-plugin__supports">
@@ -857,6 +870,9 @@ export function Packages(props: {
                                 {prettyType(p.type!)}
                               </span>
                             </Show>
+                            <Show when={p.unlisted}>
+                              <UnlistedBadge />
+                            </Show>
                             <Show when={datatypesLabel(p.supportedDatatypes)}>
                               <span class="pw-install__plugin-supports">
                                 supports {datatypesLabel(p.supportedDatatypes)}
@@ -956,6 +972,9 @@ export function Packages(props: {
                               title="Plugin id — click to copy"
                             />
                             <OriginBadge origin={plugin.origin} />
+                            <Show when={plugin.unlisted}>
+                              <UnlistedBadge />
+                            </Show>
                             <Show when={datatypesLabel(plugin.supportedDatatypes)}>
                               <span class="pw-regitem__supports">
                                 supports {datatypesLabel(plugin.supportedDatatypes)}
@@ -1021,6 +1040,10 @@ export function Packages(props: {
                     <tr class="pw-table__row" data-origin={e.origin}>
                       <td class="pw-table__name">
                         {e.name}
+                        <Show when={e.unlisted}>
+                          {" "}
+                          <UnlistedBadge />
+                        </Show>
                         <Show when={datatypesLabel(e.supportedDatatypes)}>
                           <span class="pw-table__supports">
                             {datatypesLabel(e.supportedDatatypes)}
@@ -1143,6 +1166,9 @@ export function Packages(props: {
                                 <span class="pw-plugin__type">
                                   {prettyType(p.type!)}
                                 </span>
+                              </Show>
+                              <Show when={p.unlisted}>
+                                <UnlistedBadge />
                               </Show>
                               <Show when={datatypesLabel(p.supportedDatatypes)}>
                                 <span class="pw-install__plugin-supports">
