@@ -70,6 +70,7 @@ export interface PluginLite {
   name?: string;
   type?: string;
   supportedDatatypes?: string | string[];
+  unlisted?: boolean;
 }
 
 export interface PkgInfo {
@@ -88,6 +89,7 @@ function pickPlugins(pkg: any): PluginLite[] | null {
       name: typeof p.name === "string" ? p.name : undefined,
       type: typeof p.type === "string" ? p.type : undefined,
       supportedDatatypes: p.supportedDatatypes,
+      unlisted: p.unlisted === true ? true : undefined,
     }));
 }
 

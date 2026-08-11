@@ -15,6 +15,7 @@ export interface PluginDescriptor {
   name?: string;
   icon?: string;
   supportedDatatypes?: string | string[];
+  unlisted?: boolean;
   [key: string]: unknown;
 }
 
