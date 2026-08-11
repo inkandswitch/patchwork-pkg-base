@@ -26,7 +26,6 @@ export interface RegistryEntry {
   icon?: string;
   importUrl?: string;
   supportedDatatypes?: string | string[];
-  /** Hidden from "new document" / picker menus when true. */
   unlisted?: boolean;
   /** Whether the plugin's implementation has been load()ed yet. */
   loaded: boolean;
