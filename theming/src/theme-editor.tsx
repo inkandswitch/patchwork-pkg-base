@@ -6,6 +6,7 @@ import {EDITABLE_VARIABLES, DEFAULT_VALUES, type CustomThemeDoc} from "./theme-e
 // finer steps near the fill where the eye is most sensitive, so subtle tints
 // (active line, gutter) stay distinct. 10 starts at the fill itself. See theme.css.
 const FILL_OFFSET_RAMP: [number, number][] = [[10, 0], [20, 7], [30, 18], [40, 32], [50, 50]]
+const LINE_OFFSET_RAMP: [number, number][] = [[10, 8], [20, 18], [30, 33], [40, 52], [50, 76]]
 
 /**
  * Generates the full CSS for a custom theme, including derived offset variables.
@@ -25,8 +26,8 @@ export function generateThemeCss(name: string, mode: "light" | "dark", vars: Rec
 	}
 
 	// Derive line offsets, tinted toward the secondary (see theme.css)
-	for (const pct of [10, 20, 30, 40, 50]) {
-		css += `\t--studio-line-offset-${pct}: color-mix(in oklch, color-mix(in oklch, var(--studio-line), var(--studio-fill) ${pct}%), var(--studio-offset-tint, var(--studio-secondary)) var(--studio-offset-tint-amount, 10%));\n`
+	for (const [label, amount] of LINE_OFFSET_RAMP) {
+		css += `\t--studio-line-offset-${label}: color-mix(in oklch, color-mix(in oklch, var(--studio-line), var(--studio-fill) ${amount}%), var(--studio-offset-tint, var(--studio-secondary)) var(--studio-offset-tint-amount, 10%));\n`
 	}
 
 	css += "}\n"
@@ -105,10 +106,10 @@ export function ThemeEditorTool(handle: any, element: HTMLElement) {
 				`color-mix(in oklch, color-mix(in oklch, var(--studio-fill), var(--studio-line) ${amount}%), var(--studio-offset-tint, var(--studio-secondary)) var(--studio-offset-tint-amount, 10%))`
 			)
 		}
-		for (const pct of [10, 20, 30, 40, 50]) {
+		for (const [label, amount] of LINE_OFFSET_RAMP) {
 			root.style.setProperty(
-				`--studio-line-offset-${pct}`,
-				`color-mix(in oklch, color-mix(in oklch, var(--studio-line), var(--studio-fill) ${pct}%), var(--studio-offset-tint, var(--studio-secondary)) var(--studio-offset-tint-amount, 10%))`
+				`--studio-line-offset-${label}`,
+				`color-mix(in oklch, color-mix(in oklch, var(--studio-line), var(--studio-fill) ${amount}%), var(--studio-offset-tint, var(--studio-secondary)) var(--studio-offset-tint-amount, 10%))`
 			)
 		}
 	})
