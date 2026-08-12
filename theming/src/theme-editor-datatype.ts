@@ -64,7 +64,7 @@ export const DEFAULT_VALUES: Record<string, string> = {
 	"--sideboard-primary": "var(--studio-primary)",
 	"--sideboard-fill": "var(--studio-chrome-fill)",
 	"--studio-family-sans": '"Jost*", "Jost", system-ui, -apple-system, sans-serif',
-	"--studio-family-code": '"Fantasque Sans Mono", "IBM Plex Mono", ui-monospace, monospace',
+	"--studio-family-code": '"IBM Plex Mono", ui-monospace, monospace',
 	"--studio-family": "var(--studio-family-sans)",
 	"--studio-family-ui": "var(--studio-family-sans)",
 	"--studio-font-size": "16px",
