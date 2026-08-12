@@ -2,41 +2,61 @@ import type { StateCommand } from "@codemirror/state";
 import { EditorSelection } from "@codemirror/state";
 import type { KeyBinding } from "@codemirror/view";
 
+const MARKS = ["**", "__", "~~", "*", "_", "`"];
+
 const toggleWrap =
   (mark: string): StateCommand =>
   ({ state, dispatch }) => {
     const selection = state.changeByRange((range) => {
-      const before = state.sliceDoc(range.from - mark.length, range.from);
-      const after = state.sliceDoc(range.to, range.to + mark.length);
-      const inside =
-        state.sliceDoc(range.from, range.from + mark.length) === mark &&
-        state.sliceDoc(range.to - mark.length, range.to) === mark &&
-        range.to - range.from >= mark.length * 2;
-
-      if (before === mark && after === mark) {
-        return {
-          changes: [
-            { from: range.from - mark.length, to: range.from },
-            { from: range.to, to: range.to + mark.length },
-          ],
-          range: EditorSelection.range(
-            range.from - mark.length,
-            range.to - mark.length
-          ),
-        };
+      let from = range.from;
+      let to = range.to;
+      for (;;) {
+        const found = MARKS.find(
+          (m) =>
+            state.sliceDoc(from - m.length, from) === m &&
+            state.sliceDoc(to, to + m.length) === m
+        );
+        if (!found) break;
+        if (found === mark) {
+          return {
+            changes: [
+              { from: from - mark.length, to: from },
+              { from: to, to: to + mark.length },
+            ],
+            range: EditorSelection.range(
+              range.from - mark.length,
+              range.to - mark.length
+            ),
+          };
+        }
+        from -= found.length;
+        to += found.length;
       }
 
-      if (inside) {
-        return {
-          changes: [
-            { from: range.from, to: range.from + mark.length },
-            { from: range.to - mark.length, to: range.to },
-          ],
-          range: EditorSelection.range(
-            range.from,
-            range.to - mark.length * 2
-          ),
-        };
+      from = range.from;
+      to = range.to;
+      for (;;) {
+        const found = MARKS.find(
+          (m) =>
+            to - from >= m.length * 2 &&
+            state.sliceDoc(from, from + m.length) === m &&
+            state.sliceDoc(to - m.length, to) === m
+        );
+        if (!found) break;
+        if (found === mark) {
+          return {
+            changes: [
+              { from, to: from + mark.length },
+              { from: to - mark.length, to },
+            ],
+            range: EditorSelection.range(
+              range.from,
+              range.to - mark.length * 2
+            ),
+          };
+        }
+        from += found.length;
+        to -= found.length;
       }
 
       return {

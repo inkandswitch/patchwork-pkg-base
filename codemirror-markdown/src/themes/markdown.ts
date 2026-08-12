@@ -60,6 +60,20 @@ const markdownStyles = (style: "serif" | "sans"): Record<string, any> => ({
   ".cm-content li": {
     marginBottom: 0,
   },
+  ".cm-bullet": {
+    display: "inline-block",
+    width: "1ch",
+  },
+  ".cm-bullet::before": {
+    content: '""',
+    display: "inline-block",
+    width: "0.4em",
+    height: "0.4em",
+    borderRadius: "50%",
+    background: "currentColor",
+    color: "var(--text-editor-line)",
+    verticalAlign: "0.15em",
+  },
   ".cm-activeLine": {
     backgroundColor: "inherit",
   },
@@ -272,7 +286,6 @@ const bullets = ViewPlugin.fromClass(
 class BulletWidget extends WidgetType {
   toDOM() {
     const span = document.createElement("span");
-    span.textContent = "•";
     span.className = "cm-bullet";
     return span;
   }
