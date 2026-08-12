@@ -7,6 +7,8 @@ import { languages } from "@codemirror/language-data";
 import { searchKeymap } from "@codemirror/search";
 import { EditorView, keymap } from "@codemirror/view";
 
+import { markdownFormattingKeymap } from "./formatting.ts";
+
 /** Styles */
 import { theme } from "../themes/markdown.ts";
 
@@ -20,6 +22,7 @@ export function markdownExtensions() {
     ...theme("sans"),
     indentOnInput(),
     keymap.of([
+      ...markdownFormattingKeymap,
       ...defaultKeymap,
       ...searchKeymap,
       ...foldKeymap,

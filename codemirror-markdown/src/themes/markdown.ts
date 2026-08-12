@@ -14,7 +14,12 @@ import {
 } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 
-const MARKDOWN_STYLES: Record<string, any> = {
+const bodyFont = (style: "serif" | "sans") =>
+  style == "serif"
+    ? 'var(--text-editor-family-serif, "Merriweather", serif)'
+    : "var(--text-editor-family-sans)";
+
+const markdownStyles = (style: "serif" | "sans"): Record<string, any> => ({
   "&": {},
   "&.cm-editor.cm-focused": {
     outline: "none",
@@ -38,6 +43,7 @@ const MARKDOWN_STYLES: Record<string, any> = {
     // but doesn't feel right for most documents.
     // textAlign: "justify",
     textWrap: "pretty",
+    fontFamily: bodyFont(style),
     lineHeight: "1.5rem",
     color: "var(--text-editor-line)",
     caretColor: "var(--text-editor-cursor-fill)",
@@ -60,7 +66,7 @@ const MARKDOWN_STYLES: Record<string, any> = {
 
   ".frontmatter, .frontmatter *": {
     fontSize: "14px",
-    fontFamily: "var(--studio-family-code, monospace)",
+    fontFamily: "var(--text-editor-family-code)",
     color: "var(--syntax-comment, #666)",
     textDecoration: "none",
     fontWeight: "normal",
@@ -99,16 +105,16 @@ const MARKDOWN_STYLES: Record<string, any> = {
   ".codeblock": {
     background: "orange",
   },
-};
+});
 
 const baseHeadingStyles = {
-  fontFamily: '"Merriweather Sans", sans-serif',
+  fontFamily: "var(--text-editor-family-sans)",
   fontWeight: 400,
   textDecoration: "none",
 };
 
 const baseCodeStyles = {
-  fontFamily: "var(--studio-family-code, monospace)",
+  fontFamily: "var(--text-editor-family-code)",
   fontSize: "1em",
 };
 
@@ -117,10 +123,7 @@ const markdownSyntaxHighlighting = (style: "serif" | "sans") =>
     // this is how you ensure that codeblocks are still monospace
     {
       tag: tags.content,
-      fontFamily:
-        style == "serif"
-          ? '"Merriweather", serif'
-          : '"Merriweather Sans", sans-serif',
+      fontFamily: bodyFont(style),
     },
     {
       tag: tags.heading1,
@@ -154,9 +157,13 @@ const markdownSyntaxHighlighting = (style: "serif" | "sans") =>
       marginTop: "2rem",
     },
     {
+      tag: tags.processingInstruction,
+      color: "var(--text-editor-line-offset-40)",
+    },
+    {
       tag: tags.comment,
       color: "var(--syntax-comment, #555)",
-      fontFamily: "var(--studio-family-code, monospace)",
+      fontFamily: "var(--text-editor-family-code)",
     },
     { tag: tags.quote, fontStyle: "var(--syntax-style-quote, italic)" },
     {
@@ -175,7 +182,7 @@ const markdownSyntaxHighlighting = (style: "serif" | "sans") =>
       tag: [tags.meta],
       fontWeight: 300,
       color: "var(--syntax-meta, #999)",
-      fontFamily: '"Merriweather Sans", sans-serif',
+      fontFamily: "var(--text-editor-family-sans)",
     },
     { tag: tags.keyword, ...baseCodeStyles, color: "var(--syntax-keyword, #708)" },
     {
@@ -218,7 +225,7 @@ const markdownSyntaxHighlighting = (style: "serif" | "sans") =>
   ]);
 
 export const theme = (style: "serif" | "sans") => [
-  EditorView.theme(MARKDOWN_STYLES),
+  EditorView.theme(markdownStyles(style)),
   syntaxHighlighting(markdownSyntaxHighlighting(style)),
   bullets,
   codeblocks,
