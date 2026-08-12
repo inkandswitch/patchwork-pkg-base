@@ -1,4 +1,4 @@
-import {createSignal, createMemo, createEffect, onCleanup, untrack} from "solid-js"
+import {createSignal, createMemo, createEffect, createRoot, onCleanup, untrack} from "solid-js"
 import {render} from "solid-js/web"
 import html from "solid-js/html"
 import * as Automerge from "@automerge/automerge/slim"
@@ -1013,17 +1013,39 @@ function RawEditorApp(props) {
   }
 
   // ── render a single row ──
+  // `row` is an accessor: the row object is replaced on every doc change but
+  // its DOM is built once per id and updated in place. Everything derived from
+  // it has to stay behind a thunk.
   function renderRow(row) {
-    if (row.type === "close") {
-      return html`<div class="re-row" style=${`padding-left:${row.depth * INDENT}px;height:${ROW_H}px;line-height:${ROW_H}px`}>
+    let id = untrack(row).id
+    let indent = () => `padding-left:${row().depth * INDENT}px;height:${ROW_H}px;line-height:${ROW_H}px`
+
+    if (untrack(row).type === "close") {
+      return html`<div class="re-row" style=${indent}>
         <span class="re-toggle-spacer" />
-        <span class="re-bracket">${row.isArr ? "]" : "}"}</span>
+        <span class="re-bracket">${() => row().isArr ? "]" : "}"}</span>
       </div>`
     }
 
-    let isAmUrl = typeof row.value === "string" && isValidAutomergeUrl(row.value)
-    let isU8 = row.value instanceof Uint8Array
-    let canEdit = !row.coll && !isU8
+    // The row signal fires on every doc change, so anything that decides which
+    // DOM to build goes through a memo over a primitive — otherwise each
+    // keystroke would rebuild the subtree it guards. Leaf text and attributes
+    // can read the row directly; those effects only assign.
+    let coll = createMemo(() => row().coll)
+    let root = createMemo(() => row().root)
+    let expanded = createMemo(() => row().expanded)
+    let kind = createMemo(() => {
+      let v = row().value
+      if (v instanceof Uint8Array) return "u8"
+      if (typeof v === "string" && isValidAutomergeUrl(v)) return "url"
+      return "plain"
+    })
+    let canEdit = createMemo(() => !coll() && kind() !== "u8")
+    let mode = createMemo(() => {
+      let ed = editing()
+      return ed && ed.pk === id ? ed.mode : null
+    })
+    let addingHere = createMemo(() => adding()?.pk === id)
 
     function handleAction(e) {
       let target = e.target.closest("[data-action]")
@@ -1032,71 +1054,110 @@ function RawEditorApp(props) {
       if (action === "edit") {
         let rowEl = target.closest(".re-row")
         let anchorEl = rowEl?.querySelector(".re-value, .re-automerge-url") || target
-        startEdit(row, anchorEl)
+        startEdit(row(), anchorEl)
       }
-      else if (action === "add") startAdd(row)
-      else if (action === "copy") copyValue(row.value)
-      else if (action === "delete") deleteField(row)
+      else if (action === "add") startAdd(row())
+      else if (action === "copy") copyValue(row().value)
+      else if (action === "delete") deleteField(row())
     }
 
-    return html`<div class="re-row" style=${`padding-left:${row.depth * INDENT}px;height:${ROW_H}px;line-height:${ROW_H}px`}>
-      ${row.coll
-        ? html`<span class="re-toggle" onClick=${() => toggle(row.id)}><span class="re-icon" innerHTML=${row.expanded ? ICONS.chevronDown : ICONS.chevronRight} /></span>`
-        : html`<span class="re-toggle-spacer" />`}
-      ${() => {
-        if (row.root) return ""
-        let ed = editing()
-        if (ed && ed.pk === row.id && ed.mode === "key") {
-          return html`<${KeyEditor} initialKey=${ed.key} confirm=${confirmKeyEdit} cancel=${(_) => setEditing(null)} />`
-        }
-        return html`<span class=${row.parentIsArray ? "re-key re-key-index" : "re-key"}
-          on:dblclick=${() => { if (!row.parentIsArray) startKeyEdit(row) }}>${row.parentIsArray ? row.key : JSON.stringify(String(row.key))}</span>`
-      }}
-      ${row.root ? "" : html`<span class="re-colon">: </span>`}
-      ${() => {
-        let ed = editing()
-        if (ed && ed.pk === row.id && ed.mode === "value") {
-          return html`<${InlineEditor} value=${ed.value} confirm=${confirmEdit} cancel=${(_) => setEditing(null)} />`
-        }
-        if (row.coll) {
-          return html`<span>
-            <span class="re-bracket">${row.isArr ? "[" : "{"}</span>
-            ${() => !row.expanded ? html`<span class="re-count">${row.count} item${row.count !== 1 ? "s" : ""}</span>
-              <span class="re-bracket">${row.isArr ? "]" : "}"}</span>` : ""}
-          </span>`
-        }
-        if (isU8) {
-          return html`<${Uint8Inspector} bytes=${row.value} />`
-        }
-        if (isAmUrl) {
-          return html`<span class="re-automerge-url" onClick=${() => openAmUrl(row.value)}>${row.value}</span>`
-        }
-        return html`<span class="re-value" style=${`color:${valueColor(row.value)}`}
-          on:dblclick=${(e) => startEdit(row, e.currentTarget)}>${valueText(row.value)}</span>`
-      }}
-      <span class="re-actions-row" onClick=${handleAction}>
-        ${canEdit ? html`<span class="re-act" data-action="edit" title="Edit"
-          style=${() => editing()?.pk === row.id ? "display:none" : ""}
-          ><span class="re-icon" innerHTML=${ICONS.edit} /></span>` : ""}
-        ${row.coll ? html`<span class="re-act" data-action="add" title="Add"
-          ><span class="re-icon" innerHTML=${ICONS.plus} /></span>` : ""}
-        <span class="re-act" data-action="copy" title="Copy value"
-          ><span class="re-icon" innerHTML=${ICONS.copy} /></span>
-        ${row.root ? "" : html`<span class="re-act" data-action="delete" title="Delete"
-          ><span class="re-icon" innerHTML=${ICONS.trash} /></span>`}
-      </span>
-    </div>
-    ${() => {
-      let ad = adding()
-      return ad && ad.pk === row.id ? html`<div style=${`padding-left:${(row.depth + 1) * INDENT}px`}>
+    return html`<div class="re-row-slot">
+      <div class="re-row" style=${indent}>
+        ${() => coll()
+          ? html`<span class="re-toggle" onClick=${() => toggle(id)}><span class="re-icon" innerHTML=${() => expanded() ? ICONS.chevronDown : ICONS.chevronRight} /></span>`
+          : html`<span class="re-toggle-spacer" />`}
+        ${() => {
+          if (root()) return ""
+          if (mode() === "key") {
+            return html`<${KeyEditor} initialKey=${untrack(row).key} confirm=${confirmKeyEdit} cancel=${(_) => setEditing(null)} />`
+          }
+          return html`<span class=${() => row().parentIsArray ? "re-key re-key-index" : "re-key"}
+            on:dblclick=${() => { if (!row().parentIsArray) startKeyEdit(row()) }}
+            >${() => row().parentIsArray ? row().key : JSON.stringify(String(row().key))}</span>`
+        }}
+        ${() => root() ? "" : html`<span class="re-colon">: </span>`}
+        ${() => {
+          if (mode() === "value") {
+            return html`<${InlineEditor} value=${untrack(row).value} confirm=${confirmEdit} cancel=${(_) => setEditing(null)} />`
+          }
+          if (coll()) {
+            return html`<span>
+              <span class="re-bracket">${() => row().isArr ? "[" : "{"}</span>
+              ${() => expanded() ? "" : html`<span class="re-count">${() => `${row().count} item${row().count !== 1 ? "s" : ""}`}</span>
+                <span class="re-bracket">${() => row().isArr ? "]" : "}"}</span>`}
+            </span>`
+          }
+          if (kind() === "u8") {
+            return html`<${Uint8Inspector} bytes=${() => row().value} />`
+          }
+          if (kind() === "url") {
+            return html`<span class="re-automerge-url" onClick=${() => openAmUrl(row().value)}>${() => row().value}</span>`
+          }
+          return html`<span class="re-value" style=${() => `color:${valueColor(row().value)}`}
+            on:dblclick=${(e) => startEdit(row(), e.currentTarget)}>${() => valueText(row().value)}</span>`
+        }}
+        <span class="re-actions-row" onClick=${handleAction}>
+          ${() => canEdit() ? html`<span class="re-act" data-action="edit" title="Edit"
+            style=${() => mode() ? "display:none" : ""}
+            ><span class="re-icon" innerHTML=${ICONS.edit} /></span>` : ""}
+          ${() => coll() ? html`<span class="re-act" data-action="add" title="Add"
+            ><span class="re-icon" innerHTML=${ICONS.plus} /></span>` : ""}
+          <span class="re-act" data-action="copy" title="Copy value"
+            ><span class="re-icon" innerHTML=${ICONS.copy} /></span>
+          ${() => root() ? "" : html`<span class="re-act" data-action="delete" title="Delete"
+            ><span class="re-icon" innerHTML=${ICONS.trash} /></span>`}
+        </span>
+      </div>
+      ${() => addingHere() ? html`<div style=${() => `padding-left:${(row().depth + 1) * INDENT}px`}>
         <${AddFieldEditor}
-          isArray=${row.isArr}
-          confirm=${(k, v) => confirmAdd(row.path, row.isArr, k, v)}
+          isArray=${untrack(row).isArr}
+          confirm=${(k, v) => confirmAdd(row().path, row().isArr, k, v)}
           cancel=${(_) => setAdding(null)}
         />
-      </div>` : ""
-    }}`
+      </div>` : ""}
+    </div>`
   }
+
+  // ── keyed row list ──
+  // Solid's `For` keys by object identity and every flatten produces fresh row
+  // objects, so it would rebuild the whole window on each keystroke. Key by
+  // row id instead: each id owns one root, and a new row object for that id is
+  // pushed into its signal rather than remounting it.
+  let rowRoots = new Map()
+  onCleanup(() => {
+    for (let entry of rowRoots.values()) entry.dispose()
+    rowRoots.clear()
+  })
+
+  let renderedRows = createMemo(() => {
+    let rows = visibleRows()
+    let live = new Set()
+    let nodes = rows.map(row => {
+      live.add(row.id)
+      let entry = rowRoots.get(row.id)
+      if (entry) {
+        // Scrolling re-slices the same row objects; only a re-flatten makes new
+        // ones, and only then is there anything to push.
+        if (entry.row !== row) {
+          entry.row = row
+          entry.set(row)
+        }
+        return entry.node
+      }
+      entry = createRoot(dispose => {
+        let [get, set] = createSignal(row, {equals: false})
+        return {node: renderRow(get), row, set, dispose}
+      })
+      rowRoots.set(row.id, entry)
+      return entry.node
+    })
+    for (let [rowId, entry] of rowRoots) {
+      if (live.has(rowId)) continue
+      entry.dispose()
+      rowRoots.delete(rowId)
+    }
+    return nodes
+  })
 
   // ── main template ──
   let wrapperEl
@@ -1119,7 +1180,7 @@ function RawEditorApp(props) {
     <div class="re-scroll" onScroll=${onScroll} ref=${setupScroll}>
       <div style=${() => `height:${totalH()}px;position:relative`}>
         <div style=${() => `position:absolute;top:${slabTop()}px;left:0;right:0`}>
-          ${() => visibleRows().map(row => renderRow(row))}
+          ${renderedRows}
         </div>
       </div>
     </div>
