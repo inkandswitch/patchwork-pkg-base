@@ -138,6 +138,11 @@ export function PatchworkFrame({
       <aside class="frame-warning-banner">
         research grade software. do not share links. sharing a doc is sharing
         your account.
+        <Show when={props.isolation}>
+          {" "}
+          isolation is highly experimental. if things are broken, switch back to
+          wild west.
+        </Show>
       </aside>
       <div class="frame">
         {/*
