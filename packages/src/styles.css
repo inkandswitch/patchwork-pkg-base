@@ -322,6 +322,16 @@
   white-space: nowrap;
 }
 
+/* Unlisted plugins are hidden from pickers, so their names recede toward the
+   canvas. Falls back to --pw-packages-muted (line→fill 45%) when the theme's
+   offset ramp isn't available. */
+.pw-plugin__name.is-unlisted,
+.pw-regitem__name.is-unlisted,
+.pw-table__name.is-unlisted,
+.pw-install__plugin-name.is-unlisted {
+  color: var(--editor-line-offset-40, var(--pw-packages-muted));
+}
+
 .pw-packages__copy {
   font-family: var(--pw-packages-family-code);
   font-size: 0.75rem;
