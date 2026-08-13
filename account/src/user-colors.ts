@@ -42,6 +42,12 @@ export function getDefaultUserColor(index: number): string {
   return USER_COLOR_PALETTE[index % USER_COLOR_PALETTE.length].value;
 }
 
+export function getRandomUserColor(): string {
+  return USER_COLOR_PALETTE[
+    Math.floor(Math.random() * USER_COLOR_PALETTE.length)
+  ].value;
+}
+
 /**
  * Validate if a string is a valid HSL color
  */

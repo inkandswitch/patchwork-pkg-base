@@ -46,7 +46,7 @@ export function renderContactAvatar(
       ([id, ts]) => id !== selfName && now - ts < timeout
     );
 
-    const userColor = generateColorFromString(docUrl);
+    const userColor = handle.doc()?.color || generateColorFromString(docUrl);
 
     if (isPresent) {
       avatar.classList.add("contact-avatar--present");

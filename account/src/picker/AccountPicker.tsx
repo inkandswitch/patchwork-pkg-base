@@ -40,7 +40,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "./ui/index";
-import { USER_COLOR_PALETTE } from "../user-colors";
+import {
+  generateColorFromString,
+  getRandomUserColor,
+  USER_COLOR_PALETTE,
+} from "../user-colors";
 
 declare module "solid-js" {
   namespace JSX {
@@ -218,22 +222,29 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
   const onSignUp = async () => {
     if (!currentAccount || !signupName()) return;
 
+    let targetContactHandle = selfHandle();
     if (!currentAccount.contactUrl) {
       const repo = props.element.repo as Repo;
-      const contactHandle = await repo.create2<
+      targetContactHandle = await repo.create2<
         ContactDoc & HasPatchworkMetadata
       >({
         ["@patchwork"]: { type: "patchwork:contact" },
         type: "anonymous",
+        color: getRandomUserColor(),
       });
+      const targetContactUrl = targetContactHandle.url;
       props.handle.change((account: TinyPatchworkLayoutDoc) => {
-        account.contactUrl = contactHandle.url;
+        account.contactUrl = targetContactUrl;
       });
     }
 
-    selfHandle()?.change((contact: ContactDoc) => {
+    if (!targetContactHandle) return;
+    targetContactHandle.change((contact: ContactDoc) => {
       contact.type = "registered";
       (contact as RegisteredContactDoc).name = signupName();
+      if (!contact.color) {
+        contact.color = generateColorFromString(targetContactHandle.url);
+      }
     });
   };
 

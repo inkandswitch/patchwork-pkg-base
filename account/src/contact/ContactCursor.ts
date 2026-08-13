@@ -25,7 +25,7 @@ export function renderContactCursor(
     }
     token.style.display = "";
     const name = contact.type === "registered" ? contact.name : "Anonymous";
-    const color = generateColorFromString(handle.url);
+    const color = contact.color || generateColorFromString(handle.url);
     token.style.setProperty("--contact-cursor-color", color);
     token.textContent = name;
     token.title = name;
