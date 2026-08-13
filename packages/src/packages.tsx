@@ -651,7 +651,12 @@ export function Packages(props: {
     return (
       <li class="pw-plugin">
         <span class="pw-plugin__dot" data-origin={p.plugin.origin} />
-        <span class="pw-plugin__name">{p.plugin.name}</span>
+        <span
+          class="pw-plugin__name"
+          classList={{ "is-unlisted": p.plugin.unlisted }}
+        >
+          {p.plugin.name}
+        </span>
         <span class="pw-plugin__type">{prettyType(p.plugin.type)}</span>
         <Show when={p.plugin.unlisted}>
           <UnlistedBadge />
@@ -866,7 +871,10 @@ export function Packages(props: {
                       <For each={declared()!}>
                         {(p) => (
                           <li class="pw-install__plugin">
-                            <span class="pw-install__plugin-name">
+                            <span
+                              class="pw-install__plugin-name"
+                              classList={{ "is-unlisted": p.unlisted }}
+                            >
                               {p.name || p.id}
                             </span>
                             <Show when={p.type}>
@@ -969,7 +977,12 @@ export function Packages(props: {
                       render={(plugin) => (
                         <li class="pw-regitem" data-origin={plugin.origin}>
                           <div class="pw-regitem__main">
-                            <span class="pw-regitem__name">{plugin.name}</span>
+                            <span
+                              class="pw-regitem__name"
+                              classList={{ "is-unlisted": plugin.unlisted }}
+                            >
+                              {plugin.name}
+                            </span>
                             <Copyable
                               value={plugin.id}
                               class="pw-regitem__id"
@@ -1043,7 +1056,10 @@ export function Packages(props: {
                 <For each={tableRows()}>
                   {(e) => (
                     <tr class="pw-table__row" data-origin={e.origin}>
-                      <td class="pw-table__name">
+                      <td
+                        class="pw-table__name"
+                        classList={{ "is-unlisted": e.unlisted }}
+                      >
                         {e.name}
                         <Show when={datatypesLabel(e.supportedDatatypes)}>
                           <span class="pw-table__supports">
@@ -1167,7 +1183,10 @@ export function Packages(props: {
                         <For each={installPlugins()!}>
                           {(p) => (
                             <li class="pw-install__plugin">
-                              <span class="pw-install__plugin-name">
+                              <span
+                                class="pw-install__plugin-name"
+                                classList={{ "is-unlisted": p.unlisted }}
+                              >
                                 {p.name || p.id}
                               </span>
                               <Show when={p.type}>
