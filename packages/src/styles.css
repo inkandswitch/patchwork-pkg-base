@@ -323,13 +323,14 @@
 }
 
 /* Unlisted plugins are hidden from pickers, so their names recede toward the
-   canvas. Falls back to --pw-packages-muted (line→fill 45%) when the theme's
-   offset ramp isn't available. */
+   canvas. --pw-packages-faint is the tool's most recessed ink tier (line→fill
+   62%), derived from --editor-line/--editor-fill; the same color used for
+   "no import url" and plugin counts. */
 .pw-plugin__name.is-unlisted,
 .pw-regitem__name.is-unlisted,
 .pw-table__name.is-unlisted,
 .pw-install__plugin-name.is-unlisted {
-  color: var(--editor-line-offset-40, var(--pw-packages-muted));
+  color: var(--pw-packages-faint);
 }
 
 .pw-packages__copy {
