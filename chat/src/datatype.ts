@@ -23,3 +23,17 @@ export const ChatDatatype = {
 	getTitle,
 	setTitle,
 }
+
+// `agent-chat` — the Agent context-tool's chats. Same document shape and same
+// chat tool as `chat`; the distinct type exists so the drafts overlay can skip
+// (never fork) these docs — see lib/agent-drafts.ts.
+export const AgentChatDatatype = {
+	init(doc: ChatDoc) {
+		base(doc, "agent chat " + new Date().toLocaleString(), [
+			"computer",
+			"model",
+		])
+	},
+	getTitle,
+	setTitle,
+}

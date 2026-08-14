@@ -20,6 +20,19 @@ export const plugins = [
 		},
 	},
 	{
+		// The Agent tool's chats: identical to `chat`, but a distinct type the
+		// drafts overlay skips (never forks) — the conversation must survive a
+		// rejected draft. Unlisted: created by the Agent tool, not by hand.
+		type: "patchwork:datatype",
+		id: "agent-chat",
+		name: "Agent Chat",
+		icon: "Bot",
+		unlisted: true,
+		async load() {
+			return (await import("./datatype")).AgentChatDatatype
+		},
+	},
+	{
 		// The single chat tool. Which features are active is driven by the
 		// document's `plugins` array, not by the tool. Registered under `chat`;
 		// a `chitterchatter` alias below keeps existing pins/toolIds resolving.
@@ -27,7 +40,7 @@ export const plugins = [
 		id: "chat",
 		name: "Chat",
 		icon: "MessageSquare",
-		supportedDatatypes: ["chitterchatter", "chat", "chitter"],
+		supportedDatatypes: ["chitterchatter", "chat", "chitter", "agent-chat"],
 		async load() {
 			return (await import("./tool")).ChatTool
 		},
@@ -55,6 +68,22 @@ export const plugins = [
 		async load() {
 			const {ChatContextComponent} = await import("./context-tool")
 			return ChatContextComponent
+		},
+	},
+	{
+		// Multi-chat context-sidebar variant: like the watercooler, but with a
+		// tab bar of chats per focused document (the list lives in a separate,
+		// never-forked `agent-chats` index doc the focused doc points at), and
+		// the computer's edits land on a per-chat draft with an accept/reject
+		// review embed in the conversation.
+		type: "patchwork:component",
+		id: "agent",
+		name: "Agent",
+		icon: "Bot",
+		tags: ["context-tool"],
+		async load() {
+			const {AgentContextComponent} = await import("./agent-tool")
+			return AgentContextComponent
 		},
 	},
 	// ── Host-registrable feature plugins ────────────────────────────────────────

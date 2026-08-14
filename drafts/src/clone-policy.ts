@@ -29,6 +29,13 @@ export const SKIPPED_DATATYPES: ReadonlySet<string> = new Set([
   "change-group",
   // Legacy marker retained while existing ChangeGroupDocs are migrated.
   "change-group-cache",
+  // The Agent context-tool's chats (and their message docs) plus its per-doc
+  // chat-list index: the conversation drives draft reviews (accept/reject
+  // embeds), so it must stay on the real docs — a rejected draft must not
+  // take the chat history or the tab list with it. Regular `chat` docs keep
+  // their draft-scoped semantics. See chat/src/lib/agent-drafts.ts.
+  "agent-chat",
+  "agent-chats",
 ]);
 
 // Reduce a url to its bare document identity by stripping any path/heads

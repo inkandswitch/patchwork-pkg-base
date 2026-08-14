@@ -17,22 +17,15 @@ import type {Repo, DocHandle, AutomergeUrl} from "@automerge/automerge-repo/slim
 import {ChatRoot} from "./components/ChatRoot"
 import {selectedDocUrl, toolStorageUrl} from "./lib/selected-doc"
 import {setRepo} from "./lib/repo"
+import {
+	DEFAULT_CONTEXT_CHAT_PLUGINS,
+	isOldDefaultContextChatPlugins,
+	ensureDefaultPlugins,
+	rememberPluginsAsDefault,
+	createContextChat,
+	type ToolStorageDoc,
+} from "./lib/context-chat"
 import type {ChatDoc} from "./types"
-
-interface ToolStorageDoc {
-	defaultPlugins?: string[]
-}
-
-const DEFAULT_CHITCHAT_PLUGINS = ["computer", "model"]
-const OLD_DEFAULT_CHITCHAT_PLUGINS = ["computer"]
-
-function isOldDefaultChitchatPlugins(plugins: unknown): plugins is string[] {
-	return (
-		Array.isArray(plugins) &&
-		plugins.length === OLD_DEFAULT_CHITCHAT_PLUGINS.length &&
-		plugins.every((p, i) => p === OLD_DEFAULT_CHITCHAT_PLUGINS[i])
-	)
-}
 
 /** Find (or create + link) the chat doc stored on the focused document, seeding a
  * new one's plugin set from the remembered default. */
@@ -48,8 +41,8 @@ async function ensureChitchat(
 		chat.change((d: any) => {
 			const isMissingPlugins = !Array.isArray(d.plugins)
 			if (isMissingPlugins) d.plugins = defaultPlugins.slice()
-			else if (isOldDefaultChitchatPlugins(d.plugins)) {
-				d.plugins = DEFAULT_CHITCHAT_PLUGINS.slice()
+			else if (isOldDefaultContextChatPlugins(d.plugins)) {
+				d.plugins = DEFAULT_CONTEXT_CHAT_PLUGINS.slice()
 			}
 			if (isMissingPlugins && d["@patchwork"]?.type === "chitterchatter") {
 				d["@patchwork"].type = "chat"
@@ -59,26 +52,16 @@ async function ensureChitchat(
 	}
 
 	const targetTitle = (target.doc() as any)?.title
-	const created = await repo.create2({
-		title: "chat: " + (targetTitle || "document"),
-		messages: [],
-		docs: [],
-		// Seed the plugin set from the user's remembered chitchat default (starts as
-		// just the computer). The computer is auto-invited below.
-		plugins: defaultPlugins.slice(),
-		"@patchwork": {type: "chat"},
-		// Auto-invite the computer (ChatRoot's onMount claims the host when
-		// hasComputer is set) — but it stays off nosey, so it only replies when
-		// @mentioned or replied to.
-		hasComputer: true,
-	} as any)
-	// Resolve through find so a draft forks the new doc into this draft's clones.
-	const chat = await repo.find(created.url)
+	const chat = await createContextChat(
+		repo,
+		"chat: " + (targetTitle || "document"),
+		defaultPlugins
+	)
 	target.change((d: any) => {
 		if (!d["@patchwork"]) d["@patchwork"] = {}
 		d["@patchwork"].chitchat = chat.url
 	})
-	return chat as DocHandle<ChatDoc>
+	return chat
 }
 
 function ContextHost(props: {element: HTMLElement; repo: Repo}) {
@@ -100,23 +83,13 @@ function ContextHost(props: {element: HTMLElement; repo: Repo}) {
 			.find(url)
 			.then((h) => {
 				const storage = h as DocHandle<ToolStorageDoc>
-				if (!Array.isArray(storage.doc()?.defaultPlugins)) {
-					storage.change((d) => {
-						if (!Array.isArray(d.defaultPlugins))
-							d.defaultPlugins = DEFAULT_CHITCHAT_PLUGINS.slice()
-					})
-				} else if (isOldDefaultChitchatPlugins(storage.doc()?.defaultPlugins)) {
-					storage.change((d) => {
-						if (isOldDefaultChitchatPlugins(d.defaultPlugins))
-							d.defaultPlugins = DEFAULT_CHITCHAT_PLUGINS.slice()
-					})
-				}
+				ensureDefaultPlugins(storage)
 				setStorageHandle(storage)
 			})
 			.catch((e) => console.warn("[chitchat] tool-storage:", e))
 	})
 	const defaultPlugins = () =>
-		storageHandle()?.doc()?.defaultPlugins ?? DEFAULT_CHITCHAT_PLUGINS
+		storageHandle()?.doc()?.defaultPlugins ?? DEFAULT_CONTEXT_CHAT_PLUGINS
 
 	createEffect(() => {
 		const url = targetUrl()
@@ -142,20 +115,7 @@ function ContextHost(props: {element: HTMLElement; repo: Repo}) {
 		const chat = chatHandle()
 		const storage = storageHandle()
 		if (!chat || !storage) return
-		const write = () => {
-			const plugins = (chat.doc() as any)?.plugins
-			if (!Array.isArray(plugins)) return
-			const current = storage.doc()?.defaultPlugins
-			if (
-				Array.isArray(current) &&
-				current.length === plugins.length &&
-				current.every((p, i) => p === plugins[i])
-			)
-				return
-			storage.change((d) => {
-				d.defaultPlugins = plugins.slice()
-			})
-		}
+		const write = () => rememberPluginsAsDefault(chat, storage)
 		write()
 		chat.on("change", write)
 		onCleanup(() => chat.off("change", write))

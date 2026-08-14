@@ -15,6 +15,7 @@ import {syntaxPlugins} from "./syntax"
 import {slashPlugins} from "./slash-plugins"
 import {messageActionPlugins} from "./message-actions"
 import {emojiPackPlugins} from "./emoji-packs"
+import {listSkills} from "./llm-skills"
 
 // Every plugin type this tool tiers over, paired with its built-in declarations.
 export const BUILTIN_PLUGIN_TYPES: {type: string; builtins: any[]}[] = [
@@ -63,6 +64,10 @@ export interface CatalogEntry {
 }
 
 // One entry per known plugin id (deduped), for the `/plugin` panel.
+// llm:skill entries are catalogued here (so the panel and `/plugin load` can
+// see them) but deliberately NOT part of BUILTIN_PLUGIN_TYPES: skills must
+// never ride the "all" selector (allFullIds), only explicit enabling or a
+// focused-doc datatype match activates one.
 export function pluginCatalog(): CatalogEntry[] {
 	const out: CatalogEntry[] = []
 	const seen = new Set<string>()
@@ -77,6 +82,11 @@ export function pluginCatalog(): CatalogEntry[] {
 				tier: p.tier === "core" ? "core" : "full",
 			})
 		}
+	}
+	for (const s of listSkills()) {
+		if (seen.has(s.id)) continue
+		seen.add(s.id)
+		out.push({id: s.id, type: "llm:skill", name: s.name || s.id, tier: "full"})
 	}
 	return out
 }

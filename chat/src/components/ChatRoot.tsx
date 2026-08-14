@@ -32,6 +32,15 @@ import {
 	parseToolCalls as llmParseToolCalls,
 } from "@chee/patchwork-llm"
 import {generateId} from "../lib/helpers"
+import {agentMessageMetadata} from "../lib/agent-drafts"
+import {
+	listSkills,
+	resolveActiveSkills,
+	skillsPromptSection,
+	skillToolSchemas,
+	runSkillTool,
+	type ActiveSkill,
+} from "../lib/llm-skills"
 import {automergeUrlToServiceWorkerUrl} from "@inkandswitch/patchwork-filesystem"
 import {transcribeVoiceNote} from "../lib/transcription"
 import {reloadPreviewIframe} from "../lib/preview-frame"
@@ -46,6 +55,20 @@ export function ChatRoot(props: {
 	// currently-selected doc the computer reads/writes.
 	mode?: "chat" | "context"
 	targetDocUrl?: () => AutomergeUrl | undefined
+	// Agent-draft lifecycle (the Agent tool's edits-land-on-a-draft flow).
+	// onRunStart runs before a computer response begins — the wrapper ensures
+	// the chat's draft exists. resolveDoc aims every run-time doc lookup at
+	// that draft's clones DIRECTLY (independent of the global checkout, so tab
+	// switches and parallel runs in other chats can't redirect in-flight
+	// edits). onRunEnd fires when the run finishes, with whether any
+	// doc-editing tool actually ran (true → the wrapper posts the
+	// accept/reject review embed) and, when edits happened, an LLM-written
+	// one-line summary of them (used as the draft's name).
+	agentDraft?: {
+		onRunStart: () => Promise<void>
+		onRunEnd: (edited: boolean, summary?: string) => void | Promise<void>
+		resolveDoc: (url: string) => Promise<any>
+	}
 	// Optional selector OVERRIDE (the embeddable component's `features=` attr).
 	// When absent, the active feature set is driven by the document's `plugins`
 	// array — the same source ChatProvider reads.
@@ -208,6 +231,60 @@ export function ChatRoot(props: {
 		createSignal<AbortController | null>(null)
 	const computerRespondedToIds = new Set<string>()
 	let computerResponding = false
+	// Did a doc-editing tool run (successfully) during the current computer
+	// response? Drives the agent-draft review embed (props.agentDraft.onRunEnd).
+	// `editLogThisRun` keeps a terse record of those calls so the draft-name
+	// summary can be generated even when the tool exchange never made it into
+	// the conversation messages (e.g. the run ended on a question).
+	let editedDocsThisRun = false
+	let editLogThisRun: string[] = []
+	const EDIT_TOOLS = new Set(["automerge_op", "replace_text", "create_doc"])
+	function noteToolRun(name: string, args: any, result: string) {
+		if (EDIT_TOOLS.has(name) && !/^error/i.test(result.trim())) {
+			editedDocsThisRun = true
+			try {
+				editLogThisRun.push(name + " " + JSON.stringify(args).slice(0, 300))
+			} catch {
+				editLogThisRun.push(name)
+			}
+		}
+	}
+
+	// A one-line title for the agent draft: one cheap follow-up completion (no
+	// tools) asking the model to sum up the edits it just made. Undefined on
+	// any failure — the draft then keeps its previous name.
+	async function generateDraftSummary(
+		messages: any[],
+		signal: AbortSignal
+	): Promise<string | undefined> {
+		try {
+			const gen = await generateLLM(
+				[
+					...messages,
+					{
+						role: "user",
+						content:
+							"[System] You just edited the document with these tool calls:\n" +
+							editLogThisRun.join("\n").slice(0, 2000) +
+							"\n\nReply with ONLY a short title of 3\u20138 words describing " +
+							"those changes (no quotes, no trailing period). It names the " +
+							"draft that holds them.",
+					},
+				],
+				() => {},
+				signal
+			)
+			const line = (gen.text || "")
+				.replace(/^\[Computer\]\s*/i, "")
+				.trim()
+				.split("\n")[0]
+				.replace(/^["'\u201C\u201D\s]+|["'\u201C\u201D\s.]+$/g, "")
+			return line ? line.slice(0, 80) : undefined
+		} catch (e) {
+			console.warn("[Computer] draft summary failed:", e)
+			return undefined
+		}
+	}
 	let computerListenerActive = false
 	let computerListenerCleanup: (() => void) | null = null
 	// Single-host: only one tab should respond as Computer
@@ -671,9 +748,22 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 			}))
 	}
 
-	// The tool set for whichever mode we're in, plus any self-defined tools.
+	// The llm:skill packs active for the CURRENT run (focused-doc datatype
+	// matches + ids enabled on the chat), resolved at the start of each
+	// computer response. Drives the "## Skills" prompt section, extra skill
+	// tools, and their dispatch.
+	let skillsForRun: ActiveSkill[] = []
+
+	// The tool set for whichever mode we're in, plus any self-defined tools,
+	// plus tools contributed by the run's active skills (built-ins win on a
+	// name conflict).
 	function activeTools() {
-		return [...(isContext() ? CONTEXT_TOOLS : COMPUTER_TOOLS), ...customTools()]
+		const base = [
+			...(isContext() ? CONTEXT_TOOLS : COMPUTER_TOOLS),
+			...customTools(),
+		]
+		const taken = new Set(base.map((t) => t.name))
+		return [...base, ...skillToolSchemas(skillsForRun, taken)]
 	}
 
 	// Render a structured tool call as the text shown in its card — mirrors the old
@@ -1112,6 +1202,14 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 	// tool_calls or parsed <tool_call> JSON). Args may already be typed (objects/
 	// numbers) or strings, so each branch is tolerant of both. Returns a result
 	// string fed back to the model.
+	// Doc resolution for the RUN path (context snapshot + read/edit tools): an
+	// agent-draft run aims at its chat's own draft clones; otherwise the
+	// overlay repo decides (the checked-out draft, or main).
+	function resolveRunDoc(url: string): Promise<any> {
+		if (props.agentDraft) return props.agentDraft.resolveDoc(url)
+		return ((props.element as any).repo as any).find(url)
+	}
+
 	async function runToolByName(toolName: string, rawArgs: any): Promise<string> {
 		const args = rawArgs || {}
 		const repo = (props.element as any).repo
@@ -1121,7 +1219,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 			if (toolName === "read_doc") {
 				const url = args.url || (isContext() ? focusedUrl() : undefined)
 				if (!url) return "Error: no url and no focused document."
-				const h = await repo.find(url)
+				const h = await resolveRunDoc(url)
 				const doc = h.doc()
 				if (isContext()) {
 					// Context mode also returns heads so a follow-up automerge_op can
@@ -1137,7 +1235,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 			} else if (toolName === "automerge_op") {
 				const url = args.url || focusedUrl()
 				if (!url) return "Error: no url and no focused document."
-				const h = await repo.find(url)
+				const h = await resolveRunDoc(url)
 				// path / range / value may arrive typed (native function calling) or as
 				// JSON strings (local <tool_call> convention) — be tolerant of both.
 				const parseMaybe = (v: any) => {
@@ -1216,7 +1314,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 						restrict = undefined
 					}
 				}
-				const h = await repo.find(url)
+				const h = await resolveRunDoc(url)
 				const matches = findTextMatches(h.doc(), query, restrict)
 				if (!matches.length) {
 					return (
@@ -1252,7 +1350,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 						restrict = undefined
 					}
 				}
-				const h = await repo.find(url)
+				const h = await resolveRunDoc(url)
 				const matches = findTextMatches(h.doc(), find, restrict)
 				if (!matches.length) {
 					return (
@@ -1613,6 +1711,17 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 					"`. It becomes available on your NEXT run (not this turn)."
 				)
 			}
+			// A tool contributed by one of the run's active llm:skills — dispatch
+			// to the skill's own runTool.
+			const skillResult = await runSkillTool(skillsForRun, toolName, args, {
+				repo,
+				handle: props.handle,
+				element: props.element,
+				focusedUrl: focusedUrl(),
+				applyAutomerge,
+			})
+			if (skillResult !== null) return skillResult
+
 			// A tool the computer defined for itself via define_tool — run its JS.
 			const custom = (
 				(props.handle.doc() as any)?.computerCustomTools || []
@@ -1906,7 +2015,9 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 			const turl = props.targetDocUrl?.()
 			if (turl) {
 				try {
-					const th = await repo.find(turl)
+					// Through resolveRunDoc so an agent-draft run snapshots ITS
+					// draft's clone (with any prior-run edits), not main.
+					const th = await resolveRunDoc(turl)
 					const td = th.doc() as any
 					let heads: any = []
 					try {
@@ -1999,6 +2110,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 			timestamp: Date.now(),
 			isComputer: true,
 			font: "monospace",
+			...agentMessageMetadata(props.handle.doc()),
 		}
 		if (replyTo) msgData.replyTo = replyTo
 		if (opts?.embeds) msgData.embeds = opts.embeds
@@ -2424,6 +2536,21 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 		const repo = (props.element as any).repo
 		if (!repo || computerResponding) return
 		computerResponding = true
+		editedDocsThisRun = false
+		editLogThisRun = []
+		let agentDraftSummary: string | undefined
+
+		// Agent-draft flow: ensure this chat's draft exists BEFORE anything
+		// touches the focused doc — resolveRunDoc then aims every run-time
+		// lookup at that draft's clones, independent of what's checked out.
+		// On failure the run proceeds; edits land on the plain docs.
+		if (props.agentDraft) {
+			try {
+				await props.agentDraft.onRunStart()
+			} catch (e) {
+				console.warn("[Computer] agent draft setup failed:", e)
+			}
+		}
 
 		const abortController = new AbortController()
 		setComputerAbort(abortController)
@@ -2447,11 +2574,36 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 		let tokenThrottleTimer: any = null
 
 		try {
-			const context = await assembleContext()
-			resetInactivityTimer()
 			const isMomputer = (userMsg.text || "")
 				.toLowerCase()
 				.includes("@momputer")
+
+			// Which llm:skill packs apply to this run: skills whose datatypes
+			// match the focused document, skills enabled on the chat by id, and
+			// @momputer forcing its persona skill. Resolved before the prompt so
+			// their instructions/tools are in place for every round.
+			skillsForRun = []
+			try {
+				let focusedType: string | undefined
+				const turl = props.targetDocUrl?.()
+				if (turl) {
+					try {
+						focusedType = ((await repo.find(turl)).doc() as any)?.[
+							"@patchwork"
+						]?.type
+					} catch {}
+				}
+				skillsForRun = await resolveActiveSkills({
+					focusedType,
+					enabledIds: activeFeatures(),
+					forcedIds: isMomputer ? ["momputer"] : undefined,
+				})
+			} catch (e) {
+				console.warn("[Computer] skill resolution failed:", e)
+			}
+
+			const context = await assembleContext()
+			resetInactivityTimer()
 			// Generate a tool name for this response — the LLM uses it if it builds a tool
 			const suggestedToolName = randomToolName()
 			// The built-in COMPUTER_SYSTEM_PROMPT is the *default* — but if the user
@@ -2466,10 +2618,10 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 				'## Your Tool ID\nIf you build a patchwork tool in this response, use `"' +
 				suggestedToolName +
 				'"` as the id for both the datatype and tool plugins, and in supportedDatatypes.'
-			if (isMomputer) {
-				systemPrompt +=
-					'\n\n## Special Mode: Momputer\nThe user addressed you as @momputer. Be warm, nurturing, and motherly in your response. Use gentle encouragement, express care and concern, and be supportive like a loving mom would be. You can use pet names like "sweetie", "honey", "dear", etc. Still be helpful and knowledgeable, but with a cozy maternal energy.'
-			}
+			// Skills: active packs' full instructions plus a one-line index of the
+			// inactive ones. (The momputer persona rides this too, forced above.)
+			const skillsSection = skillsPromptSection(skillsForRun, listSkills())
+			if (skillsSection) systemPrompt += "\n\n" + skillsSection
 			const messages = [...context, {role: "user", content: userMsg.text}]
 
 			// Create streaming message — use `let` so we can reassign
@@ -2482,6 +2634,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 				font: isMomputer ? "Comic Sans MS, cursive" : "monospace",
 				streaming: true,
 				replyTo: userMsg.id,
+				...agentMessageMetadata(props.handle.doc()),
 			}
 			currentStreamHandle = await repo.create2(streamMsgData)
 			// Resolve through repo.find so that on a draft our streaming writes
@@ -2522,7 +2675,11 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 				setLlmStatus(status.replace(/think(ing)?/gi, "computing"))
 			}
 
-			const MAX_TOOL_ROUNDS = 5
+			// Generous: document editing legitimately takes many rounds (e.g. a
+			// CatColab model is two ops per cell plus reads and verification).
+			// Runaway loops are still bounded by this, the inactivity timeout,
+			// and the user's stop button.
+			const MAX_TOOL_ROUNDS = 20
 			let madeChanges = false
 			let completedResponse = false
 			for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -2633,7 +2790,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 						// display-only — it's already been rendered above).
 						for (const c of calls) {
 							if (c.name === "ask_user") continue
-							await runToolByName(c.name, c.args)
+							noteToolRun(c.name, c.args, await runToolByName(c.name, c.args))
 						}
 						completedResponse = true
 						break
@@ -2643,6 +2800,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 					let toolResults = ""
 					for (const c of calls) {
 						const result = await runToolByName(c.name, c.args)
+						noteToolRun(c.name, c.args, result)
 						resetInactivityTimer()
 						toolResults +=
 							"\n[Tool result for " + c.name + "]\n" + result + "\n"
@@ -2733,6 +2891,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 							isComputer: true,
 							font: "monospace",
 							streaming: true,
+							...agentMessageMetadata(props.handle.doc()),
 						}
 						currentStreamHandle = await repo.create2(nextMsgData)
 						// See note above: resolve via repo.find so streaming writes
@@ -2792,6 +2951,19 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 					d.streaming = false
 				})
 			}
+
+			// Agent-draft flow: name the draft after what this run changed.
+			if (
+				props.agentDraft &&
+				editedDocsThisRun &&
+				!abortController.signal.aborted
+			) {
+				setLlmStatus("naming the draft")
+				agentDraftSummary = await generateDraftSummary(
+					messages,
+					abortController.signal
+				)
+			}
 		} catch (err: any) {
 			if (currentStreamHandle) {
 				try {
@@ -2823,6 +2995,16 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 			}
 			computerResponding = false
 			setLlmStatus("")
+			// Agent-draft flow: the run is over — the wrapper renames the draft
+			// after the summary and posts the accept/reject review embed when the
+			// run actually edited docs.
+			if (props.agentDraft) {
+				Promise.resolve(
+					props.agentDraft.onRunEnd(editedDocsThisRun, agentDraftSummary)
+				).catch((e) =>
+					console.warn("[Computer] agent draft finish failed:", e)
+				)
+			}
 		}
 	}
 
