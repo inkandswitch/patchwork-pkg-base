@@ -1205,6 +1205,14 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 	// Doc resolution for the RUN path (context snapshot + read/edit tools): an
 	// agent-draft run aims at its chat's own draft clones; otherwise the
 	// overlay repo decides (the checked-out draft, or main).
+	//
+	// ⚠ The clone is an INTERNAL detail — the model must only ever see a
+	// document's OWN url. Every tool result reports the url the caller aimed at
+	// (`args.url` or the focused doc), never the resolved handle's: a clone url
+	// handed back comes straight in again as the next call's `url`, and
+	// resolving a clone url forks the clone AGAIN, scattering the run's edits
+	// across copies of the document that nothing renders and that accept won't
+	// merge.
 	function resolveRunDoc(url: string): Promise<any> {
 		if (props.agentDraft) return props.agentDraft.resolveDoc(url)
 		return ((props.element as any).repo as any).find(url)
@@ -1224,12 +1232,15 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 				if (isContext()) {
 					// Context mode also returns heads so a follow-up automerge_op can
 					// back-date its change (changeAt). handle.heads() is the UrlHeads
-					// that changeAt() expects.
+					// that changeAt() expects. The heads are the resolved handle's
+					// (a draft clone's, under an agent draft), which is what we want:
+					// an op on this same `url` resolves that same handle. The url
+					// reported stays the document's own — see resolveRunDoc.
 					let heads: any = []
 					try {
 						heads = h.heads()
 					} catch {}
-					return JSON.stringify({url: h.url, heads, doc}, null, 2)
+					return JSON.stringify({url, heads, doc}, null, 2)
 				}
 				return JSON.stringify(doc, null, 2) || "null"
 			} else if (toolName === "automerge_op") {
@@ -1294,7 +1305,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 					preview = preview.slice(0, 4000) + "\n…(truncated)"
 				return (
 					"OK — applied op to " +
-					h.url +
+					url +
 					" at path " +
 					JSON.stringify(path) +
 					".\nValue at path now:\n" +

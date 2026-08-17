@@ -389,7 +389,12 @@ function canonicalUrl(url: AutomergeUrl): AutomergeUrl {
  *
  * This is what lets every chat tab's agent write to ITS OWN draft while the
  * user switches tabs or browses other branches: run-time reads/writes go
- * through here, and the checkout stays a purely visual concern. */
+ * through here, and the checkout stays a purely visual concern.
+ *
+ * ⚠ Callers must keep the returned handle's url to themselves: a clone url fed
+ * back in as `url` is not recognised as a clone (`clones` is keyed by the
+ * ORIGINALS), so it gets cloned in turn. Report the original url instead — see
+ * resolveRunDoc in components/ChatRoot.tsx. */
 export async function resolveInDraft(
 	repo: Repo,
 	draftUrl: AutomergeUrl,
