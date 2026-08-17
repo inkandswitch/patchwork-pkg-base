@@ -333,7 +333,19 @@ export const DraftStateProvider = (element: HTMLElement) => {
         );
         if (disposed) return;
         orderedDraftUrls = allDrafts;
-        draftRouter?.updateAvailableDrafts(allDrafts);
+        // The router only gets OPEN drafts. A merged draft stays linked in the
+        // tree (unlike a rejected one, which is unlinked), so without this
+        // filter it stays selectable forever: a stale `draft=` hash param —
+        // e.g. restored by a host router rewriting the full hash right after
+        // an accept — would re-check-out the merged draft, fighting whoever
+        // reset to main (the post-accept flicker). Filtered here, the stale
+        // param parks as a forever-pending deep link and reconcileSelection
+        // actively resets any checkout still pointing at a merged draft.
+        draftRouter?.updateAvailableDrafts(
+          allDrafts.filter(
+            (u) => trackedDrafts.get(u)?.doc()?.mergedAt === undefined
+          )
+        );
       } catch (err) {
         console.error("[drafts] rewalk failed:", err);
       } finally {
