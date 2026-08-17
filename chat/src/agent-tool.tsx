@@ -43,6 +43,8 @@ import {CHAT_VERSION} from "./version"
 import {selectedDocUrl, toolStorageUrl} from "./lib/selected-doc"
 import {setRepo} from "./lib/repo"
 import {generateId} from "./lib/helpers"
+import {copyChatTranscript} from "./lib/transcript"
+import {SVG_ICONS} from "./lib/svg-icons"
 import {
 	DEFAULT_CONTEXT_CHAT_PLUGINS,
 	ensureDefaultPlugins,
@@ -223,8 +225,14 @@ function AgentHost(props: {element: HTMLElement; repo: Repo}) {
 						onClick={addChat}>
 						+
 					</button>
-					<span class="agent-version" title="Chat bundle version">
-						{CHAT_VERSION}
+					<span class="agent-tabs-end">
+						<CopyTranscriptButton
+							repo={props.repo}
+							url={effectiveActiveUrl()}
+						/>
+						<span class="agent-version" title="Chat bundle version">
+							{CHAT_VERSION}
+						</span>
 					</span>
 				</div>
 				<div class="agent-panes">
@@ -545,5 +553,39 @@ function ChatTab(props: {
 				{title()}
 			</button>
 		</Show>
+	)
+}
+
+/** Puts the active chat's whole conversation on the clipboard as markdown —
+ * the way to hand this chat's history to another LLM. */
+function CopyTranscriptButton(props: {repo: Repo; url: AutomergeUrl | undefined}) {
+	const [state, setState] = createSignal<"idle" | "copied" | "failed">("idle")
+	let resetTimer: ReturnType<typeof setTimeout> | undefined
+	onCleanup(() => clearTimeout(resetTimer))
+
+	const copy = async () => {
+		const url = props.url
+		if (!url) return
+		try {
+			await copyChatTranscript(props.repo, url)
+			setState("copied")
+		} catch (e) {
+			console.warn("[agent] copy transcript:", e)
+			setState("failed")
+		}
+		clearTimeout(resetTimer)
+		resetTimer = setTimeout(() => setState("idle"), 1600)
+	}
+
+	return (
+		<button
+			class="agent-tab-copy"
+			data-state={state() === "idle" ? undefined : state()}
+			disabled={!props.url}
+			title="Copy this chat's history as markdown"
+			aria-label="Copy chat history"
+			onClick={copy}
+			innerHTML={state() === "copied" ? SVG_ICONS.check : SVG_ICONS.copy}
+		/>
 	)
 }

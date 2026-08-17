@@ -30,6 +30,7 @@
       --text-secondary: var(--studio-line-offset-30, oklch(1 0 0 / 0.6));
       --text-muted:     var(--studio-line-offset-50, oklch(1 0 0 / 0.4));
       --link:           var(--studio-link-text, var(--studio-link, oklch(0.75 0.15 250)));
+      --danger:         var(--studio-danger-text, var(--studio-danger, oklch(0.65 0.2 25)));
     }
 
     /* ---- Reset ---- */
@@ -1372,9 +1373,22 @@
       border-radius:6px 6px 0 0; flex-shrink:0;
     }
     .agent-tab-new:hover { background:var(--bg-hover); color:var(--text-primary); }
+    .agent-tabs-end {
+      margin-left:auto; align-self:center; flex-shrink:0;
+      display:flex; align-items:center; gap:2px;
+    }
+    .agent-tab-copy {
+      display:flex; align-items:center; background:none; border:none;
+      color:var(--text-muted); cursor:pointer; padding:4px 5px;
+      border-radius:5px; line-height:0;
+    }
+    .agent-tab-copy:hover:not(:disabled) { background:var(--bg-hover); color:var(--text-primary); }
+    .agent-tab-copy:disabled { opacity:0.4; cursor:default; }
+    .agent-tab-copy[data-state="copied"] { color:var(--accent-text); }
+    .agent-tab-copy[data-state="failed"] { color:var(--danger); }
     /* Deploy marker: tells at a glance whether the synced bundle is current. */
     .agent-version {
-      margin-left:auto; align-self:center; flex-shrink:0;
+      align-self:center; flex-shrink:0;
       font-size:10px; color:var(--text-muted); padding:0 6px 4px;
       user-select:none; white-space:nowrap;
     }
