@@ -32,6 +32,8 @@ import {
 import {
   useAutomergeStore,
   useAutomergePresence,
+  useClearHistoryOnScopeSwap,
+  useIsHandleReadOnly,
 } from "./lith/useAutomergeStore.ts";
 import type { TLDrawDoc } from "./datatype.ts";
 import type { DocLink } from "@inkandswitch/patchwork-filesystem";
@@ -159,7 +161,7 @@ export function TldrawTool({
   element: HTMLElement;
 }) {
   const handle = useDocHandle<TLDrawDoc>(docUrl, { suspense: true });
-  const readOnly = handle.isReadOnly();
+  const readOnly = useIsHandleReadOnly(handle);
   // Suspending: without it the doc is undefined on the first render, the type
   // check wouldn't match, and the canvas would mount on a tldraw4 document and
   // migrate it before this ever ran. Still reactive, so the prompt gives way to
@@ -313,8 +315,9 @@ function TldrawConfiguredCanvas({
 }) {
   const handle = useDocHandle<TLDrawDoc>(docUrl, { suspense: true });
   // A history-pinned handle (url carries heads) is at fixed heads and rejects
-  // writes, so the whole tool renders read-only.
-  const readOnly = handle.isReadOnly();
+  // writes, so the whole tool renders read-only. Tracked live: it flips in
+  // place when the handle's backing is swapped.
+  const readOnly = useIsHandleReadOnly(handle);
   const contactInfo = useContactInfo();
   const colorScheme = useColorScheme(element);
   const store = useAutomergeStore({
@@ -494,8 +497,10 @@ function TldrawInner(props: {
 
   const editor = useEditor();
   const repo = useRepo();
+  const handle = useDocHandle<TLDrawDoc>(props.docUrl, { suspense: true });
 
   usePatchworkDrop(props.element);
+  useClearHistoryOnScopeSwap(handle);
   useDocumentScript(props.docUrl, editor, repo);
 
   const onChange = useCallback(() => {

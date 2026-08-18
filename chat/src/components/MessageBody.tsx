@@ -203,7 +203,7 @@ function QuickReplies(props: {options: string[]}) {
 		const msgData: any = {
 			id: generateId(),
 			name: myName(),
-			text: opt,
+			text: `@computer ${opt}`,
 			timestamp: Date.now(),
 		}
 		const cu = myContactUrl()

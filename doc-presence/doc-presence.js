@@ -71,7 +71,7 @@ function peersByContact(presence) {
 		const value = peer.value
 		if (!value?.contactUrl || value.contactUrl === myContactUrl) continue
 		const existing = byContact.get(value.contactUrl)
-		if (!existing || peer.lastActiveAt > existing.lastActiveAt) {
+		if (!existing || peer.lastUpdateAt > existing.lastUpdateAt) {
 			byContact.set(value.contactUrl, peer)
 		}
 	}
@@ -148,6 +148,8 @@ async function onSelectedDocChange(newUrl) {
 	if (newUrl && window.repo) {
 		loadSelf()
 		const handle = await window.repo.find(newUrl)
+		// selection may have moved on while we awaited; don't join a stale doc
+		if (currentDocUrl !== newUrl) return
 		joinDoc(handle)
 	}
 }

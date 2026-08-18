@@ -21,6 +21,7 @@ export function renderInlineContactAvatar(
 
     const isRegistered = contact.type === "registered";
     const name = isRegistered ? contact.name : "Anonymous";
+    avatar.title = name;
 
     // avatar image
     let avatarImgUrl: string | undefined;

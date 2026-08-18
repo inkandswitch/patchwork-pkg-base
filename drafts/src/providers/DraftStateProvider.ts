@@ -23,6 +23,16 @@ import type {
   HasDrafts,
 } from "../draft-types.js";
 import { SKIPPED_DATATYPES, canonicalUrl } from "../clone-policy.js";
+import {
+  createChangeGrouper,
+  type TimelineGroupingSpec,
+} from "../change-group-cache.js";
+import {
+  createActorRecorder,
+  ensureActorAttribution,
+} from "../actor-attribution.js";
+import { createDraftRouter, type DraftRouter } from "../draft-routing.js";
+import { ensureMainDraft } from "../draft-docs.js";
 
 const ROOT_DOC_SELECTOR = "draft:root-doc";
 const CHECKED_OUT_SELECTOR = "draft:checked-out";
@@ -51,11 +61,11 @@ const EMPTY_HEADS: UrlHeads = encodeHeads([]);
 // to its drafts is `@patchwork.mainDraftUrl` → the main draft, whose `drafts`
 // roots the tree; each `DraftDoc` may have its own sub-drafts via
 // `DraftDoc.drafts`.
-export const DraftListProvider = (element: HTMLElement) => {
+export const DraftStateProvider = (element: HTMLElement) => {
   const rawUrl = element.getAttribute(ATTR_DOC_URL);
   if (!rawUrl || !isValidAutomergeUrl(rawUrl)) {
     console.warn(
-      `[drafts] <patchwork-view component="patchwork-draft-list-provider"> ` +
+      `[drafts] <patchwork-view component="patchwork-draft-state-provider"> ` +
         `is missing a valid ${ATTR_DOC_URL} attribute (got ${JSON.stringify(rawUrl)})`
     );
     return () => {};
@@ -65,7 +75,7 @@ export const DraftListProvider = (element: HTMLElement) => {
   const maybeRepo = "repo" in window ? window.repo : undefined;
   if (!maybeRepo) {
     console.warn(
-      "[drafts] window.repo is not set; draft-list provider disabled"
+      "[drafts] window.repo is not set; draft-state provider disabled"
     );
     return () => {};
   }
@@ -73,6 +83,7 @@ export const DraftListProvider = (element: HTMLElement) => {
 
   let hostDocHandle: DocHandle<HasDrafts> | null = null;
   let checkedOutHandle: DocHandle<CheckedOutDraft> | null = null;
+  let draftRouter: DraftRouter | null = null;
   const trackedDrafts = new Map<AutomergeUrl, DocHandle<DraftDoc>>();
   // The host doc's single main draft (bookkeeping only). Resolved lazily from
   // `@patchwork.mainDraftUrl`; its `drafts` roots the draft tree and its
@@ -85,9 +96,8 @@ export const DraftListProvider = (element: HTMLElement) => {
 
   // `draft:baseline` subscribers, keyed by canonical target url. This provider
   // is the sole answerer (the overlay no longer claims it), serving the
-  // checkpoint's per-doc `from` when pinned and the checked-out draft's
-  // fork point otherwise (see `currentBaseline`). Re-emitted whenever the
-  // checkout doc or a tracked draft's clones change.
+  // checkpoint's per-doc `from` (see `currentBaseline`). Re-emitted whenever
+  // the checkout doc changes.
   const baselineSubscribers = new Map<
     AutomergeUrl,
     Set<(baseline: Baseline) => void>
@@ -98,9 +108,25 @@ export const DraftListProvider = (element: HTMLElement) => {
   const listSubscribers = new Set<(list: DraftList) => void>();
   let orderedDraftUrls: AutomergeUrl[] = [];
   let draftList: DraftList = {
-    main: { url: docUrl, members: [], childCount: 0, name: null },
+    main: {
+      url: docUrl,
+      parent: null,
+      members: [],
+      childCount: 0,
+      name: null,
+      changeGroupDocUrl: null,
+    },
     drafts: [],
+    actorAttributionUrl: null,
   };
+  // Author attribution: stamps actor ids from local member-doc changes into
+  // the host doc's shared ActorAttributionDoc.
+  const actorRecorder = createActorRecorder(element);
+  // Keep every timeline's ChangeGroupDoc current whether or not the sidebar
+  // is open. Member-doc listeners drive updates between list recomputes.
+  const changeGrouper = createChangeGrouper(repo, {
+    onLocalChange: actorRecorder.recordLocalChange,
+  });
   // Main-case membership: docs mounted beneath this provider, ref-counted so a
   // doc shown in several views is only dropped on its last unmount. Populated
   // even while a draft is selected (where it goes unused) so switching back to
@@ -115,19 +141,15 @@ export const DraftListProvider = (element: HTMLElement) => {
   let rewalkInFlight = false;
   let rewalkPending = false;
   // A tracked draft changing can mean either its sub-draft list moved (needs a
-  // rewalk) or its clone map grew (needs a list recompute), so do both. A new
-  // clone also gives a checked-out draft a fork-point baseline, so re-publish.
+  // rewalk) or its clone map grew (needs a list recompute), so do both.
   const onTrackedChange = () => {
     scheduleRewalk();
     recomputeList();
-    notifyBaselines();
   };
   const onHostDocChange = () => scheduleRewalk();
-  // The checkout doc changed: its `at` checkpoint may have been set, cleared, or
-  // moved, so re-publish every live `draft:baseline` subscriber.
-  const onCheckedOutChange = () => {
-    notifyBaselines();
-  };
+  // The checkout doc changed: its checkpoint may have moved, so re-publish
+  // every live `draft:baseline` subscriber.
+  const onCheckedOutChange = () => notifyBaselines();
 
   const onMounted = (event: MountedEvent) => {
     const detail = event.detail;
@@ -154,11 +176,33 @@ export const DraftListProvider = (element: HTMLElement) => {
     if (disposed) return;
     hostDocHandle = handle;
 
+    // Eagerly create the main draft (a real doc, not the virtual fallback) so
+    // its ChangeGroupDoc has a persistent home even if the sidebar is never
+    // opened. Main's clones are identity mappings — nothing is forked;
+    // the only host-doc side effect is the `mainDraftUrl` scalar, which the
+    // timeline's `@patchwork` path skip filters out. App-global datatypes the
+    // draft machinery never treats as content are left alone.
+    const hostType = handle.doc()?.["@patchwork"]?.type;
+    if (hostType == null || !SKIPPED_DATATYPES.has(hostType)) {
+      try {
+        const mainDraft = await ensureMainDraft(repo, handle);
+        if (disposed) return;
+        // The attribution doc is shared by every timeline on this host doc;
+        // once it resolves the ActorRecorder starts stamping local actor ids.
+        const attribution = await ensureActorAttribution(repo, mainDraft);
+        if (disposed) return;
+        actorRecorder.setAttributionHandle(attribution);
+      } catch (err) {
+        console.warn("[drafts] failed to eagerly create main draft:", err);
+      }
+    }
+
     // Eagerly create the ephemeral CheckedOutDraft so the sidebar can render
     // its "Main" card and write `checkedOut` even before any drafts exist on
     // the host doc.
     checkedOutHandle = repo.create<CheckedOutDraft>({ checkedOut: null });
     checkedOutHandle.on("change", onCheckedOutChange);
+    draftRouter = createDraftRouter(checkedOutHandle);
     const checkedOutUrl = checkedOutHandle.url;
     for (const respond of pendingCheckedOutSubscribers) {
       respond(checkedOutUrl);
@@ -172,7 +216,7 @@ export const DraftListProvider = (element: HTMLElement) => {
     recomputeList();
   })();
   ready.catch((err) => {
-    console.error(`[drafts] failed to initialize draft-list provider:`, err);
+    console.error(`[drafts] failed to initialize draft-state provider:`, err);
   });
 
   const onSubscribe = (event: SubscribeEvent) => {
@@ -211,8 +255,8 @@ export const DraftListProvider = (element: HTMLElement) => {
 
     if (type === BASELINE_SELECTOR) {
       // Sole answerer for `draft:baseline` (the overlay no longer claims it):
-      // serves the pinned checkpoint's `from` or the checked-out draft's fork
-      // point for `target` (see `currentBaseline`).
+      // serves the checkpoint's per-doc `from` for `target` (see
+      // `currentBaseline`).
       const rawTarget = (event.detail.selector as { url?: unknown }).url;
       if (typeof rawTarget !== "string" || !isValidAutomergeUrl(rawTarget)) {
         return;
@@ -239,6 +283,10 @@ export const DraftListProvider = (element: HTMLElement) => {
 
   return () => {
     disposed = true;
+    changeGrouper.dispose();
+    actorRecorder.dispose();
+    draftRouter?.dispose();
+    draftRouter = null;
     element.removeEventListener("patchwork:subscribe", onSubscribe);
     element.removeEventListener("patchwork:mounted", onMounted);
     element.removeEventListener("patchwork:unmounted", onUnmounted);
@@ -268,7 +316,6 @@ export const DraftListProvider = (element: HTMLElement) => {
       return;
     }
     rewalkInFlight = true;
-    const liveCheckedOut = checkedOutHandle;
     void (async () => {
       try {
         // Drafts hang off the main draft (`mainDraft.drafts`), which is created
@@ -286,15 +333,7 @@ export const DraftListProvider = (element: HTMLElement) => {
         );
         if (disposed) return;
         orderedDraftUrls = allDrafts;
-
-        // Reconcile the checkout pointer: if the checked-out draft is gone
-        // (merged or detached), fall back to main.
-        const selected = liveCheckedOut.doc()?.checkedOut ?? null;
-        if (selected && !allDrafts.includes(selected)) {
-          liveCheckedOut.change((d) => {
-            d.checkedOut = null;
-          });
-        }
+        draftRouter?.updateAvailableDrafts(allDrafts);
       } catch (err) {
         console.error("[drafts] rewalk failed:", err);
       } finally {
@@ -311,13 +350,45 @@ export const DraftListProvider = (element: HTMLElement) => {
   }
 
   // Recompute the `draft:list` value and push it to subscribers when it
-  // actually changed.
+  // actually changed. The ChangeGrouper follows the same triggers.
   function recomputeList(): void {
     if (disposed) return;
+    updateChangeGrouping();
     const next = computeList();
     if (draftListsEqual(draftList, next)) return;
     draftList = next;
     for (const respond of listSubscribers) respond(next);
+  }
+
+  // Hand the ChangeGrouper the current timelines, priority-ordered: main,
+  // checked-out draft, then the remaining drafts in tree order. Main reads
+  // the main draft's identity clones rather than the mounted-doc fallback.
+  function updateChangeGrouping(): void {
+    if (disposed) return;
+    const specs: TimelineGroupingSpec[] = [];
+    if (mainDraftHandle) {
+      specs.push({
+        draftHandle: mainDraftHandle,
+        members: clonesToMembers(mainDraftHandle.doc()?.clones ?? {}),
+        rootDocUrl: docUrl,
+      });
+    }
+    const selected = checkedOutHandle?.doc()?.checkedOut ?? null;
+    const ordered =
+      selected && orderedDraftUrls.includes(selected)
+        ? [selected, ...orderedDraftUrls.filter((u) => u !== selected)]
+        : orderedDraftUrls;
+    for (const url of ordered) {
+      const handle = trackedDrafts.get(url);
+      const doc = handle?.doc();
+      if (!handle || !doc || doc.mergedAt !== undefined) continue;
+      specs.push({
+        draftHandle: handle,
+        members: clonesToMembers(doc.clones),
+        rootDocUrl: docUrl,
+      });
+    }
+    changeGrouper.setTimelines(specs);
   }
 
   // The full read-only list: the main entry plus one summary per non-merged
@@ -329,12 +400,38 @@ export const DraftListProvider = (element: HTMLElement) => {
       if (!doc || doc.mergedAt !== undefined) continue;
       drafts.push({
         url,
+        parent: effectiveParent(doc.parent),
         members: clonesToMembers(doc.clones),
         childCount: doc.drafts.length,
         name: doc.name ?? null,
+        changeGroupDocUrl: doc.changeGroupDocUrl ?? null,
       });
     }
-    return { main: computeMainSummary(), drafts };
+    return {
+      main: computeMainSummary(),
+      drafts,
+      actorAttributionUrl:
+        mainDraftHandle?.doc()?.actorAttributionUrl ?? null,
+    };
+  }
+
+  // The parent a summary should point at: the nearest non-merged ancestor.
+  // Merging normally re-parents children, but drafts orphaned before that
+  // existed (or by a concurrent merge on another peer) still resolve to the
+  // draft their parent was merged into instead of dangling under a hidden
+  // one. Unknown urls (not tracked, e.g. the main draft) pass through as-is.
+  function effectiveParent(
+    parentUrl: AutomergeUrl | undefined
+  ): AutomergeUrl | null {
+    const seen = new Set<AutomergeUrl>();
+    let cursor = parentUrl ?? null;
+    while (cursor && !seen.has(cursor)) {
+      seen.add(cursor);
+      const doc = trackedDrafts.get(cursor)?.doc();
+      if (!doc || doc.mergedAt === undefined) return cursor;
+      cursor = doc.parent ?? null;
+    }
+    return cursor;
   }
 
   // Main's summary. Its members come from the main draft's identity clones once
@@ -345,35 +442,36 @@ export const DraftListProvider = (element: HTMLElement) => {
     const url = mainDraftHandle?.url ?? docUrl;
     const childCount = mainDraftHandle?.doc()?.drafts.length ?? 0;
     const name = mainDraftHandle?.doc()?.name ?? null;
+    const changeGroupDocUrl =
+      mainDraftHandle?.doc()?.changeGroupDocUrl ?? null;
 
     const mainClones = mainDraftHandle?.doc()?.clones;
     if (mainClones && Object.keys(mainClones).length > 0) {
-      return { url, members: clonesToMembers(mainClones), childCount, name };
+      return {
+        url,
+        parent: null,
+        members: clonesToMembers(mainClones),
+        childCount,
+        name,
+        changeGroupDocUrl,
+      };
     }
 
     const members = [...mountCounts.keys()]
       .filter((u) => skipVerdicts.get(u) !== true)
       .map((u) => ({ url: u, cloneUrl: null, clonedAt: null }))
       .sort(byMemberUrl);
-    return { url, members, childCount, name };
+    return { url, parent: null, members, childCount, name, changeGroupDocUrl };
   }
 
-  // The diff baseline for `target`, authoritative for both main and drafts:
-  //  - a pinned checkpoint honors that doc's `from` exactly (`null` = no diff);
-  //  - otherwise, on a draft, the doc diffs against its clone's fork point;
-  //  - otherwise (main, no pin) there is no baseline.
+  // The diff baseline for `target`: the checkpoint's per-doc `from`, written
+  // by the sidebar (its eye toggle and scrubber). `null` — no entry, or an
+  // entry without `from` — means no diff. There is deliberately no implicit
+  // fork-point fallback: baselines exist only when explicitly written into
+  // the checkpoint, so "diffs hidden" is simply their absence.
   function currentBaseline(target: AutomergeUrl): Baseline {
-    const doc = checkedOutHandle?.doc();
-    const entry = doc?.at?.[target];
-    if (entry) return { heads: entry.from ?? null };
-
-    const checkedOut = doc?.checkedOut;
-    if (checkedOut) {
-      const clonedAt = trackedDrafts.get(checkedOut)?.doc()?.clones?.[target]
-        ?.clonedAt;
-      return { heads: clonedAt ?? null };
-    }
-    return { heads: null };
+    const entry = checkedOutHandle?.doc()?.at?.[target];
+    return { heads: entry?.from ?? null };
   }
 
   function notifyBaselines(): void {
@@ -447,6 +545,8 @@ export const DraftListProvider = (element: HTMLElement) => {
   }
 };
 
+// Depth-first pre-order, so a fork lists directly beneath the draft it was
+// forked off (the sidebar indents by parent depth).
 async function collectAllDrafts(
   repo: Repo,
   roots: readonly AutomergeUrl[],
@@ -468,10 +568,8 @@ async function collectAllDrafts(
       tracked.set(url, h);
       h.on("change", onNewChange);
     }
-    const drafts = h.doc()?.drafts ?? [];
-    for (const child of drafts) {
-      if (isValidAutomergeUrl(child)) queue.push(child);
-    }
+    const drafts = (h.doc()?.drafts ?? []).filter(isValidAutomergeUrl);
+    queue.unshift(...drafts);
   }
   return order;
 }
@@ -491,6 +589,7 @@ function clonesToMembers(
 }
 
 function draftListsEqual(a: DraftList, b: DraftList): boolean {
+  if (a.actorAttributionUrl !== b.actorAttributionUrl) return false;
   if (!summariesEqual(a.main, b.main)) return false;
   if (a.drafts.length !== b.drafts.length) return false;
   for (let i = 0; i < a.drafts.length; i++) {
@@ -502,8 +601,10 @@ function draftListsEqual(a: DraftList, b: DraftList): boolean {
 function summariesEqual(a: DraftSummary, b: DraftSummary): boolean {
   return (
     a.url === b.url &&
+    a.parent === b.parent &&
     a.childCount === b.childCount &&
     a.name === b.name &&
+    a.changeGroupDocUrl === b.changeGroupDocUrl &&
     memberListsEqual(a.members, b.members)
   );
 }
