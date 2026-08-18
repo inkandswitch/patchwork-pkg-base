@@ -9,6 +9,7 @@ import type { Prop as AutomergeProp } from "@automerge/automerge/slim";
 import type {
   AutomergeUrl,
   DocHandle,
+  Repo,
   UrlHeads,
 } from "@automerge/automerge-repo/slim";
 import {
@@ -34,6 +35,9 @@ const lookup = <T = any,>(doc: any, path: AutomergeProp[]): T | undefined => {
 
 type CodeMirrorProps<T> = {
   handle: DocHandle<T>;
+  // Used by the presence extension to load peers' contact docs (their
+  // presence colors live there).
+  repo: Repo;
   path: AutomergeProp[];
   decorations: () => DecorationSet;
   // When provided, renders a diff of `path` against these baseline heads.
@@ -85,7 +89,8 @@ export function CodeMirror<T>(props: CodeMirrorProps<T>) {
     createPresenceExtension(
       () => props.handle as DocHandle<unknown>,
       () => props.path,
-      () => (props.readOnly ? null : (props.contactUrl?.() ?? null))
+      () => (props.readOnly ? null : (props.contactUrl?.() ?? null)),
+      props.repo
     );
 
   // Create a compartment for user-provided extensions so they can be reconfigured

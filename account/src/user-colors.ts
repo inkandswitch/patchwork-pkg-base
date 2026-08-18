@@ -24,8 +24,9 @@ export const USER_COLOR_PALETTE = [
 ] as const;
 
 /**
- * Generate a deterministic color from a string (like userId)
- * Useful for fallback when user hasn't chosen a color
+ * Generate a deterministic color from a string (like a contact url).
+ * Only used to seed `contact.color` at signup -- presence rendering never
+ * derives colors, it reads `contact.color` from the account.
  */
 export function generateColorFromString(str: string): string {
   const hash = Math.abs(

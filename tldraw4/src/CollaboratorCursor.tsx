@@ -1,31 +1,6 @@
 import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
 import type { TLCursorProps } from "@tldraw/tldraw";
 
-// Deterministic presence color, hashed from the contact url. Duplicated on
-// purpose from contact/src/ui.ts (same palette, same hash) so the cursor
-// arrow matches the contact-cursor token -- a shared package is a later step.
-const USER_COLOR_PALETTE = [
-  "hsl(200, 70%, 50%)",
-  "hsl(10, 75%, 58%)",
-  "hsl(145, 70%, 45%)",
-  "hsl(270, 70%, 55%)",
-  "hsl(38, 85%, 50%)",
-  "hsl(350, 70%, 55%)",
-  "hsl(178, 70%, 45%)",
-  "hsl(235, 70%, 58%)",
-  "hsl(85, 70%, 45%)",
-  "hsl(310, 70%, 55%)",
-  "hsl(25, 80%, 52%)",
-  "hsl(188, 75%, 48%)",
-];
-
-export function generateColorFromString(str: string): string {
-  const hash = Math.abs(
-    str.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)
-  );
-  return USER_COLOR_PALETTE[hash % USER_COLOR_PALETTE.length];
-}
-
 // Parses a userId of the form `${contactUrl}-${peerId}` to recover contactUrl
 // and actorId (see useContactInfo in tool.tsx for why userIds are composed).
 export function splitPresenceUserId(userId: string): {

@@ -2,7 +2,6 @@ import type { AutomergeUrl, DocHandle } from "@automerge/automerge-repo/slim";
 import type { ToolElement } from "@inkandswitch/patchwork-plugins";
 import type { ContactDoc } from "../types";
 import { createAvatar, setAvatarImage, setAvatarFallback, getInitials } from "./Avatar";
-import { generateColorFromString } from "../user-colors";
 import { getImportableUrlFromAutomergeUrl } from "@inkandswitch/patchwork-filesystem";
 import { subscribe } from "@inkandswitch/patchwork-providers";
 
@@ -39,18 +38,23 @@ export function renderContactAvatar(
   }
 
   function updatePresence() {
-    const docUrl = handle.url;
     const now = Date.now();
     const timeout = 30000;
     const isPresent = Object.entries(heartbeats).some(
       ([id, ts]) => id !== selfName && now - ts < timeout
     );
 
-    const userColor = handle.doc()?.color || generateColorFromString(docUrl);
+    // The contact's chosen color; without one, the CSS fallback (neutral
+    // gray) applies.
+    const userColor = handle.doc()?.color;
 
     if (isPresent) {
       avatar.classList.add("contact-avatar--present");
-      avatar.style.setProperty("--contact-presence-color", userColor);
+      if (userColor) {
+        avatar.style.setProperty("--contact-presence-color", userColor);
+      } else {
+        avatar.style.removeProperty("--contact-presence-color");
+      }
     } else {
       avatar.classList.remove("contact-avatar--present");
       avatar.style.removeProperty("--contact-presence-color");

@@ -275,6 +275,7 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
           <Show when={datatypeExtensions.state === "ready"}>
             <CodeMirror
               handle={props.handle as DocHandle<TextDoc>}
+              repo={props.repo}
               path={PATH}
               decorations={decorations}
               baseline={() => baseline()?.heads ?? null}

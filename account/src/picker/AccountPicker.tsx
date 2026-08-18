@@ -40,11 +40,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "./ui/index";
-import {
-  generateColorFromString,
-  getRandomUserColor,
-  USER_COLOR_PALETTE,
-} from "../user-colors";
+import { generateColorFromString, getRandomUserColor } from "../user-colors";
 
 declare module "solid-js" {
   namespace JSX {
@@ -150,8 +146,10 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
     });
   });
 
-  const presenceColor = () =>
-    (self() as any)?.color || USER_COLOR_PALETTE[0].value;
+  // Contacts without a chosen color render in neutral gray everywhere
+  // (cursors, avatars), so show the same here instead of pretending a
+  // palette color is set.
+  const presenceColor = () => (self() as any)?.color || "#888";
 
   const currentAccountToken = createMemo(() => {
     return currentAccount
