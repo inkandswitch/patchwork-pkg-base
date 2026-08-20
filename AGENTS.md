@@ -1,5 +1,9 @@
 # Patchwork
 
+House style: small, simple tools in plain vanilla JavaScript. TypeScript,
+npm deps, and a bundled build are all fine (pushwork handles them). If a
+reactive framework is needed, use Solid — never React.
+
 ## Every folder is a separate tool
 
 This repo is a collection, not a project. Each top-level directory with a
@@ -79,7 +83,7 @@ the root runs them all.
 
 The skill's patterns map to these tools — copy from the category you need:
 
-**Copy these patterns (vanilla JS — the house style):**
+**Copy these patterns (vanilla JS):**
 
 - **Bundleless / vanilla:** `tic-tac-toe`, `catclock`, `walkies`, `sparkles`, `webtile`
   (`tic-tac-toe/tic-tac-toe.js` also shows documenting the schema with a JSDoc `@typedef`)
