@@ -47,7 +47,7 @@
 }
 
 .contact-avatar--present {
-  box-shadow: 0 0 0 2px var(--contact-presence-color);
+  box-shadow: 0 0 0 2px var(--contact-presence-color, #888);
 }
 
 .contact-avatar-image {
