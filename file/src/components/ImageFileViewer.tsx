@@ -10,7 +10,7 @@ export type ImageFileDoc = FileDoc & {
 export function ImageFileViewer(props: {doc: FileDoc}) {
 	const imgUrl = createMemo(() => {
 		if (isBinaryFileDoc(props.doc)) {
-			return createBinaryUrl(props.doc.content)
+			return createBinaryUrl(props.doc.content, props.doc.mimeType)
 		}
 		return undefined
 	})

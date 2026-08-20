@@ -1,4 +1,4 @@
-import {describe, it, expect} from "vitest"
+import {describe, it, expect, vi} from "vitest"
 import {
 	isImageFile,
 	isVideoFile,
@@ -75,5 +75,22 @@ describe("createBinaryUrl", () => {
 		const url = createBinaryUrl(new Uint8Array([1, 2, 3]))
 		expect(typeof url).toBe("string")
 		expect(url).toMatch(/^blob:/)
+	})
+
+	// An object URL serves the blob's type as its Content-Type. Without one an
+	// <iframe> renders a PDF as source text instead of opening the viewer.
+	it("tags the blob with the given mime type", () => {
+		const spy = vi.spyOn(URL, "createObjectURL")
+		createBinaryUrl(new Uint8Array([1, 2, 3]), "application/pdf")
+		expect(spy.mock.calls[0][0]).toBeInstanceOf(Blob)
+		expect((spy.mock.calls[0][0] as Blob).type).toBe("application/pdf")
+		spy.mockRestore()
+	})
+
+	it("leaves the blob untyped when no mime type is given", () => {
+		const spy = vi.spyOn(URL, "createObjectURL")
+		createBinaryUrl(new Uint8Array([1, 2, 3]))
+		expect((spy.mock.calls[0][0] as Blob).type).toBe("")
+		spy.mockRestore()
 	})
 })
