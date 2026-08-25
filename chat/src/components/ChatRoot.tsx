@@ -1,4 +1,5 @@
 import {createSignal, createMemo, createEffect, Show, onMount, onCleanup} from "solid-js"
+import {cursor as automergeCursor} from "@automerge/automerge-repo/slim"
 import type {DocHandle, AutomergeUrl} from "@automerge/automerge-repo/slim"
 import {updateText, splice} from "@automerge/automerge/slim"
 import {applyAutomerge} from "../lib/automerge-ops"
@@ -440,6 +441,7 @@ arg: value
 - edit_tool {toolId|url, code} — replace a tool's source and reload
 - inspect_iframe {url} — a pinned tool's DOM + console errors
 - eval_in_iframe {url, code} — run JS in a pinned tool, get the result
+- make_ref {url, path?, from?, to?} — mint a granular ref url into a doc (an element by path/{id}, or a text range by offsets)
 - load_skill {id} — activate an installed skill (see the Skills index) and get its instructions
 
 Rules: ALWAYS read_doc before edit_doc/splice_doc, and re-read the returned value after (peers may have changed it). NEVER change a doc's \`@patchwork.type\`, or a tool's datatype/tool \`id\`/\`supportedDatatypes\` (breaks existing docs). To ask the user something, reply in plain text with NO tool call — tool results are not user answers.
@@ -509,6 +511,7 @@ arg: value
 - edit_tool {toolId|url, code} — replace a tool's source and reload
 - inspect_iframe {url} — a pinned tool's DOM + console errors
 - eval_in_iframe {url, code} — run JS in a pinned tool, get the result
+- make_ref {url, path?, from?, to?} — mint a granular ref url into a doc (an element by path/{id}, or a text range by offsets)
 - load_skill {id} — activate an installed skill (see the Skills index) and get its instructions
 
 Rules: ALWAYS read_doc before edit_doc/splice_doc, and re-read the returned value after (peers may have changed it). NEVER change a doc's \`@patchwork.type\`, or a tool's datatype/tool \`id\`/\`supportedDatatypes\` (breaks existing docs). To ask the user something, reply in plain text with NO tool call — tool results are not user answers.
@@ -670,6 +673,25 @@ Keep responses concise. When you create a tool, explain briefly what it does.`
 		},
 	}
 
+	// Granular references: ref urls (element/{id} paths, cursor-anchored text
+	// ranges) can only be MINTED by the runtime — their anchors encode opaque
+	// op ids the model cannot fabricate. This tool is what makes fine-grained
+	// provenance possible from the generic document tools.
+	const MAKE_REF_TOOL = {
+		name: "make_ref",
+		description:
+			"Mint a granular automerge REF URL into a document — an edit-stable pointer at one element or text range, for provenance sources/targets and other cross-doc links. Pass `path` (array of keys/indices; a {id:\"…\"} object matches a list element by its id, stable across splices) to point at an element. Pass `from`/`to` (0-based character offsets, e.g. from find_text) to point at a text range; `path` then locates the string field (defaults to [\"content\"]). Returns the ref url as a string.",
+		parameters: {
+			type: "object",
+			properties: {
+				url: {type: "string", description: "the document (optional in context mode; defaults to the focused doc)"},
+				path: {type: "array", items: {}, description: "keys/indices from the doc root; {id:\"…\"} matches a list element by id"},
+				from: {type: "number", description: "text range start (character offset)"},
+				to: {type: "number", description: "text range end (character offset, exclusive)"},
+			},
+		},
+	}
+
 	const COMPUTER_TOOLS: {name: string; description: string; parameters: any}[] = [
 		{name: "read_doc", description: "Read an Automerge document's full contents.", parameters: {type: "object", properties: {url: {type: "string", description: "automerge: URL"}}, required: ["url"]}},
 		{name: "edit_doc", description: "Set a field on a document (string fields diff collaboratively). Returns the field's new value.", parameters: {type: "object", properties: {url: {type: "string"}, field: {type: "string"}, value: {description: "new value (JSON)"}}, required: ["url", "field", "value"]}},
@@ -679,6 +701,7 @@ Keep responses concise. When you create a tool, explain briefly what it does.`
 		{name: "edit_tool", description: "Replace an existing tool's source code and reload it. Target by toolId or url.", parameters: {type: "object", properties: {toolId: {type: "string"}, url: {type: "string"}, code: {type: "string"}}, required: ["code"]}},
 		{name: "inspect_iframe", description: "Get a pinned tool iframe's DOM HTML and console errors.", parameters: {type: "object", properties: {url: {type: "string"}}}},
 		{name: "eval_in_iframe", description: "Run JS inside a pinned tool's iframe and return the result.", parameters: {type: "object", properties: {url: {type: "string"}, code: {type: "string"}}, required: ["code"]}},
+		MAKE_REF_TOOL,
 		LOAD_SKILL_TOOL,
 		ASK_USER_TOOL,
 		DEFINE_TOOL,
@@ -716,6 +739,7 @@ Every turn, a [Context] block gives you the focused document: its \`url\`, its c
     • heads — OPTIONAL. The heads array from read_doc. When given, the edit is applied as a back-dated change (changeAt) relative to that version. Omit for a normal "edit current state" change.
     • url — OPTIONAL. Edit a different document than the focused one.
   Returns the affected container's new value so you can verify.
+- make_ref {url?, path?, from?, to?} — mint a granular automerge REF URL: an edit-stable pointer at one element (\`path\` with a {id:"…"} object matching a list element by id) or a text range (\`from\`/\`to\` character offsets from find_text; \`path\` locates the string field, default ["content"]). Use these for provenance sources/targets and other cross-doc links — never a bare doc url when a finer ref applies.
 - load_skill {id} — activate an installed skill by id (see the Skills index in these instructions) and get its full instructions back. Use it BEFORE working on a document type whose skill is installed but not active.
 - ask_user {question, options?} — ask the user something and PAUSE. Posts your question (with optional clickable choices) and ends your turn; their reply comes back as a new message. Use this instead of guessing when you need a decision or missing detail.
 - inspect_dom {selector?} — (usually disabled) return the live DOM HTML of the running tool/page, optionally narrowed to a CSS selector. Use to see how the focused doc is actually rendered.
@@ -746,6 +770,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 		{name: "automerge_op", description: "Apply ONE universal Automerge edit to a doc (defaults to the focused doc). range=[from,to] splices a string field (text — from/to are 0-based CHARACTER offsets, to exclusive, every char incl. newlines counts) or a list; range=key assigns (with value) or deletes (without value) on the map/list at path. Omit value to delete. For text, prefer replace_text/find_text so you don't miscount.", parameters: {type: "object", properties: {path: {type: "array", items: {}, description: "keys/indices from the doc root to the container or string ([]=root)"}, range: {description: "[from,to] for a splice, or a string/number key for assign/delete"}, value: {description: "value to insert/set (JSON); omit to delete"}, heads: {type: "array", items: {type: "string"}, description: "optional heads (from read_doc) → back-dated changeAt"}, url: {type: "string", description: "optional target doc (defaults to the focused doc)"}}, required: ["range"]}},
 		{name: "inspect_dom", description: "Return the live DOM HTML of the running tool/page (optionally narrowed by a CSS selector). Disabled by default.", parameters: {type: "object", properties: {selector: {type: "string", description: "optional CSS selector to narrow the result"}}}},
 		{name: "eval_js", description: "Evaluate JavaScript in the page and return the result. Unsandboxed. Disabled by default.", parameters: {type: "object", properties: {code: {type: "string"}}, required: ["code"]}},
+		MAKE_REF_TOOL,
 		LOAD_SKILL_TOOL,
 		ASK_USER_TOOL,
 		DEFINE_TOOL,
@@ -1296,6 +1321,52 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 		try {
 			if (toolName === "load_skill") {
 				return await activateSkillForRun(String(args.id || "").trim())
+			} else if (toolName === "make_ref") {
+				const url = args.url || focusedUrl()
+				if (!url) return "Error: no url and no focused document."
+				const h = await resolveRunDoc(url)
+				const parsePath = (v: any) => {
+					if (Array.isArray(v)) return v
+					if (typeof v !== "string" || !v.trim()) return []
+					try {
+						const parsed = JSON.parse(v)
+						return Array.isArray(parsed) ? parsed : []
+					} catch {
+						return []
+					}
+				}
+				const segments: any[] = parsePath(args.path)
+				const from = typeof args.from === "number" ? args.from : Number(args.from)
+				const to = typeof args.to === "number" ? args.to : Number(args.to)
+				const hasRange = Number.isFinite(from) && Number.isFinite(to)
+				if (hasRange) {
+					if (segments.length === 0) segments.push("content")
+					segments.push(automergeCursor(from, to))
+				}
+				if (segments.length === 0) {
+					return 'Error: give a path (e.g. ["petriNetDefinition","places",{"id":"…"}]) and/or from/to text offsets.'
+				}
+				// The runtime exposes handle.sub (subduction) or handle.ref
+				// (upstream automerge-repo) — same call shape.
+				const make = (h as any).sub ?? (h as any).ref
+				if (typeof make !== "function") {
+					return "Error: this runtime cannot mint ref urls (no handle.sub/ref)."
+				}
+				let refUrl: string
+				try {
+					refUrl = make.apply(h, segments).url
+				} catch (e: any) {
+					return "Error minting ref: " + (e?.message || String(e))
+				}
+				// Report the ref against the document's OWN url: under an agent
+				// draft the resolved handle is a clone, and a clone-prefixed url
+				// stored in a doc would dangle after the draft merges.
+				const ownBare = String(url).split(/[/#]/)[0]
+				const mintedBare = refUrl.split(/[/#]/)[0]
+				if (mintedBare !== ownBare) {
+					refUrl = ownBare + refUrl.slice(mintedBare.length)
+				}
+				return refUrl
 			} else if (toolName === "read_doc") {
 				const url = args.url || (isContext() ? focusedUrl() : undefined)
 				if (!url) return "Error: no url and no focused document."

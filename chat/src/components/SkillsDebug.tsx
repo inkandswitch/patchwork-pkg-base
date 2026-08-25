@@ -13,6 +13,10 @@ import {
 	type LlmSkillDescription,
 } from "../lib/llm-skills"
 
+// Bump when shipping a change you want to verify made it to a running client
+// (pushwork-synced tools can lag; this shows which build is actually loaded).
+const CHAT_VERSION = "v0.0.2"
+
 export function SkillsDebug(props: {
 	/** Skills active for the most recent computer run. */
 	active: () => ActiveSkill[]
@@ -27,6 +31,7 @@ export function SkillsDebug(props: {
 			onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
 			<summary>
 				debug: skills
+				<span class="chat-skills-debug-version">{CHAT_VERSION}</span>
 				<Show when={props.active().length > 0}>
 					<span class="chat-skills-debug-count">
 						{props.active().length} active
