@@ -1,0 +1,14 @@
+.corkboard {
+  height: 100%;
+}
+
+/* The provider view stays layout-neutral; the tool view fills the pane. */
+.corkboard > patchwork-view {
+  display: contents;
+}
+
+.corkboard patchwork-view[tool-id] {
+  display: block;
+  width: 100%;
+  height: 100%;
+}

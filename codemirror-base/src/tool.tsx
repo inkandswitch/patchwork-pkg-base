@@ -42,6 +42,23 @@ type CommentEntry = {
   threadUrl: AutomergeUrl;
 };
 
+// Pushed by the provenance provider (see the corkboard tool): one flattened
+// (source, target) pair per stored `@provenance` entry. Links are stored in
+// the GENERATED doc, so this editor can only learn that its ranges are
+// provenance sources through the provider.
+type ProvenanceLink = {
+  sourceUrl: AutomergeUrl;
+  targetUrl: AutomergeUrl;
+  entryUrl: AutomergeUrl;
+};
+
+// A provenance source range in THIS doc, resolved to a live ref handle, with
+// the target refs (in other docs) it links to.
+type ProvenanceSource = {
+  handle: DocHandle<unknown>;
+  targetUrls: AutomergeUrl[];
+};
+
 // Diff baseline served by the draft overlay (`draft:baseline`). `heads` is
 // `null` when there is no baseline yet (e.g. the doc hasn't been COW'd in the
 // active draft, or "main" is selected), in which case no diff is rendered.
@@ -62,6 +79,15 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
   const commentEntries = subscribe<CommentEntry[]>(
     props.element,
     { type: "patchwork:comments" },
+    []
+  );
+
+  // Provenance links touching this doc. Answered only when a provenance
+  // provider is mounted above (e.g. inside the corkboard tool); elsewhere the
+  // subscription stays at its default and nothing renders.
+  const provenanceLinks = subscribe<ProvenanceLink[]>(
+    props.element,
+    { type: "patchwork:provenance", url: props.handle.url },
     []
   );
 
@@ -98,6 +124,15 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
     { initialValue: [] }
   );
 
+  // Ranges in this doc that other documents were generated from, each with
+  // the target refs it links to (used to push those targets into the shared
+  // selection when the cursor lands on the range).
+  const [provenanceSources] = createResource(
+    provenanceLinks,
+    (links) => resolveProvenanceSources(links, props.handle.url, props.repo),
+    { initialValue: [] }
+  );
+
   // Bounding range of the focused targets (selection ∪ highlight). Recomputes
   // when the targets change -- e.g. selecting a comment thread elsewhere -- so
   // the editor can scroll the freshly focused region into view. Positions are
@@ -115,24 +150,49 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
     return from <= to ? [from, to] : null;
   });
 
-  let lastEmittedUrl: AutomergeUrl | undefined;
+  // Target refs (in other docs) of every provenance source range that
+  // overlaps [from, to]. Selecting provenance-annotated text pushes these
+  // into the shared selection, so views of the generated doc can highlight
+  // what came from the text under the cursor.
+  const provenanceTargetsInRange = (
+    from: number,
+    to: number
+  ): AutomergeUrl[] => {
+    const targets = new Set<AutomergeUrl>();
+    for (const source of provenanceSources()) {
+      const positions = source.handle.rangePositions();
+      if (!positions) continue;
+      const [start, end] = positions;
+      if (start === end || to < start || from > end) continue;
+      for (const url of source.targetUrls) targets.add(url);
+    }
+    return [...targets];
+  };
+
+  let lastEmittedKey: string | undefined;
 
   const onChangeSelection = (from: number, to: number) => {
     const handle = focusHandle();
     if (!handle) return;
     const nextUrl = props.handle.sub(...PATH, cursor(from, to)).url;
-    if (nextUrl === lastEmittedUrl) return;
+    const provenanceTargets = provenanceTargetsInRange(from, to);
+    const nextKey = [nextUrl, ...provenanceTargets].join("|");
+    if (nextKey === lastEmittedKey) return;
     handle.change((doc) => {
-      doc.selection = { [nextUrl]: true };
+      const next: Record<AutomergeUrl, true> = { [nextUrl]: true };
+      for (const url of provenanceTargets) next[url] = true;
+      doc.selection = next;
     });
-    lastEmittedUrl = nextUrl;
+    lastEmittedKey = nextKey;
   };
 
   const decorations = () => {
-    const targetRefs = commentTargets();
     const emphasisRefs = emphasisTargets();
     return RangeSet.of<Decoration>(
-      buildCommentDecorations(targetRefs, emphasisRefs),
+      [
+        ...buildCommentDecorations(commentTargets(), emphasisRefs),
+        ...buildProvenanceDecorations(provenanceSources(), emphasisRefs),
+      ],
       true // sort ranges
     );
   };
@@ -316,6 +376,31 @@ async function getDedupedCommentTargets(
   return Array.from(overlappingRefs);
 }
 
+// Scopes provenance links to the ones whose SOURCE lives in this doc,
+// dedupes by source ref, and resolves each source to a live handle, keeping
+// the target urls it links to.
+async function resolveProvenanceSources(
+  links: ProvenanceLink[],
+  docUrl: AutomergeUrl,
+  repo: Repo
+): Promise<ProvenanceSource[]> {
+  const targetsBySource = new Map<AutomergeUrl, Set<AutomergeUrl>>();
+  for (const link of links) {
+    if (!link.sourceUrl.startsWith(docUrl)) continue;
+    let targets = targetsBySource.get(link.sourceUrl);
+    if (!targets) targetsBySource.set(link.sourceUrl, (targets = new Set()));
+    targets.add(link.targetUrl);
+  }
+  const sources: ProvenanceSource[] = [];
+  for (const [sourceUrl, targets] of targetsBySource) {
+    sources.push({
+      handle: await repo.find(sourceUrl),
+      targetUrls: [...targets],
+    });
+  }
+  return sources;
+}
+
 // Scopes ref urls to this doc and resolves each one to a `DocHandle`.
 // Used for both our own `selection` and other views' `highlight`.
 async function resolveSubDocUrlsOfDoc(
@@ -353,6 +438,41 @@ function buildCommentDecorations(
     );
   }
   return out;
+}
+
+// Provenance source ranges — text that another document was generated from —
+// render like comment targets but in the link accent with a dotted underline,
+// so the two kinds of annotation stay distinguishable. Emphasised (the focus
+// selection/highlight overlaps the range) draws the stronger tint.
+function buildProvenanceDecorations(
+  sources: ProvenanceSource[],
+  emphasisRefs: DocHandle<unknown>[]
+): Range<Decoration>[] {
+  const out: Range<Decoration>[] = [];
+  for (const source of sources) {
+    const positions = source.handle.rangePositions();
+    if (!positions) continue;
+    const [start, end] = positions;
+    if (start === end) continue;
+    const isEmphasised = emphasisRefs.some((s) => s.overlaps(source.handle));
+    out.push(
+      Decoration.mark({
+        attributes: { style: provenanceSourceStyle(isEmphasised) },
+      }).range(start, end)
+    );
+  }
+  return out;
+}
+
+function provenanceSourceStyle(isEmphasised: boolean): string {
+  // Same highlighter-over-paper scheme as `commentTargetStyle`, but on the
+  // link accent: the tint is anchored to the editor surface so it tracks the
+  // theme, and the dotted underline reads as "this points somewhere".
+  const paper = isEmphasised ? "56%" : "85%";
+  return `
+    border-bottom: 2px dotted var(--studio-link);
+    background-color: color-mix(in oklch, var(--studio-link), var(--text-editor-fill) ${paper});
+  `;
 }
 
 function commentTargetStyle(isEmphasised: boolean): string {
