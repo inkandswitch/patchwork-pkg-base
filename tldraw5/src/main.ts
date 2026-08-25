@@ -40,4 +40,15 @@ export const plugins = [
       };
     },
   },
+  {
+    type: "llm:skill",
+    id: "tldraw-canvas",
+    name: "tldraw canvas",
+    description:
+      "Create and edit tldraw canvases — diagrams, sticky-note boards, flowcharts, wireframes, embedded-document layouts. Applies when the focused document is a tldraw canvas, or when the user asks to draw or diagram something on one.",
+    datatypes: ["tldraw5"],
+    async load() {
+      return (await import("./llm_skill.ts")).skill;
+    },
+  },
 ];
