@@ -109,6 +109,35 @@ export async function resolveActiveSkills(opts: {
 // registers late (or a transient import failure) gets retried next run.
 const moduleCache = new Map<string, LlmSkillModule>()
 
+/** Load one skill by id and return it as an ActiveSkill, or null when the id
+ * is unknown or its module fails to load. For MID-RUN activation — the
+ * load_skill tool and read_doc datatype auto-activation — where the caller
+ * appends the result to its active set and feeds the instructions back to
+ * the model as tool output (the already-sent system prompt is not rebuilt). */
+export async function activateSkill(id: string): Promise<ActiveSkill | null> {
+	const desc = listSkills().find((s) => s.id === id)
+	if (!desc) return null
+	const module = await loadSkillModule(desc)
+	if (!module) return null
+	return {
+		id: desc.id,
+		name: desc.name || desc.id,
+		description: desc.description,
+		module,
+	}
+}
+
+/** Ids of skills whose module has been loaded (for the debug panel). */
+export function loadedSkillIds(): Set<string> {
+	return new Set(moduleCache.keys())
+}
+
+/** The cached module for a skill, if it has been loaded (for the debug
+ * panel — does NOT trigger a load). */
+export function peekSkillModule(id: string): LlmSkillModule | undefined {
+	return moduleCache.get(id)
+}
+
 async function loadSkillModule(
 	desc: LlmSkillDescription
 ): Promise<LlmSkillModule | null> {
@@ -156,7 +185,7 @@ export function skillsPromptSection(
 	}
 	if (inactive.length > 0) {
 		parts.push(
-			"Installed but NOT active (a skill activates when the focused document matches it, or via `/plugin load <id>`):\n" +
+			"Installed but NOT active. A skill auto-activates when you read_doc a document matching its datatypes. To work on a matching document you have NOT read (or before creating one), activate the skill YOURSELF first with the load_skill tool — do not guess a skill's document schema, and do not ask the user to activate it for you:\n" +
 				inactive
 					.map((s) => `- ${s.id}: ${s.description}`)
 					.join("\n")

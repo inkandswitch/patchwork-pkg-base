@@ -36,11 +36,13 @@ import {agentMessageMetadata} from "../lib/agent-drafts"
 import {
 	listSkills,
 	resolveActiveSkills,
+	activateSkill,
 	skillsPromptSection,
 	skillToolSchemas,
 	runSkillTool,
 	type ActiveSkill,
 } from "../lib/llm-skills"
+import {SkillsDebug} from "./SkillsDebug"
 import {automergeUrlToServiceWorkerUrl} from "@inkandswitch/patchwork-filesystem"
 import {transcribeVoiceNote} from "../lib/transcription"
 import {reloadPreviewIframe} from "../lib/preview-frame"
@@ -438,6 +440,7 @@ arg: value
 - edit_tool {toolId|url, code} — replace a tool's source and reload
 - inspect_iframe {url} — a pinned tool's DOM + console errors
 - eval_in_iframe {url, code} — run JS in a pinned tool, get the result
+- load_skill {id} — activate an installed skill (see the Skills index) and get its instructions
 
 Rules: ALWAYS read_doc before edit_doc/splice_doc, and re-read the returned value after (peers may have changed it). NEVER change a doc's \`@patchwork.type\`, or a tool's datatype/tool \`id\`/\`supportedDatatypes\` (breaks existing docs). To ask the user something, reply in plain text with NO tool call — tool results are not user answers.
 
@@ -506,6 +509,7 @@ arg: value
 - edit_tool {toolId|url, code} — replace a tool's source and reload
 - inspect_iframe {url} — a pinned tool's DOM + console errors
 - eval_in_iframe {url, code} — run JS in a pinned tool, get the result
+- load_skill {id} — activate an installed skill (see the Skills index) and get its instructions
 
 Rules: ALWAYS read_doc before edit_doc/splice_doc, and re-read the returned value after (peers may have changed it). NEVER change a doc's \`@patchwork.type\`, or a tool's datatype/tool \`id\`/\`supportedDatatypes\` (breaks existing docs). To ask the user something, reply in plain text with NO tool call — tool results are not user answers.
 
@@ -650,6 +654,22 @@ Keep responses concise. When you create a tool, explain briefly what it does.`
 			required: ["name", "description", "code"],
 		},
 	}
+	// Mid-run skill activation: the skills index in the system prompt lists
+	// installed-but-inactive skills; this lets the model pull one in itself
+	// instead of stalling to ask the user for `/plugin load`.
+	const LOAD_SKILL_TOOL = {
+		name: "load_skill",
+		description:
+			"Activate an installed skill by id for THIS run (ids are in the Skills index of your instructions). Returns the skill's full instructions; any extra tools it contributes become available on your next step. Use it BEFORE working on a document type whose skill is not active — never guess a skill-covered document's schema.",
+		parameters: {
+			type: "object",
+			properties: {
+				id: {type: "string", description: "skill id from the Skills index"},
+			},
+			required: ["id"],
+		},
+	}
+
 	const COMPUTER_TOOLS: {name: string; description: string; parameters: any}[] = [
 		{name: "read_doc", description: "Read an Automerge document's full contents.", parameters: {type: "object", properties: {url: {type: "string", description: "automerge: URL"}}, required: ["url"]}},
 		{name: "edit_doc", description: "Set a field on a document (string fields diff collaboratively). Returns the field's new value.", parameters: {type: "object", properties: {url: {type: "string"}, field: {type: "string"}, value: {description: "new value (JSON)"}}, required: ["url", "field", "value"]}},
@@ -659,6 +679,7 @@ Keep responses concise. When you create a tool, explain briefly what it does.`
 		{name: "edit_tool", description: "Replace an existing tool's source code and reload it. Target by toolId or url.", parameters: {type: "object", properties: {toolId: {type: "string"}, url: {type: "string"}, code: {type: "string"}}, required: ["code"]}},
 		{name: "inspect_iframe", description: "Get a pinned tool iframe's DOM HTML and console errors.", parameters: {type: "object", properties: {url: {type: "string"}}}},
 		{name: "eval_in_iframe", description: "Run JS inside a pinned tool's iframe and return the result.", parameters: {type: "object", properties: {url: {type: "string"}, code: {type: "string"}}, required: ["code"]}},
+		LOAD_SKILL_TOOL,
 		ASK_USER_TOOL,
 		DEFINE_TOOL,
 	]
@@ -695,6 +716,7 @@ Every turn, a [Context] block gives you the focused document: its \`url\`, its c
     • heads — OPTIONAL. The heads array from read_doc. When given, the edit is applied as a back-dated change (changeAt) relative to that version. Omit for a normal "edit current state" change.
     • url — OPTIONAL. Edit a different document than the focused one.
   Returns the affected container's new value so you can verify.
+- load_skill {id} — activate an installed skill by id (see the Skills index in these instructions) and get its full instructions back. Use it BEFORE working on a document type whose skill is installed but not active.
 - ask_user {question, options?} — ask the user something and PAUSE. Posts your question (with optional clickable choices) and ends your turn; their reply comes back as a new message. Use this instead of guessing when you need a decision or missing detail.
 - inspect_dom {selector?} — (usually disabled) return the live DOM HTML of the running tool/page, optionally narrowed to a CSS selector. Use to see how the focused doc is actually rendered.
 - eval_js {code} — (usually disabled) evaluate JavaScript in the page and return the result. Powerful and unsandboxed; only when explicitly needed.
@@ -724,6 +746,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 		{name: "automerge_op", description: "Apply ONE universal Automerge edit to a doc (defaults to the focused doc). range=[from,to] splices a string field (text — from/to are 0-based CHARACTER offsets, to exclusive, every char incl. newlines counts) or a list; range=key assigns (with value) or deletes (without value) on the map/list at path. Omit value to delete. For text, prefer replace_text/find_text so you don't miscount.", parameters: {type: "object", properties: {path: {type: "array", items: {}, description: "keys/indices from the doc root to the container or string ([]=root)"}, range: {description: "[from,to] for a splice, or a string/number key for assign/delete"}, value: {description: "value to insert/set (JSON); omit to delete"}, heads: {type: "array", items: {type: "string"}, description: "optional heads (from read_doc) → back-dated changeAt"}, url: {type: "string", description: "optional target doc (defaults to the focused doc)"}}, required: ["range"]}},
 		{name: "inspect_dom", description: "Return the live DOM HTML of the running tool/page (optionally narrowed by a CSS selector). Disabled by default.", parameters: {type: "object", properties: {selector: {type: "string", description: "optional CSS selector to narrow the result"}}}},
 		{name: "eval_js", description: "Evaluate JavaScript in the page and return the result. Unsandboxed. Disabled by default.", parameters: {type: "object", properties: {code: {type: "string"}}, required: ["code"]}},
+		LOAD_SKILL_TOOL,
 		ASK_USER_TOOL,
 		DEFINE_TOOL,
 	]
@@ -751,8 +774,8 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 	// The llm:skill packs active for the CURRENT run (focused-doc datatype
 	// matches + ids enabled on the chat), resolved at the start of each
 	// computer response. Drives the "## Skills" prompt section, extra skill
-	// tools, and their dispatch.
-	let skillsForRun: ActiveSkill[] = []
+	// tools, and their dispatch. A signal so the skills debug panel tracks it.
+	const [skillsForRun, setSkillsForRun] = createSignal<ActiveSkill[]>([])
 
 	// The tool set for whichever mode we're in, plus any self-defined tools,
 	// plus tools contributed by the run's active skills (built-ins win on a
@@ -763,7 +786,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 			...customTools(),
 		]
 		const taken = new Set(base.map((t) => t.name))
-		return [...base, ...skillToolSchemas(skillsForRun, taken)]
+		return [...base, ...skillToolSchemas(skillsForRun(), taken)]
 	}
 
 	// Render a structured tool call as the text shown in its card — mirrors the old
@@ -1218,17 +1241,67 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 		return ((props.element as any).repo as any).find(url)
 	}
 
+	// Activate a skill mid-run (the load_skill tool): its instructions come back
+	// as the tool result, and its extra tools join activeTools() for the next
+	// round via skillsForRun. The system prompt already sent still lists the
+	// skill as inactive — the instructions arriving as tool output supersede it.
+	async function activateSkillForRun(id: string): Promise<string> {
+		if (!id) return "Error: load_skill needs a skill id — see the Skills index in your instructions."
+		if (skillsForRun().some((s) => s.id === id)) {
+			return `Skill "${id}" is already active; its instructions are in your system prompt.`
+		}
+		const skill = await activateSkill(id)
+		if (!skill) {
+			const known = listSkills().map((s) => s.id).join(", ")
+			return `Error: no installed skill "${id}". Installed: ${known || "none"}.`
+		}
+		setSkillsForRun([...skillsForRun(), skill])
+		const tools = (skill.module.tools ?? []).map((t: any) => t.name)
+		return (
+			`Skill "${id}" is now active for this run` +
+			(tools.length ? ` (extra tools usable from your next step: ${tools.join(", ")})` : "") +
+			`. Its instructions:\n\n${skill.module.instructions.trim()}`
+		)
+	}
+
+	// read_doc auto-activation: reading a document whose datatype matches an
+	// installed-but-inactive skill pulls that skill in and delivers its
+	// instructions inline with the read result, so the model gets the domain
+	// knowledge exactly when it first looks at such a document.
+	async function autoActivateSkillsFor(doc: any): Promise<string> {
+		const docType = (doc as any)?.["@patchwork"]?.type
+		if (typeof docType !== "string" || !docType) return ""
+		const notes: string[] = []
+		for (const desc of listSkills()) {
+			if (!Array.isArray(desc.datatypes) || !desc.datatypes.includes(docType)) continue
+			if (skillsForRun().some((s) => s.id === desc.id)) continue
+			const skill = await activateSkill(desc.id)
+			if (!skill) continue
+			setSkillsForRun([...skillsForRun(), skill])
+			const tools = (skill.module.tools ?? []).map((t: any) => t.name)
+			notes.push(
+				`[Skill "${desc.id}" auto-activated: this document's type (${docType}) matches it` +
+					(tools.length ? `; extra tools usable from your next step: ${tools.join(", ")}` : "") +
+					`. Follow its instructions:]\n\n${skill.module.instructions.trim()}`
+			)
+		}
+		return notes.length ? "\n\n" + notes.join("\n\n") : ""
+	}
+
 	async function runToolByName(toolName: string, rawArgs: any): Promise<string> {
 		const args = rawArgs || {}
 		const repo = (props.element as any).repo
 		// In context mode, doc-editing tools default to the focused document.
 		const focusedUrl = () => props.targetDocUrl?.()
 		try {
-			if (toolName === "read_doc") {
+			if (toolName === "load_skill") {
+				return await activateSkillForRun(String(args.id || "").trim())
+			} else if (toolName === "read_doc") {
 				const url = args.url || (isContext() ? focusedUrl() : undefined)
 				if (!url) return "Error: no url and no focused document."
 				const h = await resolveRunDoc(url)
 				const doc = h.doc()
+				const skillNote = await autoActivateSkillsFor(doc)
 				if (isContext()) {
 					// Context mode also returns heads so a follow-up automerge_op can
 					// back-date its change (changeAt). handle.heads() is the UrlHeads
@@ -1240,9 +1313,9 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 					try {
 						heads = h.heads()
 					} catch {}
-					return JSON.stringify({url, heads, doc}, null, 2)
+					return JSON.stringify({url, heads, doc}, null, 2) + skillNote
 				}
-				return JSON.stringify(doc, null, 2) || "null"
+				return (JSON.stringify(doc, null, 2) || "null") + skillNote
 			} else if (toolName === "automerge_op") {
 				const url = args.url || focusedUrl()
 				if (!url) return "Error: no url and no focused document."
@@ -1724,7 +1797,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 			}
 			// A tool contributed by one of the run's active llm:skills — dispatch
 			// to the skill's own runTool.
-			const skillResult = await runSkillTool(skillsForRun, toolName, args, {
+			const skillResult = await runSkillTool(skillsForRun(), toolName, args, {
 				repo,
 				handle: props.handle,
 				element: props.element,
@@ -2593,7 +2666,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 			// match the focused document, skills enabled on the chat by id, and
 			// @momputer forcing its persona skill. Resolved before the prompt so
 			// their instructions/tools are in place for every round.
-			skillsForRun = []
+			setSkillsForRun([])
 			try {
 				let focusedType: string | undefined
 				const turl = props.targetDocUrl?.()
@@ -2604,11 +2677,13 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 						]?.type
 					} catch {}
 				}
-				skillsForRun = await resolveActiveSkills({
-					focusedType,
-					enabledIds: activeFeatures(),
-					forcedIds: isMomputer ? ["momputer"] : undefined,
-				})
+				setSkillsForRun(
+					await resolveActiveSkills({
+						focusedType,
+						enabledIds: activeFeatures(),
+						forcedIds: isMomputer ? ["momputer"] : undefined,
+					})
+				)
 			} catch (e) {
 				console.warn("[Computer] skill resolution failed:", e)
 			}
@@ -2631,7 +2706,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 				'"` as the id for both the datatype and tool plugins, and in supportedDatatypes.'
 			// Skills: active packs' full instructions plus a one-line index of the
 			// inactive ones. (The momputer persona rides this too, forced above.)
-			const skillsSection = skillsPromptSection(skillsForRun, listSkills())
+			const skillsSection = skillsPromptSection(skillsForRun(), listSkills())
 			if (skillsSection) systemPrompt += "\n\n" + skillsSection
 			const messages = [...context, {role: "user", content: userMsg.text}]
 
@@ -3498,6 +3573,12 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 											Stop
 										</button>
 									</div>
+								</Show>
+								<Show when={has("computer")}>
+									<SkillsDebug
+										active={skillsForRun}
+										enabledIds={activeFeatures}
+									/>
 								</Show>
 								<InputArea
 									replyToId={replyToId()}

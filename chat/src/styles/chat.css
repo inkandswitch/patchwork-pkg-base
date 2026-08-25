@@ -669,6 +669,52 @@
       font-style:normal;
     }
     .chat-stop-btn:hover { background:var(--bg-hover); color:var(--text-primary); }
+
+    /* Fold-out skills debug panel (above the input) */
+    .chat-skills-debug {
+      flex-shrink:0; padding:0 16px 2px; font-size:11px;
+      font-family:monospace; color:var(--text-muted);
+    }
+    .chat-skills-debug summary {
+      cursor:pointer; user-select:none; list-style:none; opacity:0.7;
+    }
+    .chat-skills-debug summary::before { content:"▸ "; }
+    .chat-skills-debug[open] summary::before { content:"▾ "; }
+    .chat-skills-debug summary:hover { opacity:1; }
+    .chat-skills-debug-count {
+      margin-left:6px; padding:0 5px; border-radius:8px;
+      background:var(--accent-soft); color:var(--accent-text);
+    }
+    .chat-skills-debug-list {
+      margin:4px 0; padding:6px 8px; border:1px solid var(--border);
+      border-radius:6px; background:var(--bg-mid);
+      max-height:180px; overflow-y:auto; overscroll-behavior:contain;
+    }
+    .chat-skills-debug-row {
+      display:grid; grid-template-columns:auto auto 1fr; gap:2px 8px;
+      align-items:baseline; padding:3px 0;
+    }
+    .chat-skills-debug-row + .chat-skills-debug-row {
+      border-top:1px solid var(--border);
+    }
+    .chat-skills-debug-state {
+      padding:0 5px; border-radius:8px; background:var(--bg-hover);
+    }
+    .chat-skills-debug-state[data-state="active"] {
+      background:var(--accent-soft); color:var(--accent-text);
+    }
+    .chat-skills-debug-id { color:var(--text-primary); }
+    .chat-skills-debug-meta { color:var(--text-muted); }
+    .chat-skills-debug-desc {
+      grid-column:1 / -1; color:var(--text-secondary);
+      white-space:normal;
+    }
+    .chat-skills-debug-empty { padding:4px 0; font-style:italic; }
+    .chat-skills-debug-note {
+      margin-top:6px; padding-top:4px; border-top:1px solid var(--border);
+      opacity:0.7;
+    }
+
     .chat-input-wrapper { flex-shrink:0; padding:0 16px 16px; position:relative; }
 
     /* Emoji/emoticon autocomplete popup */
