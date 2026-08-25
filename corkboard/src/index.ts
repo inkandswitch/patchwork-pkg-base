@@ -27,4 +27,19 @@ export const plugins: Plugin<any>[] = [
       return ProvenanceProvider;
     },
   },
+  // Instruction pack for Patchwork's chat computer (the `llm:skill` type the
+  // chat tool consumes): how to create and edit tldraw canvases with the
+  // generic document tools. Auto-activates when a tldraw5 doc is focused.
+  {
+    type: "llm:skill",
+    id: "tldraw5",
+    name: "tldraw Canvas",
+    description:
+      "Create and edit tldraw canvases — shapes, sticky notes, frames, arrows with bindings, and embedded Patchwork documents. Applies when the focused document is a tldraw5 canvas, or when the user asks to draw, diagram, or lay something out on a canvas.",
+    datatypes: ["tldraw5"],
+    async load() {
+      const { skill } = await import("./llm-skill.js");
+      return skill;
+    },
+  },
 ];
