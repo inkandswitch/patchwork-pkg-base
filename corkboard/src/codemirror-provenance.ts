@@ -68,6 +68,7 @@ export function provenanceExtension(
       private view: EditorView;
       private sources: ProvenanceSource[] = [];
       private emphasis: DocHandle<unknown>[] = [];
+      private focusUrls = new Set<string>();
       private focusHandle: DocHandle<FocusDoc> | undefined;
       private lastPushedKey = "";
       private destroyed = false;
@@ -169,7 +170,10 @@ export function provenanceExtension(
       }
 
       // Focus refs (selection ∪ highlight) scoped to this doc, resolved to
-      // handles so `build` can test overlap against the source ranges.
+      // handles so `build` can test overlap against the source ranges. The
+      // raw url set is kept too: a source range is also emphasised when the
+      // focus holds one of its TARGETS (e.g. an element selected on a
+      // Petrinaut canvas), which never resolves into this doc.
       private async refreshEmphasis() {
         const doc = this.focusHandle?.doc();
         const urls = [
@@ -183,6 +187,7 @@ export function provenanceExtension(
           }
         }
         if (this.destroyed) return;
+        this.focusUrls = new Set(urls);
         this.emphasis = refs;
         this.poke();
       }
@@ -201,9 +206,9 @@ export function provenanceExtension(
           if (!positions) continue;
           const [start, end] = positions;
           if (start === end) continue;
-          const isEmphasised = this.emphasis.some((ref) =>
-            ref.overlaps(source.handle)
-          );
+          const isEmphasised =
+            this.emphasis.some((ref) => ref.overlaps(source.handle)) ||
+            source.targetUrls.some((url) => this.focusUrls.has(url));
           out.push(
             Decoration.mark({
               attributes: { style: sourceStyle(isEmphasised) },
