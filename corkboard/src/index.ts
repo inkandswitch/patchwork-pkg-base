@@ -27,6 +27,22 @@ export const plugins: Plugin<any>[] = [
       return ProvenanceProvider;
     },
   },
+  // Renders provenance in text editors: a codemirror-base extension FACTORY
+  // (it receives the editor's {handle, element, repo} context) that
+  // underlines provenance source ranges and pushes their linked targets into
+  // the shared focus selection. Inert outside a provenance provider.
+  {
+    type: "codemirror:extension",
+    id: "codemirror-provenance",
+    name: "Provenance highlights",
+    supportedDatatypes: "*",
+    async load() {
+      const { provenanceExtension } = await import(
+        "./codemirror-provenance.js"
+      );
+      return provenanceExtension;
+    },
+  },
   // Instruction pack for Patchwork's chat computer (the `llm:skill` type the
   // chat tool consumes): how to create and edit tldraw canvases with the
   // generic document tools. Auto-activates when a tldraw5 doc is focused.

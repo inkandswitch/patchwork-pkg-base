@@ -42,23 +42,6 @@ type CommentEntry = {
   threadUrl: AutomergeUrl;
 };
 
-// Pushed by the provenance provider (see the corkboard tool): one flattened
-// (source, target) pair per stored `@provenance` entry. Links are stored in
-// the GENERATED doc, so this editor can only learn that its ranges are
-// provenance sources through the provider.
-type ProvenanceLink = {
-  sourceUrl: AutomergeUrl;
-  targetUrl: AutomergeUrl;
-  entryUrl: AutomergeUrl;
-};
-
-// A provenance source range in THIS doc, resolved to a live ref handle, with
-// the target refs (in other docs) it links to.
-type ProvenanceSource = {
-  handle: DocHandle<unknown>;
-  targetUrls: AutomergeUrl[];
-};
-
 // Diff baseline served by the draft overlay (`draft:baseline`). `heads` is
 // `null` when there is no baseline yet (e.g. the doc hasn't been COW'd in the
 // active draft, or "main" is selected), in which case no diff is rendered.
@@ -79,15 +62,6 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
   const commentEntries = subscribe<CommentEntry[]>(
     props.element,
     { type: "patchwork:comments" },
-    []
-  );
-
-  // Provenance links touching this doc. Answered only when a provenance
-  // provider is mounted above (e.g. inside the corkboard tool); elsewhere the
-  // subscription stays at its default and nothing renders.
-  const provenanceLinks = subscribe<ProvenanceLink[]>(
-    props.element,
-    { type: "patchwork:provenance", url: props.handle.url },
     []
   );
 
@@ -124,15 +98,6 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
     { initialValue: [] }
   );
 
-  // Ranges in this doc that other documents were generated from, each with
-  // the target refs it links to (used to push those targets into the shared
-  // selection when the cursor lands on the range).
-  const [provenanceSources] = createResource(
-    provenanceLinks,
-    (links) => resolveProvenanceSources(links, props.handle.url, props.repo),
-    { initialValue: [] }
-  );
-
   // Bounding range of the focused targets (selection ∪ highlight). Recomputes
   // when the targets change -- e.g. selecting a comment thread elsewhere -- so
   // the editor can scroll the freshly focused region into view. Positions are
@@ -150,49 +115,22 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
     return from <= to ? [from, to] : null;
   });
 
-  // Target refs (in other docs) of every provenance source range that
-  // overlaps [from, to]. Selecting provenance-annotated text pushes these
-  // into the shared selection, so views of the generated doc can highlight
-  // what came from the text under the cursor.
-  const provenanceTargetsInRange = (
-    from: number,
-    to: number
-  ): AutomergeUrl[] => {
-    const targets = new Set<AutomergeUrl>();
-    for (const source of provenanceSources()) {
-      const positions = source.handle.rangePositions();
-      if (!positions) continue;
-      const [start, end] = positions;
-      if (start === end || to < start || from > end) continue;
-      for (const url of source.targetUrls) targets.add(url);
-    }
-    return [...targets];
-  };
-
-  let lastEmittedKey: string | undefined;
+  let lastEmittedUrl: AutomergeUrl | undefined;
 
   const onChangeSelection = (from: number, to: number) => {
     const handle = focusHandle();
     if (!handle) return;
     const nextUrl = props.handle.sub(...PATH, cursor(from, to)).url;
-    const provenanceTargets = provenanceTargetsInRange(from, to);
-    const nextKey = [nextUrl, ...provenanceTargets].join("|");
-    if (nextKey === lastEmittedKey) return;
+    if (nextUrl === lastEmittedUrl) return;
     handle.change((doc) => {
-      const next: Record<AutomergeUrl, true> = { [nextUrl]: true };
-      for (const url of provenanceTargets) next[url] = true;
-      doc.selection = next;
+      doc.selection = { [nextUrl]: true };
     });
-    lastEmittedKey = nextKey;
+    lastEmittedUrl = nextUrl;
   };
 
   const decorations = () => {
-    const emphasisRefs = emphasisTargets();
     return RangeSet.of<Decoration>(
-      [
-        ...buildCommentDecorations(commentTargets(), emphasisRefs),
-        ...buildProvenanceDecorations(provenanceSources(), emphasisRefs),
-      ],
+      buildCommentDecorations(commentTargets(), emphasisTargets()),
       true // sort ranges
     );
   };
@@ -304,7 +242,7 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
   // The editor is only mounted once the datatype's extensions (themes, syntax
   // highlighting) are in hand, so it never paints unthemed first.
   const [datatypeExtensions] = createResource(() =>
-    loadCodeMirrorExtensionsForDoc(props.handle)
+    loadCodeMirrorExtensionsForDoc(props.handle, props.element, props.repo)
   );
 
   // Base CodeMirror extensions (context-specific, not language-specific)
@@ -376,31 +314,6 @@ async function getDedupedCommentTargets(
   return Array.from(overlappingRefs);
 }
 
-// Scopes provenance links to the ones whose SOURCE lives in this doc,
-// dedupes by source ref, and resolves each source to a live handle, keeping
-// the target urls it links to.
-async function resolveProvenanceSources(
-  links: ProvenanceLink[],
-  docUrl: AutomergeUrl,
-  repo: Repo
-): Promise<ProvenanceSource[]> {
-  const targetsBySource = new Map<AutomergeUrl, Set<AutomergeUrl>>();
-  for (const link of links) {
-    if (!link.sourceUrl.startsWith(docUrl)) continue;
-    let targets = targetsBySource.get(link.sourceUrl);
-    if (!targets) targetsBySource.set(link.sourceUrl, (targets = new Set()));
-    targets.add(link.targetUrl);
-  }
-  const sources: ProvenanceSource[] = [];
-  for (const [sourceUrl, targets] of targetsBySource) {
-    sources.push({
-      handle: await repo.find(sourceUrl),
-      targetUrls: [...targets],
-    });
-  }
-  return sources;
-}
-
 // Scopes ref urls to this doc and resolves each one to a `DocHandle`.
 // Used for both our own `selection` and other views' `highlight`.
 async function resolveSubDocUrlsOfDoc(
@@ -440,41 +353,6 @@ function buildCommentDecorations(
   return out;
 }
 
-// Provenance source ranges — text that another document was generated from —
-// render like comment targets but in the link accent with a dotted underline,
-// so the two kinds of annotation stay distinguishable. Emphasised (the focus
-// selection/highlight overlaps the range) draws the stronger tint.
-function buildProvenanceDecorations(
-  sources: ProvenanceSource[],
-  emphasisRefs: DocHandle<unknown>[]
-): Range<Decoration>[] {
-  const out: Range<Decoration>[] = [];
-  for (const source of sources) {
-    const positions = source.handle.rangePositions();
-    if (!positions) continue;
-    const [start, end] = positions;
-    if (start === end) continue;
-    const isEmphasised = emphasisRefs.some((s) => s.overlaps(source.handle));
-    out.push(
-      Decoration.mark({
-        attributes: { style: provenanceSourceStyle(isEmphasised) },
-      }).range(start, end)
-    );
-  }
-  return out;
-}
-
-function provenanceSourceStyle(isEmphasised: boolean): string {
-  // Same highlighter-over-paper scheme as `commentTargetStyle`, but on the
-  // link accent: the tint is anchored to the editor surface so it tracks the
-  // theme, and the dotted underline reads as "this points somewhere".
-  const paper = isEmphasised ? "56%" : "85%";
-  return `
-    border-bottom: 2px dotted var(--studio-link);
-    background-color: color-mix(in oklch, var(--studio-link), var(--text-editor-fill) ${paper});
-  `;
-}
-
 function commentTargetStyle(isEmphasised: boolean): string {
   // Highlighter-over-paper: tint the editor surface (--text-editor-fill) with the
   // secondary accent and leave the text in the editor's own ink (--text-editor-line,
@@ -492,8 +370,21 @@ function commentTargetStyle(isEmphasised: boolean): string {
   `;
 }
 
+// The context handed to context-aware `codemirror:extension` modules. A
+// registered module may be a plain Extension (or array), or a FACTORY taking
+// this context — that's how out-of-package extensions (e.g. the corkboard's
+// provenance highlighter) reach the document handle and the provider tree
+// without a build-time dependency on this package.
+export type CodeMirrorExtensionContext = {
+  handle: DocHandle<unknown>;
+  element: HTMLElement;
+  repo: Repo;
+};
+
 async function loadCodeMirrorExtensionsForDoc(
-  handle: DocHandle<unknown>
+  handle: DocHandle<unknown>,
+  element: HTMLElement,
+  repo: Repo
 ): Promise<Extension[]> {
   const docType = (handle.doc() as any)?.["@patchwork"]?.type;
   const registry = getRegistry<any>("codemirror:extension");
@@ -506,8 +397,10 @@ async function loadCodeMirrorExtensionsForDoc(
       );
     })
   );
+  const context: CodeMirrorExtensionContext = { handle, element, repo };
   return loaded.flatMap((ext) => {
-    const impl = ext.module;
+    const impl =
+      typeof ext.module === "function" ? ext.module(context) : ext.module;
     return Array.isArray(impl) ? impl : [impl];
   });
 }
