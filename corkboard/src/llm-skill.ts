@@ -2,6 +2,35 @@
 // creating and editing tldraw canvases with the chat's generic document tools
 // (read_doc / automerge_op / replace_text). Auto-activates when the focused
 // document is a tldraw5 canvas (see the registration in index.ts).
+//
+// It also contributes ONE tool, create_doc_on_canvas, for the one job those
+// generic document tools can't do: bring a new document into existence.
+
+import { createDocOfDatatype2 } from "@inkandswitch/patchwork-plugins";
+import { datatypeIdsHint, loadDatatype } from "./datatypes.js";
+import {
+  DEFAULT_EMBED_H,
+  DEFAULT_EMBED_W,
+  buildEmbedRecord,
+  indexAbove,
+  placeClearOfContent,
+  shapeIdForUrl,
+} from "./embed-placement.js";
+
+// The chat's `llm:skill` tool contract, restated here — the chat tool is a
+// separate package, so its types can't be imported, only matched.
+type LlmSkillTool = {
+  name: string;
+  description: string;
+  parameters?: any;
+};
+type LlmSkillToolCtx = {
+  repo: any;
+  handle: any;
+  element: HTMLElement;
+  focusedUrl: string | undefined;
+  applyAutomerge: (doc: any, path: any[], range: any, value: any) => void;
+};
 
 const INSTRUCTIONS = `
 Create and edit tldraw canvases — diagrams, sticky-note boards, flowcharts,
@@ -103,8 +132,25 @@ its own tool. \`docUrl\` is an "automerge:…" url, \`docType\` its datatype id,
 { ..., "type": "patchwork-doc", "props": {
   "w": 640, "h": 480, "docUrl": "automerge:<id>", "docName": "Notes",
   "docType": "<datatypeId>", "toolId": "" } }
-Only reference documents that already exist (a url the user gave you, or one
-from \`docs\` / another shape). You cannot create a Patchwork document from here.
+Write this record yourself only for a document that ALREADY exists (a url the
+user gave you, or one from \`docs\` / another shape). To put a NEW document on
+the canvas, use create_doc_on_canvas — see below.
+
+### Creating a new document as an embed
+
+create_doc_on_canvas { datatype, x?, y?, w?, h? } creates a real, empty document
+of an installed datatype and writes its \`patchwork-doc\` shape onto this canvas,
+in one step. \`datatype\` is a datatype id and the only required argument.
+
+- Get the id from the \`patchwork-datatypes\` skill's list_datatypes tool — it
+  lists what this Patchwork actually has installed. If that skill isn't active,
+  load_skill it first. Do not guess an id.
+- Omit x/y and the embed is placed clear of the existing shapes; omit w/h for
+  640×480. Don't pre-write a placeholder shape for it — the tool writes the
+  record, and writing your own would leave a duplicate.
+- It returns the new document's url, its datatype, and the shape id. The document
+  starts EMPTY: read_doc that url next (which activates that datatype's own
+  skill, if one is installed), then fill it in with automerge_op as usual.
 
 Style values (any other value is rejected):
 - color / labelColor: black, grey, light-violet, violet, blue, light-blue,
@@ -181,6 +227,120 @@ target's edge midpoint.
 4. read_doc to verify the records landed as written, then summarize.
 `.trim();
 
+// ── create_doc_on_canvas ─────────────────────────────────────────────────────
+// The one thing the instructions above can't do with automerge_op alone: bring
+// a new Patchwork document into existence. Creating it through the datatype's
+// own `init` (the same createDocOfDatatype2 the canvas's new-doc tool and the
+// sideboard's "+" both call) is what makes it a valid document of its type
+// rather than a hand-guessed blob.
+
+const CREATE_DOC_ON_CANVAS: LlmSkillTool = {
+  name: "create_doc_on_canvas",
+  description:
+    "Create a NEW, empty Patchwork document of an installed datatype and embed it on the focused tldraw canvas as a patchwork-doc shape. Takes the datatype id (see the patchwork-datatypes skill's list_datatypes); optional x/y/w/h, else it is auto-placed clear of the existing shapes at 640x480. Returns the new document's url — read_doc it to fill it in.",
+  parameters: {
+    type: "object",
+    properties: {
+      datatype: {
+        type: "string",
+        description:
+          "datatype id, e.g. from list_datatypes (NOT a display name)",
+      },
+      x: { type: "number", description: "optional page x (top-left)" },
+      y: { type: "number", description: "optional page y (top-left)" },
+      w: { type: "number", description: "optional width (default 640)" },
+      h: { type: "number", description: "optional height (default 480)" },
+    },
+    required: ["datatype"],
+  },
+};
+
+async function createDocOnCanvas(
+  args: any,
+  ctx: LlmSkillToolCtx
+): Promise<unknown> {
+  const datatypeId = String(args?.datatype ?? "").trim();
+  if (!datatypeId) {
+    return `Error: create_doc_on_canvas needs a \`datatype\` id. Installed: ${datatypeIdsHint()}`;
+  }
+  if (!ctx.focusedUrl) {
+    return "Error: no focused document — create_doc_on_canvas writes into the tldraw canvas you have open.";
+  }
+
+  const canvas = await ctx.repo.find(ctx.focusedUrl);
+  const canvasDoc: any = canvas.doc();
+  if (!canvasDoc || typeof canvasDoc.store !== "object") {
+    return `Error: the focused document (${ctx.focusedUrl}) is not a tldraw canvas — it has no \`store\`.`;
+  }
+
+  const datatype = await loadDatatype(datatypeId);
+  if (!datatype) {
+    return `Error: no installed datatype "${datatypeId}". Installed: ${datatypeIdsHint()}`;
+  }
+
+  // `createDocOfDatatype2` is typed against an older @automerge/automerge-repo
+  // Repo; cast to bridge the version skew (the same thing tldraw5's new-doc
+  // tool does).
+  const docHandle = await (
+    createDocOfDatatype2 as unknown as (
+      d: unknown,
+      r: unknown
+    ) => Promise<{ url: string; doc(): unknown }>
+  )(datatype, ctx.repo);
+  const docUrl = docHandle.url;
+
+  // Register with the sync server when the host exposes a keyhive, as the
+  // sideboard and folder do on create. Absent hive = local-only host, which is
+  // fine; a failure here must not lose the document we just made.
+  try {
+    await (ctx.element as any)?.hive?.addSyncServerPullToDoc?.(docUrl);
+  } catch (e) {
+    console.warn("[corkboard] sync-server registration failed for", docUrl, e);
+  }
+
+  let docName = datatype.name || datatypeId;
+  try {
+    docName = (datatype as any).module?.getTitle?.(docHandle.doc()) || docName;
+  } catch {
+    // A datatype whose getTitle chokes on a fresh doc still gets an embed.
+  }
+
+  const store = canvasDoc.store as Record<string, any>;
+  const auto = placeClearOfContent(store);
+  const shapeId = shapeIdForUrl(docUrl);
+  const record = buildEmbedRecord({
+    shapeId,
+    index: indexAbove(store),
+    x: Number.isFinite(Number(args?.x)) ? Number(args.x) : auto.x,
+    y: Number.isFinite(Number(args?.y)) ? Number(args.y) : auto.y,
+    w: Number.isFinite(Number(args?.w)) ? Number(args.w) : DEFAULT_EMBED_W,
+    h: Number.isFinite(Number(args?.h)) ? Number(args.h) : DEFAULT_EMBED_H,
+    docUrl,
+    docName,
+    docType: datatypeId,
+  });
+
+  canvas.change((d: any) => {
+    ctx.applyAutomerge(d, ["store"], shapeId, record);
+  });
+
+  return {
+    url: docUrl,
+    docType: datatypeId,
+    docName,
+    shapeId,
+    canvasUrl: ctx.focusedUrl,
+    x: record.x,
+    y: record.y,
+    next: `The document is empty. read_doc ${docUrl} and fill it in — its own skill (if installed) activates when you read it.`,
+  };
+}
+
 export const skill = {
   instructions: INSTRUCTIONS,
+  tools: [CREATE_DOC_ON_CANVAS],
+  async runTool(name: string, args: any, ctx: LlmSkillToolCtx) {
+    if (name !== "create_doc_on_canvas") return undefined;
+    return createDocOnCanvas(args, ctx);
+  },
 };
