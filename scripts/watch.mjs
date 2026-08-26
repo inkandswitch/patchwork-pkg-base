@@ -49,9 +49,15 @@ function stop(code = 0) {
   process.exitCode = code;
 }
 
+// On pnpm >= 11, `pnpm -r` at the (workspace-less) root recurses into every
+// directory with a package.json — including the aggregated copies in
+// static-dist/packages/, which keep their scripts but have no sources or
+// node_modules. Exclude them or their failures kill the whole watch.
+const notStaticDist = "--filter=!{static-dist/**}";
+
 if (!existsSync(join(root, "static-dist", "modules.json"))) {
   for (const [command, args] of [
-    ["pnpm", ["-r", "--if-present", "build"]],
+    ["pnpm", ["-r", "--if-present", notStaticDist, "build"]],
     ["node", ["scripts/bundle.mjs"]],
   ]) {
     const initial = spawnSync(command, args, { cwd: root, stdio: "inherit" });
@@ -81,7 +87,7 @@ for (const name of readdirSync(root)) {
 
 const tools = spawn(
   "pnpm",
-  ["-r", "--parallel", "--if-present", "dev"],
+  ["-r", "--parallel", "--if-present", notStaticDist, "dev"],
   { cwd: root, stdio: "inherit" },
 );
 tools.on("exit", (code) => {
