@@ -19,7 +19,7 @@ import {
 
 /**
  * Answers `patchwork:provenance` subscriptions. Watches every doc mounted
- * inside it for a `@provenance` section and pushes the resulting
+ * inside it for a `@patchwork.provenance` section and pushes the resulting
  * `ProvenanceLink[]` to subscribers.
  *
  * The point of mounting this around a canvas: entries live in the GENERATED
@@ -188,9 +188,9 @@ export const ProvenanceProvider = (element: PatchworkViewElement) => {
     handle: DocHandle<DocWithProvenance>
   ): ProvenanceLink[] {
     const links: ProvenanceLink[] = [];
-    const entries = handle.doc()?.["@provenance"]?.entries ?? [];
+    const entries = handle.doc()?.["@patchwork"]?.provenance ?? [];
     for (const entry of entries) {
-      const entryUrl = handle.sub("@provenance", "entries", {
+      const entryUrl = handle.sub("@patchwork", "provenance", {
         id: entry.id,
       }).url;
       for (const targetUrl of entry.targets ?? []) {

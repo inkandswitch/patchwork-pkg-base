@@ -2,13 +2,15 @@ import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
 
 // Provenance is a generalization of comments: a link between references,
 // e.g. a text range in one document and an element generated from it in
-// another. Entries are stored in the GENERATED document, pointing back at
-// their sources — the source document knows nothing about them, which is why
-// the provider (see `ProvenanceProvider`) exists to invert the links for
+// another. Entries are stored in the GENERATED document — under its
+// `@patchwork` envelope, next to the datatype tag — pointing back at their
+// sources. The source document knows nothing about them, which is why the
+// provider (see `ProvenanceProvider`) exists to invert the links for
 // anything mounted alongside it.
 export type DocWithProvenance = {
-  "@provenance"?: {
-    entries: ProvenanceEntry[];
+  "@patchwork"?: {
+    type?: string;
+    provenance?: ProvenanceEntry[];
   };
 };
 

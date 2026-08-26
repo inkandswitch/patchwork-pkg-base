@@ -16,8 +16,8 @@ import { render } from "solid-js/web";
 // canvas itself is rendered by the tldraw5 tool via `<patchwork-view>`; the
 // value added here is the context — every doc pinned to the canvas mounts
 // inside the provider's subtree, so the provider can index their
-// `@provenance` sections and answer `patchwork:provenance` subscriptions
-// from any of them (see `ProvenanceProvider`).
+// `@patchwork.provenance` sections and answer `patchwork:provenance`
+// subscriptions from any of them (see `ProvenanceProvider`).
 const mount: ToolImplementation = (handle, element) =>
   render(() => <Corkboard docUrl={handle.url} />, element);
 
