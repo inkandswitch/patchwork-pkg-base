@@ -376,6 +376,32 @@
     }
     .chat-draft-review[data-state="accepted"] .chat-draft-review-state { color:var(--accent-text, var(--text-secondary)); }
     .chat-draft-review[data-state="closed"] { opacity:0.65; }
+    /* Scenario picker embed: chip per branch, accept-selected / reject-all. */
+    .chat-scenario-review {
+      display:flex; flex-direction:column; gap:8px;
+      margin-top:6px; padding:8px 10px;
+      border:1px solid var(--border); border-radius:8px;
+      background:var(--bg-darkest); font-size:13px;
+    }
+    .chat-scenario-review-header { display:flex; align-items:center; gap:8px; }
+    .chat-scenario-review-title { color:var(--text-primary); font-weight:600; white-space:nowrap; }
+    .chat-scenario-review-chips { display:flex; flex-wrap:wrap; gap:6px; }
+    .chat-scenario-chip {
+      font:inherit; font-size:12px; cursor:pointer;
+      padding:3px 12px; border-radius:var(--studio-radius-round, 999px);
+      border:1px solid var(--border);
+      background:transparent; color:var(--text-secondary);
+      max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    }
+    .chat-scenario-chip:hover:not(:disabled) { background:var(--bg-hover); color:var(--text-primary); }
+    .chat-scenario-chip[data-selected] {
+      border-color:var(--accent-line, currentColor);
+      background:var(--accent); color:var(--accent-fg);
+    }
+    .chat-scenario-chip:disabled { cursor:default; }
+    .chat-scenario-chip:disabled:not([data-selected]) { opacity:0.6; }
+    .chat-scenario-review[data-state="closed"],
+    .chat-scenario-review[data-state="rejected"] { opacity:0.65; }
     .shiki { margin:0 !important; padding:10px 12px !important; font-size:13px !important; line-height:1.5 !important; overflow-x:auto; border-radius:6px; }
     .shiki code { font-family:ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace !important; }
 

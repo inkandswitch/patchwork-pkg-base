@@ -67,10 +67,18 @@ export function ChatRoot(props: {
 	// doc-editing tool actually ran (true → the wrapper posts the
 	// accept/reject review embed) and, when edits happened, an LLM-written
 	// one-line summary of them (used as the draft's name).
+	// startScenario (optional) opens a NEW draft branch mid-run and re-aims
+	// resolveDoc at it — the sequential multi-scenario flow: the model calls
+	// the start_scenario tool before each alternative's edits, and the wrapper
+	// posts a scenario picker instead of the single review embed.
+	// hasScenarios tells the run whether scenarios were opened (so it can skip
+	// the single-draft naming step).
 	agentDraft?: {
 		onRunStart: () => Promise<void>
 		onRunEnd: (edited: boolean, summary?: string) => void | Promise<void>
 		resolveDoc: (url: string) => Promise<any>
+		startScenario?: (name: string) => Promise<string>
+		hasScenarios?: () => boolean
 	}
 	// Optional selector OVERRIDE (the embeddable component's `features=` attr).
 	// When absent, the active feature set is driven by the document's `plugins`
@@ -598,11 +606,27 @@ You can include \`\`\`file blocks to create and embed files, \`\`\`embed blocks 
 
 Keep responses concise. When you create a tool, explain briefly what it does.`
 
+	// Offered only when the host provides startScenario (the Agent tool):
+	// the model's way to produce several alternative versions on separate
+	// branches, browsed and decided in the scenario picker afterwards.
+	const SCENARIOS_PROMPT_SECTION = `
+
+## Scenarios (alternative versions)
+When the user asks for multiple alternatives/options/scenarios ("show me three variants…"), put each one on its own branch:
+1. Call start_scenario {name} BEFORE the first edit of each alternative. It opens a fresh branch forked from the document's base state; ALL subsequent edits land on it until the next start_scenario.
+2. Scenarios are independent — each forks from the same base, NOT from the previous scenario. Repeat any shared setup in every scenario.
+3. Give each a short, descriptive name ("Conservative", "Aggressive timeline").
+4. After the last scenario's edits, briefly summarize how they differ in your reply. The user gets a picker to browse the branches and accept ONE (or reject all) — don't ask which they prefer; they decide there.
+Do NOT call start_scenario for ordinary single-outcome edits.`
+
 	// Pick the prompt for the active model: local/in-browser models (small,
 	// limited context) get the compact prompt; capable cloud providers get the
 	// full one with worked examples. Falls back to full on any read error.
 	function computerSystemPrompt(): string {
-		if (isContext()) return CONTEXT_SYSTEM_PROMPT
+		if (isContext())
+			return props.agentDraft?.startScenario
+				? CONTEXT_SYSTEM_PROMPT + SCENARIOS_PROMPT_SECTION
+				: CONTEXT_SYSTEM_PROMPT
 		try {
 			const cfg = scopedCfg()
 			return cfg?.provider === "local"
@@ -689,6 +713,25 @@ Keep responses concise. When you create a tool, explain briefly what it does.`
 				from: {type: "number", description: "text range start (character offset)"},
 				to: {type: "number", description: "text range end (character offset, exclusive)"},
 			},
+		},
+	}
+
+	// Multi-scenario runs (Agent tool only — needs the drafts machinery): each
+	// call re-aims the run's edits at a fresh branch. Included in activeTools
+	// only when the host wires up agentDraft.startScenario.
+	const START_SCENARIO_TOOL = {
+		name: "start_scenario",
+		description:
+			"Open a new scenario branch and aim ALL your subsequent document edits at it, until the next start_scenario call. Each scenario forks from the document's base state, independent of the other scenarios. Use ONLY when producing multiple alternative versions for the user to choose between — call it before each alternative's first edit; the user picks between the finished scenarios afterwards.",
+		parameters: {
+			type: "object",
+			properties: {
+				name: {
+					type: "string",
+					description: "short descriptive name for this scenario",
+				},
+			},
+			required: ["name"],
 		},
 	}
 
@@ -808,6 +851,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 	function activeTools() {
 		const base = [
 			...(isContext() ? CONTEXT_TOOLS : COMPUTER_TOOLS),
+			...(props.agentDraft?.startScenario ? [START_SCENARIO_TOOL] : []),
 			...customTools(),
 		]
 		const taken = new Set(base.map((t) => t.name))
@@ -1321,6 +1365,12 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 		try {
 			if (toolName === "load_skill") {
 				return await activateSkillForRun(String(args.id || "").trim())
+			} else if (toolName === "start_scenario") {
+				if (!props.agentDraft?.startScenario) {
+					return "Error: scenarios are not available in this chat."
+				}
+				const name = String(args.name || "").trim() || "Scenario"
+				return await props.agentDraft.startScenario(name)
 			} else if (toolName === "make_ref") {
 				const url = args.url || focusedUrl()
 				if (!url) return "Error: no url and no focused document."
@@ -3110,10 +3160,13 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 			}
 
 			// Agent-draft flow: name the draft after what this run changed.
+			// Skipped on scenario runs — each scenario was already named by
+			// the model, and the picker replaces the single review embed.
 			if (
 				props.agentDraft &&
 				editedDocsThisRun &&
-				!abortController.signal.aborted
+				!abortController.signal.aborted &&
+				!props.agentDraft.hasScenarios?.()
 			) {
 				setLlmStatus("naming the draft")
 				agentDraftSummary = await generateDraftSummary(

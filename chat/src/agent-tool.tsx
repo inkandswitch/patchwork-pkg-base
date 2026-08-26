@@ -57,6 +57,7 @@ import {
 	rawRepo,
 	resolveAgentChatsIndex,
 	createAgentDraft,
+	rejectAgentDraft,
 	checkedOutDraftHandle,
 	checkoutDraft,
 	checkoutAgentDraft,
@@ -376,7 +377,13 @@ function ChatPane(props: {
 	// several chats in parallel) can't redirect in-flight edits.
 	let runDraftUrl: AutomergeUrl | null = null
 
+	// Scenario branches opened by the current run (via the start_scenario
+	// tool), in creation order. Non-empty ⇒ the run ends with the scenario
+	// picker instead of the single draft-review embed.
+	let runScenarios: {url: AutomergeUrl; name: string}[] = []
+
 	const onRunStart = async () => {
+		runScenarios = []
 		// No checked-out doc = no drafts machinery mounted; run plainly (edits
 		// land on the real docs) rather than bookkeeping invisible drafts.
 		if (!props.checkedOut()) {
@@ -387,6 +394,58 @@ function ChatPane(props: {
 		// If this tab is the one being watched, the tab-select effect checks
 		// the (possibly new) draft out for VIEWING — the run doesn't depend on
 		// it. Background tabs leave the checkout entirely alone.
+	}
+
+	/** The start_scenario tool: fork a fresh branch off main and re-aim the
+	 * run's edits at it. The run's default draft (ensured by onRunStart) is
+	 * folded in on the first call: untouched, it's unlinked and forgotten;
+	 * already edited (e.g. reused from an earlier run), it joins the picker
+	 * as a scenario of its own. */
+	const startScenario = async (name: string): Promise<string> => {
+		const turl = props.targetUrl()
+		const chat = handle()
+		if (!turl || !chat) return "Error: no focused document to branch."
+		if (!props.checkedOut()) {
+			return "Error: drafts are unavailable here — make the edits plainly instead of using scenarios."
+		}
+		const repo = rawRepo()
+
+		if (runScenarios.length === 0 && runDraftUrl) {
+			const defaultDraft = runDraftUrl
+			try {
+				const d = await repo.find<DraftDoc>(defaultDraft)
+				const touched =
+					Object.keys(d.doc()?.clones ?? {}).length > 0
+				if (touched) {
+					runScenarios.push({
+						url: defaultDraft,
+						name: d.doc()?.name || "Earlier changes",
+					})
+				} else {
+					await rejectAgentDraft(repo, defaultDraft)
+					chat.change((c: any) => {
+						if (c.agentDraftUrl === defaultDraft)
+							delete c.agentDraftUrl
+					})
+				}
+			} catch (e) {
+				console.warn("[agent] fold default draft into scenarios:", e)
+			}
+		}
+
+		const draftUrl = await createAgentDraft(repo, turl, name)
+		runScenarios.push({url: draftUrl, name})
+		runDraftUrl = draftUrl
+		// Repointing the chat's open draft makes the active tab's checkout
+		// effect follow along, so a watching user sees each scenario as it
+		// is being built.
+		chat.change((d: any) => {
+			d.agentDraftUrl = draftUrl
+		})
+		return (
+			`Scenario “${name}” started (branch ${runScenarios.length}). ` +
+			"All document edits now land on this scenario's branch until the next start_scenario call."
+		)
 	}
 
 	/** Run-path doc resolution: the chat's own draft clone when a draft run is
@@ -400,7 +459,9 @@ function ChatPane(props: {
 
 	const onRunEnd = async (edited: boolean, summary?: string) => {
 		try {
-			if (edited) {
+			if (runScenarios.length > 0) {
+				await finishScenarios()
+			} else if (edited) {
 				if (summary) await renameDraft(summary)
 				await postDraftReview()
 			}
@@ -426,6 +487,68 @@ function ChatPane(props: {
 		const draft = await rawRepo().find<DraftDoc>(draftUrl)
 		draft.change((d) => {
 			d.name = name
+		})
+	}
+
+	/** Scenario run wrap-up: unlink scenarios the model opened but never
+	 * edited, point the chat's open draft at a surviving scenario, and post
+	 * the picker embed. */
+	const finishScenarios = async () => {
+		const scenarios = runScenarios
+		runScenarios = []
+		const chat = handle()
+		if (!chat) return
+		const repo = rawRepo()
+
+		const kept: {url: AutomergeUrl; name: string}[] = []
+		for (const s of scenarios) {
+			try {
+				const d = await repo.find<DraftDoc>(s.url)
+				if (Object.keys(d.doc()?.clones ?? {}).length > 0) {
+					kept.push(s)
+				} else {
+					await rejectAgentDraft(repo, s.url)
+				}
+			} catch {
+				kept.push(s)
+			}
+		}
+
+		if (kept.length === 0) {
+			chat.change((d: any) => {
+				delete d.agentDraftUrl
+			})
+			return
+		}
+		if (!kept.some((s) => s.url === agentDraftUrl())) {
+			chat.change((d: any) => {
+				d.agentDraftUrl = kept[kept.length - 1].url
+			})
+		}
+
+		const msgData = {
+			id: generateId(),
+			name: "computer",
+			text:
+				kept.length === 1
+					? "I prepared one scenario — review it below."
+					: `I prepared ${kept.length} scenarios on separate branches — browse them below and accept one.`,
+			timestamp: Date.now(),
+			isComputer: true,
+			font: "monospace",
+			richBlocks: [
+				{
+					type: "scenario-review",
+					content: JSON.stringify(kept),
+					meta: String(kept.length),
+				},
+			],
+			"@patchwork": {type: AGENT_CHAT_TYPE},
+		}
+		const mh = await repo.create2(msgData as any)
+		chat.change((d: any) => {
+			if (!d.messages) d.messages = []
+			d.messages.push({ref: true, url: mh.url, timestamp: msgData.timestamp})
 		})
 	}
 
@@ -468,7 +591,13 @@ function ChatPane(props: {
 						element={props.element}
 						mode="context"
 						targetDocUrl={props.targetUrl}
-						agentDraft={{onRunStart, onRunEnd, resolveDoc}}
+						agentDraft={{
+							onRunStart,
+							onRunEnd,
+							resolveDoc,
+							startScenario,
+							hasScenarios: () => runScenarios.length > 0,
+						}}
 					/>
 				)}
 			</Show>
