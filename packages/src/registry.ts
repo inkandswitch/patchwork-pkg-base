@@ -26,6 +26,7 @@ export interface RegistryEntry {
   icon?: string;
   importUrl?: string;
   supportedDatatypes?: string | string[];
+  unlisted?: boolean;
   /** Whether the plugin's implementation has been load()ed yet. */
   loaded: boolean;
 }
@@ -72,6 +73,7 @@ export function readRegistrySnapshot(): RegistryEntry[] {
         icon: p.icon,
         importUrl: typeof p.importUrl === "string" ? p.importUrl : undefined,
         supportedDatatypes: p.supportedDatatypes,
+        unlisted: p.unlisted === true ? true : undefined,
         loaded: "module" in p,
       });
     }

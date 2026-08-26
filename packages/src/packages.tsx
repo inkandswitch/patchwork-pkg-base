@@ -112,7 +112,7 @@ async function previewPackage(url: string): Promise<PackagePreview> {
   };
 }
 type OriginFilter = "all" | Origin;
-type SortKey = "name" | "registry" | "id" | "package" | "origin";
+type SortKey = "name" | "registry" | "id" | "package" | "origin" | "unlisted";
 
 interface Enriched extends RegistryEntry {
   origin: Origin;
@@ -356,6 +356,7 @@ export function Packages(props: {
           e.importUrl,
           e.pkgName,
           datatypesLabel(e.supportedDatatypes),
+          e.unlisted ? "unlisted" : "",
         ]
           .filter(Boolean)
           .join(" ")
@@ -440,6 +441,10 @@ export function Packages(props: {
           return e.pkgName;
         case "origin":
           return String(originRank(e.origin));
+        // Ascending groups the unlisted ones first — that's what you sort by
+        // this column to find.
+        case "unlisted":
+          return e.unlisted ? "0" : "1";
         default:
           return e.name;
       }
@@ -616,6 +621,15 @@ export function Packages(props: {
     </span>
   );
 
+  const UnlistedBadge = () => (
+    <span
+      class="pw-packages__unlisted"
+      title="Hidden from new-document menus and pickers"
+    >
+      unlisted
+    </span>
+  );
+
   const Copyable = (p: {
     value: string;
     label?: string;
@@ -637,8 +651,16 @@ export function Packages(props: {
     return (
       <li class="pw-plugin">
         <span class="pw-plugin__dot" data-origin={p.plugin.origin} />
-        <span class="pw-plugin__name">{p.plugin.name}</span>
+        <span
+          class="pw-plugin__name"
+          classList={{ "is-unlisted": p.plugin.unlisted }}
+        >
+          {p.plugin.name}
+        </span>
         <span class="pw-plugin__type">{prettyType(p.plugin.type)}</span>
+        <Show when={p.plugin.unlisted}>
+          <UnlistedBadge />
+        </Show>
         <Copyable value={p.plugin.id} class="pw-plugin__id" title="Plugin id — click to copy" />
         <Show when={dts()}>
           <span class="pw-plugin__supports">
@@ -849,13 +871,19 @@ export function Packages(props: {
                       <For each={declared()!}>
                         {(p) => (
                           <li class="pw-install__plugin">
-                            <span class="pw-install__plugin-name">
+                            <span
+                              class="pw-install__plugin-name"
+                              classList={{ "is-unlisted": p.unlisted }}
+                            >
                               {p.name || p.id}
                             </span>
                             <Show when={p.type}>
                               <span class="pw-plugin__type">
                                 {prettyType(p.type!)}
                               </span>
+                            </Show>
+                            <Show when={p.unlisted}>
+                              <UnlistedBadge />
                             </Show>
                             <Show when={datatypesLabel(p.supportedDatatypes)}>
                               <span class="pw-install__plugin-supports">
@@ -949,13 +977,21 @@ export function Packages(props: {
                       render={(plugin) => (
                         <li class="pw-regitem" data-origin={plugin.origin}>
                           <div class="pw-regitem__main">
-                            <span class="pw-regitem__name">{plugin.name}</span>
+                            <span
+                              class="pw-regitem__name"
+                              classList={{ "is-unlisted": plugin.unlisted }}
+                            >
+                              {plugin.name}
+                            </span>
                             <Copyable
                               value={plugin.id}
                               class="pw-regitem__id"
                               title="Plugin id — click to copy"
                             />
                             <OriginBadge origin={plugin.origin} />
+                            <Show when={plugin.unlisted}>
+                              <UnlistedBadge />
+                            </Show>
                             <Show when={datatypesLabel(plugin.supportedDatatypes)}>
                               <span class="pw-regitem__supports">
                                 supports {datatypesLabel(plugin.supportedDatatypes)}
@@ -994,6 +1030,7 @@ export function Packages(props: {
                         ["id", "Id"],
                         ["package", "Package"],
                         ["origin", "Origin"],
+                        ["unlisted", "Unlisted"],
                       ] as [SortKey, string][]
                     }
                   >
@@ -1019,7 +1056,10 @@ export function Packages(props: {
                 <For each={tableRows()}>
                   {(e) => (
                     <tr class="pw-table__row" data-origin={e.origin}>
-                      <td class="pw-table__name">
+                      <td
+                        class="pw-table__name"
+                        classList={{ "is-unlisted": e.unlisted }}
+                      >
                         {e.name}
                         <Show when={datatypesLabel(e.supportedDatatypes)}>
                           <span class="pw-table__supports">
@@ -1034,6 +1074,13 @@ export function Packages(props: {
                       <td class="pw-table__pkg">{e.pkgName}</td>
                       <td>
                         <OriginBadge origin={e.origin} />
+                      </td>
+                      <td class="pw-table__flag">
+                        <Show when={e.unlisted}>
+                          <span title="Hidden from new-document menus and pickers">
+                            ✓
+                          </span>
+                        </Show>
                       </td>
                       <td class="pw-table__url">
                         <div class="pw-source">
@@ -1136,13 +1183,19 @@ export function Packages(props: {
                         <For each={installPlugins()!}>
                           {(p) => (
                             <li class="pw-install__plugin">
-                              <span class="pw-install__plugin-name">
+                              <span
+                                class="pw-install__plugin-name"
+                                classList={{ "is-unlisted": p.unlisted }}
+                              >
                                 {p.name || p.id}
                               </span>
                               <Show when={p.type}>
                                 <span class="pw-plugin__type">
                                   {prettyType(p.type!)}
                                 </span>
+                              </Show>
+                              <Show when={p.unlisted}>
+                                <UnlistedBadge />
                               </Show>
                               <Show when={datatypesLabel(p.supportedDatatypes)}>
                                 <span class="pw-install__plugin-supports">
