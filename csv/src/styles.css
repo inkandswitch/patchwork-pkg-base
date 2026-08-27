@@ -1,0 +1,61 @@
+.csv-tool {
+  height: 100%;
+  overflow: auto;
+  background: var(--text-editor-fill, #fff);
+  color: var(--text-primary, #1a1a1a);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 13px;
+}
+
+.csv-empty {
+  padding: 2rem;
+  color: var(--text-muted, #888);
+}
+
+.csv-table {
+  border-collapse: collapse;
+  min-width: 100%;
+}
+
+.csv-table td {
+  border: 1px solid var(--border-subtle, #e3e3e3);
+  padding: 0.3rem 0.6rem;
+  white-space: pre-wrap;
+  vertical-align: top;
+  max-width: 32rem;
+}
+
+/* The first row is the header: sticky, and set apart from the data rows. */
+.csv-table tr:first-child td {
+  position: sticky;
+  top: 0;
+  background: var(--bg-mid, #f5f5f5);
+  font-weight: 600;
+  z-index: 1;
+}
+
+/* Same highlighter-over-paper scheme as the codemirror provenance extension:
+   a tint anchored to the editor surface so it tracks the theme, and a dotted
+   underline that reads as "this points somewhere". */
+.csv-cell.is-linked {
+  cursor: pointer;
+  box-shadow: inset 0 -2px 0 0 var(--studio-link, #3478f6);
+  background-color: color-mix(
+    in oklch,
+    var(--studio-link, #3478f6),
+    var(--text-editor-fill, #fff) 85%
+  );
+}
+
+.csv-cell.is-linked.is-emphasised {
+  background-color: color-mix(
+    in oklch,
+    var(--studio-link, #3478f6),
+    var(--text-editor-fill, #fff) 56%
+  );
+}
+
+.csv-cell.is-selected {
+  outline: 2px solid var(--studio-link, #3478f6);
+  outline-offset: -2px;
+}
