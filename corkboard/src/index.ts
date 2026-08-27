@@ -43,9 +43,26 @@ export const plugins: Plugin<any>[] = [
       return provenanceExtension;
     },
   },
+  // Tells the chat computer which document datatypes this Patchwork actually
+  // has installed, by reading the `patchwork:datatype` registry. Nothing
+  // canvas-specific, and deliberately bound to no datatype, so it never
+  // auto-activates: it sits in the computer's skills index until something
+  // needs it (load_skill, or the tldraw skill below pointing at it).
+  {
+    type: "llm:skill",
+    id: "patchwork-datatypes",
+    name: "Patchwork Datatypes",
+    description:
+      "Lists the document datatypes installed in this Patchwork (ids and names) via the plugin registry. Applies whenever you need a datatype id — before creating a document, or before naming a type you haven't read.",
+    async load() {
+      const { skill } = await import("./llm-skill-datatypes.js");
+      return skill;
+    },
+  },
   // Instruction pack for Patchwork's chat computer (the `llm:skill` type the
   // chat tool consumes): how to create and edit tldraw canvases with the
-  // generic document tools. Auto-activates when a tldraw5 doc is focused.
+  // generic document tools, plus a create_doc_on_canvas tool that makes a new
+  // document of a datatype and embeds it. Auto-activates on a focused tldraw5.
   {
     type: "llm:skill",
     id: "tldraw5",
