@@ -13,6 +13,7 @@
 // touching a clone (or the ephemeral checkout doc) through it while a draft is
 // checked out would fork the draft machinery itself into the draft.
 import {
+	encodeHeads,
 	isValidAutomergeUrl,
 	parseAutomergeUrl,
 	stringifyAutomergeUrl,
@@ -43,6 +44,9 @@ export type CloneEntry = {
 	cloneUrl: AutomergeUrl
 	clonedAt: UrlHeads
 	mergedAt?: UrlHeads
+	/** The clone's heads at merge time — with `clonedAt`, brackets the head
+	 * range the drafts timeline attributes to this draft after it merges. */
+	mergedFrom?: UrlHeads
 }
 
 export type DraftDoc = {
@@ -53,6 +57,9 @@ export type DraftDoc = {
 	drafts: AutomergeUrl[]
 	clones: Record<AutomergeUrl, CloneEntry>
 	mergedAt?: number
+	/** The draft the merge landed in, so its timeline can attribute this
+	 * draft's changes to a dedicated "Merged …" group. */
+	mergedInto?: AutomergeUrl
 	draftCounter?: number
 }
 
@@ -184,12 +191,14 @@ async function ensureMainDraft(
 }
 
 /** Accept: merge every cloned doc back into the parent draft's copy of it —
- * the parent's clone when it has one, the original otherwise (the main
- * draft's identity clones make those the same, so an agent draft merges into
- * the originals) — then mark the draft merged (which hides it from the drafts
- * sidebar). Children (unlikely on agent drafts) are handed up to the merge
- * target so they never dangle under a hidden draft. Mirrors the sidebar's
- * mergeDraft. */
+ * the parent's clone when it has one, adopting the clone into the parent's
+ * map when it doesn't (a member the parent never forked must stay scoped to
+ * the parent, not leak into the original) — then mark the draft merged
+ * (which hides it from the drafts sidebar). Records `mergedFrom` per member
+ * and `mergedInto` on the draft, the provenance the drafts timeline reads to
+ * attribute the merged changes to a dedicated "Merged …" group. Children
+ * (unlikely on agent drafts) are handed up to the merge target so they never
+ * dangle under a hidden draft. Mirrors the sidebar's mergeDraft. */
 export async function mergeAgentDraft(
 	repo: Repo,
 	draftUrl: AutomergeUrl
@@ -197,27 +206,60 @@ export async function mergeAgentDraft(
 	const draftHandle = await repo.find<DraftDoc>(draftUrl)
 	const doc = draftHandle.doc()
 	const parentHandle = await findMergeTarget(repo, doc?.parent)
-	const parentClones = parentHandle?.doc()?.clones ?? {}
+	const parentIsMain = parentHandle?.doc()?.isMain === true
 	const entries = Object.entries(doc?.clones ?? {}) as [
 		AutomergeUrl,
 		CloneEntry,
 	][]
 	for (const [originalUrl, entry] of entries) {
+		// A member the target never forked: a real draft adopts the clone (no
+		// data moves); main gets the identity entry its clone sync would
+		// eventually add, so its timeline is guaranteed to include the member.
+		if (parentHandle && !parentHandle.doc()?.clones[originalUrl]) {
+			// Copy the heads array: it was read out of the draft's doc, and a
+			// live Automerge object must not be assigned into another document.
+			const adopted: CloneEntry = parentIsMain
+				? {cloneUrl: originalUrl, clonedAt: encodeHeads([])}
+				: {
+						cloneUrl: entry.cloneUrl,
+						clonedAt: [...entry.clonedAt] as UrlHeads,
+					}
+			parentHandle.change((d) => {
+				if (!d.clones[originalUrl]) d.clones[originalUrl] = adopted
+			})
+		}
+		// Re-read the target's clones: the adoption above (or a concurrent
+		// creator winning its guard) may have just changed the mapping.
+		const parentClones = parentHandle?.doc()?.clones ?? {}
 		const targetUrl = parentClones[originalUrl]?.cloneUrl ?? originalUrl
-		if (entry.cloneUrl === targetUrl) continue
-		const [target, clone] = await Promise.all([
-			repo.find<unknown>(targetUrl),
-			repo.find<unknown>(entry.cloneUrl),
-		])
+		const clone = await repo.find<unknown>(entry.cloneUrl)
+		const mergedFrom = clone.heads()
+		if (entry.cloneUrl === targetUrl) {
+			// The clone IS the target's copy (adopted above, or an identity
+			// entry); nothing to merge — just record the join point.
+			draftHandle.change((d) => {
+				const e = d.clones[originalUrl]
+				if (e && mergedFrom) {
+					e.mergedAt = mergedFrom
+					e.mergedFrom = mergedFrom
+				}
+			})
+			continue
+		}
+		const target = await repo.find<unknown>(targetUrl)
 		target.merge(clone)
 		const mergedAt = target.heads()
 		draftHandle.change((d) => {
 			const e = d.clones[originalUrl]
-			if (e && mergedAt) e.mergedAt = mergedAt
+			if (e && mergedAt && mergedFrom) {
+				e.mergedAt = mergedAt
+				e.mergedFrom = mergedFrom
+			}
 		})
 	}
 	draftHandle.change((d) => {
 		d.mergedAt = Date.now()
+		if (parentHandle) d.mergedInto = parentHandle.url
 	})
 
 	if (parentHandle) {
