@@ -16,6 +16,7 @@ import type {
   DraftDoc,
   DraftMemberDoc,
 } from "./draft-types.js";
+import { partitionRows, type MergedDraftSpec } from "./merge-attribution.js";
 
 // Bump to discard every existing group doc's contents (they self-rebuild).
 export const CHANGE_GROUP_DOC_VERSION = 1;
@@ -44,6 +45,10 @@ export type TimelineGroupingSpec = {
   draftHandle: DocHandle<DraftDoc>;
   members: DraftMemberDoc[];
   rootDocUrl: AutomergeUrl;
+  // Drafts merged into this timeline (`DraftDoc.mergedInto` points here),
+  // with the head ranges their contributions span. Each one's changes are
+  // pulled out of the inactivity-gap grouping into one dedicated group.
+  mergedDrafts: MergedDraftSpec[];
 };
 
 export type ChangeGrouper = {
@@ -268,6 +273,12 @@ function groupId(rowsNewestFirst: PendingChange[]): string {
   return `tg-${rowsNewestFirst[0].hash}`;
 }
 
+// Stable id for a merged draft's dedicated group — keyed by the draft, not
+// its newest hash, so rebuilds can cheaply match it against the stored one.
+function mergeGroupId(draftUrl: AutomergeUrl): string {
+  return `tg-merge-${draftUrl}`;
+}
+
 // Append `member`'s changes since `since` onto `out`, dropping anything from
 // before the root document was created (a member dragged in after the fact
 // would otherwise contribute pre-existing history that reads as noise). `seq`
@@ -438,6 +449,8 @@ export function createChangeGrouper(
       let task = tasks.get(key);
       const membersChanged =
         !task || !sameMemberSets(task.spec.members, spec.members);
+      const mergesChanged =
+        !task || !sameMergedDrafts(task.spec.mergedDrafts, spec.mergedDrafts);
       if (!task) {
         task = { key, spec, listeners: new Map(), queued: false, debounce: null };
         tasks.set(key, task);
@@ -445,7 +458,7 @@ export function createChangeGrouper(
         task.spec = spec;
       }
       void ensureListeners(task);
-      if (membersChanged) schedule(key);
+      if (membersChanged || mergesChanged) schedule(key);
     }
   }
 
@@ -473,6 +486,17 @@ export function createChangeGrouper(
     const key = (m: DraftMemberDoc) => `${m.url}:${m.cloneUrl ?? ""}`;
     const set = new Set(a.map(key));
     return b.every((m) => set.has(key(m)));
+  }
+
+  // Merged drafts compare by url alone: a merge's head ranges are recorded
+  // once and never change, so a new url is the only meaningful difference.
+  function sameMergedDrafts(
+    a: MergedDraftSpec[],
+    b: MergedDraftSpec[]
+  ): boolean {
+    if (a.length !== b.length) return false;
+    const set = new Set(a.map((m) => m.url));
+    return b.every((m) => set.has(m.url));
   }
 
   // Keep exactly one change listener per member source doc; edits schedule a
@@ -598,6 +622,15 @@ export function createChangeGrouper(
     if (!changeGroupDoc) return;
     const computedThrough = changeGroupDoc.computedThrough ?? {};
 
+    // A merged draft the stored grouping hasn't attributed yet always forces
+    // a full rebuild: its changes must come OUT of whatever time-based groups
+    // they already sit in — they may even be fully consumed already, if a
+    // grouping run raced ahead of the provider's spec update.
+    const attributedMerges = changeGroupDoc.attributedMerges ?? {};
+    const hasNewMerge = spec.mergedDrafts.some(
+      (md) => !attributedMerges[md.url]
+    );
+
     // Each member's frontier as of this gather; the consumed marker advances
     // to exactly these once the run completes, so the next run's
     // getChangesMetaSince yields precisely the unconsumed tail.
@@ -614,7 +647,7 @@ export function createChangeGrouper(
       collectMemberRows(tails, member, doc, since, createdAt);
     }
 
-    if (tails.length === 0) {
+    if (tails.length === 0 && !hasNewMerge) {
       // Nothing new to group; just record any frontier movement (e.g. members
       // whose unconsumed changes were all filtered out, or brand-new members
       // with no post-fork changes yet).
@@ -633,18 +666,22 @@ export function createChangeGrouper(
 
     tails.sort(newestFirst);
 
-    // Fast path: every new change lands on or after the newest stored group
-    // (extending it or opening newer ones) without bridging into the group
-    // below it — the overwhelmingly common live-editing case. Everything else
-    // (first build, members without a consumed marker, late-syncing changes
-    // with old timestamps) rebuilds via the full pass.
+    // Fast path: no merge to attribute, and every new change lands on or
+    // after the newest stored group (extending it or opening newer ones)
+    // without bridging into the group below it — the overwhelmingly common
+    // live-editing case. Everything else (first build, members without a
+    // consumed marker, late-syncing changes with old timestamps, a freshly
+    // merged draft) rebuilds via the full pass.
     const stored = Object.values(changeGroupDoc.groups ?? {}).sort(
       (a, b) => b.endTime - a.endTime
     );
     const newestStored = stored[0];
     const secondStored = stored[1];
-    const tailOldestMs = tails[tails.length - 1].time * 1000;
+    const tailOldestMs =
+      tails.length > 0 ? tails[tails.length - 1].time * 1000 : 0;
     const fastOk =
+      !hasNewMerge &&
+      tails.length > 0 &&
       !!newestStored &&
       tailOldestMs >= newestStored.startTime * 1000 - INACTIVITY_GAP_MS &&
       (!secondStored ||
@@ -664,6 +701,7 @@ export function createChangeGrouper(
         sources,
         createdAt,
         frontier,
+        spec.mergedDrafts,
         isAborted
       );
     }
@@ -684,8 +722,11 @@ export function createChangeGrouper(
     const oldestGroupOldestMs =
       oldestGroup[oldestGroup.length - 1].time * 1000;
     // The oldest run of new changes merges into the stored group when no lull
-    // separates them (it may even start inside the stored span).
+    // separates them (it may even start inside the stored span) — unless the
+    // stored group is a merged draft's: that group holds exactly the draft's
+    // contribution, so edits after the merge always open a fresh group.
     const attaches =
+      !newestStored.merge &&
       oldestGroupOldestMs <= newestStored.endTime * 1000 + INACTIVITY_GAP_MS;
     const freshGroups = attaches ? tailGroups.slice(0, -1) : tailGroups;
 
@@ -777,18 +818,20 @@ export function createChangeGrouper(
     d.groups[extended.id] = extended;
   }
 
-  // Full rebuild: regather every member's post-fork history, re-split, and
-  // diff newest-first in idle slices — flushing completed groups as each
-  // slice ends so recent history paints while older history backfills. A
-  // stored group whose id, span, and change count match is reused without
-  // re-diffing (cheap warm restarts, and no redundant work when another
-  // client's grouping update syncs in). Stale ids and consumed markers settle
-  // in the final write.
+  // Full rebuild: regather every member's post-fork history, pull each
+  // merged draft's contribution out into its own dedicated group, re-split
+  // the rest by time, and diff newest-first in idle slices — flushing
+  // completed groups as each slice ends so recent history paints while older
+  // history backfills. A stored group whose id, span, and change count match
+  // is reused without re-diffing (cheap warm restarts, and no redundant work
+  // when another client's grouping update syncs in). Stale ids, consumed
+  // markers, and attributed-merge markers settle in the final write.
   async function rebuildAll(
     changeGroupHandle: DocHandle<ChangeGroupDoc>,
     sources: { member: DraftMemberDoc; doc: Automerge.Doc<unknown> }[],
     createdAt: number | undefined,
     frontier: Record<AutomergeUrl, UrlHeads>,
+    mergedDrafts: MergedDraftSpec[],
     isAborted: () => boolean
   ): Promise<void> {
     const rows: PendingChange[] = [];
@@ -797,7 +840,8 @@ export function createChangeGrouper(
       collectMemberRows(rows, member, doc, since, createdAt);
     }
     rows.sort(newestFirst);
-    const groupsRows = splitIntoGroups(rows);
+    const { merged, rest } = partitionRows(rows, mergedDrafts);
+    const groupsRows = splitIntoGroups(rest);
     const expectedIds = new Set(groupsRows.map(groupId));
 
     const batch: ChangeGroup[] = [];
@@ -810,6 +854,38 @@ export function createChangeGrouper(
     };
 
     const slicer = createSlicer(isAborted, flush);
+
+    // One dedicated group per merged draft, regardless of how its changes
+    // interleave in time with the rest. A merge with no contributed rows
+    // produces no group; it still settles through the attributedMerges
+    // marker in the final write.
+    for (const draft of mergedDrafts) {
+      const draftRows = merged.get(draft.url) ?? [];
+      if (draftRows.length === 0) continue;
+      const id = mergeGroupId(draft.url);
+      expectedIds.add(id);
+      const existing = changeGroupHandle.doc()?.groups?.[id];
+      if (
+        existing &&
+        existing.changeCount === draftRows.length &&
+        existing.startTime === draftRows[draftRows.length - 1].time &&
+        existing.endTime === draftRows[0].time
+      ) {
+        continue;
+      }
+      const group = await buildGroup(draftRows, slicer);
+      if (group === null) return; // aborted mid-diff; markers stay put
+      batch.push({
+        ...group,
+        id,
+        merge: {
+          draftUrl: draft.url,
+          name: draft.name,
+          members: draft.members,
+        },
+      });
+    }
+
     for (const groupRows of groupsRows) {
       const id = groupId(groupRows);
       const existing = changeGroupHandle.doc()?.groups?.[id];
@@ -834,6 +910,12 @@ export function createChangeGrouper(
       }
       for (const [url, heads] of Object.entries(frontier)) {
         d.computedThrough[url as AutomergeUrl] = heads;
+      }
+      if (mergedDrafts.length > 0) {
+        if (!d.attributedMerges) d.attributedMerges = {};
+        for (const md of mergedDrafts) {
+          if (!d.attributedMerges[md.url]) d.attributedMerges[md.url] = true;
+        }
       }
     });
   }

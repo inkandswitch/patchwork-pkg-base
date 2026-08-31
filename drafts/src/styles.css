@@ -478,6 +478,20 @@
   white-space: nowrap;
 }
 
+/* Badge on a merged draft's dedicated group row, naming the source draft. */
+.draft-group-merge {
+  flex: none;
+  max-width: 45%;
+  padding: 0.0625rem 0.3125rem;
+  border-radius: var(--drafts-radius-sm);
+  background: color-mix(in oklch, var(--drafts-hover-bg) 80%, transparent);
+  color: var(--drafts-muted-fg);
+  font-size: 0.6875rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Author avatars */
 .draft-avatars {
   display: flex;

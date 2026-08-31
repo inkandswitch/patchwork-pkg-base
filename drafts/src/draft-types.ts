@@ -3,10 +3,18 @@ import type { AutomergeUrl, UrlHeads } from "@automerge/automerge-repo/slim";
 // One COW relationship between an original doc and the per-draft clone we
 // write to. `clonedAt`/`mergedAt` capture the fork and join points on the
 // original — together they describe what the draft contributed to that doc.
+//
+// `mergedFrom` is the CLONE's heads at merge time (as opposed to `mergedAt`,
+// the target's heads after the merge, which can include concurrent target
+// changes). `clonedAt` -> `mergedFrom` brackets exactly the changes this
+// draft contributed to the doc: walking the change DAG backwards from
+// `mergedFrom` and stopping at `clonedAt` recovers them for attribution
+// (see merge-attribution.ts). Absent on merges made before it was recorded.
 export type CloneEntry = {
   cloneUrl: AutomergeUrl;
   clonedAt: UrlHeads;
   mergedAt?: UrlHeads;
+  mergedFrom?: UrlHeads;
 };
 
 // `parent` points at the URL this draft branches off of: the main draft (for
@@ -21,7 +29,11 @@ export type CloneEntry = {
 //
 // `mergedAt` is a wall-clock timestamp set when the draft is merged into
 // its parent; absent means "still open". The sidebar uses it to filter
-// merged drafts out of the list.
+// merged drafts out of the list. `mergedInto` records which DraftDoc the
+// merge actually landed in (`findMergeTarget` can skip past already-merged
+// ancestors, so it isn't always `parent`); the target's timeline uses it to
+// attribute this draft's changes. Recorded, not derived: later re-parenting
+// (a merged ancestor handing children up) must not move the attribution.
 //
 // `name` is the user-given display name; absent means the default label
 // ("Draft", or "Main" for the main draft). Renaming main is what creates the
@@ -34,6 +46,7 @@ export type DraftDoc = {
   drafts: AutomergeUrl[];
   clones: Record<AutomergeUrl, CloneEntry>;
   mergedAt?: number;
+  mergedInto?: AutomergeUrl;
   // Points at this draft's ChangeGroupDoc, holding the precomputed activity
   // groups for its timeline. Stamped lazily by the ChangeGrouper the first
   // time it touches the timeline (see change-group-cache.ts).
@@ -77,6 +90,17 @@ export type ChangeGroup = {
   additions: number; // summed across ALL member docs in the span
   deletions: number;
   changeCount: number; // for scrubber band geometry
+  // Present on a merged-draft group: every change a merged draft contributed
+  // forms one group (id `tg-merge-${draftUrl}`), pulled out of the normal
+  // inactivity-gap grouping. `members` carries the per-doc head ranges the
+  // attribution walk needs (fork point -> clone heads at merge), copied from
+  // the merged draft's clone entries so the sidebar can re-resolve the
+  // group's changes without loading the merged DraftDoc.
+  merge?: {
+    draftUrl: AutomergeUrl;
+    name: string | null;
+    members: Record<AutomergeUrl, { baseHeads: UrlHeads; mergeHeads: UrlHeads }>;
+  };
 };
 
 // Self-contained: one group doc per DraftDoc, holding that draft's timeline.
@@ -91,6 +115,11 @@ export type ChangeGroupDoc = {
   // these) yields exactly the unconsumed tail — including late-syncing
   // changes with old timestamps, which is what makes invalidation detectable.
   computedThrough: Record<AutomergeUrl, UrlHeads>;
+  // Merged drafts (by DraftDoc url) whose changes a full rebuild has already
+  // attributed. A merged draft in the timeline spec but not here forces a
+  // rebuild; recorded separately from `groups` because a draft merged with
+  // zero contributed changes produces no group but must still settle.
+  attributedMerges?: Record<AutomergeUrl, boolean>;
 };
 
 // One member doc's pinned view within a checkpoint. `to` is the heads to render

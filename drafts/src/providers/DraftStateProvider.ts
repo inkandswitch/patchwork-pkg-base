@@ -27,6 +27,7 @@ import {
   createChangeGrouper,
   type TimelineGroupingSpec,
 } from "../change-group-cache.js";
+import type { MergedDraftSpec } from "../merge-attribution.js";
 import {
   createActorRecorder,
   ensureActorAttribution,
@@ -383,6 +384,7 @@ export const DraftStateProvider = (element: HTMLElement) => {
         draftHandle: mainDraftHandle,
         members: clonesToMembers(mainDraftHandle.doc()?.clones ?? {}),
         rootDocUrl: docUrl,
+        mergedDrafts: mergedDraftSpecsFor(mainDraftHandle.url),
       });
     }
     const selected = checkedOutHandle?.doc()?.checkedOut ?? null;
@@ -398,9 +400,39 @@ export const DraftStateProvider = (element: HTMLElement) => {
         draftHandle: handle,
         members: clonesToMembers(doc.clones),
         rootDocUrl: docUrl,
+        mergedDrafts: mergedDraftSpecsFor(url),
       });
     }
     changeGrouper.setTimelines(specs);
+  }
+
+  // The drafts merged into `timelineUrl`'s timeline, as attribution specs:
+  // tracked drafts whose recorded merge target (`mergedInto`) is this
+  // timeline, carrying per member the head range bracketing their
+  // contribution. Merged drafts stay tracked (they remain linked in the
+  // tree), so this is a pure read. Drafts merged before `mergedFrom` and
+  // `mergedInto` were recorded are skipped — no attribution for those.
+  function mergedDraftSpecsFor(timelineUrl: AutomergeUrl): MergedDraftSpec[] {
+    const result: MergedDraftSpec[] = [];
+    for (const [url, handle] of trackedDrafts) {
+      const doc = handle.doc();
+      if (!doc || doc.mergedAt === undefined || doc.mergedInto !== timelineUrl)
+        continue;
+      const members: MergedDraftSpec["members"] = {};
+      for (const [originalUrl, entry] of Object.entries(doc.clones)) {
+        if (!entry.mergedFrom) continue;
+        // Copy the heads arrays: they were read out of the DraftDoc and end
+        // up written into the ChangeGroupDoc (`ChangeGroup.merge.members`),
+        // and a live Automerge object must not cross into another document.
+        members[originalUrl as AutomergeUrl] = {
+          baseHeads: [...entry.clonedAt] as UrlHeads,
+          mergeHeads: [...entry.mergedFrom] as UrlHeads,
+        };
+      }
+      if (Object.keys(members).length === 0) continue;
+      result.push({ url, name: doc.name ?? null, members });
+    }
+    return result;
   }
 
   // The full read-only list: the main entry plus one summary per non-merged
