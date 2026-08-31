@@ -2759,9 +2759,12 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 
 		const abortController = new AbortController()
 		setComputerAbort(abortController)
-		// Inactivity timeout: abort if no tokens received for 30s
+		// Inactivity timeout: abort if no tokens/status received for a while.
+		// Generous, because the llm lib only reports content deltas: a model
+		// streaming a huge tool call (or reasoning) looks silent from here even
+		// though the connection is making steady progress.
 		let inactivityTimer: any = null
-		const INACTIVITY_TIMEOUT = 90000
+		const INACTIVITY_TIMEOUT = 300000
 		function resetInactivityTimer() {
 			if (inactivityTimer) clearTimeout(inactivityTimer)
 			inactivityTimer = setTimeout(() => {
@@ -3011,12 +3014,15 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 						resetInactivityTimer()
 						toolResults +=
 							"\n[Tool result for " + c.name + "]\n" + result + "\n"
-						// Store result on the corresponding rich block
+						// Store result on the corresponding rich block. Results arrive
+						// in call order, so fill the FIRST unfilled card — searching
+						// from the end paired every multi-call round's results with the
+						// wrong cards (swapped read_doc/load_skill results in exports).
 						currentStreamHandle.change((d: any) => {
 							if (d.richBlocks) {
-								const matching = [...d.richBlocks]
-									.reverse()
-									.find((b: any) => b.type === "tool-call" && !b.result)
+								const matching = d.richBlocks.find(
+									(b: any) => b.type === "tool-call" && !b.result
+								)
 								if (matching) matching.result = result.slice(0, 2000)
 							}
 						})

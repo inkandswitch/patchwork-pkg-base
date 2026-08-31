@@ -12,10 +12,7 @@ import {
 	type ActiveSkill,
 	type LlmSkillDescription,
 } from "../lib/llm-skills"
-
-// Bump when shipping a change you want to verify made it to a running client
-// (pushwork-synced tools can lag; this shows which build is actually loaded).
-const CHAT_VERSION = "v0.0.2"
+import {CHAT_VERSION} from "../version"
 
 export function SkillsDebug(props: {
 	/** Skills active for the most recent computer run. */
