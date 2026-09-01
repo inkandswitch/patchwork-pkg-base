@@ -1953,17 +1953,16 @@ function DraftChangesList(props: {
   };
 
   // Select a group (click on its row): the head pins to the group's newest
-  // change, and — with the eye open — the baseline re-anchors to the group's
-  // start, so the diff reads "everything this group changed". Dragging the
-  // head, by contrast, leaves the baseline where it is (see `scrubTo`).
+  // change and the baseline anchors to the group's start, so the diff reads
+  // "everything this group changed" — the eye opens by itself (its state is
+  // derived from the checkpoint's `from`s). Dragging the head, by contrast,
+  // leaves the baseline where it is (see `scrubTo`).
   const selectGroup = (group: ChangeGroup) => {
-    if (props.eyeOpen()) {
-      props.onBaselineScrub({
-        groupId: group.id,
-        offset: BASELINE_GROUP_START,
-        time: group.startTime,
-      });
-    }
+    props.onBaselineScrub({
+      groupId: group.id,
+      offset: BASELINE_GROUP_START,
+      time: group.startTime,
+    });
     scrubTo(group, 0);
   };
 
