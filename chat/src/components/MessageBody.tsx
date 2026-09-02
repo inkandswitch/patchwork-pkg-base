@@ -7,6 +7,7 @@ import {highlightCode} from "../lib/highlighter"
 import {ensureFontLoaded} from "../lib/blob-cache"
 import {resolveNamedColor} from "../lib/named-colors"
 import {generateId} from "../lib/helpers"
+import {agentMessageMetadata} from "../lib/agent-drafts"
 import {useChat} from "../context/ChatContext"
 import {useIdentity} from "../context/IdentityContext"
 import {usePresence} from "../context/PresenceContext"
@@ -181,7 +182,10 @@ export function MessageBody(props: {
 				/>
 			</Show>
 			<Show when={props.msg.richBlocks?.length}>
-				<RichBlockList blocks={props.msg.richBlocks!} />
+				<RichBlockList
+					blocks={props.msg.richBlocks!}
+					messageUrl={props.msg._ref?.url}
+				/>
 			</Show>
 			<Show when={props.msg.quickReplies?.length}>
 				<QuickReplies options={props.msg.quickReplies!} />
@@ -205,6 +209,7 @@ function QuickReplies(props: {options: string[]}) {
 			name: myName(),
 			text: `@computer ${opt}`,
 			timestamp: Date.now(),
+			...agentMessageMetadata(handle.doc()),
 		}
 		const cu = myContactUrl()
 		if (cu) msgData.contactUrl = cu

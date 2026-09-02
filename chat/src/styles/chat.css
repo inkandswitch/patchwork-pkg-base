@@ -8,7 +8,7 @@
        both light and dark themes. The oklch fallbacks keep the tool legible if
        it's ever loaded outside the host.
        ================================================================ */
-    .chat-root {
+    .chat-root, .agent-root {
       /* Fill/line surfaces derive from the editor tokens so the chat body
          matches the active document/editor surface exactly. */
       --bg-dark:     var(--editor-fill, var(--studio-fill, oklch(0.15 0.03 270)));  /* base surface (messages) */
@@ -30,6 +30,7 @@
       --text-secondary: var(--studio-line-offset-30, oklch(1 0 0 / 0.6));
       --text-muted:     var(--studio-line-offset-50, oklch(1 0 0 / 0.4));
       --link:           var(--studio-link-text, var(--studio-link, oklch(0.75 0.15 250)));
+      --danger:         var(--studio-danger-text, var(--studio-danger, oklch(0.65 0.2 25)));
     }
 
     /* ---- Reset ---- */
@@ -346,6 +347,61 @@
       font-size:11px; color:var(--text-muted); padding:6px 10px 2px;
       text-transform:uppercase; letter-spacing:0.5px; border-top:1px solid var(--border);
     }
+    /* Agent-draft review embed: draft name + Accept/Reject. */
+    .chat-draft-review {
+      display:flex; align-items:center; gap:8px;
+      margin-top:6px; padding:8px 10px;
+      border:1px solid var(--border); border-radius:8px;
+      background:var(--bg-darkest); font-size:13px;
+    }
+    .chat-draft-review-icon { flex-shrink:0; color:var(--accent-text, var(--text-secondary)); }
+    .chat-draft-review-name {
+      color:var(--text-primary); font-weight:600;
+      overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    }
+    .chat-draft-review-actions { display:flex; gap:6px; margin-left:auto; }
+    .chat-draft-review-btn {
+      font:inherit; font-size:12px; cursor:pointer;
+      padding:3px 12px; border-radius:var(--studio-radius-round, 999px);
+      border:1px solid var(--accent-line, currentColor);
+      background:transparent; color:var(--accent-text, var(--text-primary));
+    }
+    .chat-draft-review-btn:disabled { opacity:0.5; cursor:default; }
+    .chat-draft-review-accept:hover:not(:disabled) { background:var(--accent); color:var(--accent-fg); }
+    .chat-draft-review-reject { border-color:var(--border); color:var(--text-secondary); }
+    .chat-draft-review-reject:hover:not(:disabled) { background:var(--bg-hover); color:var(--text-primary); }
+    .chat-draft-review-state {
+      margin-left:auto; font-size:12px; color:var(--text-muted);
+      text-transform:uppercase; letter-spacing:0.5px;
+    }
+    .chat-draft-review[data-state="accepted"] .chat-draft-review-state { color:var(--accent-text, var(--text-secondary)); }
+    .chat-draft-review[data-state="closed"] { opacity:0.65; }
+    /* Scenario picker embed: chip per branch, accept-selected / reject-all. */
+    .chat-scenario-review {
+      display:flex; flex-direction:column; gap:8px;
+      margin-top:6px; padding:8px 10px;
+      border:1px solid var(--border); border-radius:8px;
+      background:var(--bg-darkest); font-size:13px;
+    }
+    .chat-scenario-review-header { display:flex; align-items:center; gap:8px; }
+    .chat-scenario-review-title { color:var(--text-primary); font-weight:600; white-space:nowrap; }
+    .chat-scenario-review-chips { display:flex; flex-wrap:wrap; gap:6px; }
+    .chat-scenario-chip {
+      font:inherit; font-size:12px; cursor:pointer;
+      padding:3px 12px; border-radius:var(--studio-radius-round, 999px);
+      border:1px solid var(--border);
+      background:transparent; color:var(--text-secondary);
+      max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    }
+    .chat-scenario-chip:hover:not(:disabled) { background:var(--bg-hover); color:var(--text-primary); }
+    .chat-scenario-chip[data-selected] {
+      border-color:var(--accent-line, currentColor);
+      background:var(--accent); color:var(--accent-fg);
+    }
+    .chat-scenario-chip:disabled { cursor:default; }
+    .chat-scenario-chip:disabled:not([data-selected]) { opacity:0.6; }
+    .chat-scenario-review[data-state="closed"],
+    .chat-scenario-review[data-state="rejected"] { opacity:0.65; }
     .shiki { margin:0 !important; padding:10px 12px !important; font-size:13px !important; line-height:1.5 !important; overflow-x:auto; border-radius:6px; }
     .shiki code { font-family:ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace !important; }
 
@@ -639,6 +695,53 @@
       font-style:normal;
     }
     .chat-stop-btn:hover { background:var(--bg-hover); color:var(--text-primary); }
+
+    /* Fold-out skills debug panel (above the input) */
+    .chat-skills-debug {
+      flex-shrink:0; padding:0 16px 2px; font-size:11px;
+      font-family:monospace; color:var(--text-muted);
+    }
+    .chat-skills-debug summary {
+      cursor:pointer; user-select:none; list-style:none; opacity:0.7;
+    }
+    .chat-skills-debug summary::before { content:"▸ "; }
+    .chat-skills-debug[open] summary::before { content:"▾ "; }
+    .chat-skills-debug summary:hover { opacity:1; }
+    .chat-skills-debug-count {
+      margin-left:6px; padding:0 5px; border-radius:8px;
+      background:var(--accent-soft); color:var(--accent-text);
+    }
+    .chat-skills-debug-version { margin-left:6px; opacity:0.6; }
+    .chat-skills-debug-list {
+      margin:4px 0; padding:6px 8px; border:1px solid var(--border);
+      border-radius:6px; background:var(--bg-mid);
+      max-height:180px; overflow-y:auto; overscroll-behavior:contain;
+    }
+    .chat-skills-debug-row {
+      display:grid; grid-template-columns:auto auto 1fr; gap:2px 8px;
+      align-items:baseline; padding:3px 0;
+    }
+    .chat-skills-debug-row + .chat-skills-debug-row {
+      border-top:1px solid var(--border);
+    }
+    .chat-skills-debug-state {
+      padding:0 5px; border-radius:8px; background:var(--bg-hover);
+    }
+    .chat-skills-debug-state[data-state="active"] {
+      background:var(--accent-soft); color:var(--accent-text);
+    }
+    .chat-skills-debug-id { color:var(--text-primary); }
+    .chat-skills-debug-meta { color:var(--text-muted); }
+    .chat-skills-debug-desc {
+      grid-column:1 / -1; color:var(--text-secondary);
+      white-space:normal;
+    }
+    .chat-skills-debug-empty { padding:4px 0; font-style:italic; }
+    .chat-skills-debug-note {
+      margin-top:6px; padding-top:4px; border-top:1px solid var(--border);
+      opacity:0.7;
+    }
+
     .chat-input-wrapper { flex-shrink:0; padding:0 16px 16px; position:relative; }
 
     /* Emoji/emoticon autocomplete popup */
@@ -1298,3 +1401,73 @@
       /* Time gap lines */
       .chat-time-gap::before { left:10%; right:10%; }
     }
+
+    /* ================================================================
+       AGENT — the multi-chat context tool. A tab bar on top (one tab per
+       chat in the focused doc's lmchats array) over the ordinary ChatRoot,
+       which fills the positioned .agent-chat-pane below.
+       ================================================================ */
+    .agent-root {
+      position:absolute; inset:0;
+      display:flex; flex-direction:column;
+      font-family:var(--studio-family-sans, system-ui,-apple-system,sans-serif);
+      font-size:var(--studio-font-size, 15px);
+      background:var(--bg-dark); color:var(--text-primary);
+      overflow:hidden; box-sizing:border-box;
+    }
+    .agent-root *, .agent-root *::before, .agent-root *::after { box-sizing:border-box; }
+    .agent-tabs {
+      display:flex; align-items:flex-end; gap:2px; padding:6px 6px 0;
+      background:var(--bg-darkest); border-bottom:1px solid var(--border);
+      flex-shrink:0; overflow-x:auto; scrollbar-width:thin;
+    }
+    .agent-tab {
+      background:none; border:none; border-bottom:2px solid transparent;
+      color:var(--text-secondary); cursor:pointer;
+      font:inherit; font-size:12px; padding:4px 10px 5px;
+      border-radius:6px 6px 0 0; white-space:nowrap;
+      max-width:160px; overflow:hidden; text-overflow:ellipsis;
+      flex-shrink:0;
+    }
+    .agent-tab:hover { background:var(--bg-hover); color:var(--text-primary); }
+    .agent-tab[data-selected] {
+      background:var(--bg-dark); color:var(--text-primary);
+      border-bottom-color:var(--accent);
+    }
+    .agent-tab-rename {
+      background:var(--bg-input); border:1px solid var(--accent-line);
+      color:var(--text-primary); font:inherit; font-size:12px;
+      padding:3px 8px; border-radius:6px 6px 0 0; width:120px; outline:none;
+      flex-shrink:0;
+    }
+    .agent-tab-new {
+      background:none; border:none; color:var(--text-muted); cursor:pointer;
+      font:inherit; font-size:14px; line-height:1; padding:5px 8px 6px;
+      border-radius:6px 6px 0 0; flex-shrink:0;
+    }
+    .agent-tab-new:hover { background:var(--bg-hover); color:var(--text-primary); }
+    .agent-tabs-end {
+      margin-left:auto; align-self:center; flex-shrink:0;
+      display:flex; align-items:center; gap:2px;
+    }
+    .agent-tab-copy {
+      display:flex; align-items:center; background:none; border:none;
+      color:var(--text-muted); cursor:pointer; padding:4px 5px;
+      border-radius:5px; line-height:0;
+    }
+    .agent-tab-copy:hover:not(:disabled) { background:var(--bg-hover); color:var(--text-primary); }
+    .agent-tab-copy:disabled { opacity:0.4; cursor:default; }
+    .agent-tab-copy[data-state="copied"] { color:var(--accent-text); }
+    .agent-tab-copy[data-state="failed"] { color:var(--danger); }
+    /* Deploy marker: tells at a glance whether the synced bundle is current. */
+    .agent-version {
+      align-self:center; flex-shrink:0;
+      font-size:10px; color:var(--text-muted); padding:0 6px 4px;
+      user-select:none; white-space:nowrap;
+    }
+    .agent-panes { position:relative; flex:1; min-height:0; }
+    /* Panes stay MOUNTED when their tab is hidden (so each chat's computer
+       keeps running) — inactive ones are hidden with visibility rather than
+       display so scroll positions survive tab switches. */
+    .agent-pane { position:absolute; inset:0; }
+    .agent-pane:not([data-selected]) { visibility:hidden; pointer-events:none; }

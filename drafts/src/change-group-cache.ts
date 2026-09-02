@@ -11,14 +11,16 @@ import {
 import * as Automerge from "@automerge/automerge/slim";
 
 import type {
+  AgentTag,
   ChangeGroup,
   ChangeGroupDoc,
   DraftDoc,
   DraftMemberDoc,
 } from "./draft-types.js";
+import { partitionRows, type MergedDraftSpec } from "./merge-attribution.js";
 
 // Bump to discard every existing group doc's contents (they self-rebuild).
-export const CHANGE_GROUP_DOC_VERSION = 1;
+export const CHANGE_GROUP_DOC_VERSION = 3;
 
 // A pause between consecutive changes longer than this starts a new group:
 // bursts of continuous editing read as a single row, however long they run,
@@ -44,6 +46,10 @@ export type TimelineGroupingSpec = {
   draftHandle: DocHandle<DraftDoc>;
   members: DraftMemberDoc[];
   rootDocUrl: AutomergeUrl;
+  // Drafts merged into this timeline (`DraftDoc.mergedInto` points here),
+  // with the head ranges their contributions span. Each one's changes are
+  // pulled out of the inactivity-gap grouping into one dedicated group.
+  mergedDrafts: MergedDraftSpec[];
 };
 
 export type ChangeGrouper = {
@@ -59,6 +65,11 @@ export type ChangeGrouperOptions = {
   // current user just wrote with that doc instance's actor id. Feeds the
   // ActorRecorder (see actor-attribution.ts).
   onLocalChange?: (doc: Automerge.Doc<unknown>) => void;
+  // The contact a raw actor id is attributed to (the shared
+  // ActorAttributionDoc), or null while unknown. Contributor keys resolve
+  // through this so one person's many actor ids (per doc, per session) read
+  // as one contributor instead of splitting groups at every actor change.
+  resolveContact?: (actorId: string) => AutomergeUrl | null;
 };
 
 // Resolve a draft's change-group doc, creating it and stamping
@@ -179,7 +190,10 @@ function countPatches(patches: Automerge.Patch[]): {
   let additions = 0;
   let deletions = 0;
   for (const patch of patches) {
-    if (patch.path[0] === "@patchwork") continue;
+    // Comment writes are surfaced as their own timeline entries (and split
+    // groups), so they don't count as edits either.
+    if (patch.path[0] === "@patchwork" || patch.path[0] === "@comments")
+      continue;
     if (patch.action === "splice") {
       additions += (patch.value as string).length;
     } else if (patch.action === "insert") {
@@ -228,7 +242,40 @@ type PendingChange = {
   time: number;
   actor: string;
   seq: number;
+  agent?: AgentTag;
 };
+
+// Read an agent tag out of an Automerge change message. The chat tool writes
+// `{"@patchwork":{"agent":{chatUrl,...}}}` as JSON (see chat's
+// agent-change.ts); anything else — no message, free text, foreign JSON —
+// is simply not an agent edit. Never throws.
+export function parseAgentTag(
+  message: string | null | undefined
+): AgentTag | undefined {
+  if (!message || message[0] !== "{") return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(message);
+  } catch {
+    return undefined;
+  }
+  const agent = (
+    parsed as { "@patchwork"?: { agent?: Record<string, unknown> } }
+  )?.["@patchwork"]?.agent;
+  if (!agent || typeof agent.chatUrl !== "string") return undefined;
+  // Rebuild the tag field-by-field: only known, well-typed fields survive
+  // (the object gets persisted into the group doc, where undefined values
+  // and foreign shapes are unwelcome).
+  const tag: AgentTag = { chatUrl: agent.chatUrl as AutomergeUrl };
+  if (
+    Array.isArray(agent.chatHeads) &&
+    agent.chatHeads.every((h) => typeof h === "string")
+  ) {
+    tag.chatHeads = agent.chatHeads as string[];
+  }
+  if (typeof agent.toolCallId === "string") tag.toolCallId = agent.toolCallId;
+  return tag;
+}
 
 // Newest first by timestamp, per-doc causal order breaking same-second ties.
 // The sidebar's on-demand scrub resolution MUST order identically, or the
@@ -237,28 +284,86 @@ function newestFirst(a: PendingChange, b: PendingChange): number {
   return b.time - a.time || b.seq - a.seq;
 }
 
+// The `@comments` shape the grouper reads: just enough to reach every
+// comment's wall-clock timestamp (ms). Structurally matches the comments
+// tools' schema without a build-time dependency on them.
+type DocWithCommentTimes = {
+  "@comments"?: {
+    threads?: { comments?: { timestamp?: number }[] }[];
+  };
+};
+
+// Every comment timestamp (ms) across the given member docs, newest first.
+// These are extra group boundaries: a group never spans across the moment a
+// comment was made, so the sidebar can slot the comment in between rows.
+export function collectCommentTimes(
+  docs: Automerge.Doc<unknown>[]
+): number[] {
+  const times: number[] = [];
+  for (const doc of docs) {
+    const threads = (doc as DocWithCommentTimes)["@comments"]?.threads;
+    if (!threads) continue;
+    for (const thread of threads) {
+      for (const comment of thread.comments ?? []) {
+        if (typeof comment.timestamp === "number") {
+          times.push(comment.timestamp);
+        }
+      }
+    }
+  }
+  return times.sort((a, b) => b - a);
+}
+
 // Fold a flat, newest-first list of changes into groups: consecutive changes
-// stay together while the pause between them is at most the inactivity gap.
-function splitIntoGroups(
-  rowsNewestFirst: PendingChange[]
-): PendingChange[][] {
-  const groups: PendingChange[][] = [];
-  let window: PendingChange[] = [];
+// stay together while the pause between them is at most the inactivity gap
+// AND no comment was made in between (`commentTimesMs`, newest first) AND
+// they belong to the same contributor (`keyOf`, when given — so a row is one
+// person's manual edits or one chat's agent edits, never a mix). A comment
+// reads as its own timeline entry, so the changes before and after it must
+// not aggregate into one row. The comment boundary is half-open — a comment
+// at millisecond c splits rows older-or-equal from rows strictly newer — so
+// the comment's own write (stamped in the same second as c) groups with the
+// OLDER side, where it aggregates to 0/0 and stays hidden. Generic over the
+// row shape (only `time`, Unix seconds, is read) so tests can drive it
+// directly.
+export function splitIntoGroups<T extends { time: number }>(
+  rowsNewestFirst: T[],
+  commentTimesMs: number[] = [],
+  keyOf?: (row: T) => string
+): T[][] {
+  const groups: T[][] = [];
+  let window: T[] = [];
   let prevTimeMs: number | null = null;
+  let prevKey: string | undefined;
+  let ci = 0;
   for (const row of rowsNewestFirst) {
     const timeMs = row.time * 1000;
+    const key = keyOf?.(row);
     // Rows arrive newest-first, so the previous row is this change's newer
     // neighbour; a gap larger than the threshold between them is a lull.
-    if (
-      prevTimeMs !== null &&
-      prevTimeMs - timeMs > INACTIVITY_GAP_MS &&
-      window.length > 0
-    ) {
-      groups.push(window);
-      window = [];
+    if (prevTimeMs !== null && window.length > 0) {
+      // Comments at or after the newer neighbour can't split this boundary,
+      // nor any older one below — skip them once (both lists descend).
+      while (
+        ci < commentTimesMs.length &&
+        commentTimesMs[ci] >= prevTimeMs
+      ) {
+        ci++;
+      }
+      const commentBetween =
+        ci < commentTimesMs.length && commentTimesMs[ci] >= timeMs;
+      if (
+        prevTimeMs - timeMs > INACTIVITY_GAP_MS ||
+        commentBetween ||
+        key !== prevKey
+      ) {
+        groups.push(window);
+        window = [];
+      }
     }
     window.push(row);
     prevTimeMs = timeMs;
+    prevKey = key;
   }
   if (window.length > 0) groups.push(window);
   return groups;
@@ -266,6 +371,12 @@ function splitIntoGroups(
 
 function groupId(rowsNewestFirst: PendingChange[]): string {
   return `tg-${rowsNewestFirst[0].hash}`;
+}
+
+// Stable id for a merged draft's dedicated group — keyed by the draft, not
+// its newest hash, so rebuilds can cheaply match it against the stored one.
+function mergeGroupId(draftUrl: AutomergeUrl): string {
+  return `tg-merge-${draftUrl}`;
 }
 
 // Append `member`'s changes since `since` onto `out`, dropping anything from
@@ -293,7 +404,7 @@ function collectMemberRows(
   }
   metas.forEach((meta, seq) => {
     if (createdAt !== undefined && meta.time && meta.time < createdAt) return;
-    out.push({
+    const row: PendingChange = {
       memberUrl: member.url,
       doc,
       hash: meta.hash,
@@ -301,7 +412,24 @@ function collectMemberRows(
       time: meta.time,
       actor: meta.actor,
       seq,
-    });
+    };
+    const agent = parseAgentTag(meta.message);
+    if (agent) row.agent = agent;
+    if (meta.message) {
+      // Debug: every change that carries a message, and whether it parsed as
+      // an agent tag — the first place to look when attribution seems dead.
+      console.log(
+        "[drafts] change",
+        meta.hash.slice(0, 8),
+        "on",
+        member.url,
+        "message:",
+        meta.message,
+        "→ agent:",
+        agent ? agent.chatUrl : "NO (not a valid agent tag)"
+      );
+    }
+    out.push(row);
   });
 }
 
@@ -311,6 +439,19 @@ function dedupedActors(rowsNewestFirst: PendingChange[]): string[] {
     if (!actors.includes(row.actor)) actors.push(row.actor);
   }
   return actors;
+}
+
+// The group's agent tag: the newest row's, but only when EVERY row is an
+// agent edit from the same chat. Contributor-keyed groups satisfy that by
+// construction; merged-draft groups (never split) earn the tag only when the
+// whole contribution came from one chat.
+function agentForRows(rowsNewestFirst: PendingChange[]): AgentTag | undefined {
+  const newest = rowsNewestFirst[0].agent;
+  if (!newest) return undefined;
+  for (const row of rowsNewestFirst) {
+    if (!row.agent || row.agent.chatUrl !== newest.chatUrl) return undefined;
+  }
+  return newest;
 }
 
 // Yield to the main thread between diff slices.
@@ -348,7 +489,8 @@ function createSlicer(isAborted: () => boolean, onYield: () => void): Slicer {
 // the run was aborted mid-diff.
 async function buildGroup(
   rowsNewestFirst: PendingChange[],
-  slicer: Slicer
+  slicer: Slicer,
+  keyOf: (row: PendingChange) => string
 ): Promise<ChangeGroup | null> {
   let additions = 0;
   let deletions = 0;
@@ -360,17 +502,30 @@ async function buildGroup(
   }
   const newest = rowsNewestFirst[0];
   const oldest = rowsNewestFirst[rowsNewestFirst.length - 1];
-  return {
+  const group: ChangeGroup = {
     id: groupId(rowsNewestFirst),
     startTime: oldest.time,
     endTime: newest.time,
     newestMemberUrl: newest.memberUrl,
     newestHash: newest.hash,
     actors: dedupedActors(rowsNewestFirst),
+    contributorKey: keyOf(newest),
     additions,
     deletions,
     changeCount: rowsNewestFirst.length,
   };
+  const agent = agentForRows(rowsNewestFirst);
+  if (agent) group.agent = agent;
+  console.log(
+    "[drafts] built group",
+    group.id,
+    "changes:",
+    group.changeCount,
+    "key:",
+    group.contributorKey,
+    agent ? `agent: ${agent.chatUrl}` : ""
+  );
+  return group;
 }
 
 function byMemberUrl(a: DraftMemberDoc, b: DraftMemberDoc): number {
@@ -416,6 +571,24 @@ export function createChangeGrouper(
   let running = false;
   let disposed = false;
 
+  console.log(
+    "[drafts] change grouper created (v" +
+      CHANGE_GROUP_DOC_VERSION +
+      "), resolveContact wired:",
+    !!options.resolveContact
+  );
+
+  // The contributor a row belongs to, and so what groups split on: one
+  // chat's agent edits, else the actor's contact (many actor ids, one
+  // person), else the raw actor id until attribution catches up. An actor
+  // attributed only after its rows were grouped keeps its actor-keyed rows
+  // until the next full rebuild — accepted, same class of staleness as the
+  // sidebar's unattributed-avatar fallback.
+  const contributorKey = (row: PendingChange): string =>
+    row.agent
+      ? `agent:${row.agent.chatUrl}`
+      : (options.resolveContact?.(row.actor) ?? `actor:${row.actor}`);
+
   // Host-doc creation times, resolved once per root url.
   const creationTimes = new Map<AutomergeUrl, Promise<number | undefined>>();
   const creationTime = (url: AutomergeUrl): Promise<number | undefined> => {
@@ -438,6 +611,8 @@ export function createChangeGrouper(
       let task = tasks.get(key);
       const membersChanged =
         !task || !sameMemberSets(task.spec.members, spec.members);
+      const mergesChanged =
+        !task || !sameMergedDrafts(task.spec.mergedDrafts, spec.mergedDrafts);
       if (!task) {
         task = { key, spec, listeners: new Map(), queued: false, debounce: null };
         tasks.set(key, task);
@@ -445,7 +620,7 @@ export function createChangeGrouper(
         task.spec = spec;
       }
       void ensureListeners(task);
-      if (membersChanged) schedule(key);
+      if (membersChanged || mergesChanged) schedule(key);
     }
   }
 
@@ -473,6 +648,17 @@ export function createChangeGrouper(
     const key = (m: DraftMemberDoc) => `${m.url}:${m.cloneUrl ?? ""}`;
     const set = new Set(a.map(key));
     return b.every((m) => set.has(key(m)));
+  }
+
+  // Merged drafts compare by url alone: a merge's head ranges are recorded
+  // once and never change, so a new url is the only meaningful difference.
+  function sameMergedDrafts(
+    a: MergedDraftSpec[],
+    b: MergedDraftSpec[]
+  ): boolean {
+    if (a.length !== b.length) return false;
+    const set = new Set(a.map((m) => m.url));
+    return b.every((m) => set.has(m.url));
   }
 
   // Keep exactly one change listener per member source doc; edits schedule a
@@ -598,6 +784,15 @@ export function createChangeGrouper(
     if (!changeGroupDoc) return;
     const computedThrough = changeGroupDoc.computedThrough ?? {};
 
+    // A merged draft the stored grouping hasn't attributed yet always forces
+    // a full rebuild: its changes must come OUT of whatever time-based groups
+    // they already sit in — they may even be fully consumed already, if a
+    // grouping run raced ahead of the provider's spec update.
+    const attributedMerges = changeGroupDoc.attributedMerges ?? {};
+    const hasNewMerge = spec.mergedDrafts.some(
+      (md) => !attributedMerges[md.url]
+    );
+
     // Each member's frontier as of this gather; the consumed marker advances
     // to exactly these once the run completes, so the next run's
     // getChangesMetaSince yields precisely the unconsumed tail.
@@ -614,7 +809,20 @@ export function createChangeGrouper(
       collectMemberRows(tails, member, doc, since, createdAt);
     }
 
-    if (tails.length === 0) {
+    if (tails.length > 0) {
+      // Debug: one line per grouping run — proves the grouper saw the new
+      // changes and how many carried an agent tag.
+      console.log(
+        "[drafts] grouping run for",
+        spec.draftHandle.url,
+        "— tail rows:",
+        tails.length,
+        "agent-tagged:",
+        tails.filter((r) => r.agent).length
+      );
+    }
+
+    if (tails.length === 0 && !hasNewMerge) {
       // Nothing new to group; just record any frontier movement (e.g. members
       // whose unconsumed changes were all filtered out, or brand-new members
       // with no post-fork changes yet).
@@ -633,18 +841,28 @@ export function createChangeGrouper(
 
     tails.sort(newestFirst);
 
-    // Fast path: every new change lands on or after the newest stored group
-    // (extending it or opening newer ones) without bridging into the group
-    // below it — the overwhelmingly common live-editing case. Everything else
-    // (first build, members without a consumed marker, late-syncing changes
-    // with old timestamps) rebuilds via the full pass.
+    // Comment timestamps across the member docs: extra group boundaries for
+    // both grouping paths below. Comments live in the same docs the changes
+    // come from (clones for drafts), so a new comment also fires the change
+    // listener that scheduled this run.
+    const commentTimesMs = collectCommentTimes(sources.map((s) => s.doc));
+
+    // Fast path: no merge to attribute, and every new change lands on or
+    // after the newest stored group (extending it or opening newer ones)
+    // without bridging into the group below it — the overwhelmingly common
+    // live-editing case. Everything else (first build, members without a
+    // consumed marker, late-syncing changes with old timestamps, a freshly
+    // merged draft) rebuilds via the full pass.
     const stored = Object.values(changeGroupDoc.groups ?? {}).sort(
       (a, b) => b.endTime - a.endTime
     );
     const newestStored = stored[0];
     const secondStored = stored[1];
-    const tailOldestMs = tails[tails.length - 1].time * 1000;
+    const tailOldestMs =
+      tails.length > 0 ? tails[tails.length - 1].time * 1000 : 0;
     const fastOk =
+      !hasNewMerge &&
+      tails.length > 0 &&
       !!newestStored &&
       tailOldestMs >= newestStored.startTime * 1000 - INACTIVITY_GAP_MS &&
       (!secondStored ||
@@ -655,6 +873,7 @@ export function createChangeGrouper(
         changeGroupHandle,
         newestStored,
         tails,
+        commentTimesMs,
         frontier,
         isAborted
       );
@@ -663,7 +882,9 @@ export function createChangeGrouper(
         changeGroupHandle,
         sources,
         createdAt,
+        commentTimesMs,
         frontier,
+        spec.mergedDrafts,
         isAborted
       );
     }
@@ -676,23 +897,40 @@ export function createChangeGrouper(
     changeGroupHandle: DocHandle<ChangeGroupDoc>,
     newestStored: ChangeGroup,
     tailsNewestFirst: PendingChange[],
+    commentTimesMs: number[],
     frontier: Record<AutomergeUrl, UrlHeads>,
     isAborted: () => boolean
   ): Promise<void> {
-    const tailGroups = splitIntoGroups(tailsNewestFirst);
+    const tailGroups = splitIntoGroups(
+      tailsNewestFirst,
+      commentTimesMs,
+      contributorKey
+    );
     const oldestGroup = tailGroups[tailGroups.length - 1];
     const oldestGroupOldestMs =
       oldestGroup[oldestGroup.length - 1].time * 1000;
+    // A comment made between the stored group's end and the tail's start is
+    // a boundary too (same half-open convention as splitIntoGroups), so the
+    // tail must open a fresh group above it.
+    const commentBetween = commentTimesMs.some(
+      (c) => c >= newestStored.endTime * 1000 && c < oldestGroupOldestMs
+    );
     // The oldest run of new changes merges into the stored group when no lull
-    // separates them (it may even start inside the stored span).
+    // (and no comment) separates them (it may even start inside the stored
+    // span) AND it belongs to the same contributor — unless the stored group
+    // is a merged draft's: that group holds exactly the draft's contribution,
+    // so edits after the merge always open a fresh group.
     const attaches =
+      !newestStored.merge &&
+      !commentBetween &&
+      contributorKey(oldestGroup[0]) === newestStored.contributorKey &&
       oldestGroupOldestMs <= newestStored.endTime * 1000 + INACTIVITY_GAP_MS;
     const freshGroups = attaches ? tailGroups.slice(0, -1) : tailGroups;
 
     const slicer = createSlicer(isAborted, () => {});
     const built: ChangeGroup[] = [];
     for (const rows of freshGroups) {
-      const group = await buildGroup(rows, slicer);
+      const group = await buildGroup(rows, slicer, contributorKey);
       if (group === null) return;
       built.push(group);
     }
@@ -733,22 +971,26 @@ export function createChangeGrouper(
   ): void {
     const tailNewest = tailNewestFirst[0];
     const tailOldest = tailNewestFirst[tailNewestFirst.length - 1];
+    const tailAgent = agentForRows(tailNewestFirst);
     const base = d.groups[storedSnapshot.id];
     if (!base) {
       // The stored group vanished under us (concurrent rewrite); keep the
       // tail as its own group rather than losing it — the next full pass
       // reconciles the shape.
-      d.groups[`tg-${tailNewest.hash}`] = {
+      const fallback: ChangeGroup = {
         id: `tg-${tailNewest.hash}`,
         startTime: tailOldest.time,
         endTime: tailNewest.time,
         newestMemberUrl: tailNewest.memberUrl,
         newestHash: tailNewest.hash,
         actors: dedupedActors(tailNewestFirst),
+        contributorKey: contributorKey(tailNewest),
         additions: sums.additions,
         deletions: sums.deletions,
         changeCount: tailNewestFirst.length,
       };
+      if (tailAgent) fallback.agent = tailAgent;
+      d.groups[fallback.id] = fallback;
       return;
     }
 
@@ -769,26 +1011,41 @@ export function createChangeGrouper(
       newestMemberUrl: newer ? tailNewest.memberUrl : base.newestMemberUrl,
       newestHash: newer ? tailNewest.hash : base.newestHash,
       actors,
+      // Same contributor by the attach condition, so the key carries over.
+      contributorKey: base.contributorKey,
       additions: base.additions + sums.additions,
       deletions: base.deletions + sums.deletions,
       changeCount: base.changeCount + tailNewestFirst.length,
     };
+    // Same-chat by the attach condition too; a newer tail's tag wins so
+    // `chatHeads` tracks the latest run that touched the group. Deep-copied
+    // because `base.agent` is a live proxy of the doc being mutated.
+    const agent = newer ? (tailAgent ?? base.agent) : (base.agent ?? tailAgent);
+    if (agent) {
+      const copy: AgentTag = { chatUrl: agent.chatUrl };
+      if (agent.chatHeads) copy.chatHeads = [...agent.chatHeads];
+      if (agent.toolCallId) copy.toolCallId = agent.toolCallId;
+      extended.agent = copy;
+    }
     if (extended.id !== storedSnapshot.id) delete d.groups[storedSnapshot.id];
     d.groups[extended.id] = extended;
   }
 
-  // Full rebuild: regather every member's post-fork history, re-split, and
-  // diff newest-first in idle slices — flushing completed groups as each
-  // slice ends so recent history paints while older history backfills. A
-  // stored group whose id, span, and change count match is reused without
-  // re-diffing (cheap warm restarts, and no redundant work when another
-  // client's grouping update syncs in). Stale ids and consumed markers settle
-  // in the final write.
+  // Full rebuild: regather every member's post-fork history, pull each
+  // merged draft's contribution out into its own dedicated group, re-split
+  // the rest by time, and diff newest-first in idle slices — flushing
+  // completed groups as each slice ends so recent history paints while older
+  // history backfills. A stored group whose id, span, and change count match
+  // is reused without re-diffing (cheap warm restarts, and no redundant work
+  // when another client's grouping update syncs in). Stale ids, consumed
+  // markers, and attributed-merge markers settle in the final write.
   async function rebuildAll(
     changeGroupHandle: DocHandle<ChangeGroupDoc>,
     sources: { member: DraftMemberDoc; doc: Automerge.Doc<unknown> }[],
     createdAt: number | undefined,
+    commentTimesMs: number[],
     frontier: Record<AutomergeUrl, UrlHeads>,
+    mergedDrafts: MergedDraftSpec[],
     isAborted: () => boolean
   ): Promise<void> {
     const rows: PendingChange[] = [];
@@ -797,7 +1054,8 @@ export function createChangeGrouper(
       collectMemberRows(rows, member, doc, since, createdAt);
     }
     rows.sort(newestFirst);
-    const groupsRows = splitIntoGroups(rows);
+    const { merged, rest } = partitionRows(rows, mergedDrafts);
+    const groupsRows = splitIntoGroups(rest, commentTimesMs, contributorKey);
     const expectedIds = new Set(groupsRows.map(groupId));
 
     const batch: ChangeGroup[] = [];
@@ -810,6 +1068,38 @@ export function createChangeGrouper(
     };
 
     const slicer = createSlicer(isAborted, flush);
+
+    // One dedicated group per merged draft, regardless of how its changes
+    // interleave in time with the rest. A merge with no contributed rows
+    // produces no group; it still settles through the attributedMerges
+    // marker in the final write.
+    for (const draft of mergedDrafts) {
+      const draftRows = merged.get(draft.url) ?? [];
+      if (draftRows.length === 0) continue;
+      const id = mergeGroupId(draft.url);
+      expectedIds.add(id);
+      const existing = changeGroupHandle.doc()?.groups?.[id];
+      if (
+        existing &&
+        existing.changeCount === draftRows.length &&
+        existing.startTime === draftRows[draftRows.length - 1].time &&
+        existing.endTime === draftRows[0].time
+      ) {
+        continue;
+      }
+      const group = await buildGroup(draftRows, slicer, contributorKey);
+      if (group === null) return; // aborted mid-diff; markers stay put
+      batch.push({
+        ...group,
+        id,
+        merge: {
+          draftUrl: draft.url,
+          name: draft.name,
+          members: draft.members,
+        },
+      });
+    }
+
     for (const groupRows of groupsRows) {
       const id = groupId(groupRows);
       const existing = changeGroupHandle.doc()?.groups?.[id];
@@ -821,7 +1111,7 @@ export function createChangeGrouper(
       ) {
         continue;
       }
-      const group = await buildGroup(groupRows, slicer);
+      const group = await buildGroup(groupRows, slicer, contributorKey);
       if (group === null) return; // aborted mid-diff; markers stay put
       batch.push(group);
     }
@@ -834,6 +1124,12 @@ export function createChangeGrouper(
       }
       for (const [url, heads] of Object.entries(frontier)) {
         d.computedThrough[url as AutomergeUrl] = heads;
+      }
+      if (mergedDrafts.length > 0) {
+        if (!d.attributedMerges) d.attributedMerges = {};
+        for (const md of mergedDrafts) {
+          if (!d.attributedMerges[md.url]) d.attributedMerges[md.url] = true;
+        }
       }
     });
   }

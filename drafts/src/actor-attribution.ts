@@ -50,6 +50,9 @@ export function createActorRecorder(element: HTMLElement): ActorRecorder {
       attributionHandle = handle;
       flushPendingActors();
     },
+    contactFor(actorId) {
+      return attributionHandle?.doc()?.actors?.[actorId] ?? null;
+    },
     dispose() {
       disposed = true;
       pendingActorIds.clear();
@@ -105,6 +108,10 @@ export async function ensureActorAttribution(
 export type ActorRecorder = {
   recordLocalChange: (doc: Automerge.Doc<unknown>) => void;
   setAttributionHandle: (handle: DocHandle<ActorAttributionDoc>) => void;
+  // The contact an actor id is attributed to — ANY writer's, not just this
+  // client's (the attribution doc syncs). Null while unknown (attribution
+  // pending, or the handle not resolved yet).
+  contactFor: (actorId: string) => AutomergeUrl | null;
   dispose: () => void;
 };
 

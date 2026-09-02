@@ -1,7 +1,9 @@
 import {createSignal, createMemo, createEffect, Show, onMount, onCleanup} from "solid-js"
+import {cursor as automergeCursor} from "@automerge/automerge-repo/slim"
 import type {DocHandle, AutomergeUrl} from "@automerge/automerge-repo/slim"
 import {updateText, splice} from "@automerge/automerge/slim"
 import {applyAutomerge} from "../lib/automerge-ops"
+import {makeAgentTag, agentChange} from "../lib/agent-change"
 import type {ChatDoc} from "../types"
 import type {FeatureSelector} from "../features"
 import {featurePlugins} from "../features"
@@ -32,6 +34,17 @@ import {
 	parseToolCalls as llmParseToolCalls,
 } from "@chee/patchwork-llm"
 import {generateId} from "../lib/helpers"
+import {agentMessageMetadata} from "../lib/agent-drafts"
+import {
+	listSkills,
+	resolveActiveSkills,
+	activateSkill,
+	skillsPromptSection,
+	skillToolSchemas,
+	runSkillTool,
+	type ActiveSkill,
+} from "../lib/llm-skills"
+import {SkillsDebug} from "./SkillsDebug"
 import {automergeUrlToServiceWorkerUrl} from "@inkandswitch/patchwork-filesystem"
 import {transcribeVoiceNote} from "../lib/transcription"
 import {reloadPreviewIframe} from "../lib/preview-frame"
@@ -46,6 +59,28 @@ export function ChatRoot(props: {
 	// currently-selected doc the computer reads/writes.
 	mode?: "chat" | "context"
 	targetDocUrl?: () => AutomergeUrl | undefined
+	// Agent-draft lifecycle (the Agent tool's edits-land-on-a-draft flow).
+	// onRunStart runs before a computer response begins — the wrapper ensures
+	// the chat's draft exists. resolveDoc aims every run-time doc lookup at
+	// that draft's clones DIRECTLY (independent of the global checkout, so tab
+	// switches and parallel runs in other chats can't redirect in-flight
+	// edits). onRunEnd fires when the run finishes, with whether any
+	// doc-editing tool actually ran (true → the wrapper posts the
+	// accept/reject review embed) and, when edits happened, an LLM-written
+	// one-line summary of them (used as the draft's name).
+	// startScenario (optional) opens a NEW draft branch mid-run and re-aims
+	// resolveDoc at it — the sequential multi-scenario flow: the model calls
+	// the start_scenario tool before each alternative's edits, and the wrapper
+	// posts a scenario picker instead of the single review embed.
+	// hasScenarios tells the run whether scenarios were opened (so it can skip
+	// the single-draft naming step).
+	agentDraft?: {
+		onRunStart: () => Promise<void>
+		onRunEnd: (edited: boolean, summary?: string) => void | Promise<void>
+		resolveDoc: (url: string) => Promise<any>
+		startScenario?: (name: string) => Promise<string>
+		hasScenarios?: () => boolean
+	}
 	// Optional selector OVERRIDE (the embeddable component's `features=` attr).
 	// When absent, the active feature set is driven by the document's `plugins`
 	// array — the same source ChatProvider reads.
@@ -208,6 +243,60 @@ export function ChatRoot(props: {
 		createSignal<AbortController | null>(null)
 	const computerRespondedToIds = new Set<string>()
 	let computerResponding = false
+	// Did a doc-editing tool run (successfully) during the current computer
+	// response? Drives the agent-draft review embed (props.agentDraft.onRunEnd).
+	// `editLogThisRun` keeps a terse record of those calls so the draft-name
+	// summary can be generated even when the tool exchange never made it into
+	// the conversation messages (e.g. the run ended on a question).
+	let editedDocsThisRun = false
+	let editLogThisRun: string[] = []
+	const EDIT_TOOLS = new Set(["automerge_op", "replace_text", "create_doc"])
+	function noteToolRun(name: string, args: any, result: string) {
+		if (EDIT_TOOLS.has(name) && !/^error/i.test(result.trim())) {
+			editedDocsThisRun = true
+			try {
+				editLogThisRun.push(name + " " + JSON.stringify(args).slice(0, 300))
+			} catch {
+				editLogThisRun.push(name)
+			}
+		}
+	}
+
+	// A one-line title for the agent draft: one cheap follow-up completion (no
+	// tools) asking the model to sum up the edits it just made. Undefined on
+	// any failure — the draft then keeps its previous name.
+	async function generateDraftSummary(
+		messages: any[],
+		signal: AbortSignal
+	): Promise<string | undefined> {
+		try {
+			const gen = await generateLLM(
+				[
+					...messages,
+					{
+						role: "user",
+						content:
+							"[System] You just edited the document with these tool calls:\n" +
+							editLogThisRun.join("\n").slice(0, 2000) +
+							"\n\nReply with ONLY a short title of 3\u20138 words describing " +
+							"those changes (no quotes, no trailing period). It names the " +
+							"draft that holds them.",
+					},
+				],
+				() => {},
+				signal
+			)
+			const line = (gen.text || "")
+				.replace(/^\[Computer\]\s*/i, "")
+				.trim()
+				.split("\n")[0]
+				.replace(/^["'\u201C\u201D\s]+|["'\u201C\u201D\s.]+$/g, "")
+			return line ? line.slice(0, 80) : undefined
+		} catch (e) {
+			console.warn("[Computer] draft summary failed:", e)
+			return undefined
+		}
+	}
 	let computerListenerActive = false
 	let computerListenerCleanup: (() => void) | null = null
 	// Single-host: only one tab should respond as Computer
@@ -361,6 +450,8 @@ arg: value
 - edit_tool {toolId|url, code} — replace a tool's source and reload
 - inspect_iframe {url} — a pinned tool's DOM + console errors
 - eval_in_iframe {url, code} — run JS in a pinned tool, get the result
+- make_ref {url, path?, from?, to?} — mint a granular ref url into a doc (an element by path/{id}, or a text range by offsets)
+- load_skill {id} — activate an installed skill (see the Skills index) and get its instructions
 
 Rules: ALWAYS read_doc before edit_doc/splice_doc, and re-read the returned value after (peers may have changed it). NEVER change a doc's \`@patchwork.type\`, or a tool's datatype/tool \`id\`/\`supportedDatatypes\` (breaks existing docs). To ask the user something, reply in plain text with NO tool call — tool results are not user answers.
 
@@ -429,6 +520,8 @@ arg: value
 - edit_tool {toolId|url, code} — replace a tool's source and reload
 - inspect_iframe {url} — a pinned tool's DOM + console errors
 - eval_in_iframe {url, code} — run JS in a pinned tool, get the result
+- make_ref {url, path?, from?, to?} — mint a granular ref url into a doc (an element by path/{id}, or a text range by offsets)
+- load_skill {id} — activate an installed skill (see the Skills index) and get its instructions
 
 Rules: ALWAYS read_doc before edit_doc/splice_doc, and re-read the returned value after (peers may have changed it). NEVER change a doc's \`@patchwork.type\`, or a tool's datatype/tool \`id\`/\`supportedDatatypes\` (breaks existing docs). To ask the user something, reply in plain text with NO tool call — tool results are not user answers.
 
@@ -514,11 +607,27 @@ You can include \`\`\`file blocks to create and embed files, \`\`\`embed blocks 
 
 Keep responses concise. When you create a tool, explain briefly what it does.`
 
+	// Offered only when the host provides startScenario (the Agent tool):
+	// the model's way to produce several alternative versions on separate
+	// branches, browsed and decided in the scenario picker afterwards.
+	const SCENARIOS_PROMPT_SECTION = `
+
+## Scenarios (alternative versions)
+When the user asks for multiple alternatives/options/scenarios ("show me three variants…"), put each one on its own branch:
+1. Call start_scenario {name} BEFORE the first edit of each alternative. It opens a fresh branch forked from the document's base state; ALL subsequent edits land on it until the next start_scenario.
+2. Scenarios are independent — each forks from the same base, NOT from the previous scenario. Repeat any shared setup in every scenario.
+3. Give each a short, descriptive name ("Conservative", "Aggressive timeline").
+4. After the last scenario's edits, briefly summarize how they differ in your reply. The user gets a picker to browse the branches and accept ONE (or reject all) — don't ask which they prefer; they decide there.
+Do NOT call start_scenario for ordinary single-outcome edits.`
+
 	// Pick the prompt for the active model: local/in-browser models (small,
 	// limited context) get the compact prompt; capable cloud providers get the
 	// full one with worked examples. Falls back to full on any read error.
 	function computerSystemPrompt(): string {
-		if (isContext()) return CONTEXT_SYSTEM_PROMPT
+		if (isContext())
+			return props.agentDraft?.startScenario
+				? CONTEXT_SYSTEM_PROMPT + SCENARIOS_PROMPT_SECTION
+				: CONTEXT_SYSTEM_PROMPT
 		try {
 			const cfg = scopedCfg()
 			return cfg?.provider === "local"
@@ -573,6 +682,60 @@ Keep responses concise. When you create a tool, explain briefly what it does.`
 			required: ["name", "description", "code"],
 		},
 	}
+	// Mid-run skill activation: the skills index in the system prompt lists
+	// installed-but-inactive skills; this lets the model pull one in itself
+	// instead of stalling to ask the user for `/plugin load`.
+	const LOAD_SKILL_TOOL = {
+		name: "load_skill",
+		description:
+			"Activate an installed skill by id for THIS run (ids are in the Skills index of your instructions). Returns the skill's full instructions; any extra tools it contributes become available on your next step. Use it BEFORE working on a document type whose skill is not active — never guess a skill-covered document's schema.",
+		parameters: {
+			type: "object",
+			properties: {
+				id: {type: "string", description: "skill id from the Skills index"},
+			},
+			required: ["id"],
+		},
+	}
+
+	// Granular references: ref urls (element/{id} paths, cursor-anchored text
+	// ranges) can only be MINTED by the runtime — their anchors encode opaque
+	// op ids the model cannot fabricate. This tool is what makes fine-grained
+	// provenance possible from the generic document tools.
+	const MAKE_REF_TOOL = {
+		name: "make_ref",
+		description:
+			"Mint a granular automerge REF URL into a document — an edit-stable pointer at one element or text range, for provenance sources/targets and other cross-doc links. Pass `path` (array of keys/indices; a {id:\"…\"} object matches a list element by its id, stable across splices) to point at an element. Pass `from`/`to` (0-based character offsets, e.g. from find_text) to point at a text range; `path` then locates the string field (defaults to [\"content\"]). Returns the ref url as a string.",
+		parameters: {
+			type: "object",
+			properties: {
+				url: {type: "string", description: "the document (optional in context mode; defaults to the focused doc)"},
+				path: {type: "array", items: {}, description: "keys/indices from the doc root; {id:\"…\"} matches a list element by id"},
+				from: {type: "number", description: "text range start (character offset)"},
+				to: {type: "number", description: "text range end (character offset, exclusive)"},
+			},
+		},
+	}
+
+	// Multi-scenario runs (Agent tool only — needs the drafts machinery): each
+	// call re-aims the run's edits at a fresh branch. Included in activeTools
+	// only when the host wires up agentDraft.startScenario.
+	const START_SCENARIO_TOOL = {
+		name: "start_scenario",
+		description:
+			"Open a new scenario branch and aim ALL your subsequent document edits at it, until the next start_scenario call. Each scenario forks from the document's base state, independent of the other scenarios. Use ONLY when producing multiple alternative versions for the user to choose between — call it before each alternative's first edit; the user picks between the finished scenarios afterwards.",
+		parameters: {
+			type: "object",
+			properties: {
+				name: {
+					type: "string",
+					description: "short descriptive name for this scenario",
+				},
+			},
+			required: ["name"],
+		},
+	}
+
 	const COMPUTER_TOOLS: {name: string; description: string; parameters: any}[] = [
 		{name: "read_doc", description: "Read an Automerge document's full contents.", parameters: {type: "object", properties: {url: {type: "string", description: "automerge: URL"}}, required: ["url"]}},
 		{name: "edit_doc", description: "Set a field on a document (string fields diff collaboratively). Returns the field's new value.", parameters: {type: "object", properties: {url: {type: "string"}, field: {type: "string"}, value: {description: "new value (JSON)"}}, required: ["url", "field", "value"]}},
@@ -582,6 +745,8 @@ Keep responses concise. When you create a tool, explain briefly what it does.`
 		{name: "edit_tool", description: "Replace an existing tool's source code and reload it. Target by toolId or url.", parameters: {type: "object", properties: {toolId: {type: "string"}, url: {type: "string"}, code: {type: "string"}}, required: ["code"]}},
 		{name: "inspect_iframe", description: "Get a pinned tool iframe's DOM HTML and console errors.", parameters: {type: "object", properties: {url: {type: "string"}}}},
 		{name: "eval_in_iframe", description: "Run JS inside a pinned tool's iframe and return the result.", parameters: {type: "object", properties: {url: {type: "string"}, code: {type: "string"}}, required: ["code"]}},
+		MAKE_REF_TOOL,
+		LOAD_SKILL_TOOL,
 		ASK_USER_TOOL,
 		DEFINE_TOOL,
 	]
@@ -618,6 +783,8 @@ Every turn, a [Context] block gives you the focused document: its \`url\`, its c
     • heads — OPTIONAL. The heads array from read_doc. When given, the edit is applied as a back-dated change (changeAt) relative to that version. Omit for a normal "edit current state" change.
     • url — OPTIONAL. Edit a different document than the focused one.
   Returns the affected container's new value so you can verify.
+- make_ref {url?, path?, from?, to?} — mint a granular automerge REF URL: an edit-stable pointer at one element (\`path\` with a {id:"…"} object matching a list element by id) or a text range (\`from\`/\`to\` character offsets from find_text; \`path\` locates the string field, default ["content"]). Use these for provenance sources/targets and other cross-doc links — never a bare doc url when a finer ref applies.
+- load_skill {id} — activate an installed skill by id (see the Skills index in these instructions) and get its full instructions back. Use it BEFORE working on a document type whose skill is installed but not active.
 - ask_user {question, options?} — ask the user something and PAUSE. Posts your question (with optional clickable choices) and ends your turn; their reply comes back as a new message. Use this instead of guessing when you need a decision or missing detail.
 - inspect_dom {selector?} — (usually disabled) return the live DOM HTML of the running tool/page, optionally narrowed to a CSS selector. Use to see how the focused doc is actually rendered.
 - eval_js {code} — (usually disabled) evaluate JavaScript in the page and return the result. Powerful and unsandboxed; only when explicitly needed.
@@ -647,6 +814,8 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 		{name: "automerge_op", description: "Apply ONE universal Automerge edit to a doc (defaults to the focused doc). range=[from,to] splices a string field (text — from/to are 0-based CHARACTER offsets, to exclusive, every char incl. newlines counts) or a list; range=key assigns (with value) or deletes (without value) on the map/list at path. Omit value to delete. For text, prefer replace_text/find_text so you don't miscount.", parameters: {type: "object", properties: {path: {type: "array", items: {}, description: "keys/indices from the doc root to the container or string ([]=root)"}, range: {description: "[from,to] for a splice, or a string/number key for assign/delete"}, value: {description: "value to insert/set (JSON); omit to delete"}, heads: {type: "array", items: {type: "string"}, description: "optional heads (from read_doc) → back-dated changeAt"}, url: {type: "string", description: "optional target doc (defaults to the focused doc)"}}, required: ["range"]}},
 		{name: "inspect_dom", description: "Return the live DOM HTML of the running tool/page (optionally narrowed by a CSS selector). Disabled by default.", parameters: {type: "object", properties: {selector: {type: "string", description: "optional CSS selector to narrow the result"}}}},
 		{name: "eval_js", description: "Evaluate JavaScript in the page and return the result. Unsandboxed. Disabled by default.", parameters: {type: "object", properties: {code: {type: "string"}}, required: ["code"]}},
+		MAKE_REF_TOOL,
+		LOAD_SKILL_TOOL,
 		ASK_USER_TOOL,
 		DEFINE_TOOL,
 	]
@@ -671,9 +840,23 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 			}))
 	}
 
-	// The tool set for whichever mode we're in, plus any self-defined tools.
+	// The llm:skill packs active for the CURRENT run (focused-doc datatype
+	// matches + ids enabled on the chat), resolved at the start of each
+	// computer response. Drives the "## Skills" prompt section, extra skill
+	// tools, and their dispatch. A signal so the skills debug panel tracks it.
+	const [skillsForRun, setSkillsForRun] = createSignal<ActiveSkill[]>([])
+
+	// The tool set for whichever mode we're in, plus any self-defined tools,
+	// plus tools contributed by the run's active skills (built-ins win on a
+	// name conflict).
 	function activeTools() {
-		return [...(isContext() ? CONTEXT_TOOLS : COMPUTER_TOOLS), ...customTools()]
+		const base = [
+			...(isContext() ? CONTEXT_TOOLS : COMPUTER_TOOLS),
+			...(props.agentDraft?.startScenario ? [START_SCENARIO_TOOL] : []),
+			...customTools(),
+		]
+		const taken = new Set(base.map((t) => t.name))
+		return [...base, ...skillToolSchemas(skillsForRun(), taken)]
 	}
 
 	// Render a structured tool call as the text shown in its card — mirrors the old
@@ -1112,32 +1295,164 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 	// tool_calls or parsed <tool_call> JSON). Args may already be typed (objects/
 	// numbers) or strings, so each branch is tolerant of both. Returns a result
 	// string fed back to the model.
-	async function runToolByName(toolName: string, rawArgs: any): Promise<string> {
+	// Doc resolution for the RUN path (context snapshot + read/edit tools): an
+	// agent-draft run aims at its chat's own draft clones; otherwise the
+	// overlay repo decides (the checked-out draft, or main).
+	//
+	// ⚠ The clone is an INTERNAL detail — the model must only ever see a
+	// document's OWN url. Every tool result reports the url the caller aimed at
+	// (`args.url` or the focused doc), never the resolved handle's: a clone url
+	// handed back comes straight in again as the next call's `url`, and
+	// resolving a clone url forks the clone AGAIN, scattering the run's edits
+	// across copies of the document that nothing renders and that accept won't
+	// merge.
+	function resolveRunDoc(url: string): Promise<any> {
+		if (props.agentDraft) return props.agentDraft.resolveDoc(url)
+		return ((props.element as any).repo as any).find(url)
+	}
+
+	// Activate a skill mid-run (the load_skill tool): its instructions come back
+	// as the tool result, and its extra tools join activeTools() for the next
+	// round via skillsForRun. The system prompt already sent still lists the
+	// skill as inactive — the instructions arriving as tool output supersede it.
+	async function activateSkillForRun(id: string): Promise<string> {
+		if (!id) return "Error: load_skill needs a skill id — see the Skills index in your instructions."
+		if (skillsForRun().some((s) => s.id === id)) {
+			return `Skill "${id}" is already active; its instructions are in your system prompt.`
+		}
+		const skill = await activateSkill(id)
+		if (!skill) {
+			const known = listSkills().map((s) => s.id).join(", ")
+			return `Error: no installed skill "${id}". Installed: ${known || "none"}.`
+		}
+		setSkillsForRun([...skillsForRun(), skill])
+		const tools = (skill.module.tools ?? []).map((t: any) => t.name)
+		return (
+			`Skill "${id}" is now active for this run` +
+			(tools.length ? ` (extra tools usable from your next step: ${tools.join(", ")})` : "") +
+			`. Its instructions:\n\n${skill.module.instructions.trim()}`
+		)
+	}
+
+	// read_doc auto-activation: reading a document whose datatype matches an
+	// installed-but-inactive skill pulls that skill in and delivers its
+	// instructions inline with the read result, so the model gets the domain
+	// knowledge exactly when it first looks at such a document.
+	async function autoActivateSkillsFor(doc: any): Promise<string> {
+		const docType = (doc as any)?.["@patchwork"]?.type
+		if (typeof docType !== "string" || !docType) return ""
+		const notes: string[] = []
+		for (const desc of listSkills()) {
+			if (!Array.isArray(desc.datatypes) || !desc.datatypes.includes(docType)) continue
+			if (skillsForRun().some((s) => s.id === desc.id)) continue
+			const skill = await activateSkill(desc.id)
+			if (!skill) continue
+			setSkillsForRun([...skillsForRun(), skill])
+			const tools = (skill.module.tools ?? []).map((t: any) => t.name)
+			notes.push(
+				`[Skill "${desc.id}" auto-activated: this document's type (${docType}) matches it` +
+					(tools.length ? `; extra tools usable from your next step: ${tools.join(", ")}` : "") +
+					`. Follow its instructions:]\n\n${skill.module.instructions.trim()}`
+			)
+		}
+		return notes.length ? "\n\n" + notes.join("\n\n") : ""
+	}
+
+	async function runToolByName(
+		toolName: string,
+		rawArgs: any,
+		toolCallId?: string
+	): Promise<string> {
 		const args = rawArgs || {}
 		const repo = (props.element as any).repo
+		// Stamped as the change message on every document edit this call makes,
+		// so consumers (the drafts timeline) can attribute it to this chat run.
+		// NOTE: only the built-in edit tools below write through agentChange;
+		// skill tools and define_tool customs edit through their own ctx and
+		// stay untagged — the "[agent-change] tagging" log shows which happened.
+		const agentTag = makeAgentTag(props.handle, toolCallId)
+		console.log("[agent] tool call:", toolName, "id:", toolCallId ?? "(none)")
 		// In context mode, doc-editing tools default to the focused document.
 		const focusedUrl = () => props.targetDocUrl?.()
 		try {
-			if (toolName === "read_doc") {
+			if (toolName === "load_skill") {
+				return await activateSkillForRun(String(args.id || "").trim())
+			} else if (toolName === "start_scenario") {
+				if (!props.agentDraft?.startScenario) {
+					return "Error: scenarios are not available in this chat."
+				}
+				const name = String(args.name || "").trim() || "Scenario"
+				return await props.agentDraft.startScenario(name)
+			} else if (toolName === "make_ref") {
+				const url = args.url || focusedUrl()
+				if (!url) return "Error: no url and no focused document."
+				const h = await resolveRunDoc(url)
+				const parsePath = (v: any) => {
+					if (Array.isArray(v)) return v
+					if (typeof v !== "string" || !v.trim()) return []
+					try {
+						const parsed = JSON.parse(v)
+						return Array.isArray(parsed) ? parsed : []
+					} catch {
+						return []
+					}
+				}
+				const segments: any[] = parsePath(args.path)
+				const from = typeof args.from === "number" ? args.from : Number(args.from)
+				const to = typeof args.to === "number" ? args.to : Number(args.to)
+				const hasRange = Number.isFinite(from) && Number.isFinite(to)
+				if (hasRange) {
+					if (segments.length === 0) segments.push("content")
+					segments.push(automergeCursor(from, to))
+				}
+				if (segments.length === 0) {
+					return 'Error: give a path (e.g. ["petriNetDefinition","places",{"id":"…"}]) and/or from/to text offsets.'
+				}
+				// The runtime exposes handle.sub (subduction) or handle.ref
+				// (upstream automerge-repo) — same call shape.
+				const make = (h as any).sub ?? (h as any).ref
+				if (typeof make !== "function") {
+					return "Error: this runtime cannot mint ref urls (no handle.sub/ref)."
+				}
+				let refUrl: string
+				try {
+					refUrl = make.apply(h, segments).url
+				} catch (e: any) {
+					return "Error minting ref: " + (e?.message || String(e))
+				}
+				// Report the ref against the document's OWN url: under an agent
+				// draft the resolved handle is a clone, and a clone-prefixed url
+				// stored in a doc would dangle after the draft merges.
+				const ownBare = String(url).split(/[/#]/)[0]
+				const mintedBare = refUrl.split(/[/#]/)[0]
+				if (mintedBare !== ownBare) {
+					refUrl = ownBare + refUrl.slice(mintedBare.length)
+				}
+				return refUrl
+			} else if (toolName === "read_doc") {
 				const url = args.url || (isContext() ? focusedUrl() : undefined)
 				if (!url) return "Error: no url and no focused document."
-				const h = await repo.find(url)
+				const h = await resolveRunDoc(url)
 				const doc = h.doc()
+				const skillNote = await autoActivateSkillsFor(doc)
 				if (isContext()) {
 					// Context mode also returns heads so a follow-up automerge_op can
 					// back-date its change (changeAt). handle.heads() is the UrlHeads
-					// that changeAt() expects.
+					// that changeAt() expects. The heads are the resolved handle's
+					// (a draft clone's, under an agent draft), which is what we want:
+					// an op on this same `url` resolves that same handle. The url
+					// reported stays the document's own — see resolveRunDoc.
 					let heads: any = []
 					try {
 						heads = h.heads()
 					} catch {}
-					return JSON.stringify({url: h.url, heads, doc}, null, 2)
+					return JSON.stringify({url, heads, doc}, null, 2) + skillNote
 				}
-				return JSON.stringify(doc, null, 2) || "null"
+				return (JSON.stringify(doc, null, 2) || "null") + skillNote
 			} else if (toolName === "automerge_op") {
 				const url = args.url || focusedUrl()
 				if (!url) return "Error: no url and no focused document."
-				const h = await repo.find(url)
+				const h = await resolveRunDoc(url)
 				// path / range / value may arrive typed (native function calling) or as
 				// JSON strings (local <tool_call> convention) — be tolerant of both.
 				const parseMaybe = (v: any) => {
@@ -1177,11 +1492,12 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 				const value = hasValue ? parseValueMaybe(args.value) : undefined
 				const heads = parseMaybe(args.heads)
 				const mut = (d: any) => applyAutomerge(d, path, range, value)
-				if (Array.isArray(heads) && heads.length) {
-					h.changeAt(heads, mut)
-				} else {
-					h.change(mut)
-				}
+				agentChange(
+					h,
+					agentTag,
+					mut,
+					Array.isArray(heads) && heads.length ? heads : undefined
+				)
 				// Return the affected container so the model can verify.
 				const after = h.doc() as any
 				let container: any = after
@@ -1196,7 +1512,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 					preview = preview.slice(0, 4000) + "\n…(truncated)"
 				return (
 					"OK — applied op to " +
-					h.url +
+					url +
 					" at path " +
 					JSON.stringify(path) +
 					".\nValue at path now:\n" +
@@ -1216,7 +1532,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 						restrict = undefined
 					}
 				}
-				const h = await repo.find(url)
+				const h = await resolveRunDoc(url)
 				const matches = findTextMatches(h.doc(), query, restrict)
 				if (!matches.length) {
 					return (
@@ -1252,7 +1568,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 						restrict = undefined
 					}
 				}
-				const h = await repo.find(url)
+				const h = await resolveRunDoc(url)
 				const matches = findTextMatches(h.doc(), find, restrict)
 				if (!matches.length) {
 					return (
@@ -1284,7 +1600,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 				} else {
 					chosen = matches[0]
 				}
-				h.change((d: any) =>
+				agentChange(h, agentTag, (d: any) =>
 					applyAutomerge(d, chosen.path, [chosen.start, chosen.end], replacement)
 				)
 				let after: any = h.doc()
@@ -1349,7 +1665,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 						val = args.value
 					}
 				}
-				h.change((d: any) => {
+				agentChange(h, agentTag, (d: any) => {
 					if (typeof val === "string" && typeof d[args.field] === "string") {
 						updateText(d, [args.field], val)
 					} else {
@@ -1368,7 +1684,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 				const index = parseInt(args.index, 10)
 				const deleteCount = parseInt(args.deleteCount || "0", 10)
 				const insert = args.insert || ""
-				h.change((d: any) => {
+				agentChange(h, agentTag, (d: any) => {
 					splice(d, [args.field], index, deleteCount, insert)
 				})
 				const after = h.doc() as any
@@ -1613,6 +1929,17 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 					"`. It becomes available on your NEXT run (not this turn)."
 				)
 			}
+			// A tool contributed by one of the run's active llm:skills — dispatch
+			// to the skill's own runTool.
+			const skillResult = await runSkillTool(skillsForRun(), toolName, args, {
+				repo,
+				handle: props.handle,
+				element: props.element,
+				focusedUrl: focusedUrl(),
+				applyAutomerge,
+			})
+			if (skillResult !== null) return skillResult
+
 			// A tool the computer defined for itself via define_tool — run its JS.
 			const custom = (
 				(props.handle.doc() as any)?.computerCustomTools || []
@@ -1906,7 +2233,9 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 			const turl = props.targetDocUrl?.()
 			if (turl) {
 				try {
-					const th = await repo.find(turl)
+					// Through resolveRunDoc so an agent-draft run snapshots ITS
+					// draft's clone (with any prior-run edits), not main.
+					const th = await resolveRunDoc(turl)
 					const td = th.doc() as any
 					let heads: any = []
 					try {
@@ -1999,6 +2328,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 			timestamp: Date.now(),
 			isComputer: true,
 			font: "monospace",
+			...agentMessageMetadata(props.handle.doc()),
 		}
 		if (replyTo) msgData.replyTo = replyTo
 		if (opts?.embeds) msgData.embeds = opts.embeds
@@ -2424,12 +2754,30 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 		const repo = (props.element as any).repo
 		if (!repo || computerResponding) return
 		computerResponding = true
+		editedDocsThisRun = false
+		editLogThisRun = []
+		let agentDraftSummary: string | undefined
+
+		// Agent-draft flow: ensure this chat's draft exists BEFORE anything
+		// touches the focused doc — resolveRunDoc then aims every run-time
+		// lookup at that draft's clones, independent of what's checked out.
+		// On failure the run proceeds; edits land on the plain docs.
+		if (props.agentDraft) {
+			try {
+				await props.agentDraft.onRunStart()
+			} catch (e) {
+				console.warn("[Computer] agent draft setup failed:", e)
+			}
+		}
 
 		const abortController = new AbortController()
 		setComputerAbort(abortController)
-		// Inactivity timeout: abort if no tokens received for 30s
+		// Inactivity timeout: abort if no tokens/status received for a while.
+		// Generous, because the llm lib only reports content deltas: a model
+		// streaming a huge tool call (or reasoning) looks silent from here even
+		// though the connection is making steady progress.
 		let inactivityTimer: any = null
-		const INACTIVITY_TIMEOUT = 90000
+		const INACTIVITY_TIMEOUT = 300000
 		function resetInactivityTimer() {
 			if (inactivityTimer) clearTimeout(inactivityTimer)
 			inactivityTimer = setTimeout(() => {
@@ -2447,11 +2795,38 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 		let tokenThrottleTimer: any = null
 
 		try {
-			const context = await assembleContext()
-			resetInactivityTimer()
 			const isMomputer = (userMsg.text || "")
 				.toLowerCase()
 				.includes("@momputer")
+
+			// Which llm:skill packs apply to this run: skills whose datatypes
+			// match the focused document, skills enabled on the chat by id, and
+			// @momputer forcing its persona skill. Resolved before the prompt so
+			// their instructions/tools are in place for every round.
+			setSkillsForRun([])
+			try {
+				let focusedType: string | undefined
+				const turl = props.targetDocUrl?.()
+				if (turl) {
+					try {
+						focusedType = ((await repo.find(turl)).doc() as any)?.[
+							"@patchwork"
+						]?.type
+					} catch {}
+				}
+				setSkillsForRun(
+					await resolveActiveSkills({
+						focusedType,
+						enabledIds: activeFeatures(),
+						forcedIds: isMomputer ? ["momputer"] : undefined,
+					})
+				)
+			} catch (e) {
+				console.warn("[Computer] skill resolution failed:", e)
+			}
+
+			const context = await assembleContext()
+			resetInactivityTimer()
 			// Generate a tool name for this response — the LLM uses it if it builds a tool
 			const suggestedToolName = randomToolName()
 			// The built-in COMPUTER_SYSTEM_PROMPT is the *default* — but if the user
@@ -2466,10 +2841,10 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 				'## Your Tool ID\nIf you build a patchwork tool in this response, use `"' +
 				suggestedToolName +
 				'"` as the id for both the datatype and tool plugins, and in supportedDatatypes.'
-			if (isMomputer) {
-				systemPrompt +=
-					'\n\n## Special Mode: Momputer\nThe user addressed you as @momputer. Be warm, nurturing, and motherly in your response. Use gentle encouragement, express care and concern, and be supportive like a loving mom would be. You can use pet names like "sweetie", "honey", "dear", etc. Still be helpful and knowledgeable, but with a cozy maternal energy.'
-			}
+			// Skills: active packs' full instructions plus a one-line index of the
+			// inactive ones. (The momputer persona rides this too, forced above.)
+			const skillsSection = skillsPromptSection(skillsForRun(), listSkills())
+			if (skillsSection) systemPrompt += "\n\n" + skillsSection
 			const messages = [...context, {role: "user", content: userMsg.text}]
 
 			// Create streaming message — use `let` so we can reassign
@@ -2482,6 +2857,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 				font: isMomputer ? "Comic Sans MS, cursive" : "monospace",
 				streaming: true,
 				replyTo: userMsg.id,
+				...agentMessageMetadata(props.handle.doc()),
 			}
 			currentStreamHandle = await repo.create2(streamMsgData)
 			// Resolve through repo.find so that on a draft our streaming writes
@@ -2522,7 +2898,11 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 				setLlmStatus(status.replace(/think(ing)?/gi, "computing"))
 			}
 
-			const MAX_TOOL_ROUNDS = 5
+			// Generous: document editing legitimately takes many rounds (e.g. a
+			// CatColab model is two ops per cell plus reads and verification).
+			// Runaway loops are still bounded by this, the inactivity timeout,
+			// and the user's stop button.
+			const MAX_TOOL_ROUNDS = 20
 			let madeChanges = false
 			let completedResponse = false
 			for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -2633,7 +3013,11 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 						// display-only — it's already been rendered above).
 						for (const c of calls) {
 							if (c.name === "ask_user") continue
-							await runToolByName(c.name, c.args)
+							noteToolRun(
+								c.name,
+								c.args,
+								await runToolByName(c.name, c.args, c.id)
+							)
 						}
 						completedResponse = true
 						break
@@ -2642,16 +3026,20 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 					// Execute tool calls and store results
 					let toolResults = ""
 					for (const c of calls) {
-						const result = await runToolByName(c.name, c.args)
+						const result = await runToolByName(c.name, c.args, c.id)
+						noteToolRun(c.name, c.args, result)
 						resetInactivityTimer()
 						toolResults +=
 							"\n[Tool result for " + c.name + "]\n" + result + "\n"
-						// Store result on the corresponding rich block
+						// Store result on the corresponding rich block. Results arrive
+						// in call order, so fill the FIRST unfilled card — searching
+						// from the end paired every multi-call round's results with the
+						// wrong cards (swapped read_doc/load_skill results in exports).
 						currentStreamHandle.change((d: any) => {
 							if (d.richBlocks) {
-								const matching = [...d.richBlocks]
-									.reverse()
-									.find((b: any) => b.type === "tool-call" && !b.result)
+								const matching = d.richBlocks.find(
+									(b: any) => b.type === "tool-call" && !b.result
+								)
 								if (matching) matching.result = result.slice(0, 2000)
 							}
 						})
@@ -2733,6 +3121,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 							isComputer: true,
 							font: "monospace",
 							streaming: true,
+							...agentMessageMetadata(props.handle.doc()),
 						}
 						currentStreamHandle = await repo.create2(nextMsgData)
 						// See note above: resolve via repo.find so streaming writes
@@ -2792,6 +3181,22 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 					d.streaming = false
 				})
 			}
+
+			// Agent-draft flow: name the draft after what this run changed.
+			// Skipped on scenario runs — each scenario was already named by
+			// the model, and the picker replaces the single review embed.
+			if (
+				props.agentDraft &&
+				editedDocsThisRun &&
+				!abortController.signal.aborted &&
+				!props.agentDraft.hasScenarios?.()
+			) {
+				setLlmStatus("naming the draft")
+				agentDraftSummary = await generateDraftSummary(
+					messages,
+					abortController.signal
+				)
+			}
 		} catch (err: any) {
 			if (currentStreamHandle) {
 				try {
@@ -2823,6 +3228,16 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 			}
 			computerResponding = false
 			setLlmStatus("")
+			// Agent-draft flow: the run is over — the wrapper renames the draft
+			// after the summary and posts the accept/reject review embed when the
+			// run actually edited docs.
+			if (props.agentDraft) {
+				Promise.resolve(
+					props.agentDraft.onRunEnd(editedDocsThisRun, agentDraftSummary)
+				).catch((e) =>
+					console.warn("[Computer] agent draft finish failed:", e)
+				)
+			}
 		}
 	}
 
@@ -3305,6 +3720,12 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 											Stop
 										</button>
 									</div>
+								</Show>
+								<Show when={has("computer")}>
+									<SkillsDebug
+										active={skillsForRun}
+										enabledIds={activeFeatures}
+									/>
 								</Show>
 								<InputArea
 									replyToId={replyToId()}

@@ -3,6 +3,7 @@ import {useChat} from "../context/ChatContext"
 import {useIdentity} from "../context/IdentityContext"
 import {usePresence} from "../context/PresenceContext"
 import {generateId} from "../lib/helpers"
+import {agentMessageMetadata} from "../lib/agent-drafts"
 import {createFileDoc} from "../lib/file-helpers"
 import {createLoadedPlugins} from "../lib/slots"
 import {Slot, useSlotContext} from "../context/SlotContext"
@@ -442,6 +443,10 @@ export function InputArea(props: {
 			if (em[name]) usedEmoticons[name] = em[name]
 		}
 		if (Object.keys(usedEmoticons).length > 0) msgData.emoticons = usedEmoticons
+
+		// Agent chats stamp their message docs with the drafts-skipped datatype
+		// (see lib/agent-drafts.ts) — a no-op spread for ordinary chats.
+		Object.assign(msgData, agentMessageMetadata(handle.doc()))
 
 		const msgHandle = await repo.create2(msgData)
 		handle.change((d: any) => {

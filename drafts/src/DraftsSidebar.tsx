@@ -4,8 +4,10 @@ import {
   createMemo,
   createSignal,
   For,
+  Match,
   onCleanup,
   Show,
+  Switch,
   type Accessor,
 } from "solid-js";
 import { createDocSignal } from "solid-automerge";
@@ -27,6 +29,7 @@ import {
 } from "@inkandswitch/patchwork-providers-solid";
 import type {
   ActorAttributionDoc,
+  AgentTag,
   ChangeGroup,
   ChangeGroupDoc,
   CheckedOutDraft,
@@ -42,8 +45,11 @@ import {
   computeEditCounts,
   computeRangeEditCounts,
   getDocCreationTime,
+  parseAgentTag,
   sameHeads,
+  splitIntoGroups,
 } from "./change-group-cache";
+import { attributedHashes, frontierHashes } from "./merge-attribution";
 import { ensureMainDraft } from "./draft-docs";
 
 // Seed for the read-only `draft:list` subscription until the provider answers.
@@ -63,7 +69,7 @@ const EMPTY_DRAFT_LIST: DraftList = {
 
 // Shown in the panel footer, logged on load, and stamped into fork
 // diagnostics; bump on deploy to tell builds apart.
-const DRAFTS_VERSION = "0.0.45";
+const DRAFTS_VERSION = "0.0.55";
 
 // Logged at module load so the console shows which build is running even
 // before the panel renders.
@@ -78,6 +84,56 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
   const [, checkedOutHandle] = subscribeDoc<CheckedOutDraft>(props.element, {
     type: "draft:checked-out",
   });
+
+  // The shared focus doc (served by the shell's focus provider). Writing an
+  // `openThread` request on it asks the comments panel to reveal that thread
+  // (see `openComment`); `openAgentChat` asks the agent tool to select a
+  // chat tab (see `openAgentChat`). Unresolved when no focus provider is
+  // around, in which case the write half is skipped.
+  const [, focusHandle] = subscribeDoc<{
+    openThread?: { url: AutomergeUrl; at: number };
+    openAgentChat?: { url: AutomergeUrl; at: number };
+  }>(props.element, { type: "patchwork:focus" });
+
+  // Open a timeline comment in the comments panel: leave an `openThread`
+  // request on the focus doc for the panel to consume (pin + select the
+  // thread and scroll it into view), and ask the shell to switch the context
+  // sidebar to the comments tab via the bubbling `patchwork:open-context-tool`
+  // event. Both halves are late-bound and degrade to nothing when the
+  // comments tool (or a shell that handles the event) isn't installed.
+  const openComment = (comment: TimelineComment) => {
+    const threadUrl = comment.threadUrl;
+    if (threadUrl) {
+      focusHandle()?.change((d) => {
+        d.openThread = { url: threadUrl, at: Date.now() };
+      });
+    }
+    props.element.dispatchEvent(
+      new CustomEvent("patchwork:open-context-tool", {
+        detail: { toolId: "comments-view" },
+        bubbles: true,
+        composed: true,
+      })
+    );
+  };
+
+  // Open the chat behind a "via agent" badge in the AGENT TAB (not as a
+  // document): the same two-part move as `openComment` — a one-shot
+  // `openAgentChat` request on the focus doc for the agent tool to consume
+  // (select that chat tab), plus the bubbling tab-switch event. Late-bound;
+  // degrades to nothing without the agent tool or a shell handling the event.
+  const openAgentChat = (agent: AgentTag) => {
+    focusHandle()?.change((d) => {
+      d.openAgentChat = { url: agent.chatUrl, at: Date.now() };
+    });
+    props.element.dispatchEvent(
+      new CustomEvent("patchwork:open-context-tool", {
+        detail: { toolId: "agent" },
+        bubbles: true,
+        composed: true,
+      })
+    );
+  };
 
   // Read the checkout doc coarsely from the live handle (handle.doc()) rather
   // than a fine-grained patch-replay projection: the projection can render a
@@ -202,7 +258,10 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     const base: CheckpointBase = bl ? { beforeTime: bl.time } : "none";
     const seq = ++scrubSeq;
     void (async () => {
-      const checkpoint = await computeCheckpoint(repo, members, head.head, base);
+      const checkpoint = await computeCheckpoint(repo, members, head.head, base, {
+        to: head.memberHeads,
+        from: bl?.memberHeads,
+      });
       // A newer scrub landed while this one was computing; drop it.
       if (seq !== scrubSeq) return;
       handle.change((d) => {
@@ -313,9 +372,16 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
       const members = membersFor(draftUrl);
       const seq = ++scrubSeq;
       void (async () => {
-        const checkpoint = await computeCheckpoint(repo, members, s.head, {
-          beforeTime: s.groupStartTime,
-        });
+        const checkpoint = await computeCheckpoint(
+          repo,
+          members,
+          s.head,
+          { beforeTime: s.groupStartTime },
+          // The head map is exact; the baseline `from`s use the time
+          // fallback until the changes list fills the seeded baseline's map
+          // in and recomputes (see the normalization effect there).
+          { to: s.memberHeads }
+        );
         if (seq !== scrubSeq) return;
         handle.change((d) => {
           d.at = checkpoint;
@@ -401,13 +467,16 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
 
     const parentUrl = selected(); // null = main
     const members = membersFor(parentUrl);
-    const head = atVersion ? (scrubber()?.head ?? null) : null;
+    const scrub = atVersion ? scrubber() : null;
+    const head = scrub?.head ?? null;
 
     const clones: Record<AutomergeUrl, CloneEntry> = {};
     if (head) {
       // Reuse the scrub machinery to resolve per-doc heads at this version
       // (only the `to`s are read, so no diff baseline).
-      const checkpoint = await computeCheckpoint(repo, members, head, "none");
+      const checkpoint = await computeCheckpoint(repo, members, head, "none", {
+        to: scrub?.memberHeads,
+      });
       for (const member of members) {
         const to = checkpoint[member.url]?.to;
         if (!to) continue;
@@ -613,6 +682,8 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
             checkpoint={() => (isMainSelected() ? (checkedOut()?.at ?? null) : null)}
             hasCheckpoint={isMainSelected() && isPinned()}
             onReturnToLatest={clearCheckpoint}
+            onOpenComment={openComment}
+            onOpenAgentChat={openAgentChat}
             eyeOpen={isMainSelected() && eyeOpen()}
             eyeDisabled={!isPinned()}
             onToggleEye={toggleEye}
@@ -653,6 +724,8 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
                 }
                 hasCheckpoint={selected() === summary.url && isPinned()}
                 onReturnToLatest={clearCheckpoint}
+                onOpenComment={openComment}
+                onOpenAgentChat={openAgentChat}
                 eyeOpen={selected() === summary.url && eyeOpen()}
                 eyeDisabled={false}
                 onToggleEye={toggleEye}
@@ -677,39 +750,78 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
 }
 
 // Merges every cloned doc back into the parent draft's copy of it — the
-// parent's clone when it has one, the original otherwise (the main draft's
-// identity clones make those the same thing, so a top-level draft merges
-// into the originals) — recording per-clone merge heads for auditing, and
-// marks the draft as merged (which hides it from the list). The merged
-// draft's children are handed up to the merge target, so they never dangle
-// under a hidden draft.
+// parent's clone when it has one, the original for a top-level draft (the
+// main draft's identity clones make those the same thing). A member a real
+// (non-main) target never forked is ADOPTED instead: the target takes over
+// the clone as its own copy, so the changes stay scoped to the target until
+// it merges in turn, rather than leaking straight into the original.
+//
+// Alongside the merge, provenance is recorded for attribution: per clone the
+// clone's own heads at merge time (`mergedFrom` — with `clonedAt` this
+// brackets exactly what the draft contributed), and on the draft which
+// timeline the merge landed in (`mergedInto`). Finally the draft is marked
+// merged (which hides it from the list) and its children are handed up to
+// the merge target, so they never dangle under a hidden draft.
 async function mergeDraft(
   repo: Repo,
   draftHandle: DocHandle<DraftDoc>
 ): Promise<void> {
   const doc = draftHandle.doc();
   const parentHandle = await findMergeTarget(repo, doc?.parent);
-  const parentClones = parentHandle?.doc()?.clones ?? {};
+  const parentIsMain = parentHandle?.doc()?.isMain === true;
   const entries = Object.entries(doc?.clones ?? {}) as [
     AutomergeUrl,
     CloneEntry,
   ][];
   for (const [originalUrl, entry] of entries) {
+    // A member the target never forked: a real draft adopts the clone (no
+    // data moves); main gets the identity entry `syncMainDraftClones` would
+    // eventually add, so its timeline is guaranteed to include the member.
+    if (parentHandle && !parentHandle.doc()?.clones[originalUrl]) {
+      // Copy the heads array: it was read out of the draft's doc, and a live
+      // Automerge object must not be assigned into another document.
+      const adopted: CloneEntry = parentIsMain
+        ? { cloneUrl: originalUrl, clonedAt: encodeHeads([]) }
+        : {
+            cloneUrl: entry.cloneUrl,
+            clonedAt: [...entry.clonedAt] as UrlHeads,
+          };
+      parentHandle.change((d) => {
+        if (!d.clones[originalUrl]) d.clones[originalUrl] = adopted;
+      });
+    }
+    // Re-read the target's clones: the adoption above (or a concurrent
+    // creator winning its guard) may have just changed the mapping.
+    const parentClones = parentHandle?.doc()?.clones ?? {};
     const targetUrl = parentClones[originalUrl]?.cloneUrl ?? originalUrl;
-    if (entry.cloneUrl === targetUrl) continue;
-    const [target, clone] = await Promise.all([
-      repo.find<unknown>(targetUrl),
-      repo.find<unknown>(entry.cloneUrl),
-    ]);
+    const clone = await repo.find<unknown>(entry.cloneUrl);
+    const mergedFrom = clone.heads();
+    if (entry.cloneUrl === targetUrl) {
+      // The clone IS the target's copy (adopted above, or an identity
+      // entry); nothing to merge — just record the join point.
+      draftHandle.change((d) => {
+        const e = d.clones[originalUrl];
+        if (e) {
+          e.mergedAt = mergedFrom;
+          e.mergedFrom = mergedFrom;
+        }
+      });
+      continue;
+    }
+    const target = await repo.find<unknown>(targetUrl);
     target.merge(clone);
     const mergedAt = target.heads();
     draftHandle.change((d) => {
       const e = d.clones[originalUrl];
-      if (e) e.mergedAt = mergedAt;
+      if (e) {
+        e.mergedAt = mergedAt;
+        e.mergedFrom = mergedFrom;
+      }
     });
   }
   draftHandle.change((d) => {
     d.mergedAt = Date.now();
+    if (parentHandle) d.mergedInto = parentHandle.url;
   });
 
   // Re-parent the merged draft's children onto the merge target: they list
@@ -1080,6 +1192,9 @@ function MainCard(props: {
   checkpoint: Accessor<DraftCheckpoint | null>;
   hasCheckpoint: boolean;
   onReturnToLatest: () => void;
+  onOpenComment: (comment: TimelineComment) => void;
+  // Reveal an agent group's chat in the agent tab (see `openAgentChat`).
+  onOpenAgentChat: (agent: AgentTag) => void;
   eyeOpen: boolean;
   eyeDisabled: boolean;
   onToggleEye: () => void;
@@ -1158,6 +1273,8 @@ function MainCard(props: {
           eyeOpen={() => props.eyeOpen}
           checkpoint={props.checkpoint}
           onReturnToLatest={props.onReturnToLatest}
+          onOpenComment={props.onOpenComment}
+          onOpenAgentChat={props.onOpenAgentChat}
         />
       </Show>
     </div>
@@ -1185,6 +1302,9 @@ function DraftCard(props: {
   checkpoint: Accessor<DraftCheckpoint | null>;
   hasCheckpoint: boolean;
   onReturnToLatest: () => void;
+  onOpenComment: (comment: TimelineComment) => void;
+  // Reveal an agent group's chat in the agent tab (see `openAgentChat`).
+  onOpenAgentChat: (agent: AgentTag) => void;
   eyeOpen: boolean;
   eyeDisabled: boolean;
   onToggleEye: () => void;
@@ -1273,6 +1393,8 @@ function DraftCard(props: {
           eyeOpen={() => props.eyeOpen}
           checkpoint={props.checkpoint}
           onReturnToLatest={props.onReturnToLatest}
+          onOpenComment={props.onOpenComment}
+          onOpenAgentChat={props.onOpenAgentChat}
         />
       </Show>
     </div>
@@ -1660,17 +1782,28 @@ type ChangeRef = {
   time: number;
 };
 
+// Per-member heads for a scrub boundary, resolved from the RENDERED row
+// order rather than raw timestamps (see `boundaryHeads` in
+// DraftChangesList). Merge groups pull a draft's changes out of the time
+// sort, so a boundary between two rendered groups is not a time cutoff —
+// these maps carry the exact frontier the checkpoint should pin each member
+// to. Keyed by original member url, like the checkpoint itself.
+type MemberBoundaryHeads = Record<AutomergeUrl, UrlHeads>;
+
 // Where the scrubber sits: the change whose heads the view displays,
 // anchored to its persisted group. `offset` is the change's position within the
 // group, 0 = the group's newest change (what the scrubber geometry snaps
 // to); `head` identifies the exact change for the checkpoint machinery.
 // `groupStartTime` is the group's span start, carried so the checkpoint's
 // diff baseline can anchor at the group's beginning while the eye is on.
+// `memberHeads` is the row-order boundary map (`to`s), absent while the
+// member docs are still resolving.
 type ScrubberState = {
   groupId: string;
   offset: number;
   head: ChangeRef;
   groupStartTime: number;
+  memberHeads?: MemberBoundaryHeads;
 };
 
 // Where the diff baseline handle sits: an absolute point in history the diff
@@ -1679,10 +1812,13 @@ type ScrubberState = {
 // track (same geometry as the head). `offset` of `BASELINE_GROUP_START` means
 // "the start of the group" — the changes list resolves it to the group's
 // oldest change once it knows the group's size. Ephemeral like `ScrubberState`.
+// `memberHeads` is the row-order boundary map (`from`s); when the parent
+// seeds the baseline without it (toggleEye), the changes list fills it in.
 type BaselineState = {
   groupId: string;
   offset: number;
   time: number;
+  memberHeads?: MemberBoundaryHeads;
 };
 
 // Sentinel `BaselineState.offset` meaning "the group's start" (its oldest
@@ -1701,6 +1837,66 @@ type ScanChange = {
   time: number;
   deps: string[];
   seq: number;
+  // Who wrote the change: raw actor id, plus the agent tag when the change
+  // message carries one — feeds the contributor runs a merge group unfolds
+  // into.
+  actor: string;
+  agent?: AgentTag;
+};
+
+// A ScanChange before it's tied to its member doc: the per-member metadata
+// list the scan and the attribution walk share.
+type MemberScanRow = Omit<ScanChange, "docUrl" | "doc">;
+
+// One contributor's consecutive slice of a merge group's changes — what an
+// unfolded merge row lists: a merged draft deliberately keeps all its
+// changes in ONE timeline row, so this is where its per-contributor
+// structure (the user's manual edits vs each chat's agent runs) becomes
+// visible. Offsets index into the group's resolved rows (0 = newest), the
+// same coordinates the scrubber speaks.
+type ContributorRun = {
+  offset: number; // newest row of the run
+  endOffset: number; // oldest row of the run
+  actors: string[]; // deduped, newest contributor first
+  agent?: AgentTag; // set when the run is one chat's agent edits
+  additions: number;
+  deletions: number;
+  time: number; // newest change's time, Unix seconds
+  changeCount: number;
+};
+
+// The `@comments` shape the timeline reads off the member docs — structurally
+// matches the comments tools' schema (see comments-view) without a build-time
+// dependency on them. A comment whose `@patchwork` marker is set carries a
+// document reference in `content` instead of text.
+type DocWithCommentThreads = {
+  "@comments"?: {
+    threads?: {
+      id?: string;
+      comments?: {
+        id?: string;
+        content?: string;
+        contactUrl?: AutomergeUrl;
+        timestamp?: number;
+        "@patchwork"?: { type?: string };
+      }[];
+    }[];
+  };
+};
+
+// One comment rendered as its own timeline entry, slotted between the change
+// groups at the moment it was made (the ChangeGrouper splits groups at
+// comment timestamps, so a comment never falls mid-group once grouping has
+// caught up). `timestamp` is wall-clock ms, unlike change times (seconds).
+// `threadUrl` addresses the comment's thread subdocument (null when the
+// thread has no id to build it from), used to reveal the thread in the
+// comments panel on click.
+type TimelineComment = {
+  key: string;
+  contactUrl: AutomergeUrl | null;
+  content: string;
+  timestamp: number;
+  threadUrl: AutomergeUrl | null;
 };
 
 // Renders a draft's (or main's) timeline straight from its ChangeGroupDoc.
@@ -1730,6 +1926,10 @@ function DraftChangesList(props: {
   // heads, read for the sticker's whole-range diff counts.
   checkpoint: Accessor<DraftCheckpoint | null>;
   onReturnToLatest: () => void;
+  // Reveal a comment in the comments panel (see `openComment` in the parent).
+  onOpenComment: (comment: TimelineComment) => void;
+  // Reveal an agent group's chat in the agent tab (see `openAgentChat`).
+  onOpenAgentChat: (agent: AgentTag) => void;
 }) {
   const repo = "repo" in window ? window.repo : undefined;
 
@@ -1765,7 +1965,15 @@ function DraftChangesList(props: {
 
   // Member doc handles (plus the creation-time cutoff), resolved once per
   // member set — only needed to *scrub*, never to render the rows.
-  type MemberSource = { member: DraftMemberDoc; handle: DocHandle<unknown> };
+  // `originalHandle` sits at the member's ORIGINAL url (same as `handle` on
+  // main, where the clone is an identity mapping): thread sub-urls are built
+  // on it so they match the comments panel's, which addresses threads by the
+  // presented url while the draft overlay re-points resolution to the clone.
+  type MemberSource = {
+    member: DraftMemberDoc;
+    handle: DocHandle<unknown>;
+    originalHandle: DocHandle<unknown>;
+  };
   const [sources, setSources] = createSignal<MemberSource[] | null>(null);
   const [createdAt, setCreatedAt] = createSignal<number | undefined>(
     undefined
@@ -1783,7 +1991,11 @@ function DraftChangesList(props: {
           const handle = await repo.find<unknown>(
             member.cloneUrl ?? member.url
           );
-          next.push({ member, handle });
+          const originalHandle =
+            member.cloneUrl && member.cloneUrl !== member.url
+              ? await repo.find<unknown>(member.url)
+              : handle;
+          next.push({ member, handle, originalHandle });
         } catch (err) {
           console.warn(
             "[drafts] failed to resolve member for scrubbing:",
@@ -1800,6 +2012,100 @@ function DraftChangesList(props: {
     onCleanup(() => {
       disposed = true;
     });
+  });
+
+  // Comments live in the same docs the changes come from (clones for drafts),
+  // read live off the member handles so new comments, replies, and edits show
+  // up as they sync; `commentsTick` invalidates the memo below on any member
+  // change.
+  const [commentsTick, setCommentsTick] = createSignal(0);
+  createEffect(() => {
+    const srcs = sources();
+    if (!srcs) return;
+    const bump = () => setCommentsTick((t) => t + 1);
+    for (const { handle } of srcs) handle.on("change", bump);
+    onCleanup(() => {
+      for (const { handle } of srcs) handle.off("change", bump);
+    });
+  });
+
+  // Every sent comment across the member docs, newest first. Draft-only
+  // comments (`draftContent`, not yet sent) are skipped; a document-reference
+  // comment (its `@patchwork` marker set) gets a generic label instead of the
+  // raw url.
+  const allComments = createMemo<TimelineComment[]>(() => {
+    commentsTick();
+    const srcs = sources();
+    if (!srcs) return [];
+    const out: TimelineComment[] = [];
+    for (const { member, handle, originalHandle } of srcs) {
+      const doc = handle.doc() as DocWithCommentThreads | undefined;
+      const threads = doc?.["@comments"]?.threads;
+      if (!threads) continue;
+      threads.forEach((thread, threadIndex) => {
+        const threadUrl = thread.id
+          ? originalHandle.sub("@comments", "threads", { id: thread.id }).url
+          : null;
+        thread.comments?.forEach((comment, commentIndex) => {
+          if (typeof comment.timestamp !== "number") return;
+          if (!comment.content) return;
+          out.push({
+            key: `${member.url}:${thread.id ?? threadIndex}:${comment.id ?? commentIndex}`,
+            contactUrl: comment.contactUrl ?? null,
+            content: comment["@patchwork"]
+              ? "Attached document"
+              : comment.content,
+            timestamp: comment.timestamp,
+            threadUrl,
+          });
+        });
+      });
+    }
+    return out.sort((a, b) => b.timestamp - a.timestamp);
+  });
+
+  // Only comments within the rendered timeline: a draft's clones carry the
+  // original's comments from before the fork, and main may carry comments
+  // predating the host doc's creation cutoff — both would pile up below the
+  // oldest group as noise. (A comment made in the gap between a draft's fork
+  // and its first change is dropped too; acceptable.)
+  const timelineComments = createMemo<TimelineComment[]>(() => {
+    const groups = timeGroups();
+    if (groups.length === 0) return [];
+    const oldestMs = groups[groups.length - 1].startTime * 1000;
+    const cutoff = createdAt();
+    return allComments().filter(
+      (c) =>
+        c.timestamp >= oldestMs &&
+        (cutoff === undefined || c.timestamp >= cutoff * 1000)
+    );
+  });
+
+  // Groups and comments merged newest-first for rendering. A comment sorts by
+  // its timestamp against each group's END time — groups split at comment
+  // times, so a comment lands between the group made after it and the group
+  // (holding its own write) made before it. On a timestamp tie the comment
+  // renders above the group (it was made at or after the group's last
+  // change). A comment inside a not-yet-split group's span renders just below
+  // that group and settles once the grouper catches up.
+  type TimelineEntry =
+    | { kind: "group"; group: ChangeGroup }
+    | { kind: "comment"; comment: TimelineComment };
+  const timelineEntries = createMemo<TimelineEntry[]>(() => {
+    const entries: TimelineEntry[] = [
+      ...timeGroups().map((group) => ({ kind: "group" as const, group })),
+      ...timelineComments().map((comment) => ({
+        kind: "comment" as const,
+        comment,
+      })),
+    ];
+    const timeOf = (e: TimelineEntry) =>
+      e.kind === "group" ? e.group.endTime * 1000 : e.comment.timestamp;
+    return entries.sort(
+      (a, b) =>
+        timeOf(b) - timeOf(a) ||
+        (a.kind === b.kind ? 0 : a.kind === "comment" ? -1 : 1)
+    );
   });
 
   // Grouping is caught up when every member's live heads match the group
@@ -1819,14 +2125,18 @@ function DraftChangesList(props: {
     });
   });
 
-  // Recover a group's member changes on demand: scan each member's post-fork
-  // change metadata filtered to the group's span (spans are disjoint — groups
-  // are separated by >gap lulls, so time containment recovers exactly the
-  // group's changes) and interleave with the ChangeGrouper's ordering.
-  // Metadata only, no diffs. Memoized per group identity so dragging
-  // stays snappy; returns null until the member handles resolve. It must apply
-  // the same filters as grouping (notably the pre-creation cutoff), or the
-  // scrubber's index math drifts from the persisted changeCount.
+  // Recover a group's member changes on demand and interleave with the
+  // ChangeGrouper's ordering. Metadata only, no diffs. Memoized per group
+  // identity so dragging stays snappy; returns null until the member handles
+  // resolve. It must apply the same filters as grouping (the pre-creation
+  // cutoff, and merged-draft attribution), or the scrubber's index math
+  // drifts from the persisted changeCount.
+  //
+  // Regular groups scan by time containment (TIME groups' spans are disjoint
+  // — they're separated by >gap lulls) minus the hashes attributed to any
+  // merged draft, whose changes interleave in time with everything else.
+  // Merge groups resolve directly through the attribution walk over the head
+  // ranges persisted on the group.
   const scanCache = new Map<string, ScanChange[]>();
   const resolveGroupChanges = (group: ChangeGroup): ScanChange[] | null => {
     const key = `${group.id}:${group.changeCount}`;
@@ -1834,26 +2144,34 @@ function DraftChangesList(props: {
     if (hit) return hit;
     const srcs = sources();
     if (!srcs) return null;
-    const cutoff = createdAt();
+    const excluded = group.merge ? null : excludedHashes();
     const rows: ScanChange[] = [];
     for (const { member, handle } of srcs) {
       const doc = handle.doc() as Automerge.Doc<unknown> | undefined;
       if (!doc) continue;
       try {
-        const since = member.clonedAt ? decodeHeads(member.clonedAt) : [];
-        const metas = Automerge.getChangesMetaSince(doc, since);
-        metas.forEach((meta, seq) => {
-          if (cutoff !== undefined && meta.time && meta.time < cutoff) return;
-          if (meta.time < group.startTime || meta.time > group.endTime) return;
-          rows.push({
-            docUrl: member.url,
-            doc,
-            hash: meta.hash,
-            time: meta.time,
-            deps: meta.deps,
-            seq,
-          });
-        });
+        const metas = memberScanRows(member, doc);
+        if (group.merge) {
+          const range = group.merge.members[member.url];
+          if (!range) continue;
+          const set = attributedHashes(
+            metas,
+            decodeHeads(range.mergeHeads),
+            decodeHeads(range.baseHeads)
+          );
+          for (const meta of metas) {
+            if (!set.has(meta.hash)) continue;
+            rows.push({ ...meta, docUrl: member.url, doc });
+          }
+        } else {
+          const excludedSet = excluded?.get(member.url);
+          for (const meta of metas) {
+            if (meta.time < group.startTime || meta.time > group.endTime)
+              continue;
+            if (excludedSet?.has(meta.hash)) continue;
+            rows.push({ ...meta, docUrl: member.url, doc });
+          }
+        }
       } catch (err) {
         console.warn(
           "[drafts] failed to scan changes for member:",
@@ -1866,6 +2184,221 @@ function DraftChangesList(props: {
     scanCache.set(key, rows);
     return rows;
   };
+
+  // A member's post-fork change metadata with the same filters the
+  // ChangeGrouper applies (notably the pre-creation cutoff); `seq` preserves
+  // each change's index in the raw metas so tie-breaks order identically.
+  const memberScanRows = (
+    member: DraftMemberDoc,
+    doc: Automerge.Doc<unknown>
+  ): MemberScanRow[] => {
+    const cutoff = createdAt();
+    const since = member.clonedAt ? decodeHeads(member.clonedAt) : [];
+    const metas = Automerge.getChangesMetaSince(doc, since);
+    const out: MemberScanRow[] = [];
+    metas.forEach((meta, seq) => {
+      if (cutoff !== undefined && meta.time && meta.time < cutoff) return;
+      const row: MemberScanRow = {
+        hash: meta.hash,
+        time: meta.time,
+        deps: meta.deps,
+        seq,
+        actor: meta.actor,
+      };
+      const agent = parseAgentTag(meta.message);
+      if (agent) row.agent = agent;
+      out.push(row);
+    });
+    return out;
+  };
+
+  // Which merge groups are unfolded into their contributor runs. Keyed by
+  // group id — stable for merge groups (`tg-merge-${draftUrl}`), so the
+  // state survives grouping rebuilds.
+  const [expandedMerges, setExpandedMerges] = createSignal<ReadonlySet<string>>(
+    new Set<string>()
+  );
+  const toggleMergeExpanded = (id: string) =>
+    setExpandedMerges((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  // Split a merge group's resolved rows into contributor runs, the same way
+  // the main timeline splits groups: same key (one chat's agent edits /
+  // one contact / one raw actor) and the same inactivity-gap rule, via the
+  // shared splitIntoGroups. Diffs each change for the run's +/- counts, so
+  // it only runs for groups the user actually unfolds; cached per group
+  // identity and attribution generation. Null while member docs resolve.
+  const runCache = new Map<string, ContributorRun[]>();
+  const runsForGroup = (group: ChangeGroup): ContributorRun[] | null => {
+    const attribution = actorContacts();
+    const cacheKey = `${group.id}:${group.changeCount}:${
+      Object.keys(attribution).length
+    }`;
+    const hit = runCache.get(cacheKey);
+    if (hit) return hit;
+    const rows = resolveGroupChanges(group);
+    if (!rows || rows.length === 0) return null;
+    const keyOf = (row: ScanChange): string =>
+      row.agent
+        ? `agent:${row.agent.chatUrl}`
+        : (attribution[row.actor] ?? `actor:${row.actor}`);
+    const runs: ContributorRun[] = [];
+    let offset = 0;
+    for (const runRows of splitIntoGroups(rows, [], keyOf)) {
+      let additions = 0;
+      let deletions = 0;
+      const actors: string[] = [];
+      for (const row of runRows) {
+        const counts = computeEditCounts(row.doc, row.hash, row.deps);
+        additions += counts.additions;
+        deletions += counts.deletions;
+        if (!actors.includes(row.actor)) actors.push(row.actor);
+      }
+      runs.push({
+        offset,
+        endOffset: offset + runRows.length - 1,
+        actors,
+        // Uniform within an agent-keyed run; the newest row's tag carries
+        // the freshest chatHeads.
+        agent: runRows[0].agent,
+        additions,
+        deletions,
+        time: runRows[0].time,
+        changeCount: runRows.length,
+      });
+      offset += runRows.length;
+    }
+    runCache.set(cacheKey, runs);
+    return runs;
+  };
+
+  // Hashes attributed to ANY merged draft, per member: the union of the
+  // attribution walks over every merge group persisted in the group doc.
+  // Cached by the set of merge groups — attribution is a pure function of
+  // immutable history, so a cached union never goes stale — but not cached
+  // while a member doc is still loading, so a late doc can't pin an
+  // incomplete union.
+  let excludedCacheKey: string | null = null;
+  let excludedCacheValue: Map<AutomergeUrl, Set<string>> | null = null;
+  const excludedHashes = (): Map<AutomergeUrl, Set<string>> | null => {
+    const srcs = sources();
+    if (!srcs) return null;
+    const mergeGroups = Object.values(changeGroupDoc()?.groups ?? {}).filter(
+      (g) => g.merge
+    );
+    if (mergeGroups.length === 0) return null;
+    const cacheKey = mergeGroups
+      .map((g) => g.id)
+      .sort()
+      .join("|");
+    if (excludedCacheValue && excludedCacheKey === cacheKey) {
+      return excludedCacheValue;
+    }
+    const byMember = new Map<AutomergeUrl, Set<string>>();
+    let complete = true;
+    for (const { member, handle } of srcs) {
+      const ranges = mergeGroups
+        .map((g) => g.merge!.members[member.url])
+        .filter((r) => r !== undefined);
+      if (ranges.length === 0) continue;
+      const doc = handle.doc() as Automerge.Doc<unknown> | undefined;
+      if (!doc) {
+        complete = false;
+        continue;
+      }
+      try {
+        const metas = memberScanRows(member, doc);
+        const set = new Set<string>();
+        for (const range of ranges) {
+          const hashes = attributedHashes(
+            metas,
+            decodeHeads(range.mergeHeads),
+            decodeHeads(range.baseHeads)
+          );
+          for (const hash of hashes) set.add(hash);
+        }
+        if (set.size > 0) byMember.set(member.url, set);
+      } catch (err) {
+        complete = false;
+        console.warn(
+          "[drafts] failed to resolve merged-draft hashes for member:",
+          member,
+          err
+        );
+      }
+    }
+    if (complete) {
+      excludedCacheKey = cacheKey;
+      excludedCacheValue = byMember;
+    }
+    return byMember;
+  };
+
+  // Per-member frontier heads for a scrub boundary at (`group`, `offset`),
+  // resolved from the SAME ordered rows the timeline renders — the rendered
+  // group order with merge groups pulled out of the time sort — rather than
+  // raw timestamps. The boundary's state is exactly the rows drawn below it:
+  // every row of every group sorted below `group`, plus `group`'s own rows
+  // from the anchor down (`includeAnchor` — the head displays its change, the
+  // baseline diffs it away). Each member's heads are the frontier of its
+  // included rows (rows no other included row depends on), so concurrent
+  // contributions — a merge group interleaved in time with regular edits —
+  // pin as a multi-head state instead of collapsing onto whichever change is
+  // newest by wall clock. Returns null while the member docs are still
+  // resolving; callers then fall back to the time-based approximation.
+  const boundaryHeads = (
+    group: ChangeGroup,
+    offset: number,
+    includeAnchor: boolean
+  ): MemberBoundaryHeads | null => {
+    const groups = timeGroups();
+    const idx = groups.findIndex((g) => g.id === group.id);
+    if (idx < 0) return null;
+    const anchorRows = resolveGroupChanges(group);
+    if (!anchorRows) return null;
+    const anchor = Math.min(
+      Math.max(0, resolveOffset(group, offset)),
+      Math.max(0, anchorRows.length - 1)
+    );
+    const included: ScanChange[] = anchorRows.slice(
+      includeAnchor ? anchor : anchor + 1
+    );
+    for (let i = idx + 1; i < groups.length; i++) {
+      const rows = resolveGroupChanges(groups[i]);
+      if (!rows) return null;
+      included.push(...rows);
+    }
+    const byMember = new Map<AutomergeUrl, ScanChange[]>();
+    for (const row of included) {
+      let list = byMember.get(row.docUrl);
+      if (!list) byMember.set(row.docUrl, (list = []));
+      list.push(row);
+    }
+    const heads: MemberBoundaryHeads = {};
+    for (const [url, rows] of byMember) {
+      const frontier = frontierHashes(rows);
+      if (frontier.length > 0) heads[url] = encodeHeads(frontier);
+    }
+    return heads;
+  };
+
+  // The parent seeds the baseline (toggleEye) without the row-order boundary
+  // map — it lacks the scan context. Fill the map in as soon as the rows
+  // resolve and re-emit, so the checkpoint's `from`s match the rendered
+  // order instead of the time-based fallback.
+  createEffect(() => {
+    const b = props.baseliner();
+    if (!b || b.memberHeads) return;
+    const group = timeGroups().find((g) => g.id === b.groupId);
+    if (!group) return;
+    const memberHeads = boundaryHeads(group, b.offset, false);
+    if (!memberHeads) return;
+    props.onBaselineScrub({ ...b, memberHeads });
+  });
 
   // Build the head scrub state for `offset` within `group` (0 = the group's
   // newest change, which the group doc anchors directly; deeper offsets resolve
@@ -1884,6 +2417,7 @@ function DraftChangesList(props: {
           time: group.endTime,
         },
         groupStartTime: group.startTime,
+        memberHeads: boundaryHeads(group, 0, true) ?? undefined,
       };
     }
     const rows = resolveGroupChanges(group);
@@ -1894,6 +2428,7 @@ function DraftChangesList(props: {
       offset,
       head: { docUrl: row.docUrl, hash: row.hash, time: row.time },
       groupStartTime: group.startTime,
+      memberHeads: boundaryHeads(group, offset, true) ?? undefined,
     };
   };
 
@@ -1946,6 +2481,7 @@ function DraftChangesList(props: {
           groupId: group.id,
           offset: head.offset,
           time: head.head.time,
+          memberHeads: boundaryHeads(group, head.offset, false) ?? undefined,
         });
       }
     }
@@ -1953,18 +2489,69 @@ function DraftChangesList(props: {
   };
 
   // Select a group (click on its row): the head pins to the group's newest
-  // change, and — with the eye open — the baseline re-anchors to the group's
-  // start, so the diff reads "everything this group changed". Dragging the
-  // head, by contrast, leaves the baseline where it is (see `scrubTo`).
+  // change and the baseline anchors to the group's start, so the diff reads
+  // "everything this group changed" — the eye opens by itself (its state is
+  // derived from the checkpoint's `from`s). Dragging the head, by contrast,
+  // leaves the baseline where it is (see `scrubTo`).
   const selectGroup = (group: ChangeGroup) => {
-    if (props.eyeOpen()) {
-      props.onBaselineScrub({
-        groupId: group.id,
-        offset: BASELINE_GROUP_START,
-        time: group.startTime,
-      });
-    }
+    props.onBaselineScrub({
+      groupId: group.id,
+      offset: BASELINE_GROUP_START,
+      time: group.startTime,
+      memberHeads:
+        boundaryHeads(group, BASELINE_GROUP_START, false) ?? undefined,
+    });
     scrubTo(group, 0);
+  };
+
+  // Select a comment (click on its row): pin the view to the doc as of the
+  // moment the comment was made — the newest change at or before its
+  // timestamp. Groups split at comment times, so that is normally the top of
+  // the group right below the comment; a comment still inside a not-yet-split
+  // group resolves to the right change through the scan. No baseline seeding:
+  // a comment click means "show me what it looked like", unlike a group click
+  // which shows what the group changed.
+  const selectComment = (comment: TimelineComment) => {
+    const tsSeconds = comment.timestamp / 1000;
+    // Groups are newest-first: the first whose span starts at or before the
+    // comment is the newest group not entirely newer than it.
+    const group = timeGroups().find((g) => g.startTime <= tsSeconds);
+    if (!group) return;
+    if (group.endTime <= tsSeconds) {
+      scrubTo(group, 0);
+      return;
+    }
+    const rows = resolveGroupChanges(group);
+    const offset = rows?.findIndex((r) => r.time <= tsSeconds) ?? -1;
+    scrubTo(group, Math.max(0, offset));
+  };
+
+  // Select a contributor run inside an unfolded merge group: head at the
+  // run's newest change, baseline anchored at its oldest (diffed away, like
+  // selectGroup's BASELINE_GROUP_START), so the diff reads "exactly what
+  // this contributor changed here".
+  const selectRun = (group: ChangeGroup, run: ContributorRun) => {
+    props.onBaselineScrub({
+      groupId: group.id,
+      offset: run.endOffset,
+      time: timeAt(group, run.endOffset),
+      memberHeads: boundaryHeads(group, run.endOffset, false) ?? undefined,
+    });
+    scrubTo(group, run.offset);
+  };
+
+  // A run row is "selected" when the head sits on its newest change AND the
+  // baseline on its oldest — exactly the selectRun shape. The head check
+  // alone isn't enough: a whole-group selection also parks the head at
+  // offset 0, which is the first run's newest change, and the first run
+  // shouldn't light up for it (its baseline differs while the group has
+  // more than one run).
+  const runSelected = (group: ChangeGroup, run: ContributorRun): boolean => {
+    const s = props.scrubber();
+    if (!s || s.groupId !== group.id || s.offset !== run.offset) return false;
+    const b = props.baseliner();
+    if (!b || b.groupId !== group.id) return false;
+    return resolveOffset(group, b.offset) === run.endOffset;
   };
 
   // Move the baseline to `offset` within `group`, clamped so it never crosses
@@ -1974,10 +2561,14 @@ function DraftChangesList(props: {
     const head = props.scrubber();
     if (!head) return;
     if (linearIndex(group.id, offset) < linearIndex(head.groupId, head.offset)) {
+      const headGroup = timeGroups().find((g) => g.id === head.groupId);
       props.onBaselineScrub({
         groupId: head.groupId,
         offset: head.offset,
         time: head.head.time,
+        memberHeads: headGroup
+          ? (boundaryHeads(headGroup, head.offset, false) ?? undefined)
+          : undefined,
       });
       return;
     }
@@ -1985,6 +2576,7 @@ function DraftChangesList(props: {
       groupId: group.id,
       offset,
       time: timeAt(group, offset),
+      memberHeads: boundaryHeads(group, offset, false) ?? undefined,
     });
   };
 
@@ -2004,6 +2596,9 @@ function DraftChangesList(props: {
   // every individual change — including ones in the middle of a group — is a
   // valid stop for the token, not just group boundaries.
   const rowEls = new Map<string, HTMLElement>();
+  // Run rows of expanded merge groups, keyed `${groupId}:${runOffset}` — the
+  // indicator mapping snaps to their edges (see runBands).
+  const runRowEls = new Map<string, HTMLElement>();
   const [rowsEl, setRowsEl] = createSignal<HTMLDivElement>();
   // Bumped after layout changes so `bands` re-measures the rendered rows.
   const [measureTick, setMeasureTick] = createSignal(0);
@@ -2016,10 +2611,11 @@ function DraftChangesList(props: {
     onCleanup(() => observer.disconnect());
   });
 
-  // Rows render after the groups memo recomputes, so measure again on the
-  // next frame once the DOM has settled.
+  // Rows render after the entries memo recomputes (groups AND interleaved
+  // comment rows shift the group rows' offsets), so measure again on the next
+  // frame once the DOM has settled.
   createEffect(() => {
-    timeGroups();
+    timelineEntries();
     requestAnimationFrame(() => setMeasureTick((t) => t + 1));
   });
 
@@ -2040,16 +2636,72 @@ function DraftChangesList(props: {
     return out;
   });
 
+  // The rendered run rows of an expanded merge group, measured like `bands`.
+  // The indicator's mapping snaps to these instead of interpolating linearly
+  // across the block, so a head parked on a run sits exactly on its row's
+  // top edge (and a baseline on its bottom edge) rather than striking
+  // through rows — the block's header row skews any linear share. Null when
+  // the group is folded or the rows aren't all mounted yet; callers fall
+  // back to the linear band mapping.
+  type RunBand = { run: ContributorRun; top: number; height: number };
+  const runBands = (group: ChangeGroup): RunBand[] | null => {
+    if (!group.merge || !expandedMerges().has(group.id)) return null;
+    const runs = runsForGroup(group);
+    if (!runs || runs.length === 0) return null;
+    const out: RunBand[] = [];
+    for (const run of runs) {
+      const el = runRowEls.get(`${group.id}:${run.offset}`);
+      if (!el || !el.isConnected) return null;
+      out.push({ run, top: el.offsetTop, height: el.offsetHeight });
+    }
+    return out;
+  };
+
   // A scrub position's y in the track: offsets interpolate across their
   // group's band, sized by the persisted changeCount (the flat change list is
-  // never materialized).
+  // never materialized). Each change owns the band slice
+  // [offset/count, (offset+1)/count): the head marks a change and sits at
+  // its slice's top; the baseline marks the boundary BELOW a change (that
+  // change is the oldest one in the diff) and sits at its slice's bottom.
+  // Expanded merge groups snap to their run rows instead — except offset 0,
+  // which stays at the band's top so a whole-group selection still brackets
+  // the header row.
   const yForPosition = (band: Band, offset: number): number => {
+    if (offset > 0) {
+      const rbs = runBands(band.group);
+      const rb = rbs?.find((r) => offset <= r.run.endOffset);
+      if (rb) {
+        const within =
+          Math.max(0, offset - rb.run.offset) / rb.run.changeCount;
+        return rb.top + within * rb.height;
+      }
+    }
     const count = Math.max(1, band.group.changeCount);
     return band.top + (Math.min(offset, count - 1) / count) * band.height;
   };
 
+  // The baseline's y: the bottom of its change's slice, so a baseline at a
+  // group's start sits on the band's bottom edge — the whole group reads as
+  // selected — instead of striking through the row of a small group. In an
+  // expanded merge group, a baseline at a run's oldest change sits on that
+  // run row's bottom edge.
+  const yForBoundary = (band: Band, offset: number): number => {
+    const rbs = runBands(band.group);
+    const rb = rbs?.find((r) => offset <= r.run.endOffset);
+    if (rb) {
+      const within =
+        (Math.max(0, offset - rb.run.offset) + 1) / rb.run.changeCount;
+      return rb.top + within * rb.height;
+    }
+    const count = Math.max(1, band.group.changeCount);
+    return (
+      band.top + ((Math.min(offset, count - 1) + 1) / count) * band.height
+    );
+  };
+
   // Inverse: the (group, offset) position nearest a pointer y (in track
-  // coordinates).
+  // coordinates). Mirrors yForPosition's run-row snapping inside expanded
+  // merge bands, so a drag lands where the line will draw.
   const positionForY = (
     y: number
   ): { group: ChangeGroup; offset: number } | null => {
@@ -2058,6 +2710,27 @@ function DraftChangesList(props: {
     for (const b of bs) {
       if (y < b.top) return { group: b.group, offset: 0 };
       if (y < b.top + b.height) {
+        const rbs = runBands(b.group);
+        if (rbs) {
+          for (const rb of rbs) {
+            // Above this row (the header, or a gap between rows): snap to
+            // the row's newest change.
+            if (y < rb.top) return { group: b.group, offset: rb.run.offset };
+            if (y < rb.top + rb.height) {
+              const offset =
+                rb.run.offset +
+                Math.min(
+                  Math.round(((y - rb.top) / rb.height) * rb.run.changeCount),
+                  rb.run.changeCount - 1
+                );
+              return { group: b.group, offset };
+            }
+          }
+          return {
+            group: b.group,
+            offset: Math.max(0, b.group.changeCount - 1),
+          };
+        }
         const count = Math.max(1, b.group.changeCount);
         const offset = Math.min(
           Math.round(((y - b.top) / b.height) * count),
@@ -2073,6 +2746,69 @@ function DraftChangesList(props: {
     };
   };
 
+  // Inverse of `yForBoundary` for baseline drags: the boundary stop nearest
+  // a pointer y. Boundaries render below their change's slice, so the top
+  // sliver of a band maps to the boundary between it and the band above —
+  // the above band's last stop, which renders at the same pixel.
+  const boundaryPositionForY = (
+    y: number
+  ): { group: ChangeGroup; offset: number } | null => {
+    const bs = bands();
+    if (bs.length === 0) return null;
+    let above: { group: ChangeGroup; offset: number } | null = null;
+    for (const b of bs) {
+      const count = Math.max(1, b.group.changeCount);
+      if (y < b.top + b.height) {
+        const rbs = runBands(b.group);
+        if (rbs) {
+          // Between run rows the boundary snaps to the run above's oldest
+          // change; in the header zone it behaves like a band's top sliver
+          // (the boundary with the group above).
+          let prevEnd: number | null = null;
+          for (const rb of rbs) {
+            const boundaryAbove = () =>
+              prevEnd === null
+                ? (above ?? { group: b.group, offset: 0 })
+                : { group: b.group, offset: prevEnd };
+            if (y < rb.top) return boundaryAbove();
+            if (y < rb.top + rb.height) {
+              const offset =
+                Math.round(((y - rb.top) / rb.height) * rb.run.changeCount) -
+                1;
+              if (offset < 0) return boundaryAbove();
+              return {
+                group: b.group,
+                offset:
+                  rb.run.offset + Math.min(offset, rb.run.changeCount - 1),
+              };
+            }
+            prevEnd = rb.run.endOffset;
+          }
+          return { group: b.group, offset: Math.max(0, count - 1) };
+        }
+        const offset = Math.round(((y - b.top) / b.height) * count) - 1;
+        if (offset < 0) return above ?? { group: b.group, offset: 0 };
+        return { group: b.group, offset: Math.min(offset, count - 1) };
+      }
+      above = { group: b.group, offset: count - 1 };
+    }
+    const last = bs[bs.length - 1];
+    return {
+      group: last.group,
+      offset: Math.max(0, last.group.changeCount - 1),
+    };
+  };
+
+  // Where the idle line ("you're looking at the live latest") sits: above the
+  // FIRST rendered row, whatever it is — comment rows can sit above the newest
+  // group when comments are newer than the last change, and the live latest
+  // includes them, so the line must not sink below them to the first group
+  // band. Reads the DOM like `bands` does; callers re-run via `bands()`.
+  const idleTop = (bs: Band[]): number => {
+    const first = rowsEl()?.firstElementChild as HTMLElement | null;
+    return first ? first.offsetTop : bs[0].top;
+  };
+
   // The indicator's pixel position: the head line's y in the track. The
   // zero-height box is fine — the dot and line overflow it and stay
   // grabbable. With nothing pinned it idles at the very top — you're looking
@@ -2081,10 +2817,10 @@ function DraftChangesList(props: {
     const bs = bands();
     if (bs.length === 0) return null;
     const s = props.scrubber();
-    if (!s) return { top: bs[0].top };
+    if (!s) return { top: idleTop(bs) };
     const group = groupForScrub(s);
     const band = group ? bs.find((b) => b.group.id === group.id) : undefined;
-    if (!band) return { top: bs[0].top };
+    if (!band) return { top: idleTop(bs) };
     return { top: yForPosition(band, s.offset) };
   });
 
@@ -2100,7 +2836,7 @@ function DraftChangesList(props: {
       bs.find((x) => x.group.id === b.groupId) ??
       bs.find((x) => b.time >= x.group.startTime && b.time <= x.group.endTime);
     if (!band) return null;
-    return { top: yForPosition(band, resolveOffset(band.group, b.offset)) };
+    return { top: yForBoundary(band, resolveOffset(band.group, b.offset)) };
   });
 
   let trackEl: HTMLDivElement | undefined;
@@ -2170,7 +2906,7 @@ function DraftChangesList(props: {
 
     let last: string | null = null;
     const onMove = (e: PointerEvent) => {
-      const pos = positionForY(yInTrack(e) - grabOffset);
+      const pos = boundaryPositionForY(yInTrack(e) - grabOffset);
       if (!pos) return;
       const key = `${pos.group.id}:${pos.offset}`;
       if (key === last) return;
@@ -2193,12 +2929,18 @@ function DraftChangesList(props: {
   // The exact change the scrubber head sits on, recovered through the
   // on-demand scan; feeds the sticker that overlays the group row with the
   // version being looked at. It is suppressed when the head sits exactly on
-  // a group's newest change (the row already shows that version).
+  // a group's newest change (the row already shows that version), and
+  // likewise on a contributor run's newest change while its merge group is
+  // unfolded — the run row shows that version and highlights itself.
   const headChange = createMemo<ScanChange | null>(() => {
     const s = props.scrubber();
     if (!s || s.offset === 0) return null;
     const group = groupForScrub(s);
     if (!group || s.head.hash === group.newestHash) return null;
+    if (group.merge && expandedMerges().has(group.id)) {
+      const runs = runsForGroup(group);
+      if (runs?.some((r) => r.offset === s.offset)) return null;
+    }
     const rows = resolveGroupChanges(group);
     if (!rows || rows.length === 0) return null;
     return (
@@ -2269,13 +3011,94 @@ function DraftChangesList(props: {
             onPointerDown={(ev) => beginDrag(ev, true)}
           />
           <div class="draft-changes-rows" ref={setRowsEl}>
-            <For each={timeGroups()}>
-              {(group) => (
-                <TimeGroupRow
-                  group={group}
-                  rowRef={(el) => rowEls.set(group.id, el)}
-                  onSelect={() => selectGroup(group)}
-                />
+            <For each={timelineEntries()}>
+              {(entry) => (
+                <Switch>
+                  <Match when={entry.kind === "group" ? entry.group : null}>
+                    {(group) => (
+                      <Show
+                        when={group().merge}
+                        fallback={
+                          <TimeGroupRow
+                            group={group()}
+                            rowRef={(el) => rowEls.set(group().id, el)}
+                            onSelect={() => selectGroup(group())}
+                            onOpenAgent={props.onOpenAgentChat}
+                          />
+                        }
+                      >
+                        {/* Merge rows wrap in a block that also holds the
+                            unfolded contributor runs; the block registers as
+                            the group's row element, so its scrubber band
+                            stretches over the runs and per-change stops line
+                            up with them. */}
+                        <div
+                          class="draft-merge-block"
+                          ref={(el) => rowEls.set(group().id, el)}
+                        >
+                          <TimeGroupRow
+                            group={group()}
+                            onSelect={() => selectGroup(group())}
+                            onOpenAgent={props.onOpenAgentChat}
+                            expanded={expandedMerges().has(group().id)}
+                            onToggleExpand={() =>
+                              toggleMergeExpanded(group().id)
+                            }
+                          />
+                          <Show when={expandedMerges().has(group().id)}>
+                            <Show
+                              when={runsForGroup(group())}
+                              fallback={
+                                <div class="draft-merge-loading">
+                                  Resolving changes…
+                                </div>
+                              }
+                            >
+                              {(runs) => (
+                                <div class="draft-merge-runs">
+                                  <For each={runs()}>
+                                    {(run) => (
+                                      <MergeRunRow
+                                        run={run}
+                                        rowRef={(el) =>
+                                          runRowEls.set(
+                                            `${group().id}:${run.offset}`,
+                                            el
+                                          )
+                                        }
+                                        selected={runSelected(group(), run)}
+                                        onSelect={() =>
+                                          selectRun(group(), run)
+                                        }
+                                        onOpenAgent={props.onOpenAgentChat}
+                                      />
+                                    )}
+                                  </For>
+                                </div>
+                              )}
+                            </Show>
+                          </Show>
+                        </div>
+                      </Show>
+                    )}
+                  </Match>
+                  <Match
+                    when={entry.kind === "comment" ? entry.comment : null}
+                  >
+                    {(comment) => (
+                      <CommentRow
+                        comment={comment()}
+                        onSelect={() => {
+                          // Pin first: the panel switch unmounts this list,
+                          // but the checkpoint write survives (async, guarded
+                          // by scrubSeq, persisted on the checked-out doc).
+                          selectComment(comment());
+                          props.onOpenComment(comment());
+                        }}
+                      />
+                    )}
+                  </Match>
+                </Switch>
               )}
             </For>
             {/* Rebuilds backfill oldest history last, so the gap sits below
@@ -2363,13 +3186,20 @@ function DraftChangesList(props: {
 }
 
 // One time group, rendered as a single non-expandable row: author avatars,
-// the group's newest timestamp, and the aggregated +/- counts. Clicking the
-// row parks the scrubber at the top of the group (the scrubber token is the
-// selection indicator — the row itself doesn't highlight).
+// the group's newest timestamp, and the aggregated +/- counts. A merged
+// draft's group additionally carries a badge naming the draft it came from.
+// Clicking the row parks the scrubber at the top of the group (the scrubber
+// token is the selection indicator — the row itself doesn't highlight).
 function TimeGroupRow(props: {
   group: ChangeGroup;
-  rowRef: (el: HTMLElement) => void;
+  rowRef?: (el: HTMLElement) => void;
   onSelect: () => void;
+  onOpenAgent: (agent: AgentTag) => void;
+  // Present only on merge rows: unfold the group into contributor runs.
+  // The chevron's click doesn't bubble into the row's select — toggling the
+  // disclosure must never move the scrubber.
+  expanded?: boolean;
+  onToggleExpand?: () => void;
 }) {
   return (
     <button
@@ -2379,13 +3209,139 @@ function TimeGroupRow(props: {
       title="View the draft as of this group"
       onClick={props.onSelect}
     >
+      <Show when={props.onToggleExpand}>
+        <span
+          class="draft-group-expand"
+          role="button"
+          data-expanded={props.expanded ? "" : undefined}
+          title={
+            props.expanded
+              ? "Hide this draft's individual contributions"
+              : "Show who changed what in this merged draft"
+          }
+          onClick={(e) => {
+            e.stopPropagation();
+            props.onToggleExpand?.();
+          }}
+        >
+          ▸
+        </span>
+      </Show>
       <AuthorAvatars actors={props.group.actors} />
+      <Show when={props.group.agent}>
+        {(agent) => (
+          <span
+            class="draft-group-agent"
+            title="These changes were made by an agent — click to open the chat in the agent tab"
+            onClick={() => props.onOpenAgent(agent())}
+          >
+            via agent
+          </span>
+        )}
+      </Show>
+      <Show when={props.group.merge}>
+        {(merge) => (
+          <span
+            class="draft-group-merge"
+            title={
+              merge().name
+                ? `Changes merged from "${merge().name}"`
+                : "Changes merged from a draft"
+            }
+          >
+            {merge().name ? `Merged "${merge().name}"` : "Merged draft"}
+          </span>
+        )}
+      </Show>
       <span class="draft-group-time">{formatTime(props.group.endTime)}</span>
       <span class="draft-group-spacer" />
       <EditCounts
         additions={props.group.additions}
         deletions={props.group.deletions}
       />
+    </button>
+  );
+}
+
+// One contributor run inside an unfolded merge group: who (avatar, plus the
+// agent badge when it was a chat's run), when, and how much. Clicking pins
+// the view to the run's slice of the draft — head at its newest change,
+// baseline at its oldest — so the diff shows exactly this contribution.
+function MergeRunRow(props: {
+  run: ContributorRun;
+  rowRef: (el: HTMLElement) => void;
+  selected: boolean;
+  onSelect: () => void;
+  onOpenAgent: (agent: AgentTag) => void;
+}) {
+  return (
+    <button
+      type="button"
+      class="draft-run-row"
+      ref={props.rowRef}
+      data-selected={props.selected ? "" : undefined}
+      title="View exactly what this contributor changed"
+      onClick={props.onSelect}
+    >
+      <AuthorAvatars actors={props.run.actors} />
+      <Show when={props.run.agent}>
+        {(agent) => (
+          <span
+            class="draft-group-agent"
+            title="These changes were made by an agent — click to open the chat in the agent tab"
+            onClick={() => props.onOpenAgent(agent())}
+          >
+            via agent
+          </span>
+        )}
+      </Show>
+      <span class="draft-group-time">{formatTime(props.run.time)}</span>
+      <span class="draft-group-spacer" />
+      <EditCounts
+        additions={props.run.additions}
+        deletions={props.run.deletions}
+      />
+    </button>
+  );
+}
+
+// One comment, slotted between the group rows at the moment it was made,
+// reading "<avatar> left a comment “…”" (the avatar plays the who — comments
+// carry a contact url directly, no actor attribution needed). Clicking pins
+// the view to the doc as of that moment and opens the comment in the
+// comments panel.
+function CommentRow(props: {
+  comment: TimelineComment;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      class="draft-comment-row"
+      title={`“${props.comment.content}” — click to open the comment and view the draft as of it`}
+      onClick={props.onSelect}
+    >
+      <div class="draft-avatars">
+        <div
+          class="draft-avatar"
+          style={{
+            background: props.comment.contactUrl ? undefined : "#9ca3af",
+          }}
+        >
+          <Show when={props.comment.contactUrl} fallback={"?"}>
+            <patchwork-view
+              doc-url={props.comment.contactUrl!}
+              tool-id="contact-inline"
+            />
+          </Show>
+        </div>
+      </div>
+      <span class="draft-comment-label">left a comment</span>
+      <span class="draft-comment-content">{`“${props.comment.content}”`}</span>
+      <span class="draft-group-spacer" />
+      <span class="draft-group-time">
+        {formatTime(props.comment.timestamp / 1000)}
+      </span>
     </button>
   );
 }
@@ -2457,24 +3413,63 @@ function EditCounts(props: { additions: number; deletions: number }) {
 // and only clamped so the baseline stays at or older than the head.
 type CheckpointBase = "none" | { beforeTime: number };
 
+// Boundary maps resolved by the changes list from the rendered row order
+// (see `boundaryHeads`): `to` for the head, `from` for the baseline. Either
+// may be absent — while the member docs still resolve, or when the sidebar
+// remounted and only the persisted checkpoint survives — in which case
+// `computeCheckpoint` falls back to its time-based approximation.
+type ResolvedBoundaries = {
+  to?: MemberBoundaryHeads;
+  from?: MemberBoundaryHeads;
+};
+
 // Build the checkpoint map for a scrub position. Each member's displayed
-// version (`to`) is its heads as of `head`: the doc that owns that change is
-// pinned exactly to it, every other member to its latest change at or before
-// it (approximate but good enough). The diff baseline (`from`) follows
-// `base`: omitted for `"none"`, or the member's heads just before
-// `beforeTime` (falling back to the fork point — empty heads on main — when
-// no post-fork change precedes it). Members with no change at or before
-// `head` are omitted entirely: they didn't exist yet, so they fall through to
-// live.
+// version (`to`) and diff baseline (`from`) come from the resolved boundary
+// maps when available: the exact frontier of the rows the timeline renders
+// at/below the head and below the baseline — attribution-aware, since merge
+// groups pull changes out of the time order. Without a map the boundary is
+// approximated by time: `to` pins the head's own doc exactly to the head
+// change and every other member to its latest change at or before it;
+// `from` is the member's heads just before `base.beforeTime`. A member in no
+// `to` map entry and with no change at or before `head` is omitted entirely:
+// it didn't exist yet, so it falls through to live. A `from` that resolves
+// to nothing falls back to the fork point (empty heads on main — the whole
+// doc reads as added).
 async function computeCheckpoint(
   repo: Repo,
   members: DraftMemberDoc[],
   head: ChangeRef,
-  base: CheckpointBase
+  base: CheckpointBase,
+  resolved: ResolvedBoundaries = {}
 ): Promise<DraftCheckpoint> {
   const checkpoint: DraftCheckpoint = {};
   for (const member of members) {
     try {
+      // Boundaries resolved from the rendered rows, when the maps are there.
+      let to: UrlHeads | undefined;
+      let toResolved = false;
+      if (resolved.to) {
+        to = resolved.to[member.url];
+        toResolved = true;
+        // Not in the map: no rows at or below the head — the member didn't
+        // exist yet at that version, so it falls through to live.
+        if (!to) continue;
+      }
+      let from: UrlHeads | undefined;
+      let fromResolved = base === "none";
+      if (!fromResolved && resolved.from) {
+        from = resolved.from[member.url] ?? member.clonedAt ?? encodeHeads([]);
+        fromResolved = true;
+      }
+      if (toResolved && fromResolved) {
+        checkpoint[member.url] =
+          base === "none"
+            ? { to: [...to!] as UrlHeads }
+            : { from: [...from!] as UrlHeads, to: [...to!] as UrlHeads };
+        continue;
+      }
+
+      // Time-based fallback for whichever boundary lacks a resolved map.
       const handle = await repo.find<unknown>(member.cloneUrl ?? member.url);
       const doc = handle.doc();
       if (!doc) continue;
@@ -2483,26 +3478,27 @@ async function computeCheckpoint(
 
       // Displayed version: exactly the head change for the doc that owns it,
       // otherwise the member's latest change at or before it.
-      let to: UrlHeads;
-      if (member.url === head.docUrl) {
-        // Pin the head's doc exactly even if it falls outside the metas
-        // window (robust against a mismatched fork point).
-        to = encodeHeads([head.hash]);
-      } else {
-        let pinnedIndex = -1;
-        let bestTime = -Infinity;
-        metas.forEach((m, i) => {
-          if (m.time <= head.time && m.time >= bestTime) {
-            bestTime = m.time;
-            pinnedIndex = i;
-          }
-        });
-        if (pinnedIndex < 0) continue;
-        to = encodeHeads([metas[pinnedIndex].hash]);
+      if (!toResolved) {
+        if (member.url === head.docUrl) {
+          // Pin the head's doc exactly even if it falls outside the metas
+          // window (robust against a mismatched fork point).
+          to = encodeHeads([head.hash]);
+        } else {
+          let pinnedIndex = -1;
+          let bestTime = -Infinity;
+          metas.forEach((m, i) => {
+            if (m.time <= head.time && m.time >= bestTime) {
+              bestTime = m.time;
+              pinnedIndex = i;
+            }
+          });
+          if (pinnedIndex < 0) continue;
+          to = encodeHeads([metas[pinnedIndex].hash]);
+        }
       }
 
       if (base === "none") {
-        checkpoint[member.url] = { to };
+        checkpoint[member.url] = { to: [...to!] as UrlHeads };
         continue;
       }
 
@@ -2510,19 +3506,24 @@ async function computeCheckpoint(
       // baseline's time. None post-fork means the baseline sits at or before
       // the start of the member's history in this timeline, so diff against
       // the fork point (empty heads on main — the whole doc reads as added).
-      let fromIndex = -1;
-      let fromTime = -Infinity;
-      metas.forEach((m, i) => {
-        if (m.time < base.beforeTime && m.time >= fromTime) {
-          fromTime = m.time;
-          fromIndex = i;
-        }
-      });
-      const from =
-        fromIndex >= 0
-          ? encodeHeads([metas[fromIndex].hash])
-          : (member.clonedAt ?? encodeHeads([]));
-      checkpoint[member.url] = { from, to };
+      if (!fromResolved) {
+        let fromIndex = -1;
+        let fromTime = -Infinity;
+        metas.forEach((m, i) => {
+          if (m.time < base.beforeTime && m.time >= fromTime) {
+            fromTime = m.time;
+            fromIndex = i;
+          }
+        });
+        from =
+          fromIndex >= 0
+            ? encodeHeads([metas[fromIndex].hash])
+            : (member.clonedAt ?? encodeHeads([]));
+      }
+      checkpoint[member.url] = {
+        from: [...from!] as UrlHeads,
+        to: [...to!] as UrlHeads,
+      };
     } catch (err) {
       console.warn(
         "[drafts] failed to compute checkpoint for member:",

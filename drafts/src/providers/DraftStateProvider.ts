@@ -27,6 +27,7 @@ import {
   createChangeGrouper,
   type TimelineGroupingSpec,
 } from "../change-group-cache.js";
+import type { MergedDraftSpec } from "../merge-attribution.js";
 import {
   createActorRecorder,
   ensureActorAttribution,
@@ -126,6 +127,7 @@ export const DraftStateProvider = (element: HTMLElement) => {
   // is open. Member-doc listeners drive updates between list recomputes.
   const changeGrouper = createChangeGrouper(repo, {
     onLocalChange: actorRecorder.recordLocalChange,
+    resolveContact: actorRecorder.contactFor,
   });
   // Main-case membership: docs mounted beneath this provider, ref-counted so a
   // doc shown in several views is only dropped on its last unmount. Populated
@@ -333,7 +335,19 @@ export const DraftStateProvider = (element: HTMLElement) => {
         );
         if (disposed) return;
         orderedDraftUrls = allDrafts;
-        draftRouter?.updateAvailableDrafts(allDrafts);
+        // The router only gets OPEN drafts. A merged draft stays linked in the
+        // tree (unlike a rejected one, which is unlinked), so without this
+        // filter it stays selectable forever: a stale `draft=` hash param —
+        // e.g. restored by a host router rewriting the full hash right after
+        // an accept — would re-check-out the merged draft, fighting whoever
+        // reset to main (the post-accept flicker). Filtered here, the stale
+        // param parks as a forever-pending deep link and reconcileSelection
+        // actively resets any checkout still pointing at a merged draft.
+        draftRouter?.updateAvailableDrafts(
+          allDrafts.filter(
+            (u) => trackedDrafts.get(u)?.doc()?.mergedAt === undefined
+          )
+        );
       } catch (err) {
         console.error("[drafts] rewalk failed:", err);
       } finally {
@@ -371,6 +385,7 @@ export const DraftStateProvider = (element: HTMLElement) => {
         draftHandle: mainDraftHandle,
         members: clonesToMembers(mainDraftHandle.doc()?.clones ?? {}),
         rootDocUrl: docUrl,
+        mergedDrafts: mergedDraftSpecsFor(mainDraftHandle.url),
       });
     }
     const selected = checkedOutHandle?.doc()?.checkedOut ?? null;
@@ -386,9 +401,39 @@ export const DraftStateProvider = (element: HTMLElement) => {
         draftHandle: handle,
         members: clonesToMembers(doc.clones),
         rootDocUrl: docUrl,
+        mergedDrafts: mergedDraftSpecsFor(url),
       });
     }
     changeGrouper.setTimelines(specs);
+  }
+
+  // The drafts merged into `timelineUrl`'s timeline, as attribution specs:
+  // tracked drafts whose recorded merge target (`mergedInto`) is this
+  // timeline, carrying per member the head range bracketing their
+  // contribution. Merged drafts stay tracked (they remain linked in the
+  // tree), so this is a pure read. Drafts merged before `mergedFrom` and
+  // `mergedInto` were recorded are skipped — no attribution for those.
+  function mergedDraftSpecsFor(timelineUrl: AutomergeUrl): MergedDraftSpec[] {
+    const result: MergedDraftSpec[] = [];
+    for (const [url, handle] of trackedDrafts) {
+      const doc = handle.doc();
+      if (!doc || doc.mergedAt === undefined || doc.mergedInto !== timelineUrl)
+        continue;
+      const members: MergedDraftSpec["members"] = {};
+      for (const [originalUrl, entry] of Object.entries(doc.clones)) {
+        if (!entry.mergedFrom) continue;
+        // Copy the heads arrays: they were read out of the DraftDoc and end
+        // up written into the ChangeGroupDoc (`ChangeGroup.merge.members`),
+        // and a live Automerge object must not cross into another document.
+        members[originalUrl as AutomergeUrl] = {
+          baseHeads: [...entry.clonedAt] as UrlHeads,
+          mergeHeads: [...entry.mergedFrom] as UrlHeads,
+        };
+      }
+      if (Object.keys(members).length === 0) continue;
+      result.push({ url, name: doc.name ?? null, members });
+    }
+    return result;
   }
 
   // The full read-only list: the main entry plus one summary per non-merged

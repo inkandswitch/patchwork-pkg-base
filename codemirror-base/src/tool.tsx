@@ -129,10 +129,8 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
   };
 
   const decorations = () => {
-    const targetRefs = commentTargets();
-    const emphasisRefs = emphasisTargets();
     return RangeSet.of<Decoration>(
-      buildCommentDecorations(targetRefs, emphasisRefs),
+      buildCommentDecorations(commentTargets(), emphasisTargets()),
       true // sort ranges
     );
   };
@@ -244,7 +242,7 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
   // The editor is only mounted once the datatype's extensions (themes, syntax
   // highlighting) are in hand, so it never paints unthemed first.
   const [datatypeExtensions] = createResource(() =>
-    loadCodeMirrorExtensionsForDoc(props.handle)
+    loadCodeMirrorExtensionsForDoc(props.handle, props.element, props.repo)
   );
 
   // Base CodeMirror extensions (context-specific, not language-specific)
@@ -372,8 +370,21 @@ function commentTargetStyle(isEmphasised: boolean): string {
   `;
 }
 
+// The context handed to context-aware `codemirror:extension` modules. A
+// registered module may be a plain Extension (or array), or a FACTORY taking
+// this context — that's how out-of-package extensions (e.g. the corkboard's
+// provenance highlighter) reach the document handle and the provider tree
+// without a build-time dependency on this package.
+export type CodeMirrorExtensionContext = {
+  handle: DocHandle<unknown>;
+  element: HTMLElement;
+  repo: Repo;
+};
+
 async function loadCodeMirrorExtensionsForDoc(
-  handle: DocHandle<unknown>
+  handle: DocHandle<unknown>,
+  element: HTMLElement,
+  repo: Repo
 ): Promise<Extension[]> {
   const docType = (handle.doc() as any)?.["@patchwork"]?.type;
   const registry = getRegistry<any>("codemirror:extension");
@@ -386,8 +397,10 @@ async function loadCodeMirrorExtensionsForDoc(
       );
     })
   );
+  const context: CodeMirrorExtensionContext = { handle, element, repo };
   return loaded.flatMap((ext) => {
-    const impl = ext.module;
+    const impl =
+      typeof ext.module === "function" ? ext.module(context) : ext.module;
     return Array.isArray(impl) ? impl : [impl];
   });
 }

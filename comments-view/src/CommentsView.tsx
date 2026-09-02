@@ -49,10 +49,12 @@ export function CommentsView(props: { element: HTMLElement }) {
 
   // `selection` is read-only input (driven by the active editor), `highlight`
   // is our output. Splitting them avoids the feedback loop a single shared
-  // map would have.
+  // map would have. `openThread` is a one-shot reveal request from another
+  // view (e.g. the drafts timeline), consumed below.
   const [focusDoc, focusHandle] = subscribeDoc<{
     selection: Record<AutomergeUrl, true>;
     highlight: Record<AutomergeUrl, true>;
+    openThread?: { url: AutomergeUrl; at: number };
   }>(props.element, { type: "patchwork:focus" });
 
   const [, contactHandle] = subscribeDoc<Record<string, never>>(props.element, {
@@ -213,6 +215,45 @@ export function CommentsView(props: { element: HTMLElement }) {
         ? "secondary"
         : "inactive";
 
+  // Rendered thread-card elements, for scrolling a revealed thread into view.
+  // Stale entries for unmounted cards are harmless — only urls in the current
+  // displayed list are ever looked up.
+  const cardEls = new Map<AutomergeUrl, HTMLElement>();
+
+  // Consume `openThread` reveal requests from the focus doc (written by e.g.
+  // the drafts timeline): once the thread's card is in the rendered list, pin
+  // and select it — same as clicking the card — scroll it into view, and
+  // delete the request. A request whose card never appears (a resolved
+  // thread, which the panel doesn't list) is dropped once it goes stale, so
+  // it can't pin some unrelated selection much later.
+  const OPEN_THREAD_TTL_MS = 5_000;
+  createEffect(() => {
+    const request = focusDoc()?.openThread;
+    const handle = focusHandle();
+    if (!request || !handle) return;
+    if (Date.now() - request.at > OPEN_THREAD_TTL_MS) {
+      handle.change((doc) => {
+        delete doc.openThread;
+      });
+      return;
+    }
+    // Not rendered yet: wait — the effect re-runs as the list fills in.
+    if (!displayedThreadUrls().includes(request.url)) return;
+    const targetUrls = threadTargetUrlMap().get(request.url) ?? [];
+    setPinnedThread(request.url);
+    const next: Record<AutomergeUrl, true> = {};
+    for (const u of targetUrls) next[u] = true;
+    handle.change((doc) => {
+      doc.selection = next;
+      delete doc.openThread;
+    });
+    requestAnimationFrame(() =>
+      cardEls
+        .get(request.url)
+        ?.scrollIntoView({ block: "nearest", behavior: "smooth" })
+    );
+  });
+
   onCleanup(() => {
     const handle = focusHandle();
     if (!handle) return;
@@ -254,6 +295,7 @@ export function CommentsView(props: { element: HTMLElement }) {
           {(threadUrl) => (
             <div
               class="comments-thread"
+              ref={(el) => cardEls.set(threadUrl, el)}
               onClick={(e) => onClickThreadCard(e, threadUrl)}
             >
               <patchwork-view
