@@ -1,4 +1,10 @@
-import { createSignal, createMemo, Show } from "solid-js";
+import {
+  createSignal,
+  createMemo,
+  createEffect,
+  onCleanup,
+  Show,
+} from "solid-js";
 import { render } from "solid-js/web";
 import {
   useDocument,
@@ -19,8 +25,11 @@ import {
   accountTokenToAutomergeUrl,
 } from "./tokens";
 import {
+  AvatarCropper,
+  type Crop,
   Button,
-  ColorPicker,
+  ColorPopup,
+  PresenceCursor,
   Input,
   Label,
   Tabs,
@@ -31,6 +40,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "./ui/index";
+import { generateColorFromString, getRandomUserColor } from "../user-colors";
 
 declare module "solid-js" {
   namespace JSX {
@@ -68,6 +78,7 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
   );
 
   let avatarInputRef: HTMLInputElement | undefined;
+  let colorPopupRef: HTMLDivElement | undefined;
 
   const [signupName, setSignupName] = createSignal("");
   const [activeTab, setActiveTab] = createSignal<string>(
@@ -78,6 +89,9 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
   const [isContactCardCopyTooltipOpen, setIsContactCardCopyTooltipOpen] =
     createSignal(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = createSignal(false);
+  const [showColorPopup, setShowColorPopup] = createSignal(false);
+  const [pendingAvatar, setPendingAvatar] =
+    createSignal<{ file: File; url: string }>();
 
   const [accountTokenToLogin, setAccountTokenToLogin] = createSignal("");
   const accountAutomergeUrlToLogin = createMemo(() =>
@@ -111,6 +125,32 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
     return s?.type === "registered" ? s.name : "";
   };
 
+  createEffect(() => {
+    if (!showColorPopup()) return;
+
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      if (colorPopupRef?.contains(target)) return;
+      if (target?.closest(".presence-cursor")) return;
+      setShowColorPopup(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setShowColorPopup(false);
+    };
+
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown);
+    onCleanup(() => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKeyDown);
+    });
+  });
+
+  // Contacts without a chosen color render in neutral gray everywhere
+  // (cursors, avatars), so show the same here instead of pretending a
+  // palette color is set.
+  const presenceColor = () => (self() as any)?.color || "#888";
+
   const currentAccountToken = createMemo(() => {
     return currentAccount
       ? automergeUrlToAccountToken(props.handle.url, name())
@@ -135,15 +175,27 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
     });
   };
 
-  const onAvatarChange = async (e: Event) => {
+  const onAvatarChange = (e: Event) => {
     const target = e.target as HTMLInputElement;
-    const s = self();
-    if (!currentAccount || !s || s.type !== "registered") return;
-
     const avatarFile = !target.files ? undefined : target.files[0];
+    target.value = "";
     if (!avatarFile) return;
+    setPendingAvatar({ file: avatarFile, url: URL.createObjectURL(avatarFile) });
+  };
 
-    const compressed = await compressAvatar(avatarFile);
+  const onCancelCrop = () => {
+    const pending = pendingAvatar();
+    if (pending) URL.revokeObjectURL(pending.url);
+    setPendingAvatar(undefined);
+  };
+
+  const onCropAvatar = async (crop: Crop) => {
+    const pending = pendingAvatar();
+    const s = self();
+    if (!pending || !currentAccount || !s || s.type !== "registered") return;
+    onCancelCrop();
+
+    const compressed = await compressAvatar(pending.file, crop);
     if (!compressed) return;
 
     const repo = props.element.repo as Repo;
@@ -154,7 +206,7 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
     imageHandle.change((doc) => {
       doc.content = compressed.content;
       doc.mimeType = compressed.mimeType;
-      (doc as any).name = avatarFile.name;
+      (doc as any).name = pending.file.name;
       (doc as any).extension = "webp";
     });
 
@@ -168,22 +220,29 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
   const onSignUp = async () => {
     if (!currentAccount || !signupName()) return;
 
+    let targetContactHandle = selfHandle();
     if (!currentAccount.contactUrl) {
       const repo = props.element.repo as Repo;
-      const contactHandle = await repo.create2<
+      targetContactHandle = await repo.create2<
         ContactDoc & HasPatchworkMetadata
       >({
         ["@patchwork"]: { type: "patchwork:contact" },
         type: "anonymous",
+        color: getRandomUserColor(),
       });
+      const targetContactUrl = targetContactHandle.url;
       props.handle.change((account: TinyPatchworkLayoutDoc) => {
-        account.contactUrl = contactHandle.url;
+        account.contactUrl = targetContactUrl;
       });
     }
 
-    selfHandle()?.change((contact: ContactDoc) => {
+    if (!targetContactHandle) return;
+    targetContactHandle.change((contact: ContactDoc) => {
       contact.type = "registered";
       (contact as RegisteredContactDoc).name = signupName();
+      if (!contact.color) {
+        contact.color = generateColorFromString(targetContactHandle.url);
+      }
     });
   };
 
@@ -328,13 +387,16 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
         />
 
         <div class="profile-header">
-          <div class="avatar-area">
+          <div class="identity">
             <Show when={currentAccount?.contactUrl}>
               <button
                 type="button"
                 class="avatar-button"
+                title="Change avatar"
                 onClick={() => avatarInputRef?.click()}
-                title="Click to change avatar"
+                style={{
+                  "box-shadow": `0 0 0 2px var(--account-picker-bg), 0 0 0 5px ${presenceColor()}`,
+                }}
               >
                 <patchwork-view
                   doc-url={currentAccount.contactUrl}
@@ -342,10 +404,22 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
                 />
               </button>
             </Show>
-            <ColorPicker
-              value={(self() as any)?.color}
-              onChange={onColorChange}
-            />
+            <div class="presence-slot">
+              <PresenceCursor
+                color={presenceColor()}
+                name={name() || "You"}
+                title="Change presence colour"
+                onClick={() => setShowColorPopup((prev) => !prev)}
+              />
+            </div>
+            <Show when={showColorPopup()}>
+              <ColorPopup
+                ref={(el) => (colorPopupRef = el)}
+                value={(self() as any)?.color}
+                onChange={onColorChange}
+                onClose={() => setShowColorPopup(false)}
+              />
+            </Show>
           </div>
           <Input
             id="name"
@@ -395,6 +469,16 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
             Sign out
           </Button>
         </div>
+
+        <Show when={pendingAvatar()}>
+          {(pending) => (
+            <AvatarCropper
+              src={pending().url}
+              onCancel={onCancelCrop}
+              onConfirm={onCropAvatar}
+            />
+          )}
+        </Show>
 
         <Show when={showSignOutConfirm()}>
           <div class="modal-backdrop" onClick={() => setShowSignOutConfirm(false)} />
@@ -456,16 +540,25 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
 const AVATAR_MAX_SIZE = 512;
 
 async function compressAvatar(
-  file: File
+  file: File,
+  crop: Crop
 ): Promise<{ content: Uint8Array; mimeType: string } | undefined> {
   const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, AVATAR_MAX_SIZE / Math.max(bitmap.width, bitmap.height));
-  const width = Math.round(bitmap.width * scale);
-  const height = Math.round(bitmap.height * scale);
+  const side = Math.round(Math.min(AVATAR_MAX_SIZE, crop.size));
 
-  const canvas = new OffscreenCanvas(width, height);
+  const canvas = new OffscreenCanvas(side, side);
   const ctx = canvas.getContext("2d")!;
-  ctx.drawImage(bitmap, 0, 0, width, height);
+  ctx.drawImage(
+    bitmap,
+    crop.x,
+    crop.y,
+    crop.size,
+    crop.size,
+    0,
+    0,
+    side,
+    side
+  );
   bitmap.close();
 
   const blob = await canvas.convertToBlob({ type: "image/webp", quality: 0.8 });
