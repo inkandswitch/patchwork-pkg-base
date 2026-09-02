@@ -235,6 +235,32 @@ function DraftDocumentArea(props: {
   const contextItems = useTaggedComponents("context-tool");
   const hasContext = () => contextItems().length > 0;
 
+  // A context tool can ask the shell to reveal a sibling tab (e.g. the drafts
+  // timeline opening a comment in the comments panel): the bubbling
+  // `patchwork:open-context-tool` event names the tab's component id. Switch
+  // to it and make sure the sidebar is actually open. An id that isn't a
+  // registered context tool is ignored, so the request degrades to nothing
+  // when the named tool isn't installed.
+  const [openToolListenerHost, setOpenToolListenerHost] =
+    createSignal<HTMLElement>();
+  createEffect(() => {
+    const el = openToolListenerHost();
+    if (!el) return;
+    const onOpen = (event: Event) => {
+      const toolId = (event as CustomEvent<{ toolId?: string }>).detail
+        ?.toolId;
+      if (!toolId || !contextItems().some((item) => item.id === toolId))
+        return;
+      event.stopPropagation();
+      props.setSelectedContextToolId(toolId);
+      props.setIsRightSidebarCollapsed(false);
+    };
+    el.addEventListener("patchwork:open-context-tool", onOpen);
+    onCleanup(() =>
+      el.removeEventListener("patchwork:open-context-tool", onOpen)
+    );
+  });
+
   // Remount key for the main view: just the selected doc. Checkpoint pins no
   // longer ride on this url — the overlay provider streams them on the
   // descriptors' *backing* urls and `OverlayRepo` swaps handle backings in
@@ -276,7 +302,13 @@ function DraftDocumentArea(props: {
   return (
     <patchwork-view
       component="patchwork-draft-overlay-provider"
-      ref={setDraftOverlayProviderHost}
+      ref={(el: HTMLElement) => {
+        setDraftOverlayProviderHost(el);
+        // The open-context-tool listener sits on this outermost element so it
+        // catches requests bubbling from anywhere in the column — the context
+        // sidebar included.
+        setOpenToolListenerHost(el);
+      }}
     >
       <patchwork-view
         component="patchwork-comments-provider"

@@ -19,7 +19,7 @@ import type {
 import { partitionRows, type MergedDraftSpec } from "./merge-attribution.js";
 
 // Bump to discard every existing group doc's contents (they self-rebuild).
-export const CHANGE_GROUP_DOC_VERSION = 1;
+export const CHANGE_GROUP_DOC_VERSION = 2;
 
 // A pause between consecutive changes longer than this starts a new group:
 // bursts of continuous editing read as a single row, however long they run,
@@ -184,7 +184,10 @@ function countPatches(patches: Automerge.Patch[]): {
   let additions = 0;
   let deletions = 0;
   for (const patch of patches) {
-    if (patch.path[0] === "@patchwork") continue;
+    // Comment writes are surfaced as their own timeline entries (and split
+    // groups), so they don't count as edits either.
+    if (patch.path[0] === "@patchwork" || patch.path[0] === "@comments")
+      continue;
     if (patch.action === "splice") {
       additions += (patch.value as string).length;
     } else if (patch.action === "insert") {
@@ -242,25 +245,72 @@ function newestFirst(a: PendingChange, b: PendingChange): number {
   return b.time - a.time || b.seq - a.seq;
 }
 
+// The `@comments` shape the grouper reads: just enough to reach every
+// comment's wall-clock timestamp (ms). Structurally matches the comments
+// tools' schema without a build-time dependency on them.
+type DocWithCommentTimes = {
+  "@comments"?: {
+    threads?: { comments?: { timestamp?: number }[] }[];
+  };
+};
+
+// Every comment timestamp (ms) across the given member docs, newest first.
+// These are extra group boundaries: a group never spans across the moment a
+// comment was made, so the sidebar can slot the comment in between rows.
+export function collectCommentTimes(
+  docs: Automerge.Doc<unknown>[]
+): number[] {
+  const times: number[] = [];
+  for (const doc of docs) {
+    const threads = (doc as DocWithCommentTimes)["@comments"]?.threads;
+    if (!threads) continue;
+    for (const thread of threads) {
+      for (const comment of thread.comments ?? []) {
+        if (typeof comment.timestamp === "number") {
+          times.push(comment.timestamp);
+        }
+      }
+    }
+  }
+  return times.sort((a, b) => b - a);
+}
+
 // Fold a flat, newest-first list of changes into groups: consecutive changes
-// stay together while the pause between them is at most the inactivity gap.
-function splitIntoGroups(
-  rowsNewestFirst: PendingChange[]
-): PendingChange[][] {
-  const groups: PendingChange[][] = [];
-  let window: PendingChange[] = [];
+// stay together while the pause between them is at most the inactivity gap
+// AND no comment was made in between (`commentTimesMs`, newest first). A
+// comment reads as its own timeline entry, so the changes before and after it
+// must not aggregate into one row. The boundary is half-open — a comment at
+// millisecond c splits rows older-or-equal from rows strictly newer — so the
+// comment's own write (stamped in the same second as c) groups with the OLDER
+// side, where it aggregates to 0/0 and stays hidden. Generic over the row
+// shape (only `time`, Unix seconds, is read) so tests can drive it directly.
+export function splitIntoGroups<T extends { time: number }>(
+  rowsNewestFirst: T[],
+  commentTimesMs: number[] = []
+): T[][] {
+  const groups: T[][] = [];
+  let window: T[] = [];
   let prevTimeMs: number | null = null;
+  let ci = 0;
   for (const row of rowsNewestFirst) {
     const timeMs = row.time * 1000;
     // Rows arrive newest-first, so the previous row is this change's newer
     // neighbour; a gap larger than the threshold between them is a lull.
-    if (
-      prevTimeMs !== null &&
-      prevTimeMs - timeMs > INACTIVITY_GAP_MS &&
-      window.length > 0
-    ) {
-      groups.push(window);
-      window = [];
+    if (prevTimeMs !== null && window.length > 0) {
+      // Comments at or after the newer neighbour can't split this boundary,
+      // nor any older one below — skip them once (both lists descend).
+      while (
+        ci < commentTimesMs.length &&
+        commentTimesMs[ci] >= prevTimeMs
+      ) {
+        ci++;
+      }
+      const commentBetween =
+        ci < commentTimesMs.length && commentTimesMs[ci] >= timeMs;
+      if (prevTimeMs - timeMs > INACTIVITY_GAP_MS || commentBetween) {
+        groups.push(window);
+        window = [];
+      }
     }
     window.push(row);
     prevTimeMs = timeMs;
@@ -666,6 +716,12 @@ export function createChangeGrouper(
 
     tails.sort(newestFirst);
 
+    // Comment timestamps across the member docs: extra group boundaries for
+    // both grouping paths below. Comments live in the same docs the changes
+    // come from (clones for drafts), so a new comment also fires the change
+    // listener that scheduled this run.
+    const commentTimesMs = collectCommentTimes(sources.map((s) => s.doc));
+
     // Fast path: no merge to attribute, and every new change lands on or
     // after the newest stored group (extending it or opening newer ones)
     // without bridging into the group below it — the overwhelmingly common
@@ -692,6 +748,7 @@ export function createChangeGrouper(
         changeGroupHandle,
         newestStored,
         tails,
+        commentTimesMs,
         frontier,
         isAborted
       );
@@ -700,6 +757,7 @@ export function createChangeGrouper(
         changeGroupHandle,
         sources,
         createdAt,
+        commentTimesMs,
         frontier,
         spec.mergedDrafts,
         isAborted
@@ -714,19 +772,28 @@ export function createChangeGrouper(
     changeGroupHandle: DocHandle<ChangeGroupDoc>,
     newestStored: ChangeGroup,
     tailsNewestFirst: PendingChange[],
+    commentTimesMs: number[],
     frontier: Record<AutomergeUrl, UrlHeads>,
     isAborted: () => boolean
   ): Promise<void> {
-    const tailGroups = splitIntoGroups(tailsNewestFirst);
+    const tailGroups = splitIntoGroups(tailsNewestFirst, commentTimesMs);
     const oldestGroup = tailGroups[tailGroups.length - 1];
     const oldestGroupOldestMs =
       oldestGroup[oldestGroup.length - 1].time * 1000;
+    // A comment made between the stored group's end and the tail's start is
+    // a boundary too (same half-open convention as splitIntoGroups), so the
+    // tail must open a fresh group above it.
+    const commentBetween = commentTimesMs.some(
+      (c) => c >= newestStored.endTime * 1000 && c < oldestGroupOldestMs
+    );
     // The oldest run of new changes merges into the stored group when no lull
-    // separates them (it may even start inside the stored span) — unless the
-    // stored group is a merged draft's: that group holds exactly the draft's
-    // contribution, so edits after the merge always open a fresh group.
+    // (and no comment) separates them (it may even start inside the stored
+    // span) — unless the stored group is a merged draft's: that group holds
+    // exactly the draft's contribution, so edits after the merge always open
+    // a fresh group.
     const attaches =
       !newestStored.merge &&
+      !commentBetween &&
       oldestGroupOldestMs <= newestStored.endTime * 1000 + INACTIVITY_GAP_MS;
     const freshGroups = attaches ? tailGroups.slice(0, -1) : tailGroups;
 
@@ -830,6 +897,7 @@ export function createChangeGrouper(
     changeGroupHandle: DocHandle<ChangeGroupDoc>,
     sources: { member: DraftMemberDoc; doc: Automerge.Doc<unknown> }[],
     createdAt: number | undefined,
+    commentTimesMs: number[],
     frontier: Record<AutomergeUrl, UrlHeads>,
     mergedDrafts: MergedDraftSpec[],
     isAborted: () => boolean
@@ -841,7 +909,7 @@ export function createChangeGrouper(
     }
     rows.sort(newestFirst);
     const { merged, rest } = partitionRows(rows, mergedDrafts);
-    const groupsRows = splitIntoGroups(rest);
+    const groupsRows = splitIntoGroups(rest, commentTimesMs);
     const expectedIds = new Set(groupsRows.map(groupId));
 
     const batch: ChangeGroup[] = [];

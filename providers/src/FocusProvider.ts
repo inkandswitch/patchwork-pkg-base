@@ -11,9 +11,16 @@ const SELECTOR = "patchwork:focus";
 //     renders selection ∪ highlight, with overlap drawn more intensely.
 // Two fields instead of one because a single shared `selection` would
 // create a feedback loop between the editor and any view writing back.
+//   - `openThread`: a one-shot request for the comments panel to reveal a
+//     comment thread (pin it, select its targets, scroll it into view).
+//     Written by other views (e.g. the drafts timeline's comment rows) and
+//     consumed — deleted — by the panel once acted on. `at` (wall-clock ms)
+//     lets the consumer drop a stale request whose thread never renders
+//     (e.g. a resolved thread, which the panel doesn't list).
 export type FocusDoc = {
   selection: Record<AutomergeUrl, true>;
   highlight: Record<AutomergeUrl, true>;
+  openThread?: { url: AutomergeUrl; at: number };
 };
 
 export const FocusProvider = (element: PatchworkViewElement) => {

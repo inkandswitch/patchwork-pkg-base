@@ -478,6 +478,47 @@
   white-space: nowrap;
 }
 
+/* One comment slotted into the timeline at the moment it was made. Same
+   bones as a group row, but the content reads as a speech-bubble pill so
+   comments scan differently from edit groups. */
+.draft-comment-row {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  width: 100%;
+  padding: 0.3125rem 0.375rem;
+  border: none;
+  border-radius: var(--drafts-radius-sm);
+  background: transparent;
+  font-family: inherit;
+  font-size: 0.75rem;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+
+.draft-comment-row:hover {
+  background: color-mix(in oklch, var(--drafts-hover-bg) 60%, transparent);
+}
+
+.draft-comment-label {
+  flex: none;
+  color: var(--drafts-muted-fg);
+  white-space: nowrap;
+}
+
+.draft-comment-content {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 0.125rem 0.4375rem;
+  border-radius: 0.625rem;
+  background: color-mix(in oklch, var(--drafts-hover-bg) 80%, transparent);
+  color: var(--drafts-muted-fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Badge on a merged draft's dedicated group row, naming the source draft. */
 .draft-group-merge {
   flex: none;

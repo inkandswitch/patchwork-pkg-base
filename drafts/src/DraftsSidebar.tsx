@@ -4,8 +4,10 @@ import {
   createMemo,
   createSignal,
   For,
+  Match,
   onCleanup,
   Show,
+  Switch,
   type Accessor,
 } from "solid-js";
 import { createDocSignal } from "solid-automerge";
@@ -64,7 +66,7 @@ const EMPTY_DRAFT_LIST: DraftList = {
 
 // Shown in the panel footer, logged on load, and stamped into fork
 // diagnostics; bump on deploy to tell builds apart.
-const DRAFTS_VERSION = "0.0.49";
+const DRAFTS_VERSION = "0.0.50";
 
 // Logged at module load so the console shows which build is running even
 // before the panel renders.
@@ -79,6 +81,36 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
   const [, checkedOutHandle] = subscribeDoc<CheckedOutDraft>(props.element, {
     type: "draft:checked-out",
   });
+
+  // The shared focus doc (served by the shell's focus provider). Writing an
+  // `openThread` request on it asks the comments panel to reveal that thread
+  // — see `openComment`. Unresolved when no focus provider is around, in
+  // which case the write half is skipped.
+  const [, focusHandle] = subscribeDoc<{
+    openThread?: { url: AutomergeUrl; at: number };
+  }>(props.element, { type: "patchwork:focus" });
+
+  // Open a timeline comment in the comments panel: leave an `openThread`
+  // request on the focus doc for the panel to consume (pin + select the
+  // thread and scroll it into view), and ask the shell to switch the context
+  // sidebar to the comments tab via the bubbling `patchwork:open-context-tool`
+  // event. Both halves are late-bound and degrade to nothing when the
+  // comments tool (or a shell that handles the event) isn't installed.
+  const openComment = (comment: TimelineComment) => {
+    const threadUrl = comment.threadUrl;
+    if (threadUrl) {
+      focusHandle()?.change((d) => {
+        d.openThread = { url: threadUrl, at: Date.now() };
+      });
+    }
+    props.element.dispatchEvent(
+      new CustomEvent("patchwork:open-context-tool", {
+        detail: { toolId: "comments-view" },
+        bubbles: true,
+        composed: true,
+      })
+    );
+  };
 
   // Read the checkout doc coarsely from the live handle (handle.doc()) rather
   // than a fine-grained patch-replay projection: the projection can render a
@@ -627,6 +659,7 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
             checkpoint={() => (isMainSelected() ? (checkedOut()?.at ?? null) : null)}
             hasCheckpoint={isMainSelected() && isPinned()}
             onReturnToLatest={clearCheckpoint}
+            onOpenComment={openComment}
             eyeOpen={isMainSelected() && eyeOpen()}
             eyeDisabled={!isPinned()}
             onToggleEye={toggleEye}
@@ -667,6 +700,7 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
                 }
                 hasCheckpoint={selected() === summary.url && isPinned()}
                 onReturnToLatest={clearCheckpoint}
+                onOpenComment={openComment}
                 eyeOpen={selected() === summary.url && eyeOpen()}
                 eyeDisabled={false}
                 onToggleEye={toggleEye}
@@ -1133,6 +1167,7 @@ function MainCard(props: {
   checkpoint: Accessor<DraftCheckpoint | null>;
   hasCheckpoint: boolean;
   onReturnToLatest: () => void;
+  onOpenComment: (comment: TimelineComment) => void;
   eyeOpen: boolean;
   eyeDisabled: boolean;
   onToggleEye: () => void;
@@ -1211,6 +1246,7 @@ function MainCard(props: {
           eyeOpen={() => props.eyeOpen}
           checkpoint={props.checkpoint}
           onReturnToLatest={props.onReturnToLatest}
+          onOpenComment={props.onOpenComment}
         />
       </Show>
     </div>
@@ -1238,6 +1274,7 @@ function DraftCard(props: {
   checkpoint: Accessor<DraftCheckpoint | null>;
   hasCheckpoint: boolean;
   onReturnToLatest: () => void;
+  onOpenComment: (comment: TimelineComment) => void;
   eyeOpen: boolean;
   eyeDisabled: boolean;
   onToggleEye: () => void;
@@ -1326,6 +1363,7 @@ function DraftCard(props: {
           eyeOpen={() => props.eyeOpen}
           checkpoint={props.checkpoint}
           onReturnToLatest={props.onReturnToLatest}
+          onOpenComment={props.onOpenComment}
         />
       </Show>
     </div>
@@ -1774,6 +1812,40 @@ type ScanChange = {
 // list the scan and the attribution walk share.
 type MemberScanRow = Omit<ScanChange, "docUrl" | "doc">;
 
+// The `@comments` shape the timeline reads off the member docs — structurally
+// matches the comments tools' schema (see comments-view) without a build-time
+// dependency on them. A comment whose `@patchwork` marker is set carries a
+// document reference in `content` instead of text.
+type DocWithCommentThreads = {
+  "@comments"?: {
+    threads?: {
+      id?: string;
+      comments?: {
+        id?: string;
+        content?: string;
+        contactUrl?: AutomergeUrl;
+        timestamp?: number;
+        "@patchwork"?: { type?: string };
+      }[];
+    }[];
+  };
+};
+
+// One comment rendered as its own timeline entry, slotted between the change
+// groups at the moment it was made (the ChangeGrouper splits groups at
+// comment timestamps, so a comment never falls mid-group once grouping has
+// caught up). `timestamp` is wall-clock ms, unlike change times (seconds).
+// `threadUrl` addresses the comment's thread subdocument (null when the
+// thread has no id to build it from), used to reveal the thread in the
+// comments panel on click.
+type TimelineComment = {
+  key: string;
+  contactUrl: AutomergeUrl | null;
+  content: string;
+  timestamp: number;
+  threadUrl: AutomergeUrl | null;
+};
+
 // Renders a draft's (or main's) timeline straight from its ChangeGroupDoc.
 // The ChangeGrouper computes and persists activity groups (newest first, older
 // history backfilling), and this component is a pure reader: it paints before
@@ -1801,6 +1873,8 @@ function DraftChangesList(props: {
   // heads, read for the sticker's whole-range diff counts.
   checkpoint: Accessor<DraftCheckpoint | null>;
   onReturnToLatest: () => void;
+  // Reveal a comment in the comments panel (see `openComment` in the parent).
+  onOpenComment: (comment: TimelineComment) => void;
 }) {
   const repo = "repo" in window ? window.repo : undefined;
 
@@ -1836,7 +1910,15 @@ function DraftChangesList(props: {
 
   // Member doc handles (plus the creation-time cutoff), resolved once per
   // member set — only needed to *scrub*, never to render the rows.
-  type MemberSource = { member: DraftMemberDoc; handle: DocHandle<unknown> };
+  // `originalHandle` sits at the member's ORIGINAL url (same as `handle` on
+  // main, where the clone is an identity mapping): thread sub-urls are built
+  // on it so they match the comments panel's, which addresses threads by the
+  // presented url while the draft overlay re-points resolution to the clone.
+  type MemberSource = {
+    member: DraftMemberDoc;
+    handle: DocHandle<unknown>;
+    originalHandle: DocHandle<unknown>;
+  };
   const [sources, setSources] = createSignal<MemberSource[] | null>(null);
   const [createdAt, setCreatedAt] = createSignal<number | undefined>(
     undefined
@@ -1854,7 +1936,11 @@ function DraftChangesList(props: {
           const handle = await repo.find<unknown>(
             member.cloneUrl ?? member.url
           );
-          next.push({ member, handle });
+          const originalHandle =
+            member.cloneUrl && member.cloneUrl !== member.url
+              ? await repo.find<unknown>(member.url)
+              : handle;
+          next.push({ member, handle, originalHandle });
         } catch (err) {
           console.warn(
             "[drafts] failed to resolve member for scrubbing:",
@@ -1871,6 +1957,100 @@ function DraftChangesList(props: {
     onCleanup(() => {
       disposed = true;
     });
+  });
+
+  // Comments live in the same docs the changes come from (clones for drafts),
+  // read live off the member handles so new comments, replies, and edits show
+  // up as they sync; `commentsTick` invalidates the memo below on any member
+  // change.
+  const [commentsTick, setCommentsTick] = createSignal(0);
+  createEffect(() => {
+    const srcs = sources();
+    if (!srcs) return;
+    const bump = () => setCommentsTick((t) => t + 1);
+    for (const { handle } of srcs) handle.on("change", bump);
+    onCleanup(() => {
+      for (const { handle } of srcs) handle.off("change", bump);
+    });
+  });
+
+  // Every sent comment across the member docs, newest first. Draft-only
+  // comments (`draftContent`, not yet sent) are skipped; a document-reference
+  // comment (its `@patchwork` marker set) gets a generic label instead of the
+  // raw url.
+  const allComments = createMemo<TimelineComment[]>(() => {
+    commentsTick();
+    const srcs = sources();
+    if (!srcs) return [];
+    const out: TimelineComment[] = [];
+    for (const { member, handle, originalHandle } of srcs) {
+      const doc = handle.doc() as DocWithCommentThreads | undefined;
+      const threads = doc?.["@comments"]?.threads;
+      if (!threads) continue;
+      threads.forEach((thread, threadIndex) => {
+        const threadUrl = thread.id
+          ? originalHandle.sub("@comments", "threads", { id: thread.id }).url
+          : null;
+        thread.comments?.forEach((comment, commentIndex) => {
+          if (typeof comment.timestamp !== "number") return;
+          if (!comment.content) return;
+          out.push({
+            key: `${member.url}:${thread.id ?? threadIndex}:${comment.id ?? commentIndex}`,
+            contactUrl: comment.contactUrl ?? null,
+            content: comment["@patchwork"]
+              ? "Attached document"
+              : comment.content,
+            timestamp: comment.timestamp,
+            threadUrl,
+          });
+        });
+      });
+    }
+    return out.sort((a, b) => b.timestamp - a.timestamp);
+  });
+
+  // Only comments within the rendered timeline: a draft's clones carry the
+  // original's comments from before the fork, and main may carry comments
+  // predating the host doc's creation cutoff — both would pile up below the
+  // oldest group as noise. (A comment made in the gap between a draft's fork
+  // and its first change is dropped too; acceptable.)
+  const timelineComments = createMemo<TimelineComment[]>(() => {
+    const groups = timeGroups();
+    if (groups.length === 0) return [];
+    const oldestMs = groups[groups.length - 1].startTime * 1000;
+    const cutoff = createdAt();
+    return allComments().filter(
+      (c) =>
+        c.timestamp >= oldestMs &&
+        (cutoff === undefined || c.timestamp >= cutoff * 1000)
+    );
+  });
+
+  // Groups and comments merged newest-first for rendering. A comment sorts by
+  // its timestamp against each group's END time — groups split at comment
+  // times, so a comment lands between the group made after it and the group
+  // (holding its own write) made before it. On a timestamp tie the comment
+  // renders above the group (it was made at or after the group's last
+  // change). A comment inside a not-yet-split group's span renders just below
+  // that group and settles once the grouper catches up.
+  type TimelineEntry =
+    | { kind: "group"; group: ChangeGroup }
+    | { kind: "comment"; comment: TimelineComment };
+  const timelineEntries = createMemo<TimelineEntry[]>(() => {
+    const entries: TimelineEntry[] = [
+      ...timeGroups().map((group) => ({ kind: "group" as const, group })),
+      ...timelineComments().map((comment) => ({
+        kind: "comment" as const,
+        comment,
+      })),
+    ];
+    const timeOf = (e: TimelineEntry) =>
+      e.kind === "group" ? e.group.endTime * 1000 : e.comment.timestamp;
+    return entries.sort(
+      (a, b) =>
+        timeOf(b) - timeOf(a) ||
+        (a.kind === b.kind ? 0 : a.kind === "comment" ? -1 : 1)
+    );
   });
 
   // Grouping is caught up when every member's live heads match the group
@@ -2196,6 +2376,28 @@ function DraftChangesList(props: {
     scrubTo(group, 0);
   };
 
+  // Select a comment (click on its row): pin the view to the doc as of the
+  // moment the comment was made — the newest change at or before its
+  // timestamp. Groups split at comment times, so that is normally the top of
+  // the group right below the comment; a comment still inside a not-yet-split
+  // group resolves to the right change through the scan. No baseline seeding:
+  // a comment click means "show me what it looked like", unlike a group click
+  // which shows what the group changed.
+  const selectComment = (comment: TimelineComment) => {
+    const tsSeconds = comment.timestamp / 1000;
+    // Groups are newest-first: the first whose span starts at or before the
+    // comment is the newest group not entirely newer than it.
+    const group = timeGroups().find((g) => g.startTime <= tsSeconds);
+    if (!group) return;
+    if (group.endTime <= tsSeconds) {
+      scrubTo(group, 0);
+      return;
+    }
+    const rows = resolveGroupChanges(group);
+    const offset = rows?.findIndex((r) => r.time <= tsSeconds) ?? -1;
+    scrubTo(group, Math.max(0, offset));
+  };
+
   // Move the baseline to `offset` within `group`, clamped so it never crosses
   // above (newer than) the head — the diff always reads old -> new. When the
   // clamp bites, the baseline snaps to the head (an empty diff).
@@ -2250,10 +2452,11 @@ function DraftChangesList(props: {
     onCleanup(() => observer.disconnect());
   });
 
-  // Rows render after the groups memo recomputes, so measure again on the
-  // next frame once the DOM has settled.
+  // Rows render after the entries memo recomputes (groups AND interleaved
+  // comment rows shift the group rows' offsets), so measure again on the next
+  // frame once the DOM has settled.
   createEffect(() => {
-    timeGroups();
+    timelineEntries();
     requestAnimationFrame(() => setMeasureTick((t) => t + 1));
   });
 
@@ -2346,6 +2549,16 @@ function DraftChangesList(props: {
     };
   };
 
+  // Where the idle line ("you're looking at the live latest") sits: above the
+  // FIRST rendered row, whatever it is — comment rows can sit above the newest
+  // group when comments are newer than the last change, and the live latest
+  // includes them, so the line must not sink below them to the first group
+  // band. Reads the DOM like `bands` does; callers re-run via `bands()`.
+  const idleTop = (bs: Band[]): number => {
+    const first = rowsEl()?.firstElementChild as HTMLElement | null;
+    return first ? first.offsetTop : bs[0].top;
+  };
+
   // The indicator's pixel position: the head line's y in the track. The
   // zero-height box is fine — the dot and line overflow it and stay
   // grabbable. With nothing pinned it idles at the very top — you're looking
@@ -2354,10 +2567,10 @@ function DraftChangesList(props: {
     const bs = bands();
     if (bs.length === 0) return null;
     const s = props.scrubber();
-    if (!s) return { top: bs[0].top };
+    if (!s) return { top: idleTop(bs) };
     const group = groupForScrub(s);
     const band = group ? bs.find((b) => b.group.id === group.id) : undefined;
-    if (!band) return { top: bs[0].top };
+    if (!band) return { top: idleTop(bs) };
     return { top: yForPosition(band, s.offset) };
   });
 
@@ -2542,13 +2755,35 @@ function DraftChangesList(props: {
             onPointerDown={(ev) => beginDrag(ev, true)}
           />
           <div class="draft-changes-rows" ref={setRowsEl}>
-            <For each={timeGroups()}>
-              {(group) => (
-                <TimeGroupRow
-                  group={group}
-                  rowRef={(el) => rowEls.set(group.id, el)}
-                  onSelect={() => selectGroup(group)}
-                />
+            <For each={timelineEntries()}>
+              {(entry) => (
+                <Switch>
+                  <Match when={entry.kind === "group" ? entry.group : null}>
+                    {(group) => (
+                      <TimeGroupRow
+                        group={group()}
+                        rowRef={(el) => rowEls.set(group().id, el)}
+                        onSelect={() => selectGroup(group())}
+                      />
+                    )}
+                  </Match>
+                  <Match
+                    when={entry.kind === "comment" ? entry.comment : null}
+                  >
+                    {(comment) => (
+                      <CommentRow
+                        comment={comment()}
+                        onSelect={() => {
+                          // Pin first: the panel switch unmounts this list,
+                          // but the checkpoint write survives (async, guarded
+                          // by scrubSeq, persisted on the checked-out doc).
+                          selectComment(comment());
+                          props.onOpenComment(comment());
+                        }}
+                      />
+                    )}
+                  </Match>
+                </Switch>
               )}
             </For>
             {/* Rebuilds backfill oldest history last, so the gap sits below
@@ -2674,6 +2909,47 @@ function TimeGroupRow(props: {
         additions={props.group.additions}
         deletions={props.group.deletions}
       />
+    </button>
+  );
+}
+
+// One comment, slotted between the group rows at the moment it was made,
+// reading "<avatar> left a comment “…”" (the avatar plays the who — comments
+// carry a contact url directly, no actor attribution needed). Clicking pins
+// the view to the doc as of that moment and opens the comment in the
+// comments panel.
+function CommentRow(props: {
+  comment: TimelineComment;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      class="draft-comment-row"
+      title={`“${props.comment.content}” — click to open the comment and view the draft as of it`}
+      onClick={props.onSelect}
+    >
+      <div class="draft-avatars">
+        <div
+          class="draft-avatar"
+          style={{
+            background: props.comment.contactUrl ? undefined : "#9ca3af",
+          }}
+        >
+          <Show when={props.comment.contactUrl} fallback={"?"}>
+            <patchwork-view
+              doc-url={props.comment.contactUrl!}
+              tool-id="contact-inline"
+            />
+          </Show>
+        </div>
+      </div>
+      <span class="draft-comment-label">left a comment</span>
+      <span class="draft-comment-content">{`“${props.comment.content}”`}</span>
+      <span class="draft-group-spacer" />
+      <span class="draft-group-time">
+        {formatTime(props.comment.timestamp / 1000)}
+      </span>
     </button>
   );
 }
