@@ -40,7 +40,7 @@ import {isValidAutomergeUrl} from "@automerge/automerge-repo/slim"
 import type {Repo, DocHandle, AutomergeUrl} from "@automerge/automerge-repo/slim"
 import {ChatRoot} from "./components/ChatRoot"
 import {CHAT_VERSION} from "./version"
-import {selectedDocUrl, toolStorageUrl} from "./lib/selected-doc"
+import {selectedDocUrl, subscribe, toolStorageUrl} from "./lib/selected-doc"
 import {setRepo} from "./lib/repo"
 import {generateId} from "./lib/helpers"
 import {copyChatTranscript} from "./lib/transcript"
@@ -67,6 +67,13 @@ import {
 	type DraftDoc,
 } from "./lib/agent-drafts"
 import type {ChatDoc} from "./types"
+
+// The slice of the shared `patchwork:focus` doc this tool reads —
+// structurally matches the focus provider's schema without a build-time
+// dependency on it.
+type FocusDocShape = {
+	openAgentChat?: {url: AutomergeUrl; at: number}
+}
 
 /** patchwork:component render: `(element) => cleanup`. */
 export function AgentContextComponent(element: HTMLElement) {
@@ -133,6 +140,56 @@ function AgentHost(props: {element: HTMLElement; repo: Repo}) {
 	const chats = createMemo<AutomergeUrl[]>(() => {
 		const list = indexDoc()?.chats
 		return Array.isArray(list) ? [...list] : []
+	})
+
+	// Consume `openAgentChat` one-shots from the shared focus doc: another
+	// view (the drafts timeline's "via agent" badge) asks for a specific chat
+	// tab. Same convention as the comments panel's `openThread` — act, then
+	// delete the request. Waits for the chat index (a request racing the
+	// index resolve isn't dropped); a request for a chat not in this doc's
+	// list (stale or foreign) is cleared without selecting anything.
+	const focusDocUrl = subscribe<AutomergeUrl | undefined>(
+		props.element,
+		{type: "patchwork:focus"},
+		undefined
+	)
+	const [focusHandle, setFocusHandle] =
+		createSignal<DocHandle<FocusDocShape> | null>(null)
+	createEffect(() => {
+		const url = focusDocUrl()
+		if (!url) return
+		let stale = false
+		props.repo
+			.find(url)
+			.then((h) => {
+				if (!stale) setFocusHandle(h as DocHandle<FocusDocShape>)
+			})
+			.catch((e) => console.warn("[agent] focus doc:", e))
+		onCleanup(() => {
+			stale = true
+		})
+	})
+	const [focusDoc, setFocusDoc] = createSignal<FocusDocShape | undefined>(
+		undefined
+	)
+	createEffect(() => {
+		const h = focusHandle()
+		if (!h) return
+		const update = () => setFocusDoc(() => h.doc())
+		update()
+		h.on("change", update)
+		onCleanup(() => h.off("change", update))
+	})
+	createEffect(() => {
+		const request = focusDoc()?.openAgentChat
+		if (!request) return
+		if (!indexDoc()) return
+		const h = focusHandle()
+		if (!h) return
+		if (chats().includes(request.url)) setActiveUrl(request.url)
+		h.change((d) => {
+			delete d.openAgentChat
+		})
 	})
 
 	// Default plugin set for NEW chats — shared with the watercooler via the

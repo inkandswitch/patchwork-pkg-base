@@ -127,6 +127,7 @@ export const DraftStateProvider = (element: HTMLElement) => {
   // is open. Member-doc listeners drive updates between list recomputes.
   const changeGrouper = createChangeGrouper(repo, {
     onLocalChange: actorRecorder.recordLocalChange,
+    resolveContact: actorRecorder.contactFor,
   });
   // Main-case membership: docs mounted beneath this provider, ref-counted so a
   // doc shown in several views is only dropped on its last unmount. Populated

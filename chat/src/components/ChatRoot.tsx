@@ -3,6 +3,7 @@ import {cursor as automergeCursor} from "@automerge/automerge-repo/slim"
 import type {DocHandle, AutomergeUrl} from "@automerge/automerge-repo/slim"
 import {updateText, splice} from "@automerge/automerge/slim"
 import {applyAutomerge} from "../lib/automerge-ops"
+import {makeAgentTag, agentChange} from "../lib/agent-change"
 import type {ChatDoc} from "../types"
 import type {FeatureSelector} from "../features"
 import {featurePlugins} from "../features"
@@ -1357,9 +1358,20 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 		return notes.length ? "\n\n" + notes.join("\n\n") : ""
 	}
 
-	async function runToolByName(toolName: string, rawArgs: any): Promise<string> {
+	async function runToolByName(
+		toolName: string,
+		rawArgs: any,
+		toolCallId?: string
+	): Promise<string> {
 		const args = rawArgs || {}
 		const repo = (props.element as any).repo
+		// Stamped as the change message on every document edit this call makes,
+		// so consumers (the drafts timeline) can attribute it to this chat run.
+		// NOTE: only the built-in edit tools below write through agentChange;
+		// skill tools and define_tool customs edit through their own ctx and
+		// stay untagged — the "[agent-change] tagging" log shows which happened.
+		const agentTag = makeAgentTag(props.handle, toolCallId)
+		console.log("[agent] tool call:", toolName, "id:", toolCallId ?? "(none)")
 		// In context mode, doc-editing tools default to the focused document.
 		const focusedUrl = () => props.targetDocUrl?.()
 		try {
@@ -1480,11 +1492,12 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 				const value = hasValue ? parseValueMaybe(args.value) : undefined
 				const heads = parseMaybe(args.heads)
 				const mut = (d: any) => applyAutomerge(d, path, range, value)
-				if (Array.isArray(heads) && heads.length) {
-					h.changeAt(heads, mut)
-				} else {
-					h.change(mut)
-				}
+				agentChange(
+					h,
+					agentTag,
+					mut,
+					Array.isArray(heads) && heads.length ? heads : undefined
+				)
 				// Return the affected container so the model can verify.
 				const after = h.doc() as any
 				let container: any = after
@@ -1587,7 +1600,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 				} else {
 					chosen = matches[0]
 				}
-				h.change((d: any) =>
+				agentChange(h, agentTag, (d: any) =>
 					applyAutomerge(d, chosen.path, [chosen.start, chosen.end], replacement)
 				)
 				let after: any = h.doc()
@@ -1652,7 +1665,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 						val = args.value
 					}
 				}
-				h.change((d: any) => {
+				agentChange(h, agentTag, (d: any) => {
 					if (typeof val === "string" && typeof d[args.field] === "string") {
 						updateText(d, [args.field], val)
 					} else {
@@ -1671,7 +1684,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 				const index = parseInt(args.index, 10)
 				const deleteCount = parseInt(args.deleteCount || "0", 10)
 				const insert = args.insert || ""
-				h.change((d: any) => {
+				agentChange(h, agentTag, (d: any) => {
 					splice(d, [args.field], index, deleteCount, insert)
 				})
 				const after = h.doc() as any
@@ -3000,7 +3013,11 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 						// display-only — it's already been rendered above).
 						for (const c of calls) {
 							if (c.name === "ask_user") continue
-							noteToolRun(c.name, c.args, await runToolByName(c.name, c.args))
+							noteToolRun(
+								c.name,
+								c.args,
+								await runToolByName(c.name, c.args, c.id)
+							)
 						}
 						completedResponse = true
 						break
@@ -3009,7 +3026,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 					// Execute tool calls and store results
 					let toolResults = ""
 					for (const c of calls) {
-						const result = await runToolByName(c.name, c.args)
+						const result = await runToolByName(c.name, c.args, c.id)
 						noteToolRun(c.name, c.args, result)
 						resetInactivityTimer()
 						toolResults +=

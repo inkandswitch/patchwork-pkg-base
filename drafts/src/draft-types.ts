@@ -72,6 +72,17 @@ export type ActorAttributionDoc = {
   actors: Record<string, AutomergeUrl>;
 };
 
+// Provenance an agent edit carries in its Automerge change message (written
+// by the chat tool as a JSON envelope, parsed tolerantly by the grouper —
+// see parseAgentTag). Identifies the chat the edit came from, and optionally
+// the chat's heads at execution time so a timeline row can deep-link to the
+// conversation state that produced it.
+export type AgentTag = {
+  chatUrl: AutomergeUrl;
+  chatHeads?: string[];
+  toolCallId?: string;
+};
+
 // One persisted burst of activity in a draft's timeline: consecutive changes
 // (interleaved across the draft's member docs) separated by no more than the
 // inactivity gap, aggregated down to what a timeline row renders. Computed
@@ -87,6 +98,16 @@ export type ChangeGroup = {
   newestMemberUrl: AutomergeUrl;
   newestHash: string;
   actors: string[]; // deduped authors, newest contributor first
+  // Who this group belongs to — groups split when it changes, so every
+  // (non-merge) row is a single person's manual edits or a single chat's
+  // agent edits: `agent:${chatUrl}` / `${contactUrl}` / `actor:${actorId}`
+  // when the actor has no known contact yet. appendTail compares it to
+  // decide whether a tail may extend the stored group.
+  contributorKey: string;
+  // Present when the group's changes are agent edits: the newest row's tag
+  // (its chatHeads track the latest run). On a merged-draft group, set only
+  // when the whole contribution came from one chat.
+  agent?: AgentTag;
   additions: number; // summed across ALL member docs in the span
   deletions: number;
   changeCount: number; // for scrubber band geometry

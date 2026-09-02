@@ -17,10 +17,14 @@ const SELECTOR = "patchwork:focus";
 //     consumed — deleted — by the panel once acted on. `at` (wall-clock ms)
 //     lets the consumer drop a stale request whose thread never renders
 //     (e.g. a resolved thread, which the panel doesn't list).
+//   - `openAgentChat`: the same one-shot convention aimed at the agent
+//     context tool: select the chat tab with this url (written by e.g. the
+//     drafts timeline's "via agent" badge, consumed by the agent tool).
 export type FocusDoc = {
   selection: Record<AutomergeUrl, true>;
   highlight: Record<AutomergeUrl, true>;
   openThread?: { url: AutomergeUrl; at: number };
+  openAgentChat?: { url: AutomergeUrl; at: number };
 };
 
 export const FocusProvider = (element: PatchworkViewElement) => {
