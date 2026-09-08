@@ -378,6 +378,19 @@ button {
   flex-direction: column;
 }
 
+.document-list__error {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  color: var(--document-list-danger);
+}
+
+.document-list__error span {
+  color: var(--document-list-muted);
+  overflow-wrap: anywhere;
+}
+
 .document-list-item--loading {
   pointer-events: none;
   padding-left: calc(1.8rem * var(--depth) + var(--doclist-padding-x));

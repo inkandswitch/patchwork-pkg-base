@@ -5,8 +5,7 @@ import type { DocHandle, Repo } from "@automerge/automerge-repo/slim";
 import type { PatchworkViewElement } from "@inkandswitch/patchwork-elements";
 
 import type { PatchworkToolProps, SideboardAccountDoc } from "../types.ts";
-import { DocumentListPanel } from "./document-list-panel.tsx";
-import { LoadingRows } from "./document-list/loading-row.tsx";
+import { DocumentListError, DocumentListPanel } from "./document-list-panel.tsx";
 import { AccountBar } from "./account-bar.tsx";
 
 /**
@@ -23,7 +22,7 @@ export function Sideboard(props: PatchworkToolProps<SideboardAccountDoc>) {
         fallback={
           <aside class="document-list">
             <nav class="document-list__doclist document-list-widget">
-              <LoadingRows depth={0} />
+              <DocumentListError message="Account has no root folder." />
             </nav>
           </aside>
         }
