@@ -407,7 +407,7 @@ const commentUITheme = EditorView.baseTheme({
   // The draft textarea is width:100% with its own padding + border; without
   // border-box it spills out of the card's right edge (the card's own reset is
   // scoped to the sidebar panel, which the popover isn't inside).
-  ".cm-comment-popover .comment-draft-textarea": {
+  ".cm-comment-popover .comment-draft-editor": {
     boxSizing: "border-box",
     maxWidth: "100%",
   },
