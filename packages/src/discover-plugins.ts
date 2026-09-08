@@ -138,15 +138,11 @@ export async function discoverHttpPlugins(
   url: string,
   timeoutMs = 15000
 ): Promise<PluginDescriptor[]> {
-  // Reached via the host importmap at runtime; guard so an older filesystem
-  // bundle degrades to "couldn't preview" instead of a hard module-load error.
-  const importHttp = filesystem.importModuleFromHttpUrl;
-  if (typeof importHttp !== "function") {
-    throw new Error(
-      "This host build can't import http(s) packages — update @inkandswitch/patchwork-filesystem to 0.1.3+."
-    );
-  }
-  const mod = await withTimeout(importHttp(url), timeoutMs, "importing the package");
+  const mod = await withTimeout(
+    filesystem.importModuleFromHttpUrl(url),
+    timeoutMs,
+    "importing the package"
+  );
   const plugins: any[] = Array.isArray((mod as any)?.plugins)
     ? (mod as any).plugins
     : [];
