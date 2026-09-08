@@ -19,14 +19,21 @@ export const isVideoFile = (doc: {extension: string}) => {
 	return VIDEO_EXTENSIONS.includes(doc.extension?.toLowerCase())
 }
 
+// An object URL carries the blob's type as its Content-Type. Without one the
+// browser resolves the response as text/plain, which is fine for <img> (it
+// sniffs the bytes) but means an <iframe> renders a PDF as source instead of
+// handing it to the built-in viewer.
 export const createBinaryUrl = (
-	value: Uint8Array | undefined
+	value: Uint8Array | undefined,
+	mimeType?: string
 ): string | undefined => {
 	if (!(value instanceof Uint8Array)) {
 		return undefined
 	}
 
-	return URL.createObjectURL(new Blob([value as BlobPart]))
+	return URL.createObjectURL(
+		new Blob([value as BlobPart], mimeType ? {type: mimeType} : {})
+	)
 }
 
 /**

@@ -17,7 +17,9 @@ export const isPDFFile = (doc: FileDoc): doc is PDFFileDoc => {
 export function PDFFileViewer(props: {doc: FileDoc}) {
 	const pdfUrl = createMemo(() => {
 		if (isBinaryFileDoc(props.doc)) {
-			return createBinaryUrl(props.doc.content)
+			// Not props.doc.mimeType: isPDFFile also matches on the extension
+			// alone, so the stored mimeType may be missing or octet-stream.
+			return createBinaryUrl(props.doc.content, "application/pdf")
 		}
 		return undefined
 	})
