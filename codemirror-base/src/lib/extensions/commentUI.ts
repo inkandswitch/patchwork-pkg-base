@@ -410,6 +410,21 @@ const commentUITheme = EditorView.baseTheme({
   ".cm-comment-popover .comment-draft-editor": {
     boxSizing: "border-box",
     maxWidth: "100%",
+    minWidth: "0",
+    width: "100%",
+  },
+  ".cm-comment-popover .comment-draft-editor .cm-content": {
+    minHeight: "0",
+    minWidth: "0",
+    margin: "0",
+    padding: "8px",
+  },
+  ".cm-comment-popover .comment-draft-editor .cm-line": {
+    margin: "0",
+    padding: "0",
+  },
+  ".cm-comment-popover .comment-draft-editor .cm-scroller": {
+    minWidth: "0",
   },
 });
 
