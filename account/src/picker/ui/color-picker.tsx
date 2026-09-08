@@ -1,9 +1,11 @@
-import { createSignal, For, Show } from "solid-js";
+import { For, Show } from "solid-js";
 import { USER_COLOR_PALETTE, parseHslColor } from "../../user-colors";
 
-interface ColorPickerProps {
+interface ColorPopupProps {
   value?: string;
   onChange: (color: string) => void;
+  onClose: () => void;
+  ref?: (el: HTMLDivElement) => void;
 }
 
 function hslToHex(hsl: string): string {
@@ -42,11 +44,8 @@ function hslToHex(hsl: string): string {
   return `#${hex(r)}${hex(g)}${hex(b)}`;
 }
 
-export function ColorPicker(props: ColorPickerProps) {
-  const [open, setOpen] = createSignal(false);
-
-  const currentColor = () =>
-    props.value || USER_COLOR_PALETTE[0].value;
+export function ColorPopup(props: ColorPopupProps) {
+  const currentColor = () => props.value || USER_COLOR_PALETTE[0].value;
 
   const inputValue = () => {
     const v = currentColor();
@@ -54,57 +53,44 @@ export function ColorPicker(props: ColorPickerProps) {
   };
 
   return (
-    <>
-      <button
-        type="button"
-        class="color-trigger"
-        style={{ "background-color": currentColor() }}
-        onClick={(e) => {
-          e.stopPropagation();
-          setOpen(!open());
-        }}
-      />
-      <Show when={open()}>
-        <div class="color-popup">
-          <div class="color-grid">
-            <For each={[...USER_COLOR_PALETTE]}>
-              {(color) => (
-                <button
-                  type="button"
-                  class={`color-swatch${props.value === color.value ? " selected" : ""}`}
-                  style={{ "background-color": color.value }}
-                  onClick={() => {
-                    props.onChange(color.value);
-                    setOpen(false);
-                  }}
-                  title={color.name}
+    <div class="color-popup" ref={props.ref}>
+      <div class="color-grid">
+        <For each={[...USER_COLOR_PALETTE]}>
+          {(color) => (
+            <button
+              type="button"
+              class={`color-swatch${props.value === color.value ? " selected" : ""}`}
+              style={{ "background-color": color.value }}
+              onClick={() => {
+                props.onChange(color.value);
+                props.onClose();
+              }}
+              title={color.name}
+            >
+              <Show when={props.value === color.value}>
+                <svg
+                  class="icon-check"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="3"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
                 >
-                  <Show when={props.value === color.value}>
-                    <svg
-                      class="icon-check"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="3"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    >
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  </Show>
-                </button>
-              )}
-            </For>
-            <label class="color-swatch color-swatch-custom" title="Custom color">
-              <input
-                type="color"
-                value={inputValue()}
-                onInput={(e) => props.onChange(e.currentTarget.value)}
-              />
-            </label>
-          </div>
-        </div>
-      </Show>
-    </>
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </Show>
+            </button>
+          )}
+        </For>
+        <label class="color-swatch color-swatch-custom" title="Custom color">
+          <input
+            type="color"
+            value={inputValue()}
+            onInput={(e) => props.onChange(e.currentTarget.value)}
+          />
+        </label>
+      </div>
+    </div>
   );
 }

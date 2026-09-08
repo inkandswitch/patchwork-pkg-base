@@ -52,10 +52,7 @@ import {
   setNewDocToolContext,
 } from "./NewDocTool.tsx";
 import { isPatchworkDrag, parseDroppedDocs } from "./dnd.ts";
-import {
-  ContactCollaboratorCursor,
-  generateColorFromString,
-} from "./CollaboratorCursor.tsx";
+import { ContactCollaboratorCursor } from "./CollaboratorCursor.tsx";
 
 export { splitPresenceUserId } from "./CollaboratorCursor.tsx";
 
@@ -93,6 +90,7 @@ function extensionForMimeType(mimeType: string): string {
 interface ContactDoc {
   type: string;
   name?: string;
+  color?: string;
 }
 
 function useContactInfo() {
@@ -117,9 +115,9 @@ function useContactInfo() {
     // this prevents tldraw from hiding local cursors across multiple sessions under the same account.
     userId: contactUrl ? `${contactUrl}-${repo.peerId}` : repo.peerId,
     name: contactDoc?.name ?? "Anonymous",
-    // Derived from the contact url with the same rule the contact-cursor
-    // token uses, so the cursor arrow and the token always match.
-    color: contactUrl ? generateColorFromString(contactUrl) : undefined,
+    // The color chosen in the account picker; it rides along in our presence
+    // record, so the cursor arrow always matches the contact-cursor token.
+    color: contactDoc?.color,
   };
 }
 

@@ -29,13 +29,15 @@ import {
   Presence,
   type AutomergeUrl,
   type DocHandle,
+  type Repo,
 } from "@automerge/automerge-repo/slim";
 
 // The payload broadcast to peers: just the selection, as a pair of automerge
 // cursors rather than plain offsets, so every receiver resolves it against
 // its *own* view of the document and it stays glued to the text through
 // concurrent edits. Identity rides on Presence's own `userId` field (the
-// sender's contact url); colors are derived from it receiver-side.
+// sender's contact url); receivers use it to look up the peer's contact doc
+// and read the color chosen there.
 type PresenceSelection = {
   start: A.Cursor;
   end: A.Cursor;
@@ -65,23 +67,27 @@ type RemoteSelection = {
  * Compartment (same shape as the sync/diff/readOnly extensions).
  *
  * `contactUrl` is our identity: it travels as the Presence userId, and peers
- * use it to mount our "contact-cursor" token and derive our color. It
+ * use it to mount our "contact-cursor" token and read our chosen color. It
  * returning `null` renders no presence -- that's the state before the
  * identity has loaded, and permanently so for read-only views. When the
  * accessor changes, the compartment swaps the plugin wholesale: the outgoing
  * instance stops `Presence` (sending a goodbye to peers) and the new one
  * starts fresh with the new identity.
+ *
+ * `repo` is used to load each peer's contact doc, where their chosen
+ * presence color lives.
  */
 export function createPresenceExtension(
   handle: () => DocHandle<unknown>,
   path: () => AutomergeProp[],
-  contactUrl: () => AutomergeUrl | null
+  contactUrl: () => AutomergeUrl | null,
+  repo: Repo
 ) {
   const compartment = new Compartment();
 
   const extension = () => {
     const url = contactUrl();
-    return url ? presence(handle(), path(), url) : [];
+    return url ? presence(handle(), path(), url, repo) : [];
   };
 
   const createReconfigureEffect = (view: EditorView) =>
@@ -101,7 +107,8 @@ export function createPresenceExtension(
 function presence(
   handle: DocHandle<unknown>,
   path: AutomergeProp[],
-  contactUrl: AutomergeUrl
+  contactUrl: AutomergeUrl,
+  repo: Repo
 ): Extension {
   const setRemoteSelections = StateEffect.define<RemoteSelection[]>();
 
@@ -169,6 +176,11 @@ function presence(
       private presence: Presence<PresenceChannels>;
       private destroyed = false;
       private broadcastQueued = false;
+      // Peers' contact docs, followed live so a color picked in the account
+      // picker recolors that peer's caret and tint immediately. Keyed by
+      // contact url; the stored function stops the subscription.
+      private contactWatchers = new Map<AutomergeUrl, () => void>();
+      private contactColors = new Map<AutomergeUrl, string>();
 
       constructor(view: EditorView) {
         this.view = view;
@@ -219,6 +231,36 @@ function presence(
         this.destroyed = true;
         this.stopPresence();
         window.removeEventListener("pagehide", this.stopPresence);
+        for (const stop of this.contactWatchers.values()) stop();
+        this.contactWatchers.clear();
+      }
+
+      // A peer's color is whatever their account says (contact doc `color`),
+      // never derived locally. The doc is fetched once and followed; until it
+      // loads (or if the contact never picked a color) the caret stays on the
+      // neutral fallback.
+      private trackContactColor(url: AutomergeUrl) {
+        if (this.contactWatchers.has(url)) return;
+        this.contactWatchers.set(url, () => {});
+        repo
+          .find<ContactDoc>(url)
+          .then((contactHandle) => {
+            if (this.destroyed) return;
+            const read = () => {
+              const color = contactHandle.doc()?.color;
+              if (!color || this.contactColors.get(url) === color) return;
+              this.contactColors.set(url, color);
+              this.refresh();
+            };
+            contactHandle.on("change", read);
+            this.contactWatchers.set(url, () =>
+              contactHandle.off("change", read)
+            );
+            read();
+          })
+          .catch(() => {
+            // Contact doc unavailable: the peer stays on the fallback color.
+          });
       }
 
       private stopPresence = () => {
@@ -262,12 +304,16 @@ function presence(
             const to = A.getCursorPosition(doc, path, selection.end);
             const peerContactUrl =
               (peer.userId as AutomergeUrl | undefined) ?? null;
+            if (peerContactUrl) this.trackContactColor(peerContactUrl);
             resolved.push({
               peerId,
               contactUrl: peerContactUrl,
-              // Same rule as the contact-cursor token (palette hash of the
-              // contact url), so the tint and the token can't drift apart.
-              color: generateColorFromString(peerContactUrl ?? peerId),
+              // The color the peer chose in their account -- the same contact
+              // doc the contact-cursor token renders from, so the tint and
+              // the token can't drift apart.
+              color:
+                (peerContactUrl && this.contactColors.get(peerContactUrl)) ||
+                FALLBACK_PRESENCE_COLOR,
               from,
               to,
               head: selection.headAtStart ? from : to,
@@ -422,27 +468,10 @@ const presenceTheme = EditorView.baseTheme({
   },
 });
 
-// Deterministic presence color, hashed from the contact url. Duplicated on
-// purpose from contact/src/ui.ts (same palette, same hash) so the selection
-// tint matches the contact-cursor token -- a shared package is a later step.
-const USER_COLOR_PALETTE = [
-  "hsl(200, 70%, 50%)",
-  "hsl(10, 75%, 58%)",
-  "hsl(145, 70%, 45%)",
-  "hsl(270, 70%, 55%)",
-  "hsl(38, 85%, 50%)",
-  "hsl(350, 70%, 55%)",
-  "hsl(178, 70%, 45%)",
-  "hsl(235, 70%, 58%)",
-  "hsl(85, 70%, 45%)",
-  "hsl(310, 70%, 55%)",
-  "hsl(25, 80%, 52%)",
-  "hsl(188, 75%, 48%)",
-];
+// Shown until a peer's contact doc has loaded, and for contacts that never
+// picked a color. Matches the contact-cursor token's CSS fallback
+// (`var(--contact-cursor-color, #888)` in the account package).
+const FALLBACK_PRESENCE_COLOR = "#888";
 
-function generateColorFromString(str: string): string {
-  const hash = Math.abs(
-    str.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)
-  );
-  return USER_COLOR_PALETTE[hash % USER_COLOR_PALETTE.length];
-}
+// The subset of the account package's ContactDoc this extension reads.
+type ContactDoc = { color?: string };
