@@ -23,6 +23,24 @@ import { executeDrop } from "./dnd/operations.ts";
 import { getDndPayload, hasDocumentDrag } from "./dnd/payload.ts";
 import { createMarquee } from "./document-list/marquee.ts";
 
+export function isFolderDoc(doc: FolderDoc | undefined): doc is FolderDoc {
+  return !!doc && Array.isArray(doc.docs);
+}
+
+export function DocumentListError(props: {
+  message: string;
+  detail?: string;
+}) {
+  return (
+    <div class="document-list__error" role="alert">
+      <strong>{props.message}</strong>
+      <Show when={props.detail}>
+        <span>{props.detail}</span>
+      </Show>
+    </div>
+  );
+}
+
 /**
  * The document-list panel: a sticky toolbar (new-doc button + filter) over a
  * scrolling, recursive list of the folder's documents and subfolders. Renders a
@@ -46,6 +64,26 @@ export function DocumentListPanel(props: {
   // handle happens to resolve synchronously.
   const folderReady = () =>
     folderHandle.state === "ready" || folderHandle.state === "refreshing";
+  const folderLoadError = () => {
+    if (folderHandle.state === "errored") {
+      const error = folderHandle.error;
+      return {
+        message: "Could not load root folder.",
+        detail:
+          error instanceof Error
+            ? error.message
+            : error
+              ? String(error)
+              : props.folderUrl,
+      };
+    }
+    if (folderReady() && !isFolderDoc(folder())) {
+      return {
+        message: "Root folder is not a folder.",
+        detail: props.folderUrl,
+      };
+    }
+  };
 
   const selectedDocUrls = subscribe<AutomergeUrl[]>(
     props.element,
@@ -189,43 +227,57 @@ export function DocumentListPanel(props: {
           );
         }}
       >
-        <div class="document-list__toolbar">
-          <CreateNew
-            square
-            draggable
-            clearFilter={() => setFilter("")}
-            changeFolder={(fn) => folderHandle()?.change(fn)}
-            repo={props.repo}
-            hive={props.element.hive}
-            open={open}
-          />
-          <div class="document-list__filter-container">
-            <SearchIcon />
-            <input
-              name="filter"
-              class="document-list__filter"
-              placeholder="Filter by title"
-              value={filter()}
-              onInput={(event) => setFilter(event.target.value.toLowerCase())}
-            />
-          </div>
-        </div>
-        <Show when={folderReady()} fallback={<LoadingRows depth={0} />}>
-          <Suspense fallback={<LoadingRows depth={0} />}>
-            <DocumentList
-              depth={0}
-              repo={props.repo}
-              docs={folder()?.docs}
-              handle={folderHandle.latest!}
-              open={open}
-              hive={props.element.hive}
-              selectedDocUrls={selectedDocUrls()}
-              element={props.element}
-              rootFolderHandle={folderHandle.latest!}
-              filter={filter()}
-              clearFilter={() => setFilter("")}
-            />
-          </Suspense>
+        <Show
+          when={folderLoadError()}
+          keyed
+          fallback={
+            <>
+              <div class="document-list__toolbar">
+                <CreateNew
+                  square
+                  draggable
+                  clearFilter={() => setFilter("")}
+                  changeFolder={(fn) => folderHandle()?.change(fn)}
+                  repo={props.repo}
+                  hive={props.element.hive}
+                  open={open}
+                />
+                <div class="document-list__filter-container">
+                  <SearchIcon />
+                  <input
+                    name="filter"
+                    class="document-list__filter"
+                    placeholder="Filter by title"
+                    value={filter()}
+                    onInput={(event) =>
+                      setFilter(event.target.value.toLowerCase())
+                    }
+                  />
+                </div>
+              </div>
+              <Show when={folderReady()} fallback={<LoadingRows depth={0} />}>
+                <Suspense fallback={<LoadingRows depth={0} />}>
+                  <DocumentList
+                    depth={0}
+                    repo={props.repo}
+                    docs={folder()?.docs}
+                    handle={folderHandle.latest!}
+                    open={open}
+                    hive={props.element.hive}
+                    selectedDocUrls={selectedDocUrls()}
+                    element={props.element}
+                    rootFolderHandle={folderHandle.latest!}
+                    filter={filter()}
+                    clearFilter={() => setFilter("")}
+                  />
+                </Suspense>
+              </Show>
+            </>
+          }
+        >
+          {(error) => (
+            <DocumentListError message={error.message} detail={error.detail} />
+          )}
         </Show>
       </nav>
     </aside>
