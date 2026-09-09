@@ -19,7 +19,7 @@
   "keywords": [],
   "author": "Ink & Switch",
   "dependencies": {
-    "@inkandswitch/patchwork-filesystem": "^0.1.3",
+    "@inkandswitch/patchwork-filesystem": "^0.2.7",
     "@inkandswitch/patchwork-plugins": "^0.0.5",
     "solid-js": "^1.9.3"
   },
