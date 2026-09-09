@@ -6,7 +6,6 @@
 // manager's client — we don't rebuild each descriptor's load(); there are no
 // external deps here.
 
-import * as filesystem from "@inkandswitch/patchwork-filesystem";
 import { isAutomergeUrl } from "./origin.ts";
 
 export interface PluginDescriptor {
@@ -127,7 +126,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
  * Discover the plugins an http(s) package exports by importing its entry module
  * and reading its `plugins` export — the http counterpart to the worker-based
  * automerge discovery, and the same thing the host does for suggested/http
- * modules (`importModuleFromHttpUrl` → `mod.plugins`).
+ * modules.
  *
  * It runs on the MAIN thread deliberately: there is no host worker that imports
  * http URLs, and a plain Worker has no importmap to resolve the module's bare
@@ -139,7 +138,7 @@ export async function discoverHttpPlugins(
   timeoutMs = 15000
 ): Promise<PluginDescriptor[]> {
   const mod = await withTimeout(
-    filesystem.importModuleFromHttpUrl(url),
+    import(/* @vite-ignore */ url),
     timeoutMs,
     "importing the package"
   );
