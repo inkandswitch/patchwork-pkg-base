@@ -147,19 +147,31 @@ export function DraftReviewBar(props: {
   return (
     <Show when={draft()}>
       {(target) => (
-        <div class="comments-review">
-          <div class="comments-review-label">
-            Reviewing “{target().name ?? "Draft"}”
+        <div class="comments-review" data-verdict={mine() ?? undefined}>
+          <div class="comments-review-head">
+            <div class="comments-review-title">
+              <span class="comments-review-eyebrow">Reviewing</span>
+              <span class="comments-review-name">
+                {target().name ?? "Draft"}
+              </span>
+            </div>
+            <Show when={reviews().length > 0}>
+              <div class="comments-review-chips">
+                <For each={reviews()}>
+                  {(entry) => <ReviewChip entry={entry} />}
+                </For>
+              </div>
+            </Show>
           </div>
-          <div class="comments-review-row">
-            <Show
-              when={props.contactUrl()}
-              fallback={
-                <span class="comments-review-note">
-                  No contact — nobody to attribute a review to
-                </span>
-              }
-            >
+          <Show
+            when={props.contactUrl()}
+            fallback={
+              <div class="comments-review-note">
+                No contact — nobody to attribute a review to
+              </div>
+            }
+          >
+            <div class="comments-review-actions">
               <button
                 type="button"
                 class="comments-review-action"
@@ -172,7 +184,8 @@ export function DraftReviewBar(props: {
                 }
                 onClick={() => void review("approved")}
               >
-                Approve
+                <TickIcon />
+                {mine() === "approved" ? "Approved" : "Approve"}
               </button>
               <button
                 type="button"
@@ -186,21 +199,21 @@ export function DraftReviewBar(props: {
                 }
                 onClick={() => void review("rejected")}
               >
-                Reject
+                <CrossIcon />
+                {mine() === "rejected" ? "Rejected" : "Reject"}
               </button>
-            </Show>
-            <span class="comments-review-spacer" />
-            <For each={reviews()}>
-              {(entry) => <ReviewChip entry={entry} />}
-            </For>
-          </div>
+            </div>
+          </Show>
         </div>
       )}
     </Show>
   );
 }
 
-/** One person's verdict. A stale one is dimmed: they looked, but not at this. */
+/**
+ * One person's verdict: their avatar, with the verdict as a badge on its
+ * corner. A stale one is dimmed — they looked, but not at this version.
+ */
 function ReviewChip(props: { entry: ReviewEntry }) {
   const approved = () => props.entry.review.state === "approved";
   return (
@@ -215,12 +228,52 @@ function ReviewChip(props: { entry: ReviewEntry }) {
           : "")
       }
     >
-      <patchwork-view
-        doc-url={props.entry.contactUrl}
-        tool-id="contact-inline"
-      />
-      <span class="comments-review-chip-mark">{approved() ? "✓" : "✕"}</span>
+      <span class="comments-review-avatar">
+        <patchwork-view
+          doc-url={props.entry.contactUrl}
+          tool-id="contact-inline"
+        />
+      </span>
+      <span class="comments-review-chip-mark">
+        {approved() ? <TickIcon /> : <CrossIcon />}
+      </span>
     </span>
+  );
+}
+
+function TickIcon() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="3"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden
+    >
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
+
+function CrossIcon() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="3"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden
+    >
+      <path d="M18 6 6 18M6 6l12 12" />
+    </svg>
   );
 }
 

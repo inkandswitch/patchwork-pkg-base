@@ -254,15 +254,6 @@ export function CommentsView(props: { element: HTMLElement }) {
     <div class="comments-panel">
       <div class="comments-panel-header">
         <span class="comments-panel-header-title">Comments</span>
-        <Show when={canAddComment()}>
-          <button
-            class="comment-btn"
-            onClick={onAddComment}
-            title="Comment on this document"
-          >
-            Add comment
-          </button>
-        </Show>
       </div>
       {/* Only renders while a draft is checked out and a drafts tool is
           answering; on main it is absent entirely. */}
@@ -271,6 +262,20 @@ export function CommentsView(props: { element: HTMLElement }) {
         repo={repo}
         contactUrl={currentContactUrl}
       />
+      {/* Below the verdict rather than beside the title: a comment is the
+          finer-grained thing, said about part of what the verdict is about. */}
+      <Show when={canAddComment()}>
+        <button
+          class="comments-add"
+          onClick={onAddComment}
+          title="Comment on this document"
+        >
+          <span class="comments-add-plus" aria-hidden>
+            +
+          </span>
+          Add comment
+        </button>
+      </Show>
       <Show
         when={displayedThreadUrls().length > 0}
         fallback={<div class="comments-empty">No comments yet</div>}
