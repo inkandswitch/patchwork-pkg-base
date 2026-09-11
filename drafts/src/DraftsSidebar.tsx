@@ -71,7 +71,7 @@ const EMPTY_DRAFT_LIST: DraftList = {
 
 // Shown in the panel footer, logged on load, and stamped into fork
 // diagnostics; bump on deploy to tell builds apart.
-const DRAFTS_VERSION = "0.0.60";
+const DRAFTS_VERSION = "0.0.61";
 
 // Logged at module load so the console shows which build is running even
 // before the panel renders.
@@ -712,15 +712,31 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     if (!draftUrl) return;
     const approvedBy = approvers();
     const parentUrl = mergeParentUrl();
-    if (!window.confirm(`Merge this draft into "${mergeTargetName()}"?`))
+    if (!window.confirm(`Merge this draft into "${mergeTargetName()}"?`)) {
+      console.info("[drafts] merge cancelled at the confirm dialog");
       return;
+    }
     const repo = getRepo();
     if (!repo) {
       console.warn("[drafts] window.repo is not set");
       return;
     }
-    const draftHandle = await repo.find<DraftDoc>(draftUrl);
-    await mergeDraft(repo, draftHandle, approvedBy);
+    // A merge that fails halfway must not look like nothing happened: the
+    // draft stays listed and the view stays put, which reads as a dead
+    // button. Say what went wrong instead.
+    try {
+      console.info("[drafts] merging", draftUrl, "into", mergeTargetName());
+      const draftHandle = await repo.find<DraftDoc>(draftUrl);
+      await mergeDraft(repo, draftHandle, approvedBy);
+    } catch (err) {
+      console.error("[drafts] merge failed:", err);
+      window.alert(
+        `Merging into "${mergeTargetName()}" failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+      return;
+    }
     selectDraft(parentUrl && parentUrl !== list().main.url ? parentUrl : null);
   };
 
@@ -922,6 +938,7 @@ async function mergeDraft(
     // creator winning its guard) may have just changed the mapping.
     const parentClones = parentHandle?.doc()?.clones ?? {};
     const targetUrl = parentClones[originalUrl]?.cloneUrl ?? originalUrl;
+    console.info("[drafts] merging member", entry.cloneUrl, "->", targetUrl);
     const clone = await repo.find<unknown>(entry.cloneUrl);
     const mergedFrom = clone.heads();
     if (entry.cloneUrl === targetUrl) {
