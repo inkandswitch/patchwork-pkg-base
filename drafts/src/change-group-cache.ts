@@ -1096,6 +1096,9 @@ export function createChangeGrouper(
           draftUrl: draft.url,
           name: draft.name,
           members: draft.members,
+          ...(draft.approvals && draft.approvals.length > 0
+            ? { approvals: [...draft.approvals] }
+            : {}),
         },
       });
     }

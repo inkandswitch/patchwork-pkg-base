@@ -38,6 +38,25 @@ export type CloneEntry = {
 // `name` is the user-given display name; absent means the default label
 // ("Draft", or "Main" for the main draft). Renaming main is what creates the
 // main draft doc if it doesn't exist yet.
+// One person's verdict on a draft, keyed on `DraftDoc.reviews` by the
+// reviewer's contact url — so everyone has at most one, and reviewing again
+// replaces it rather than piling up.
+//
+// `reviewedAt` pins what was actually reviewed: each member doc's clone heads
+// at the moment of the verdict. Changes landing afterwards make the review
+// STALE, because nobody can have approved what they had not seen. A stale
+// approval no longer lets the draft merge, but it stays listed: it is a true
+// record of what someone signed off on, and hiding it would make the history
+// read as though they had never looked.
+//
+// A rejection is advisory. It is shown, and it is a strong thing to say, but
+// it does not veto — one current approval is enough to merge.
+export type DraftReview = {
+  state: "approved" | "rejected";
+  at: number;
+  reviewedAt: Record<AutomergeUrl, UrlHeads>;
+};
+
 export type DraftDoc = {
   "@patchwork": { type: "draft" };
   isMain?: boolean;
@@ -47,6 +66,13 @@ export type DraftDoc = {
   clones: Record<AutomergeUrl, CloneEntry>;
   mergedAt?: number;
   mergedInto?: AutomergeUrl;
+  // Reviews of this draft, by reviewer contact url. See `DraftReview`.
+  reviews?: Record<AutomergeUrl, DraftReview>;
+  // Frozen at merge time: whose current approvals authorised it. Recorded
+  // rather than recomputed from `reviews`, because staleness is relative to
+  // the draft's heads and every later read would be judging the approval
+  // against changes that merging itself made moot.
+  approvedBy?: AutomergeUrl[];
   // Points at this draft's ChangeGroupDoc, holding the precomputed activity
   // groups for its timeline. Stamped lazily by the ChangeGrouper the first
   // time it touches the timeline (see change-group-cache.ts).
@@ -121,6 +147,12 @@ export type ChangeGroup = {
     draftUrl: AutomergeUrl;
     name: string | null;
     members: Record<AutomergeUrl, { baseHeads: UrlHeads; mergeHeads: UrlHeads }>;
+    // Contact urls of whoever's approval let this merge happen, copied from
+    // the merged draft (`DraftDoc.approvedBy`) so the row can name them
+    // without loading it. Absent on merges made before approvals existed —
+    // which is not the same as "nobody approved", so the row says nothing
+    // rather than claiming it was unreviewed.
+    approvals?: AutomergeUrl[];
   };
 };
 
@@ -229,6 +261,12 @@ export type DraftSummary = {
   // until the ChangeGrouper stamps it. Cards read their timeline's groups
   // straight from this doc.
   changeGroupDocUrl: AutomergeUrl | null;
+  // This draft's reviews (`DraftDoc.reviews`), so a card can show who has
+  // signed off without loading the `DraftDoc`. `null` (not optional, to stay
+  // structured-cloneable) when nobody has reviewed. Whether a review is still
+  // current is not decided here — that depends on the clones' live heads, so
+  // the sidebar works it out against the docs themselves.
+  reviews: Record<AutomergeUrl, DraftReview> | null;
 };
 
 // Response shape for `draft:list`: the host doc's `main` entry plus the flat,

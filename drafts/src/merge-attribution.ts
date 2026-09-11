@@ -23,6 +23,9 @@ export type MergedDraftSpec = {
   url: AutomergeUrl;
   name: string | null;
   members: Record<AutomergeUrl, { baseHeads: UrlHeads; mergeHeads: UrlHeads }>;
+  // Contact urls whose approval authorised the merge (`DraftDoc.approvedBy`),
+  // carried through to the group so the timeline row can name them.
+  approvals?: AutomergeUrl[];
 };
 
 // The subset of a change's metadata the walk needs; satisfied by both the

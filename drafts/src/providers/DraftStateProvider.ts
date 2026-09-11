@@ -19,6 +19,7 @@ import type {
   DraftDoc,
   DraftList,
   DraftMemberDoc,
+  DraftReview,
   DraftSummary,
   HasDrafts,
 } from "../draft-types.js";
@@ -116,6 +117,7 @@ export const DraftStateProvider = (element: HTMLElement) => {
       childCount: 0,
       name: null,
       changeGroupDocUrl: null,
+      reviews: null,
     },
     drafts: [],
     actorAttributionUrl: null,
@@ -431,7 +433,9 @@ export const DraftStateProvider = (element: HTMLElement) => {
         };
       }
       if (Object.keys(members).length === 0) continue;
-      result.push({ url, name: doc.name ?? null, members });
+      // Copied for the same reason the heads are: it goes into another doc.
+      const approvals = [...(doc.approvedBy ?? [])];
+      result.push({ url, name: doc.name ?? null, members, approvals });
     }
     return result;
   }
@@ -450,6 +454,7 @@ export const DraftStateProvider = (element: HTMLElement) => {
         childCount: doc.drafts.length,
         name: doc.name ?? null,
         changeGroupDocUrl: doc.changeGroupDocUrl ?? null,
+        reviews: copyReviews(doc.reviews),
       });
     }
     return {
@@ -499,6 +504,8 @@ export const DraftStateProvider = (element: HTMLElement) => {
         childCount,
         name,
         changeGroupDocUrl,
+        // Main is never reviewed: it is what drafts are reviewed against.
+        reviews: null,
       };
     }
 
@@ -506,7 +513,15 @@ export const DraftStateProvider = (element: HTMLElement) => {
       .filter((u) => skipVerdicts.get(u) !== true)
       .map((u) => ({ url: u, cloneUrl: null, clonedAt: null }))
       .sort(byMemberUrl);
-    return { url, parent: null, members, childCount, name, changeGroupDocUrl };
+    return {
+      url,
+      parent: null,
+      members,
+      childCount,
+      name,
+      changeGroupDocUrl,
+      reviews: null,
+    };
   }
 
   // The diff baseline for `target`: the checkpoint's per-doc `from`, written
@@ -650,8 +665,49 @@ function summariesEqual(a: DraftSummary, b: DraftSummary): boolean {
     a.childCount === b.childCount &&
     a.name === b.name &&
     a.changeGroupDocUrl === b.changeGroupDocUrl &&
+    reviewsEqual(a.reviews, b.reviews) &&
     memberListsEqual(a.members, b.members)
   );
+}
+
+// Reviews compare by reviewer, verdict and timestamp — enough to notice
+// every write, since reviewing again always restamps `at`.
+function reviewsEqual(
+  a: Record<AutomergeUrl, DraftReview> | null,
+  b: Record<AutomergeUrl, DraftReview> | null
+): boolean {
+  if (a === b) return true;
+  const aKeys = Object.keys(a ?? {});
+  const bKeys = Object.keys(b ?? {});
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every((key) => {
+    const x = a?.[key as AutomergeUrl];
+    const y = b?.[key as AutomergeUrl];
+    return x !== undefined && y !== undefined && x.state === y.state && x.at === y.at;
+  });
+}
+
+// Deep-copy the reviews out of the Automerge doc: they are pushed across the
+// provider channel, which only carries plain structured-cloneable values.
+function copyReviews(
+  reviews: Record<AutomergeUrl, DraftReview> | undefined
+): Record<AutomergeUrl, DraftReview> | null {
+  if (!reviews) return null;
+  const entries = Object.entries(reviews);
+  if (entries.length === 0) return null;
+  const out: Record<AutomergeUrl, DraftReview> = {};
+  for (const [contactUrl, review] of entries) {
+    const reviewedAt: Record<AutomergeUrl, UrlHeads> = {};
+    for (const [memberUrl, heads] of Object.entries(review.reviewedAt ?? {})) {
+      reviewedAt[memberUrl as AutomergeUrl] = [...heads] as UrlHeads;
+    }
+    out[contactUrl as AutomergeUrl] = {
+      state: review.state,
+      at: review.at,
+      reviewedAt,
+    };
+  }
+  return out;
 }
 
 function byMemberUrl(a: DraftMemberDoc, b: DraftMemberDoc): number {

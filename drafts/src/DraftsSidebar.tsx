@@ -38,6 +38,7 @@ import type {
   DraftDoc,
   DraftList,
   DraftMemberDoc,
+  DraftReview,
   DraftSummary,
   HasDrafts,
 } from "./draft-types";
@@ -62,6 +63,7 @@ const EMPTY_DRAFT_LIST: DraftList = {
     childCount: 0,
     name: null,
     changeGroupDocUrl: null,
+    reviews: null,
   },
   drafts: [],
   actorAttributionUrl: null,
@@ -69,7 +71,7 @@ const EMPTY_DRAFT_LIST: DraftList = {
 
 // Shown in the panel footer, logged on load, and stamped into fork
 // diagnostics; bump on deploy to tell builds apart.
-const DRAFTS_VERSION = "0.0.55";
+const DRAFTS_VERSION = "0.0.56";
 
 // Logged at module load so the console shows which build is running even
 // before the panel renders.
@@ -574,6 +576,126 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     return list().drafts.find((s) => s.url === parentUrl)?.name ?? "Draft";
   });
 
+  // Who the reviewer is. Without it there is nobody to attribute a verdict
+  // to, so the review controls stay out of the way entirely.
+  const myContactUrl = subscribe<AutomergeUrl | null>(
+    props.element,
+    { type: "patchwork:contact" },
+    null
+  );
+
+  // The live heads of the selected draft's member docs — what a review is
+  // measured against. A review pins the heads it was shown; anything landing
+  // afterwards moves these and the review goes stale.
+  //
+  // Watched here rather than published with the rest of the draft list: the
+  // provider tracks DraftDocs, and these are the member docs themselves.
+  const [cloneHeads, setCloneHeads] = createSignal<
+    Record<AutomergeUrl, UrlHeads>
+  >({});
+  // The members to watch, held stable across list pushes that don't change
+  // them: the list object is rebuilt on every push, and re-resolving the
+  // handles each time would blank the heads — briefly making every review
+  // look unmeasured — for no reason.
+  const reviewMembers = createMemo(() => selectedSummary()?.members ?? [], [], {
+    equals: (a, b) =>
+      a.length === b.length &&
+      a.every((m, i) => m.url === b[i].url && m.cloneUrl === b[i].cloneUrl),
+  });
+  createEffect(() => {
+    const members = reviewMembers();
+    const repo = getRepo();
+    setCloneHeads({});
+    if (!repo || members.length === 0) return;
+    let cancelled = false;
+    const stopWatching: (() => void)[] = [];
+    onCleanup(() => {
+      cancelled = true;
+      for (const stop of stopWatching) stop();
+    });
+    void (async () => {
+      for (const member of members) {
+        let handle: DocHandle<unknown>;
+        try {
+          handle = await repo.find<unknown>(member.cloneUrl ?? member.url);
+        } catch {
+          continue; // An unresolvable member can't retract anyone's approval.
+        }
+        if (cancelled) return;
+        const read = () =>
+          setCloneHeads((prev) => ({ ...prev, [member.url]: handle.heads() }));
+        read();
+        handle.on("change", read);
+        stopWatching.push(() => handle.off("change", read));
+      }
+    })();
+  });
+
+  // The selected draft's reviews, newest verdict first, each marked with
+  // whether it still covers what is in the draft now.
+  const reviews = createMemo<ReviewEntry[]>(() => {
+    const stored = selectedSummary()?.reviews;
+    if (!stored) return [];
+    const heads = cloneHeads();
+    // Until the members have resolved there is nothing to measure a review
+    // against, so every verdict counts as stale. Erring the other way would
+    // open the merge gate for the moment it takes the docs to load.
+    const measured = Object.keys(heads).length > 0;
+    return Object.entries(stored)
+      .map(([contactUrl, review]) => ({
+        contactUrl: contactUrl as AutomergeUrl,
+        review,
+        isStale: !measured || !reviewCoversHeads(review, heads),
+      }))
+      .sort((a, b) => b.review.at - a.review.at);
+  });
+
+  // This reviewer's own standing verdict, if any — the pair of buttons shows
+  // it as pressed, and pressing it again withdraws it.
+  const myReview = createMemo<ReviewEntry | null>(() => {
+    const mine = myContactUrl();
+    return reviews().find((entry) => entry.contactUrl === mine) ?? null;
+  });
+
+  // Whoever's approval currently stands. A stale approval isn't in here: it
+  // was given for an older version of the draft.
+  const approvers = createMemo<AutomergeUrl[]>(() =>
+    reviews()
+      .filter((entry) => entry.review.state === "approved" && !entry.isStale)
+      .map((entry) => entry.contactUrl)
+  );
+
+  // One standing approval opens the merge. A rejection is advisory — it is
+  // said loudly and left on the card, but it doesn't veto.
+  const canMerge = createMemo(() => approvers().length > 0);
+
+  // Record (or withdraw) this reviewer's verdict on the selected draft,
+  // pinning the heads it was given so it can be told apart from an approval
+  // of whatever the draft becomes later.
+  const onReview = async (state: DraftReview["state"]) => {
+    const draftUrl = selected();
+    const contactUrl = myContactUrl();
+    const repo = getRepo();
+    if (!draftUrl || !contactUrl || !repo) return;
+    const withdraw = myReview()?.review.state === state;
+    const reviewedAt = cloneHeads();
+    const handle = await repo.find<DraftDoc>(draftUrl);
+    handle.change((d) => {
+      if (withdraw) {
+        if (d.reviews) delete d.reviews[contactUrl];
+        return;
+      }
+      if (!d.reviews) d.reviews = {};
+      // Copy the heads: they came out of a live handle, and an Automerge
+      // value must not be assigned into another document.
+      const pinned: Record<AutomergeUrl, UrlHeads> = {};
+      for (const [url, heads] of Object.entries(reviewedAt)) {
+        pinned[url as AutomergeUrl] = [...heads] as UrlHeads;
+      }
+      d.reviews[contactUrl] = { state, at: Date.now(), reviewedAt: pinned };
+    });
+  };
+
   // Label of the menu's fork-from-version item, e.g. "Fork from Jul 24,
   // 3:12 PM" — the change the scrubber sits on. Null (item hidden) while
   // the timeline isn't pinned.
@@ -610,6 +732,10 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
   const onMergeDraft = async () => {
     const draftUrl = selected();
     if (!draftUrl) return;
+    // The menu item is disabled without a standing approval; this is the
+    // same rule enforced where it matters, in case the click gets through.
+    const approvedBy = approvers();
+    if (approvedBy.length === 0) return;
     const parentUrl = mergeParentUrl();
     if (!window.confirm(`Merge this draft into "${mergeTargetName()}"?`))
       return;
@@ -619,7 +745,7 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
       return;
     }
     const draftHandle = await repo.find<DraftDoc>(draftUrl);
-    await mergeDraft(repo, draftHandle);
+    await mergeDraft(repo, draftHandle, approvedBy);
     selectDraft(parentUrl && parentUrl !== list().main.url ? parentUrl : null);
   };
 
@@ -734,6 +860,15 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
                 onForkAt={() => void onForkSelection(true)}
                 mergeLabel={`Merge into "${mergeTargetName()}"`}
                 onMerge={() => void onMergeDraft()}
+                mergeBlockedReason={
+                  canMerge()
+                    ? null
+                    : "Nobody has approved these changes yet"
+                }
+                reviews={selected() === summary.url ? reviews() : []}
+                myReview={selected() === summary.url ? myReview() : null}
+                canReview={myContactUrl() !== null}
+                onReview={(state) => void onReview(state)}
                 onMergeHover={setMergeHighlight}
                 onDelete={() => void onDeleteDraft()}
                 isMergeTarget={
@@ -746,6 +881,31 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
       </Show>
       <div class="drafts-version">v{DRAFTS_VERSION}</div>
     </div>
+  );
+}
+
+// A stored review together with who left it and whether it still stands.
+type ReviewEntry = {
+  contactUrl: AutomergeUrl;
+  review: DraftReview;
+  // True once the draft has moved on from the heads the review was given:
+  // the verdict is kept and shown, but no longer counts for merging.
+  isStale: boolean;
+};
+
+// Whether a review still covers the draft as it is now: every member doc has
+// to sit exactly where the reviewer left it.
+//
+// Members the review says nothing about count as changed — that is a doc
+// added to the draft after the fact, which is new content nobody has seen.
+// Members that haven't resolved yet simply aren't in `heads`, so a slow load
+// can't quietly retract an approval.
+function reviewCoversHeads(
+  review: DraftReview,
+  heads: Record<AutomergeUrl, UrlHeads>
+): boolean {
+  return Object.entries(heads).every(([url, current]) =>
+    sameHeads(review.reviewedAt[url as AutomergeUrl], current)
   );
 }
 
@@ -764,7 +924,8 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
 // the merge target, so they never dangle under a hidden draft.
 async function mergeDraft(
   repo: Repo,
-  draftHandle: DocHandle<DraftDoc>
+  draftHandle: DocHandle<DraftDoc>,
+  approvedBy: AutomergeUrl[]
 ): Promise<void> {
   const doc = draftHandle.doc();
   const parentHandle = await findMergeTarget(repo, doc?.parent);
@@ -822,6 +983,9 @@ async function mergeDraft(
   draftHandle.change((d) => {
     d.mergedAt = Date.now();
     if (parentHandle) d.mergedInto = parentHandle.url;
+    // Freeze who let this through. `reviews` keeps changing meaning as the
+    // draft moves; this is the answer at the moment it stopped moving.
+    d.approvedBy = [...approvedBy];
   });
 
   // Re-parent the merged draft's children onto the merge target: they list
@@ -1315,6 +1479,15 @@ function DraftCard(props: {
   // `Merge into "Main"`); merging goes up.
   mergeLabel: string;
   onMerge: () => void;
+  // Why merging is unavailable, shown on the disabled menu item; null when
+  // the draft has a standing approval and may go up.
+  mergeBlockedReason: string | null;
+  // The draft's verdicts, this reviewer's own, and whether there is anyone
+  // to attribute a new one to. Only populated while the card is open.
+  reviews: ReviewEntry[];
+  myReview: ReviewEntry | null;
+  canReview: boolean;
+  onReview: (state: DraftReview["state"]) => void;
   // Fires with true/false as the merge item is hovered/left, so the parent
   // card can light up as the target.
   onMergeHover: (over: boolean) => void;
@@ -1372,6 +1545,7 @@ function DraftCard(props: {
                 merge={{
                   label: props.mergeLabel,
                   onMerge: props.onMerge,
+                  blockedReason: props.mergeBlockedReason,
                   onHoverTarget: props.onMergeHover,
                 }}
                 onDelete={props.onDelete}
@@ -1382,6 +1556,12 @@ function DraftCard(props: {
         </div>
       </div>
       <Show when={props.isSelected}>
+        <ReviewBar
+          reviews={props.reviews}
+          myReview={props.myReview}
+          canReview={props.canReview}
+          onReview={props.onReview}
+        />
         <DraftChangesList
           members={() => props.members}
           changeGroupDocUrl={props.changeGroupDocUrl}
@@ -1401,6 +1581,102 @@ function DraftCard(props: {
   );
 }
 
+// The review strip on an open draft: this reviewer's own verdict on the
+// left, everyone else's on the right.
+//
+// It sits directly above the timeline because that is what is being judged,
+// and it is what gates merging: a draft nobody has approved can't go up. A
+// verdict is a toggle — pressing the one you already gave withdraws it.
+function ReviewBar(props: {
+  reviews: ReviewEntry[];
+  myReview: ReviewEntry | null;
+  canReview: boolean;
+  onReview: (state: DraftReview["state"]) => void;
+}) {
+  const mine = () => props.myReview?.review.state ?? null;
+  // The card header selects the draft on click; a verdict is not a selection.
+  const press = (e: MouseEvent, state: DraftReview["state"]) => {
+    e.stopPropagation();
+    props.onReview(state);
+  };
+  return (
+    <div class="draft-review" onClick={(e) => e.stopPropagation()}>
+      <Show
+        when={props.canReview}
+        fallback={
+          <span class="draft-review-note">
+            No contact — nobody to attribute a review to
+          </span>
+        }
+      >
+        <button
+          type="button"
+          class="draft-review-action"
+          data-state="approved"
+          data-active={mine() === "approved" ? "" : undefined}
+          title={
+            mine() === "approved"
+              ? "Withdraw your approval"
+              : "Approve these changes, letting the draft be merged"
+          }
+          onClick={(e) => press(e, "approved")}
+        >
+          <CheckIcon />
+          Approve
+        </button>
+        <button
+          type="button"
+          class="draft-review-action"
+          data-state="rejected"
+          data-active={mine() === "rejected" ? "" : undefined}
+          title={
+            mine() === "rejected"
+              ? "Withdraw your rejection"
+              : "Reject these changes — recorded on the draft, but it doesn't block a merge"
+          }
+          onClick={(e) => press(e, "rejected")}
+        >
+          <CrossIcon />
+          Reject
+        </button>
+      </Show>
+      <span class="draft-review-spacer" />
+      <For each={props.reviews}>{(entry) => <ReviewChip entry={entry} />}</For>
+    </div>
+  );
+}
+
+// One person's verdict: their avatar with the verdict marked on it. A stale
+// one is dimmed and struck — they did look, but not at this version.
+function ReviewChip(props: { entry: ReviewEntry }) {
+  const approved = () => props.entry.review.state === "approved";
+  const title = () => {
+    const verdict = approved() ? "Approved" : "Rejected";
+    const when = formatTime(props.entry.review.at / 1000);
+    return props.entry.isStale
+      ? `${verdict} ${when}, but the draft has changed since — this no longer counts`
+      : `${verdict} ${when}`;
+  };
+  return (
+    <span
+      class="draft-review-chip"
+      data-state={props.entry.review.state}
+      data-stale={props.entry.isStale ? "" : undefined}
+      title={title()}
+    >
+      <span class="draft-avatar">
+        <patchwork-view
+          doc-url={props.entry.contactUrl}
+          tool-id="contact-inline"
+        />
+      </span>
+      <span class="draft-review-chip-mark">
+        {approved() ? <CheckIcon /> : <CrossIcon />}
+      </span>
+    </span>
+  );
+}
+
 // The "⋯" context menu in a selected card's title. Items: fork at the
 // latest heads, fork from the scrubbed version (only while the timeline is
 // pinned), and — on draft cards — merge up into the parent. Hovering the
@@ -1417,6 +1693,8 @@ function CardMenu(props: {
   merge?: {
     label: string;
     onMerge: () => void;
+    // Non-null disables the item and explains why in its tooltip.
+    blockedReason: string | null;
     onHoverTarget: (over: boolean) => void;
   };
   // Draft cards only: the delete item (confirmed via a dialog in the
@@ -1508,7 +1786,11 @@ function CardMenu(props: {
                 <button
                   type="button"
                   class="draft-menu-item"
-                  title="Merge this draft into the highlighted card and hide it"
+                  disabled={merge().blockedReason !== null}
+                  title={
+                    merge().blockedReason ??
+                    "Merge this draft into the highlighted card and hide it"
+                  }
                   onClick={(e) => pick(e, merge().onMerge)}
                   onMouseEnter={() => merge().onHoverTarget(true)}
                   onMouseLeave={() => merge().onHoverTarget(false)}
@@ -1590,6 +1872,40 @@ function GitMergeIcon() {
       <circle cx="18" cy="18" r="3" />
       <circle cx="6" cy="6" r="3" />
       <path d="M6 21V9a9 9 0 0 0 9 9" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
+
+function CrossIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path d="M18 6 6 18M6 6l12 12" />
     </svg>
   );
 }
@@ -3241,16 +3557,30 @@ function TimeGroupRow(props: {
       </Show>
       <Show when={props.group.merge}>
         {(merge) => (
-          <span
-            class="draft-group-merge"
-            title={
-              merge().name
-                ? `Changes merged from "${merge().name}"`
-                : "Changes merged from a draft"
-            }
-          >
-            {merge().name ? `Merged "${merge().name}"` : "Merged draft"}
-          </span>
+          <>
+            <span
+              class="draft-group-merge"
+              title={
+                merge().name
+                  ? `Changes merged from "${merge().name}"`
+                  : "Changes merged from a draft"
+              }
+            >
+              {merge().name ? `Merged "${merge().name}"` : "Merged draft"}
+            </span>
+            {/* Who signed this off, frozen at merge time. Absent on merges
+                made before approvals existed — which is not a claim that
+                nobody approved, so nothing is said at all. */}
+            <Show when={merge().approvals?.length}>
+              <span
+                class="draft-group-approved"
+                title="Merged with these approvals"
+              >
+                approved by
+                <AuthorAvatars contactUrls={merge().approvals ?? []} />
+              </span>
+            </Show>
+          </>
         )}
       </Show>
       <span class="draft-group-time">{formatTime(props.group.endTime)}</span>
@@ -3351,8 +3681,21 @@ function CommentRow(props: {
 // see contact/src/components/InlineContactAvatar.ts) and are deduped by
 // contact — one person editing across several sessions reads as one avatar;
 // unattributed actors fall back to actor-id rendering.
-function AuthorAvatars(props: { actors: string[] }) {
-  const authors = createMemo(() => resolveAuthors(props.actors));
+//
+// `contactUrls` is the other way in: contacts already known by url, with no
+// actor to attribute. Approvers arrive this way — an approval is given by a
+// person, not by whichever session happened to write the change.
+function AuthorAvatars(props: {
+  actors?: string[];
+  contactUrls?: AutomergeUrl[];
+}) {
+  const authors = createMemo(() => [
+    ...resolveAuthors(props.actors ?? []),
+    ...(props.contactUrls ?? []).map((contactUrl) => ({
+      key: contactUrl,
+      contactUrl,
+    })),
+  ]);
   const visible = () => authors().slice(0, 3);
   const extra = () => Math.max(0, authors().length - 3);
   return (
