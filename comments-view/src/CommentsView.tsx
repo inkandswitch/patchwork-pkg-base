@@ -26,6 +26,7 @@ import {
   createDocumentThread,
   type DocWithComments,
 } from "./comments";
+import { DraftReviewBar } from "./draft-review";
 
 type CommentEntry = { targetUrl: AutomergeUrl; threadUrl: AutomergeUrl };
 
@@ -263,6 +264,13 @@ export function CommentsView(props: { element: HTMLElement }) {
           </button>
         </Show>
       </div>
+      {/* Only renders while a draft is checked out and a drafts tool is
+          answering; on main it is absent entirely. */}
+      <DraftReviewBar
+        element={props.element}
+        repo={repo}
+        contactUrl={currentContactUrl}
+      />
       <Show
         when={displayedThreadUrls().length > 0}
         fallback={<div class="comments-empty">No comments yet</div>}

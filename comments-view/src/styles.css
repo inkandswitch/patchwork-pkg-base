@@ -9,6 +9,19 @@
   --comments-hover-bg: var(--studio-fill-offset-10, #f5f5f5);
   --comments-font: var(--studio-family-sans, system-ui, sans-serif);
   --comments-accent: var(--studio-secondary, #33ccf8);
+  /* Review verdicts as ink. --studio-added / --studio-danger are highlight
+     fills, meant to be painted behind text; read as text on the panel they
+     wash out, so both go through the theme's convention for accent-as-ink —
+     mixed 35% toward the surface's line, which lightens on a dark theme
+     instead of darkening. Defers to the theme's own token where one exists. */
+  --comments-approve-fg: var(
+    --studio-added-text,
+    color-mix(in oklch, var(--studio-added, #16a34a), var(--comments-fg) 35%)
+  );
+  --comments-reject-fg: var(
+    --studio-danger-text,
+    color-mix(in oklch, var(--studio-danger, #dc2626), var(--comments-fg) 35%)
+  );
 }
 }
 
@@ -52,6 +65,93 @@
 
 .comments-panel-header-title {
   font-weight: 500;
+}
+
+/* Reviewing the checked-out draft. Sits under the header, above the threads:
+   the verdict is the conclusion of the conversation below it. Absent on main
+   and wherever no drafts tool is installed. */
+.comments-review {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding: 0.5rem;
+  border: 1px solid var(--comments-border);
+  border-radius: 0.375rem;
+  background: var(--comments-hover-bg);
+}
+
+.comments-review-label {
+  font-size: 0.75rem;
+  color: var(--comments-muted-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.comments-review-row {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.comments-review-spacer {
+  flex: 1;
+}
+
+.comments-review-note {
+  font-size: 0.6875rem;
+  color: var(--comments-muted-fg);
+}
+
+.comments-review-action {
+  padding: 0.1875rem 0.5rem;
+  border: 1px solid var(--comments-border);
+  border-radius: 0.25rem;
+  background: transparent;
+  color: var(--comments-muted-fg);
+  font-family: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.comments-review-action:hover {
+  color: var(--comments-fg);
+}
+
+/* The verdict you already gave, filled in — so pressing it again reads as
+   undoing it rather than repeating it. */
+.comments-review-action[data-active][data-state="approved"] {
+  border-color: var(--comments-approve-fg);
+  color: var(--comments-approve-fg);
+  background: color-mix(in oklch, var(--comments-approve-fg) 14%, transparent);
+}
+
+.comments-review-action[data-active][data-state="rejected"] {
+  border-color: var(--comments-reject-fg);
+  color: var(--comments-reject-fg);
+  background: color-mix(in oklch, var(--comments-reject-fg) 14%, transparent);
+}
+
+.comments-review-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  flex: none;
+  font-size: 0.75rem;
+}
+
+.comments-review-chip[data-state="approved"] .comments-review-chip-mark {
+  color: var(--comments-approve-fg);
+}
+
+.comments-review-chip[data-state="rejected"] .comments-review-chip-mark {
+  color: var(--comments-reject-fg);
+}
+
+/* A verdict given on an older version: kept, but faded, because it no longer
+   says anything about what is in the draft now. */
+.comments-review-chip[data-stale] {
+  opacity: 0.45;
 }
 
 .comments-empty {
