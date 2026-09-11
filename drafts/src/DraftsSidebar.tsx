@@ -71,7 +71,7 @@ const EMPTY_DRAFT_LIST: DraftList = {
 
 // Shown in the panel footer, logged on load, and stamped into fork
 // diagnostics; bump on deploy to tell builds apart.
-const DRAFTS_VERSION = "0.0.62";
+const DRAFTS_VERSION = "0.0.63";
 
 // Logged at module load so the console shows which build is running even
 // before the panel renders.
@@ -3256,13 +3256,16 @@ function DraftChangesList(props: {
                           />
                         }
                       >
-                        {/* Merge rows wrap in a block that also holds the
-                            unfolded contributor runs; the block registers as
-                            the group's row element, so its scrubber band
-                            stretches over the runs and per-change stops line
-                            up with them. */}
+                        {/* A merged draft is one boxed block: the merge row
+                            plus, unfolded, its contributor runs inside the
+                            same border. The block registers as the group's
+                            row element, so its scrubber band stretches over
+                            the runs and per-change stops line up with them. */}
                         <div
                           class="draft-merge-block"
+                          data-expanded={
+                            expandedMerges().has(group().id) ? "" : undefined
+                          }
                           ref={(el) => rowEls.set(group().id, el)}
                         >
                           <TimeGroupRow
@@ -3457,7 +3460,17 @@ function TimeGroupRow(props: {
             props.onToggleExpand?.();
           }}
         >
-          ▸
+          <svg
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.75"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M6 3.5 10.5 8 6 12.5" />
+          </svg>
         </span>
       </Show>
       <AuthorAvatars actors={props.group.actors} />

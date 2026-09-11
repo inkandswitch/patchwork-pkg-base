@@ -560,43 +560,73 @@
   background: color-mix(in oklch, var(--drafts-primary) 25%, transparent);
 }
 
-/* A merge row plus its unfolded contributor runs: one block, registered as
-   the group's row element so the scrubber band stretches over the runs. */
+/* A merged draft as one box: the merge row plus, unfolded, its contributor
+   runs inside the same border. Registered as the group's row element so the
+   scrubber band stretches over the runs. The border is what marks it as a
+   merge, so the chevron can sit in the flow instead of hanging in the
+   gutter strip. */
 .draft-merge-block {
   display: flex;
   flex-direction: column;
   width: 100%;
+  border: 1px solid var(--drafts-border);
+  border-radius: var(--drafts-radius-sm);
+  overflow: hidden;
 }
 
-/* Disclosure chevron on a merge row; rotates when unfolded. Pulled fully
-   out of the horizontal flow (the negative margin cancels its width plus
-   the flex gap) so it hangs left of the row content, into the strip by the
-   scrubber gutter — the avatar stays aligned with every other row's.
-   Stacked above the scrubber token's drag handles (z-index 20), which pass
-   through the same strip: a click on the chevron must always toggle the
-   disclosure, never grab the scrubber. */
+.draft-merge-block[data-expanded] {
+  border-color: color-mix(in oklch, var(--drafts-border), var(--drafts-fg) 20%);
+}
+
+/* Inside the box the row's own rounding is the box's. */
+.draft-merge-block > .draft-group-row {
+  border-radius: 0;
+}
+
+/* Disclosure chevron on a merge row; rotates when unfolded. A proper hit
+   target — an unfold nobody can hit is not an unfold. Stacked above the
+   scrubber token's drag handles (z-index 20): a click here must always
+   toggle the disclosure, never grab the scrubber. */
 .draft-group-expand {
   position: relative;
   z-index: 30;
   flex: none;
-  width: 1rem;
-  margin-left: -1.375rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-left: -0.125rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  align-self: stretch;
+  border-radius: var(--drafts-radius-sm);
   color: var(--drafts-muted-fg);
-  font-size: 0.8125rem;
   cursor: pointer;
-  transition: transform 120ms ease;
+  transition:
+    transform 120ms ease,
+    background 120ms ease;
+}
+
+.draft-group-expand svg {
+  width: 1rem;
+  height: 1rem;
 }
 
 .draft-group-expand:hover {
   color: var(--drafts-fg);
+  background: var(--drafts-hover-bg);
 }
 
 .draft-group-expand[data-expanded] {
   transform: rotate(90deg);
+}
+
+/* The unfolded runs: a ruled-off section at the bottom of the box, indented
+   so a run's avatar lines up under the merge row's. */
+.draft-merge-runs {
+  display: flex;
+  flex-direction: column;
+  padding: 0.125rem 0;
+  border-top: 1px solid var(--drafts-border);
+  background: color-mix(in oklch, var(--drafts-hover-bg) 40%, transparent);
 }
 
 /* One contributor run inside an unfolded merge group — a slimmer, indented
@@ -606,9 +636,9 @@
   align-items: center;
   gap: 0.375rem;
   width: 100%;
-  padding: 0.25rem 0.375rem 0.25rem 1.5rem;
+  padding: 0.25rem 0.375rem 0.25rem 1.875rem;
   border: none;
-  border-radius: var(--drafts-radius-sm);
+  border-radius: 0;
   background: transparent;
   font-family: inherit;
   font-size: 0.6875rem;
@@ -629,7 +659,8 @@
 }
 
 .draft-merge-loading {
-  padding: 0.25rem 0.375rem 0.25rem 1.5rem;
+  padding: 0.25rem 0.375rem 0.25rem 1.875rem;
+  border-top: 1px solid var(--drafts-border);
   color: var(--drafts-muted-fg);
   font-size: 0.6875rem;
 }
