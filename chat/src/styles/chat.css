@@ -16,21 +16,37 @@
       --bg-mid:      var(--editor-fill-offset-10, var(--studio-fill-offset-10, oklch(0.19 0.03 270)));  /* secondary surfaces */
       --bg-input:    var(--editor-fill, var(--studio-fill, oklch(0.17 0.03 270)));            /* inputs / pills — base editor fill (line on fill) */
       --bg-hover:    var(--editor-fill-offset-20, var(--studio-fill-offset-20, oklch(0.22 0.04 270)));  /* hover states */
-      --border:      var(--editor-fill-offset-20, var(--studio-fill-offset-20, oklch(0.28 0.05 270)));
+      /* A step past the elevated surfaces above, not level with them: at
+         offset-20 a border drawn on --bg-darkest or --bg-hover is exactly
+         the colour it sits on, which is to say invisible. */
+      --border:      var(--editor-fill-offset-30, var(--studio-fill-offset-30, oklch(0.28 0.05 270)));
 
+      /* Every surface above comes from the EDITOR family, so the inks must
+         too. The theme mixes each accent toward the line of the surface it
+         will be read on (--editor-primary-text vs --studio-primary-text are
+         different colours whenever a theme gives the editor its own fill),
+         and taking ink from the chrome family while painting on the editor
+         one is how an accent ends up illegible on its own background. */
       --accent:       var(--studio-primary-fill, var(--studio-primary, oklch(0.55 0.18 270)));
+      /* Ink ON the accent fill — black or white, per the accent's lightness.
+         Only for text and edges that sit on an accent-filled surface. */
       --accent-line:  var(--studio-primary-line, var(--editor-fill, var(--studio-fill, oklch(1 0 0))));
-      --accent-text:  var(--studio-primary-text, var(--accent));
+      --accent-text:  var(--editor-primary-text, var(--studio-primary-text, var(--accent)));
+      /* The accent as a LINE on the ambient surface — an outlined button, a
+         focus ring, a selected chip. Not --accent-line: that is the ink for
+         the opposite case, and on an unfilled control it draws the edge in
+         the background colour. */
+      --accent-border: var(--accent-text);
       --accent-hover: color-mix(in oklch, var(--accent), var(--studio-line, black) 18%);
       --accent-soft:  color-mix(in oklch, var(--accent), transparent 85%);
       --accent-fg:    var(--accent-line);
       --theme:        var(--accent);
 
-      --text-primary:   var(--studio-line, oklch(1 0 0));
-      --text-secondary: var(--studio-line-offset-30, oklch(1 0 0 / 0.6));
-      --text-muted:     var(--studio-line-offset-50, oklch(1 0 0 / 0.4));
-      --link:           var(--studio-link-text, var(--studio-link, oklch(0.75 0.15 250)));
-      --danger:         var(--studio-danger-text, var(--studio-danger, oklch(0.65 0.2 25)));
+      --text-primary:   var(--editor-line, var(--studio-line, oklch(1 0 0)));
+      --text-secondary: var(--editor-line-offset-30, var(--studio-line-offset-30, oklch(1 0 0 / 0.6)));
+      --text-muted:     var(--editor-line-offset-50, var(--studio-line-offset-50, oklch(1 0 0 / 0.4)));
+      --link:           var(--editor-link-text, var(--studio-link-text, var(--studio-link, oklch(0.75 0.15 250))));
+      --danger:         var(--editor-danger-text, var(--studio-danger-text, var(--studio-danger, oklch(0.65 0.2 25))));
     }
 
     /* ---- Reset ---- */
@@ -147,7 +163,7 @@
     .chat-quick-reply {
       font:inherit; font-size:0.9em; cursor:pointer;
       padding:4px 10px; border-radius:var(--studio-radius-round, 999px);
-      border:1px solid var(--accent-line, currentColor);
+      border:1px solid var(--accent-border, currentColor);
       background:transparent; color:var(--accent-text, var(--text-primary));
     }
     .chat-quick-reply:hover:not(:disabled) { background:var(--accent); color:var(--accent-fg); }
@@ -271,10 +287,10 @@
       overflow:hidden; text-overflow:ellipsis; flex-shrink:0;
     }
     .chat-embed-pill.clickable { cursor:pointer; }
-    .chat-embed-pill.clickable:hover { color:var(--text-primary); border-color:var(--accent-line); background:var(--bg-input); }
+    .chat-embed-pill.clickable:hover { color:var(--text-primary); border-color:var(--accent-border); background:var(--bg-input); }
     .chat-embed-pill-label { opacity:0.6; font-size:9px; text-transform:uppercase; letter-spacing:0.3px; }
     .chat-embed-tool-input {
-      background:var(--bg-darkest); border:1px solid var(--accent-line); border-radius:10px;
+      background:var(--bg-darkest); border:1px solid var(--accent-border); border-radius:10px;
       color:var(--text-primary); font-size:10px; padding:1px 8px; outline:none;
       width:120px;
     }
@@ -298,7 +314,7 @@
       flex:1; background:var(--bg-darkest); border:1px solid var(--border); border-radius:4px;
       color:var(--text-primary); font-size:10px; padding:2px 6px; outline:none; min-width:0;
     }
-    .chat-embed-tool-menu .tool-menu-input-row input:focus { border-color:var(--accent-line); }
+    .chat-embed-tool-menu .tool-menu-input-row input:focus { border-color:var(--accent-border); }
     .chat-embed-url-menu {
       position:absolute; top:100%; left:0; z-index:20;
       background:var(--bg-surface); border:1px solid var(--border); border-radius:6px;
@@ -363,7 +379,7 @@
     .chat-draft-review-btn {
       font:inherit; font-size:12px; cursor:pointer;
       padding:3px 12px; border-radius:var(--studio-radius-round, 999px);
-      border:1px solid var(--accent-line, currentColor);
+      border:1px solid var(--accent-border, currentColor);
       background:transparent; color:var(--accent-text, var(--text-primary));
     }
     .chat-draft-review-btn:disabled { opacity:0.5; cursor:default; }
@@ -375,6 +391,9 @@
       text-transform:uppercase; letter-spacing:0.5px;
     }
     .chat-draft-review[data-state="accepted"] .chat-draft-review-state { color:var(--accent-text, var(--text-secondary)); }
+    /* Rejected had no colour of its own and fell through to the muted ink,
+       so the two outcomes didn't read as opposites. */
+    .chat-draft-review[data-state="rejected"] .chat-draft-review-state { color:var(--danger); }
     .chat-draft-review[data-state="closed"] { opacity:0.65; }
     /* Scenario picker embed: chip per branch, accept-selected / reject-all. */
     .chat-scenario-review {
@@ -472,15 +491,15 @@
       border:1px solid var(--border); background:var(--bg-dark); font-size:15px;
       cursor:pointer; user-select:none; transition:all 0.1s;
     }
-    .chat-reaction:hover { border-color:var(--accent-line); background:var(--bg-hover); }
-    .chat-reaction.mine { border-color:var(--accent-line); background:var(--accent-soft); }
+    .chat-reaction:hover { border-color:var(--accent-border); background:var(--bg-hover); }
+    .chat-reaction.mine { border-color:var(--accent-border); background:var(--accent-soft); }
     .chat-reaction-count { font-size:12px; color:var(--text-secondary); font-weight:500; }
     .chat-reaction-add {
       display:inline-flex; align-items:center; justify-content:center;
       width:28px; height:28px; border-radius:8px; border:1px dashed var(--border);
       background:transparent; font-size:16px; cursor:pointer; color:var(--text-muted); transition:all 0.1s;
     }
-    .chat-reaction-add:hover { border-color:var(--accent-line); color:var(--text-primary); background:var(--bg-hover); }
+    .chat-reaction-add:hover { border-color:var(--accent-border); color:var(--text-primary); background:var(--bg-hover); }
 
     /* Emoticon/reaction tooltip */
     .chat-emoticon-tooltip {
@@ -543,7 +562,7 @@
       border-radius:4px; color:var(--text-primary); font-size:14px; margin-bottom:6px; outline:none;
       flex-shrink:0;
     }
-    .chat-emoji-picker-search:focus { border-color:var(--accent-line); }
+    .chat-emoji-picker-search:focus { border-color:var(--accent-border); }
 
     /* Emoticon section in emoji picker */
     .chat-emoticon-section { border-bottom:1px solid var(--border); padding-bottom:6px; margin-bottom:6px; }
@@ -562,7 +581,7 @@
       background:none; border:1px dashed var(--border); color:var(--text-muted); cursor:pointer;
       font-size:11px; padding:2px 8px; border-radius:4px;
     }
-    .chat-emoticon-add-btn:hover { border-color:var(--accent-line); color:var(--text-primary); }
+    .chat-emoticon-add-btn:hover { border-color:var(--accent-border); color:var(--text-primary); }
     .chat-emoticon-grid { display:flex; flex-wrap:wrap; gap:2px; }
     .chat-emoticon-grid button {
       background:none; border:none; cursor:pointer; padding:2px; border-radius:4px;
@@ -597,7 +616,7 @@
       width:100%; padding:6px 10px; background:var(--bg-input); border:1px solid var(--border);
       border-radius:4px; color:var(--text-primary); font-size:14px; outline:none;
     }
-    .chat-emoticon-dialog input[type=text]:focus { border-color:var(--accent-line); }
+    .chat-emoticon-dialog input[type=text]:focus { border-color:var(--accent-border); }
     .chat-emoticon-dialog-preview {
       width:80px; height:80px; border-radius:4px; background:var(--bg-hover);
       display:flex; align-items:center; justify-content:center; overflow:hidden; align-self:center;
@@ -624,7 +643,7 @@
       width:100%; padding:6px 10px; background:var(--bg-input); border:1px solid var(--border);
       border-radius:4px; color:var(--text-primary); font-size:14px; outline:none;
     }
-    .chat-font-dialog input[type=text]:focus { border-color:var(--accent-line); }
+    .chat-font-dialog input[type=text]:focus { border-color:var(--accent-border); }
     .chat-font-dialog-preview {
       padding:10px; border-radius:4px; background:var(--bg-hover);
       text-align:center; font-size:18px; color:var(--text-primary);
@@ -634,7 +653,7 @@
       background:none; border:1px dashed var(--border); color:var(--text-muted); cursor:pointer;
       font-size:13px; padding:6px 12px; border-radius:4px; text-align:center;
     }
-    .chat-font-dialog-filebtn:hover { border-color:var(--accent-line); color:var(--text-primary); }
+    .chat-font-dialog-filebtn:hover { border-color:var(--accent-border); color:var(--text-primary); }
     .chat-font-dialog-btns { display:flex; gap:6px; justify-content:flex-end; }
     .chat-font-dialog-btns button {
       padding:4px 12px; border-radius:4px; font-size:13px; cursor:pointer; border:none;
@@ -730,7 +749,7 @@
 
     .chat-reply-bar {
       display:none; padding:8px 12px; background:var(--bg-mid);
-      border-radius:8px 8px 0 0; border-left:3px solid var(--accent-line);
+      border-radius:8px 8px 0 0; border-left:3px solid var(--accent-border);
       align-items:center; gap:8px; font-size:13px; color:var(--text-secondary);
     }
     .chat-reply-bar.show { display:flex; }
@@ -790,7 +809,7 @@
       background:color-mix(in oklch, var(--theme) 20%, black 60%);
       align-items:center; justify-content:center;
       font-size:18px; color:var(--text-primary); font-weight:600;
-      border:3px dashed var(--accent-line); border-radius:12px; pointer-events:none;
+      border:3px dashed var(--accent-border); border-radius:12px; pointer-events:none;
     }
     .chat-drop-overlay.show { display:flex; }
     .chat-msg-video-wrap { max-width:350px; border-radius:8px; overflow:hidden; margin-top:4px; position:relative; }
@@ -900,7 +919,7 @@
       fill:none; stroke:rgba(0,0,0,0.15); stroke-width:2;
     }
     .chat-gif-progress circle.chat-gif-progress-fg {
-      fill:none; stroke:var(--accent-line); stroke-width:2; stroke-linecap:round;
+      fill:none; stroke:var(--accent-border); stroke-width:2; stroke-linecap:round;
       transform:rotate(-90deg); transform-origin:center;
       transition:stroke-dashoffset 100ms linear;
     }
@@ -940,7 +959,7 @@
     .chat-sidebar.drop-target {
       display:flex; min-width:60px; width:60px;
       align-items:center; justify-content:center;
-      border:2px dashed var(--accent-line); background:color-mix(in oklch, var(--accent) 10%, var(--bg-darkest));
+      border:2px dashed var(--accent-border); background:color-mix(in oklch, var(--accent) 10%, var(--bg-darkest));
     }
     .chat-sidebar.drop-target::after {
       content:"Pin"; font-size:11px; color:var(--accent-text); font-weight:600;
@@ -1163,7 +1182,7 @@
       width:100%; padding:6px 10px; background:var(--bg-input); border:1px solid var(--border);
       border-radius:4px; color:var(--text-primary); font-size:14px; outline:none;
     }
-    .chat-emoticon-dialog-name:focus, .chat-font-dialog-name:focus { border-color:var(--accent-line); }
+    .chat-emoticon-dialog-name:focus, .chat-font-dialog-name:focus { border-color:var(--accent-border); }
 
     /* Font dialog extras */
     .chat-font-dialog-list {
@@ -1184,7 +1203,7 @@
       background:none; border:1px dashed var(--border); color:var(--text-muted); cursor:pointer;
       font-size:13px; padding:8px 12px; border-radius:4px; text-align:center; width:100%;
     }
-    .chat-font-dialog-choose:hover { border-color:var(--accent-line); color:var(--text-primary); }
+    .chat-font-dialog-choose:hover { border-color:var(--accent-border); color:var(--text-primary); }
     .chat-font-dialog-preview {
       padding:10px; border-radius:4px; background:var(--bg-hover);
       text-align:center; font-size:16px; color:var(--text-primary);
@@ -1233,7 +1252,7 @@
     }
     .chat-model-dialog-tabs button:hover { color:var(--text-primary); }
     .chat-model-dialog-tabs button.active {
-      color:var(--accent-text); border-bottom-color:var(--accent-line);
+      color:var(--accent-text); border-bottom-color:var(--accent-border);
     }
     .chat-model-dialog-body {
       padding:12px 16px; min-height:120px;
@@ -1247,7 +1266,7 @@
       background:var(--bg-input); border:1px solid var(--border); border-radius:4px;
       color:var(--text-primary); font-size:13px; outline:none;
     }
-    .chat-model-dialog-input:focus { border-color:var(--accent-line); }
+    .chat-model-dialog-input:focus { border-color:var(--accent-border); }
     select.chat-model-dialog-input { flex:1; }
     .chat-model-dialog-btn {
       background:var(--bg-hover); border:1px solid var(--border); border-radius:4px;
@@ -1385,7 +1404,7 @@
       border-bottom-color:var(--accent);
     }
     .agent-tab-rename {
-      background:var(--bg-input); border:1px solid var(--accent-line);
+      background:var(--bg-input); border:1px solid var(--accent-border);
       color:var(--text-primary); font:inherit; font-size:12px;
       padding:3px 8px; border-radius:6px 6px 0 0; width:120px; outline:none;
       flex-shrink:0;
