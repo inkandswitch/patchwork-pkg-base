@@ -71,7 +71,7 @@ const EMPTY_DRAFT_LIST: DraftList = {
 
 // Shown in the panel footer, logged on load, and stamped into fork
 // diagnostics; bump on deploy to tell builds apart.
-const DRAFTS_VERSION = "0.0.61";
+const DRAFTS_VERSION = "0.0.62";
 
 // Logged at module load so the console shows which build is running even
 // before the panel renders.
@@ -2167,11 +2167,23 @@ function DraftChangesList(props: {
   const changeGroupDoc = createDocSignal(changeGroupHandle);
 
   // The rendered groups, newest-first. Metadata-only groups are retained so
-  // the ChangeGrouper can extend the newest one, but filtered from the UI.
+  // the ChangeGrouper can extend the newest one, but filtered from the UI —
+  // as are groups nobody can be named for (see `isAttributed`). Merged-draft
+  // groups always show: they name the draft, whoever wrote it.
   const timeGroups = createMemo<ChangeGroup[]>(() =>
     Object.values(changeGroupDoc()?.groups ?? {})
       .filter((g) => g.additions > 0 || g.deletions > 0)
+      .filter((g) => g.merge !== undefined || isAttributed(g.actors, g.agent))
       .sort((a, b) => b.endTime - a.endTime || (a.id < b.id ? -1 : 1))
+  );
+  // True when there are edits in the history but none the filter lets
+  // through, so the empty state can say so instead of claiming "no changes".
+  const hasOnlyUnattributed = createMemo<boolean>(
+    () =>
+      timeGroups().length === 0 &&
+      Object.values(changeGroupDoc()?.groups ?? {}).some(
+        (g) => g.additions > 0 || g.deletions > 0
+      )
   );
 
   // Member doc handles (plus the creation-time cutoff), resolved once per
@@ -3205,7 +3217,13 @@ function DraftChangesList(props: {
         fallback={
           <Show
             when={isBuilding()}
-            fallback={<div class="draft-changes-empty">No changes yet.</div>}
+            fallback={
+              <div class="draft-changes-empty">
+                {hasOnlyUnattributed()
+                  ? "No changes from a known account yet."
+                  : "No changes yet."}
+              </div>
+            }
           >
             <div class="draft-changes-building">
               <span class="draft-building-spinner" />
@@ -3267,7 +3285,11 @@ function DraftChangesList(props: {
                             >
                               {(runs) => (
                                 <div class="draft-merge-runs">
-                                  <For each={runs()}>
+                                  <For
+                                    each={runs().filter((run) =>
+                                      isAttributed(run.actors, run.agent)
+                                    )}
+                                  >
                                     {(run) => (
                                       <MergeRunRow
                                         run={run}
@@ -3791,6 +3813,17 @@ type AuthorDisplay = {
   key: string;
   contactUrl: AutomergeUrl | null;
 };
+
+// Whether a run of changes names who made it: an actor that resolves to a
+// contact, or an agent tag (the chat it came from). Changes with neither —
+// a device that never signed in, an import, a script — are left out of the
+// history rather than shown under an anonymous avatar. Reactive on the
+// attribution store, so rows appear as attributions load.
+function isAttributed(actors: string[], agent: AgentTag | undefined): boolean {
+  if (agent) return true;
+  const attribution = actorContacts();
+  return actors.some((actor) => attribution[actor] !== undefined);
+}
 
 function resolveAuthors(actors: string[]): AuthorDisplay[] {
   const attribution = actorContacts();
