@@ -71,7 +71,7 @@ const EMPTY_DRAFT_LIST: DraftList = {
 
 // Shown in the panel footer, logged on load, and stamped into fork
 // diagnostics; bump on deploy to tell builds apart.
-const DRAFTS_VERSION = "0.0.58";
+const DRAFTS_VERSION = "0.0.59";
 
 // Logged at module load so the console shows which build is running even
 // before the panel renders.
@@ -643,17 +643,18 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
       .sort((a, b) => b.review.at - a.review.at);
   });
 
-  // Whoever's approval currently stands. A stale approval isn't in here: it
-  // was given for an older version of the draft.
+  // Whoever's approval currently stands, recorded onto the merge so the
+  // target's timeline can say who signed it off. A stale approval isn't in
+  // here: it was given for an older version of the draft.
+  //
+  // Informational only. Merging is never gated on it — a draft with no
+  // approval merges the same as one with three; the row just says nothing
+  // about approvers.
   const approvers = createMemo<AutomergeUrl[]>(() =>
     reviews()
       .filter((entry) => entry.review.state === "approved" && !entry.isStale)
       .map((entry) => entry.contactUrl)
   );
-
-  // One standing approval opens the merge. A rejection is advisory — it is
-  // said loudly and left on the card, but it doesn't veto.
-  const canMerge = createMemo(() => approvers().length > 0);
 
   // Label of the menu's fork-from-version item, e.g. "Fork from Jul 24,
   // 3:12 PM" — the change the scrubber sits on. Null (item hidden) while
@@ -691,10 +692,7 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
   const onMergeDraft = async () => {
     const draftUrl = selected();
     if (!draftUrl) return;
-    // The menu item is disabled without a standing approval; this is the
-    // same rule enforced where it matters, in case the click gets through.
     const approvedBy = approvers();
-    if (approvedBy.length === 0) return;
     const parentUrl = mergeParentUrl();
     if (!window.confirm(`Merge this draft into "${mergeTargetName()}"?`))
       return;
@@ -819,11 +817,6 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
                 onForkAt={() => void onForkSelection(true)}
                 mergeLabel={`Merge into "${mergeTargetName()}"`}
                 onMerge={() => void onMergeDraft()}
-                mergeBlockedReason={
-                  canMerge()
-                    ? null
-                    : "Nobody has approved these changes yet"
-                }
                 onMergeHover={setMergeHighlight}
                 onDelete={() => void onDeleteDraft()}
                 isMergeTarget={
@@ -1434,9 +1427,6 @@ function DraftCard(props: {
   // `Merge into "Main"`); merging goes up.
   mergeLabel: string;
   onMerge: () => void;
-  // Why merging is unavailable, shown on the disabled menu item; null when
-  // the draft has a standing approval and may go up.
-  mergeBlockedReason: string | null;
   // Fires with true/false as the merge item is hovered/left, so the parent
   // card can light up as the target.
   onMergeHover: (over: boolean) => void;
@@ -1494,7 +1484,6 @@ function DraftCard(props: {
                 merge={{
                   label: props.mergeLabel,
                   onMerge: props.onMerge,
-                  blockedReason: props.mergeBlockedReason,
                   onHoverTarget: props.onMergeHover,
                 }}
                 onDelete={props.onDelete}
@@ -1540,8 +1529,6 @@ function CardMenu(props: {
   merge?: {
     label: string;
     onMerge: () => void;
-    // Non-null disables the item and explains why in its tooltip.
-    blockedReason: string | null;
     onHoverTarget: (over: boolean) => void;
   };
   // Draft cards only: the delete item (confirmed via a dialog in the
@@ -1633,11 +1620,7 @@ function CardMenu(props: {
                 <button
                   type="button"
                   class="draft-menu-item"
-                  disabled={merge().blockedReason !== null}
-                  title={
-                    merge().blockedReason ??
-                    "Merge this draft into the highlighted card and hide it"
-                  }
+                  title="Merge this draft into the highlighted card and hide it"
                   onClick={(e) => pick(e, merge().onMerge)}
                   onMouseEnter={() => merge().onHoverTarget(true)}
                   onMouseLeave={() => merge().onHoverTarget(false)}
