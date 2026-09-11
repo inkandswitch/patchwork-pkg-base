@@ -29,6 +29,13 @@ import {
 
 type CommentEntry = { targetUrl: AutomergeUrl; threadUrl: AutomergeUrl };
 
+/**
+ * Shown in the panel header, so a stale bundle is visible rather than
+ * inferred from behaviour that hasn't changed. Bump it in the same commit as
+ * any change you want to be able to confirm has landed.
+ */
+const PANEL_BUILD = "1";
+
 export function CommentsView(props: { element: HTMLElement }) {
   const repo = useRepo();
 
@@ -96,46 +103,22 @@ export function CommentsView(props: { element: HTMLElement }) {
   const threadTargetHandleMap = useResolvedHandleMap(threadTargetUrlMap, repo);
 
   // A thread is only worth showing if at least one of its targets still
-  // resolves to a real, non-empty span. Targets that resolve to an empty
-  // string (a collapsed range) or an undefined value (an anchor that no
-  // longer resolves) are excluded — see `targetIsVisible`.
-  const threadsWithVisibleTarget = useThreadsWithVisibleTarget(
-    threadTargetUrlMap,
-    repo
-  );
+  // points at something: a non-empty span for a ranged target, a value that
+  // still resolves for an unranged one — see `targetIsVisible`.
+  const threadTargets = useThreadTargets(threadTargetUrlMap, repo);
 
-  const renderableThreadUrls = createMemo<AutomergeUrl[]>(() =>
-    threadUrls().filter((url) => threadsWithVisibleTarget().has(url))
-  );
-
-  // Document-level threads target the whole document (a bare url, no `/` path
-  // or `#` heads), so they have no resolvable range and never pass the
-  // visible-target filter. They should always be listed regardless.
-  const docLevelThreadUrls = createMemo<Set<AutomergeUrl>>(() => {
-    const map = threadTargetUrlMap();
-    const set = new Set<AutomergeUrl>();
-    for (const [threadUrl, targets] of map) {
-      if (
-        targets.length > 0 &&
-        targets.every((t) => !t.includes("/") && !t.includes("#"))
-      ) {
-        set.add(threadUrl);
-      }
-    }
-    return set;
-  });
-
-  // What the panel actually renders: ranged threads whose target is still
-  // visible, plus all document-level threads.
+  // What the panel renders. Unranged threads are included by the same test
+  // as ranged ones, so a comment on an entity lists exactly like a comment on
+  // a phrase — the difference between them is only where they can be reached
+  // from, not whether they exist.
   const displayedThreadUrls = createMemo<AutomergeUrl[]>(() =>
-    threadUrls().filter(
-      (url) =>
-        threadsWithVisibleTarget().has(url) || docLevelThreadUrls().has(url)
-    )
+    threadUrls().filter((url) => threadTargets().visible.has(url))
   );
 
+  // Only ranged threads can overlap a cursor; unranged ones are reached by
+  // being clicked, which `primaryThreadUrl` honours below.
   const overlappingThreads = createMemo<AutomergeUrl[]>(() =>
-    renderableThreadUrls().filter((url) =>
+    displayedThreadUrls().filter((url) =>
       threadOverlapsSelection(
         threadTargetHandleMap().get(url) ?? [],
         selectedHandles()
@@ -151,11 +134,11 @@ export function CommentsView(props: { element: HTMLElement }) {
 
   const primaryThreadUrl = createMemo<AutomergeUrl | undefined>(() => {
     const pinned = pinnedThread();
-    // Document-level threads target the whole doc, so they have no range to
-    // overlap the selection and never appear in `overlappingThreads`. The
-    // only way for one to become primary is by being explicitly pinned
-    // (clicked).
-    if (pinned && docLevelThreadUrls().has(pinned)) return pinned;
+    // An unranged thread — on the document, or on an entity within it — has
+    // no range to overlap the selection and never appears in
+    // `overlappingThreads`. The only way for one to become primary is by
+    // being explicitly pinned (clicked).
+    if (pinned && threadTargets().unranged.has(pinned)) return pinned;
     const overlaps = overlappingThreads();
     if (overlaps.length === 0) return undefined;
     if (pinned && overlaps.includes(pinned)) return pinned;
@@ -277,6 +260,9 @@ export function CommentsView(props: { element: HTMLElement }) {
     <div class="comments-panel">
       <div class="comments-panel-header">
         <span class="comments-panel-header-title">Comments</span>
+        <span class="comments-panel-build" title="Build of this panel">
+          v{PANEL_BUILD}
+        </span>
         <Show when={canAddComment()}>
           <button
             class="comment-btn"
@@ -389,15 +375,16 @@ function useResolvedHandleMap(
   return resolved;
 }
 
-// Resolves each thread's target urls into live span handles and reports which
-// threads have at least one visible target. Re-runs when the url map changes,
-// and recomputes live when any resolved target doc changes — so a thread whose
-// commented text gets deleted disappears without waiting for a re-resolve.
-function useThreadsWithVisibleTarget(
+// Resolves each thread's target urls into live handles and sorts the threads
+// two ways: which have at least one visible target, and which are unranged.
+// Re-runs when the url map changes, and recomputes live when any resolved
+// target doc changes — so a thread whose commented text gets deleted
+// disappears without waiting for a re-resolve.
+function useThreadTargets(
   map: () => Map<AutomergeUrl, AutomergeUrl[]>,
   repo: Repo
-): () => Set<AutomergeUrl> {
-  const [visible, setVisible] = createSignal<Set<AutomergeUrl>>(new Set());
+): () => ThreadTargets {
+  const [targets, setTargets] = createSignal<ThreadTargets>(EMPTY_TARGETS);
   createEffect(() => {
     const m = map();
     let cancelled = false;
@@ -405,11 +392,15 @@ function useThreadsWithVisibleTarget(
 
     const recompute = () => {
       if (cancelled) return;
-      const next = new Set<AutomergeUrl>();
+      const visible = new Set<AutomergeUrl>();
+      const unranged = new Set<AutomergeUrl>();
       for (const [threadUrl, handles] of resolved) {
-        if (handles.some(targetIsVisible)) next.add(threadUrl);
+        if (handles.some(targetIsVisible)) visible.add(threadUrl);
+        if (handles.length > 0 && handles.every(targetIsUnranged)) {
+          unranged.add(threadUrl);
+        }
       }
-      setVisible(next);
+      setTargets({ visible, unranged });
     };
 
     void (async () => {
@@ -434,8 +425,26 @@ function useThreadsWithVisibleTarget(
       for (const h of flatHandles(resolved)) h.off("change", recompute);
     });
   });
-  return visible;
+  return targets;
 }
+
+// Threads sorted by what their targets are, not by what the urls look like.
+type ThreadTargets = {
+  /** At least one target still points at something worth showing. */
+  visible: Set<AutomergeUrl>;
+  /**
+   * Every target is a whole value rather than a span: the document itself, an
+   * entity in a list, a field. These have no range to overlap a selection, so
+   * they become primary by being clicked rather than by the cursor landing in
+   * them.
+   */
+  unranged: Set<AutomergeUrl>;
+};
+
+const EMPTY_TARGETS: ThreadTargets = {
+  visible: new Set(),
+  unranged: new Set(),
+};
 
 function flatHandles(
   map: Map<AutomergeUrl, DocHandle<unknown>[]>
@@ -445,17 +454,28 @@ function flatHandles(
   return out;
 }
 
-// A target "points to" a real value only when its anchored range still
-// resolves (`rangePositions` is defined) and spans at least one character
-// (`start !== end`). A missing range is an undefined value (the anchor no
-// longer resolves); an empty range is an empty string (the commented text was
-// deleted). Mirrors `buildCommentDecorations` in the codemirror tool.
+/**
+ * Whether a target still points at something worth showing a thread for.
+ *
+ * A ranged target — a cursor-anchored span of text — must still resolve and
+ * span at least one character: an empty range means the commented text was
+ * deleted. Mirrors `buildCommentDecorations` in the codemirror tool.
+ *
+ * An unranged target is a whole value rather than a span, so there is no
+ * range to measure; it is visible for as long as it resolves. That covers a
+ * comment on the document itself and a comment on an entity inside it (a
+ * place in a Petri net, a row, a card), and it fails in the same way a
+ * ranged target does: delete the value and the thread stops being listed.
+ */
 function targetIsVisible(handle: DocHandle<unknown>): boolean {
   const positions = handle.rangePositions();
-  if (!positions) return false;
+  if (!positions) return handle.doc() !== undefined;
   const [start, end] = positions;
   return start !== end;
 }
+
+const targetIsUnranged = (handle: DocHandle<unknown>): boolean =>
+  handle.rangePositions() === undefined;
 
 function threadOverlapsSelection(
   targets: DocHandle<unknown>[],
