@@ -238,6 +238,11 @@
 	--studio-danger-text: color-mix(in oklch, var(--studio-danger), var(--studio-line) 35%);
 	--studio-warning-text: color-mix(in oklch, var(--studio-warning), var(--studio-line) 35%);
 	--studio-link-text: color-mix(in oklch, var(--studio-link-fill), var(--studio-line) 35%);
+	/* The diff pair is read as ink far more often than it is painted as a fill
+	   — "+971 / -155" beside a change, a word struck through — and the raw
+	   accents are chosen to carry a highlight, not to be read on one. */
+	--studio-added-text: color-mix(in oklch, var(--studio-added), var(--studio-line) 35%);
+	--studio-deleted-text: color-mix(in oklch, var(--studio-deleted), var(--studio-line) 35%);
 
 	--studio-family-sans: "Jost*", "Jost", system-ui, -apple-system, sans-serif;
 	--studio-family-code:
@@ -357,6 +362,8 @@
 	--editor-danger-text: color-mix(in oklch, var(--studio-danger), var(--editor-line) 35%);
 	--editor-warning-text: color-mix(in oklch, var(--studio-warning), var(--editor-line) 35%);
 	--editor-link-text: color-mix(in oklch, var(--studio-link-fill), var(--editor-line) 35%);
+	--editor-added-text: color-mix(in oklch, var(--studio-added), var(--editor-line) 35%);
+	--editor-deleted-text: color-mix(in oklch, var(--studio-deleted), var(--editor-line) 35%);
 
 	--editor-family-code: var(--studio-family-code);
 	--editor-family-sans: var(--studio-family-sans);

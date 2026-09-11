@@ -3,7 +3,12 @@
 :host,
 [theme] {
   --drafts-fg: var(--studio-line, black);
-  --drafts-muted-fg: var(--studio-line-offset-50, #6b7280);
+  /* The secondary ink: timestamps, badges, most of the timeline. It sat at
+     offset-50 — line mixed three quarters of the way into the fill — which
+     put the whole history on the edge of legibility. It also made "muted"
+     lighter than "faint" below it, so the two weights were the wrong way
+     round; they now step in the order their names imply. */
+  --drafts-muted-fg: var(--studio-line-offset-30, #6b7280);
   --drafts-faint-fg: var(--studio-line-offset-40, #9ca3af);
   --drafts-bg: var(--studio-fill, white);
   --drafts-border: var(--studio-fill-offset-20, #e5e7eb);
@@ -17,12 +22,28 @@
   --drafts-primary-text: var(--studio-primary-text, #2563eb);
   /* Danger as ink (the menu's delete item, a rejected review). */
   --drafts-danger-text: var(--studio-danger-text, var(--studio-danger, #dc2626));
-  /* Approval as ink. Reuses the theme's "added" green: an approval and an
-     addition are the same kind of good news, and drafts has no other. */
-  --drafts-approve-text: var(--studio-added, #16a34a);
-  /* Diff edit-size colors, from the theme's diff palette. */
-  --drafts-added: var(--studio-added, #16a34a);
-  --drafts-deleted: var(--studio-deleted, #dc2626);
+  /* The diff pair as INK, which is the only way drafts uses it: the "+971
+     −155" on a row, never a fill behind anything. Raw --studio-added /
+     --studio-deleted are highlight colours, chosen to be painted behind
+     text rather than read as it, and on a light panel they come out as
+     near-invisible neon.
+     The theme's own convention for "accent used as ink" is to mix it 35%
+     toward the surface's line (see --studio-primary-text); added/deleted
+     have no such token yet, so the mix is spelled out here and defers to
+     --studio-*-text if a later theme build starts shipping one. Mixing
+     toward `line` rather than a fixed dark keeps it right on dark themes,
+     where it lightens instead. */
+  --drafts-added: var(
+    --studio-added-text,
+    color-mix(in oklch, var(--studio-added, #16a34a), var(--studio-line, black) 35%)
+  );
+  --drafts-deleted: var(
+    --studio-deleted-text,
+    color-mix(in oklch, var(--studio-deleted, #dc2626), var(--studio-line, black) 35%)
+  );
+  /* Approval as ink. Reuses the "added" ink: an approval and an addition are
+     the same kind of good news, and drafts has no other. */
+  --drafts-approve-text: var(--drafts-added);
   --drafts-radius: var(--studio-radius-md, 0.5rem);
   --drafts-radius-sm: var(--studio-radius-sm, 0.25rem);
   --drafts-shadow-sm: var(--studio-shadow-sm, 0 1px 2px 0 rgb(0 0 0 / 0.05));
