@@ -336,14 +336,8 @@ export function MessageList(props: {
 
 	return (
 		<div ref={messagesRef} class="chat-messages" onScroll={checkScroll}>
-			<Show
-				when={messages().length > 0}
-				fallback={
-					<div class="chat-empty">
-						no chitter nor chatter yet. say{" "}
-						{Math.random() < 0.1 ? "howdy 🤠" : "hiya 🥰"}
-					</div>
-				}>
+			{/* An empty chat says nothing: the input is the invitation. */}
+			<Show when={messages().length > 0}>
 				<Index each={messages()}>
 					{(msg, i) => {
 						const meta = () => messagesMeta()[i]

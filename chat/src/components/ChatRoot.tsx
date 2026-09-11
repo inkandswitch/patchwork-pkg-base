@@ -44,7 +44,6 @@ import {
 	runSkillTool,
 	type ActiveSkill,
 } from "../lib/llm-skills"
-import {SkillsDebug} from "./SkillsDebug"
 import {automergeUrlToServiceWorkerUrl} from "@inkandswitch/patchwork-filesystem"
 import {transcribeVoiceNote} from "../lib/transcription"
 import {reloadPreviewIframe} from "../lib/preview-frame"
@@ -3720,12 +3719,6 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 											Stop
 										</button>
 									</div>
-								</Show>
-								<Show when={has("computer")}>
-									<SkillsDebug
-										active={skillsForRun}
-										enabledIds={activeFeatures}
-									/>
 								</Show>
 								<InputArea
 									replyToId={replyToId()}

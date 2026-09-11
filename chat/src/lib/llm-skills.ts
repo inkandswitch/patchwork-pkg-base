@@ -127,17 +127,6 @@ export async function activateSkill(id: string): Promise<ActiveSkill | null> {
 	}
 }
 
-/** Ids of skills whose module has been loaded (for the debug panel). */
-export function loadedSkillIds(): Set<string> {
-	return new Set(moduleCache.keys())
-}
-
-/** The cached module for a skill, if it has been loaded (for the debug
- * panel — does NOT trigger a load). */
-export function peekSkillModule(id: string): LlmSkillModule | undefined {
-	return moduleCache.get(id)
-}
-
 async function loadSkillModule(
 	desc: LlmSkillDescription
 ): Promise<LlmSkillModule | null> {
