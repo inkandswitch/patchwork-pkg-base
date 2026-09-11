@@ -659,60 +659,13 @@
   white-space: nowrap;
 }
 
-/* The review strip between an open draft's header and its timeline: this
-   reviewer's verdict on the left, everyone else's pushed to the right. */
-.draft-review {
+/* Everyone's verdict on a draft, beside its name. Read-only: the buttons
+   live in the comments panel. */
+.draft-review-marks {
   display: flex;
   align-items: center;
   gap: 0.375rem;
-  padding: 0.375rem 0.5rem;
-  border-top: 1px solid var(--drafts-border);
-}
-
-.draft-review-spacer {
-  flex: 1;
-}
-
-.draft-review-note {
-  color: var(--drafts-muted-fg);
-  font-size: 0.6875rem;
-}
-
-.draft-review-action {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.1875rem 0.4375rem;
-  border: 1px solid var(--drafts-border);
-  border-radius: var(--drafts-radius-sm);
-  background: transparent;
-  color: var(--drafts-muted-fg);
-  font-family: inherit;
-  font-size: 0.6875rem;
-  cursor: pointer;
-}
-
-.draft-review-action svg {
-  width: 11px;
-  height: 11px;
-}
-
-.draft-review-action:hover {
-  background: var(--drafts-hover-bg);
-}
-
-/* The verdict you already gave: filled in, so pressing it reads as undoing
-   it rather than repeating it. */
-.draft-review-action[data-active][data-state="approved"] {
-  border-color: var(--drafts-approve-text);
-  background: color-mix(in oklch, var(--drafts-approve-text) 14%, transparent);
-  color: var(--drafts-approve-text);
-}
-
-.draft-review-action[data-active][data-state="rejected"] {
-  border-color: var(--drafts-danger-text);
-  background: color-mix(in oklch, var(--drafts-danger-text) 14%, transparent);
-  color: var(--drafts-danger-text);
+  flex: none;
 }
 
 /* One person's verdict: their avatar with the verdict pinned to its corner. */

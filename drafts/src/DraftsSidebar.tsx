@@ -71,7 +71,7 @@ const EMPTY_DRAFT_LIST: DraftList = {
 
 // Shown in the panel footer, logged on load, and stamped into fork
 // diagnostics; bump on deploy to tell builds apart.
-const DRAFTS_VERSION = "0.0.59";
+const DRAFTS_VERSION = "0.0.60";
 
 // Logged at module load so the console shows which build is running even
 // before the panel renders.
@@ -576,29 +576,37 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     return list().drafts.find((s) => s.url === parentUrl)?.name ?? "Draft";
   });
 
-  // The live heads of the selected draft's member docs — what a review is
+  // The live heads of every listed draft's member docs — what a review is
   // measured against. A review pins the heads it was shown; anything landing
   // afterwards moves these and the review goes stale.
   //
   // Watched here rather than published with the rest of the draft list: the
   // provider tracks DraftDocs, and these are the member docs themselves.
+  // Keyed by the doc actually watched (a draft's clone, or the original for
+  // an identity member), since two drafts' members are different docs even
+  // when they stand for the same original.
   const [cloneHeads, setCloneHeads] = createSignal<
     Record<AutomergeUrl, UrlHeads>
   >({});
-  // The members to watch, held stable across list pushes that don't change
+  const watchedDocUrl = (member: DraftMemberDoc): AutomergeUrl =>
+    member.cloneUrl ?? member.url;
+  // The docs to watch, held stable across list pushes that don't change
   // them: the list object is rebuilt on every push, and re-resolving the
   // handles each time would blank the heads — briefly making every review
   // look unmeasured — for no reason.
-  const reviewMembers = createMemo(() => selectedSummary()?.members ?? [], [], {
-    equals: (a, b) =>
-      a.length === b.length &&
-      a.every((m, i) => m.url === b[i].url && m.cloneUrl === b[i].cloneUrl),
-  });
+  const watchedDocs = createMemo<AutomergeUrl[]>(
+    () =>
+      [
+        ...new Set(list().drafts.flatMap((s) => s.members.map(watchedDocUrl))),
+      ].sort(),
+    [],
+    { equals: (a, b) => a.length === b.length && a.every((u, i) => u === b[i]) }
+  );
   createEffect(() => {
-    const members = reviewMembers();
+    const urls = watchedDocs();
     const repo = getRepo();
     setCloneHeads({});
-    if (!repo || members.length === 0) return;
+    if (!repo || urls.length === 0) return;
     let cancelled = false;
     const stopWatching: (() => void)[] = [];
     onCleanup(() => {
@@ -606,16 +614,16 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
       for (const stop of stopWatching) stop();
     });
     void (async () => {
-      for (const member of members) {
+      for (const url of urls) {
         let handle: DocHandle<unknown>;
         try {
-          handle = await repo.find<unknown>(member.cloneUrl ?? member.url);
+          handle = await repo.find<unknown>(url);
         } catch {
           continue; // An unresolvable member can't retract anyone's approval.
         }
         if (cancelled) return;
         const read = () =>
-          setCloneHeads((prev) => ({ ...prev, [member.url]: handle.heads() }));
+          setCloneHeads((prev) => ({ ...prev, [url]: handle.heads() }));
         read();
         handle.on("change", read);
         stopWatching.push(() => handle.off("change", read));
@@ -623,16 +631,24 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     })();
   });
 
-  // The selected draft's reviews, each marked with whether it still covers
-  // what is in the draft now. Given in the comments panel, read here only to
-  // decide whether the draft may be merged.
-  const reviews = createMemo<ReviewEntry[]>(() => {
-    const stored = selectedSummary()?.reviews;
+  // A draft's reviews, each marked with whether it still covers what is in
+  // the draft now. Given in the comments panel; shown on the card as
+  // read-only marks, and read at merge time to record who signed it off.
+  const reviewsFor = (summary: DraftSummary): ReviewEntry[] => {
+    const stored = summary.reviews;
     if (!stored) return [];
-    const heads = cloneHeads();
+    const watched = cloneHeads();
+    // This draft's members' heads, keyed by the member url a review pins
+    // them under. Members that haven't resolved yet are left out, so a slow
+    // load can't quietly retract an approval.
+    const heads: Record<AutomergeUrl, UrlHeads> = {};
+    for (const member of summary.members) {
+      const current = watched[watchedDocUrl(member)];
+      if (current) heads[member.url] = current;
+    }
     // Until the members have resolved there is nothing to measure a review
-    // against, so every verdict counts as stale. Erring the other way would
-    // open the merge gate for the moment it takes the docs to load.
+    // against, so every verdict counts as stale rather than vouching for
+    // content nobody has checked.
     const measured = Object.keys(heads).length > 0;
     return Object.entries(stored)
       .map(([contactUrl, review]) => ({
@@ -641,20 +657,22 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
         isStale: !measured || !reviewCoversHeads(review, heads),
       }))
       .sort((a, b) => b.review.at - a.review.at);
-  });
+  };
 
-  // Whoever's approval currently stands, recorded onto the merge so the
-  // target's timeline can say who signed it off. A stale approval isn't in
-  // here: it was given for an older version of the draft.
+  // Whoever's approval of the selected draft currently stands, recorded onto
+  // the merge so the target's timeline can say who signed it off. A stale
+  // approval isn't in here: it was given for an older version of the draft.
   //
   // Informational only. Merging is never gated on it — a draft with no
   // approval merges the same as one with three; the row just says nothing
   // about approvers.
-  const approvers = createMemo<AutomergeUrl[]>(() =>
-    reviews()
+  const approvers = createMemo<AutomergeUrl[]>(() => {
+    const summary = selectedSummary();
+    if (!summary) return [];
+    return reviewsFor(summary)
       .filter((entry) => entry.review.state === "approved" && !entry.isStale)
-      .map((entry) => entry.contactUrl)
-  );
+      .map((entry) => entry.contactUrl);
+  });
 
   // Label of the menu's fork-from-version item, e.g. "Fork from Jul 24,
   // 3:12 PM" — the change the scrubber sits on. Null (item hidden) while
@@ -787,6 +805,7 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
                 mainDocUrl={hostDocHandle()?.url}
                 isSelected={selected() === summary.url}
                 name={summary.name}
+                reviews={reviewsFor(summary)}
                 depth={draftDepth(summary)}
                 onRename={(name) => void onRename(summary.url, name)}
                 onSelect={selectDraft}
@@ -1400,6 +1419,10 @@ function DraftCard(props: {
   mainDocUrl: AutomergeUrl | undefined;
   isSelected: boolean;
   name: string | null;
+  // Verdicts given on this draft in the comments panel, shown read-only
+  // beside the name so anyone can see at a glance whether it has been
+  // approved. Giving one happens over there, not here.
+  reviews: ReviewEntry[];
   // Nesting depth below main (0 = top-level draft); indents the card so a
   // fork reads as a child of the card above it. Rendering adds one level so
   // every draft — main's children included — sits indented under the Main
@@ -1456,6 +1479,7 @@ function DraftCard(props: {
             fallback="Draft"
             onRename={props.onRename}
           />
+          <ReviewMarks reviews={props.reviews} />
           {/* See MainCard: pinned-only "return to latest" control in the title. */}
           <Show when={props.hasCheckpoint}>
             <button
@@ -1510,6 +1534,64 @@ function DraftCard(props: {
         />
       </Show>
     </div>
+  );
+}
+
+// Everyone's verdict on a draft, as their avatar with a tick or a cross
+// pinned to its corner — the same marks the comments panel shows beside its
+// Approve and Reject buttons, minus the buttons. A verdict given on an older
+// version of the draft is faded rather than dropped: it is still a fact
+// about the draft's history, just not a claim about what is in it now.
+function ReviewMarks(props: { reviews: ReviewEntry[] }) {
+  return (
+    <Show when={props.reviews.length > 0}>
+      <span class="draft-review-marks">
+        <For each={props.reviews}>
+          {(entry) => (
+            <span
+              class="draft-review-chip"
+              data-state={entry.review.state}
+              data-stale={entry.isStale ? "" : undefined}
+              title={
+                entry.isStale
+                  ? `${entry.review.state === "approved" ? "Approved" : "Rejected"} an earlier version of this draft`
+                  : entry.review.state === "approved"
+                    ? "Approved this draft"
+                    : "Rejected this draft"
+              }
+            >
+              <span class="draft-avatar">
+                <patchwork-view
+                  doc-url={entry.contactUrl}
+                  tool-id="contact-inline"
+                />
+              </span>
+              <span class="draft-review-chip-mark">
+                <Show when={entry.review.state === "approved"} fallback={<CrossIcon />}>
+                  <TickIcon />
+                </Show>
+              </span>
+            </span>
+          )}
+        </For>
+      </span>
+    </Show>
+  );
+}
+
+function TickIcon() {
+  return (
+    <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M2.5 6.5 5 9l4.5-6" />
+    </svg>
+  );
+}
+
+function CrossIcon() {
+  return (
+    <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+      <path d="M3 3l6 6M9 3l-6 6" />
+    </svg>
   );
 }
 
