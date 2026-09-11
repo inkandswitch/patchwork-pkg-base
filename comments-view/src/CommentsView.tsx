@@ -29,13 +29,6 @@ import {
 
 type CommentEntry = { targetUrl: AutomergeUrl; threadUrl: AutomergeUrl };
 
-/**
- * Shown in the panel header, so a stale bundle is visible rather than
- * inferred from behaviour that hasn't changed. Bump it in the same commit as
- * any change you want to be able to confirm has landed.
- */
-const PANEL_BUILD = "1";
-
 export function CommentsView(props: { element: HTMLElement }) {
   const repo = useRepo();
 
@@ -260,9 +253,6 @@ export function CommentsView(props: { element: HTMLElement }) {
     <div class="comments-panel">
       <div class="comments-panel-header">
         <span class="comments-panel-header-title">Comments</span>
-        <span class="comments-panel-build" title="Build of this panel">
-          v{PANEL_BUILD}
-        </span>
         <Show when={canAddComment()}>
           <button
             class="comment-btn"
