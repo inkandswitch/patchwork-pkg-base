@@ -268,38 +268,6 @@
   opacity: 0.4;
 }
 
-/* Starting a comment. Its own row rather than a header ornament, and quiet
-   until hovered: it is always available, and never the point. */
-.comments-add {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  width: 100%;
-  padding: 0.4375rem 0.625rem;
-  border: 1px dashed var(--comments-border);
-  border-radius: 0.375rem;
-  background: transparent;
-  color: var(--comments-muted-fg);
-  font-family: inherit;
-  font-size: 0.8125rem;
-  text-align: left;
-  cursor: pointer;
-  transition:
-    color 0.12s ease,
-    border-color 0.12s ease,
-    background-color 0.12s ease;
-}
-
-.comments-add:hover {
-  color: var(--comments-fg);
-  border-color: var(--comments-muted-fg);
-  background: var(--comments-hover-bg);
-}
-
-.comments-add-plus {
-  font-size: 1rem;
-  line-height: 1;
-}
 
 .comments-empty {
   flex: 1;

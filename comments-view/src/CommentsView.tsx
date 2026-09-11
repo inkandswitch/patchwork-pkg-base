@@ -22,10 +22,7 @@ import {
   subscribe,
 } from "@inkandswitch/patchwork-providers-solid";
 import { subscribe as subscribeProvider } from "@inkandswitch/patchwork-providers";
-import {
-  createDocumentThread,
-  type DocWithComments,
-} from "./comments";
+
 import { DraftReviewBar } from "./draft-review";
 
 type CommentEntry = { targetUrl: AutomergeUrl; threadUrl: AutomergeUrl };
@@ -239,17 +236,6 @@ export function CommentsView(props: { element: HTMLElement }) {
     });
   });
 
-  const canAddComment = () =>
-    Boolean(targetDocUrl()) && Boolean(currentContactUrl());
-
-  const onAddComment = async () => {
-    const url = targetDocUrl();
-    const contactUrl = currentContactUrl();
-    if (!url || !contactUrl) return;
-    const handle = await repo.find<DocWithComments>(url);
-    createDocumentThread({ docHandle: handle, contactUrl });
-  };
-
   return (
     <div class="comments-panel">
       <div class="comments-panel-header">
@@ -262,20 +248,6 @@ export function CommentsView(props: { element: HTMLElement }) {
         repo={repo}
         contactUrl={currentContactUrl}
       />
-      {/* Below the verdict rather than beside the title: a comment is the
-          finer-grained thing, said about part of what the verdict is about. */}
-      <Show when={canAddComment()}>
-        <button
-          class="comments-add"
-          onClick={onAddComment}
-          title="Comment on this document"
-        >
-          <span class="comments-add-plus" aria-hidden>
-            +
-          </span>
-          Add comment
-        </button>
-      </Show>
       <Show
         when={displayedThreadUrls().length > 0}
         fallback={<div class="comments-empty">No comments yet</div>}

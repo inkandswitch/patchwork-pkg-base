@@ -7,12 +7,6 @@ import type { AutomergeUrl, DocHandle } from "@automerge/automerge-repo/slim";
  */
 export const COMMENT_THREAD_TYPE = "comment-thread";
 
-export type DocWithComments = {
-  "@comments"?: {
-    threads: CommentThread[];
-  };
-};
-
 export type CommentThread = {
   id: string;
   refs: AutomergeUrl[];
@@ -33,46 +27,6 @@ export type Comment = {
   // `type` picks the default tool/view; the user can switch to another.
   "@patchwork"?: { type: string; title?: string };
 };
-
-/**
- * Create a document-level comment thread: one that targets the whole
- * document (its only ref is the document's own url) rather than a range or
- * sub-doc within it. Used when the active tool or datatype can't locate
- * comments to a specific spot. Returns a handle to the seeded draft comment.
- */
-export function createDocumentThread({
-  docHandle,
-  contactUrl,
-  content,
-}: {
-  docHandle: DocHandle<DocWithComments>;
-  contactUrl: AutomergeUrl;
-  content?: string;
-}): DocHandle<Comment> {
-  const threadId = crypto.randomUUID();
-  const commentId = crypto.randomUUID();
-
-  docHandle.change((doc) => {
-    doc["@comments"] ??= { threads: [] };
-    const comment: Comment = {
-      id: commentId,
-      contactUrl,
-      timestamp: Date.now(),
-    };
-    if (content) comment.content = content;
-    doc["@comments"].threads.push({
-      id: threadId,
-      refs: [docHandle.url],
-      isResolved: false,
-      comments: [comment],
-      "@patchwork": { type: COMMENT_THREAD_TYPE },
-    });
-  });
-
-  return docHandle.sub("@comments", "threads", {
-    id: threadId,
-  }).sub("comments", { id: commentId }) as DocHandle<Comment>;
-}
 
 export function createReply({
   threadHandle: thread,
