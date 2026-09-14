@@ -211,7 +211,36 @@ export async function mergeAgentDraft(
 		AutomergeUrl,
 		CloneEntry,
 	][]
+	// Load every clone first, concurrently, and leave out the ones that won't
+	// load: a draft that sat checked out for a while carries clones of session
+	// docs that no longer exist anywhere, and one of those must not block the
+	// merge of everything else. Mirrors the sidebar's mergeDraft.
+	const loaded = new Map<AutomergeUrl, DocHandle<unknown>>()
+	const skipped: AutomergeUrl[] = []
+	await forEachLimited(entries, MEMBER_LOAD_CONCURRENCY, async ([url, entry]) => {
+		try {
+			loaded.set(
+				url,
+				await withTimeout(
+					repo.find<unknown>(entry.cloneUrl),
+					MEMBER_LOAD_TIMEOUT_MS
+				)
+			)
+		} catch {
+			skipped.push(entry.cloneUrl)
+		}
+	})
+	if (skipped.length > 0) {
+		console.info(
+			`[agent] merge: ${String(skipped.length)} of ${String(
+				entries.length
+			)} members couldn't be loaded and were left out`,
+			skipped
+		)
+	}
 	for (const [originalUrl, entry] of entries) {
+		const clone = loaded.get(originalUrl)
+		if (!clone) continue
 		// A member the target never forked: a real draft adopts the clone (no
 		// data moves); main gets the identity entry its clone sync would
 		// eventually add, so its timeline is guaranteed to include the member.
@@ -232,7 +261,6 @@ export async function mergeAgentDraft(
 		// creator winning its guard) may have just changed the mapping.
 		const parentClones = parentHandle?.doc()?.clones ?? {}
 		const targetUrl = parentClones[originalUrl]?.cloneUrl ?? originalUrl
-		const clone = await repo.find<unknown>(entry.cloneUrl)
 		const mergedFrom = clone.heads()
 		if (entry.cloneUrl === targetUrl) {
 			// The clone IS the target's copy (adopted above, or an identity
@@ -308,6 +336,46 @@ async function findMergeTarget(
 		}
 	}
 	return null
+}
+
+const MEMBER_LOAD_CONCURRENCY = 16
+const MEMBER_LOAD_TIMEOUT_MS = 30_000
+
+/** Runs `work` over `items` with at most `limit` in flight. */
+async function forEachLimited<T>(
+	items: readonly T[],
+	limit: number,
+	work: (item: T) => Promise<void>
+): Promise<void> {
+	let next = 0
+	const lane = async () => {
+		while (next < items.length) {
+			const item = items[next++]!
+			await work(item)
+		}
+	}
+	await Promise.all(
+		Array.from({length: Math.min(limit, items.length)}, lane)
+	)
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+	return new Promise<T>((resolve, reject) => {
+		const timer = setTimeout(
+			() => reject(new Error(`Timed out after ${String(ms)}ms`)),
+			ms
+		)
+		promise.then(
+			(v) => {
+				clearTimeout(timer)
+				resolve(v)
+			},
+			(e: unknown) => {
+				clearTimeout(timer)
+				reject(e instanceof Error ? e : new Error(String(e)))
+			}
+		)
+	})
 }
 
 /** Reject: unlink the draft from its parent's `drafts` list, which drops it
@@ -413,7 +481,20 @@ const SKIPPED_DATATYPES = new Set([
 	"change-group-cache",
 	AGENT_CHAT_TYPE,
 	AGENT_CHATS_INDEX_TYPE,
+	// Per-account tool settings: app state, not the document being drafted.
+	"patchwork:tool-storage",
 ])
+
+/** Whether a doc is something a draft should fork, track and merge: typed,
+ * and not on the skip-list. An untyped doc is infrastructure (the session's
+ * focus doc, the checked-out-draft doc, read positions) or a raw blob —
+ * nothing anyone edits inside a draft. Mirrors drafts' isDraftContent. */
+function isDraftContent(doc: unknown): boolean {
+	const type = (doc as {"@patchwork"?: {type?: unknown}} | undefined)?.[
+		"@patchwork"
+	]?.type
+	return typeof type === "string" && !SKIPPED_DATATYPES.has(type)
+}
 
 /** Reduce a url to its bare document identity (strip heads/path suffixes) so
  * urls from different traversals dedupe to the same clones key. Mirrors the
@@ -426,8 +507,8 @@ function canonicalUrl(url: AutomergeUrl): AutomergeUrl {
  * checkout: return the draft's clone of the doc, forking the original at its
  * current heads (and recording the fork point in `DraftDoc.clones`) on first
  * touch — the same move as the overlay's resolveClone, but aimed by the
- * caller instead of by the checked-out selection. Skipped datatypes pass
- * through to the real doc, exactly like the overlay.
+ * caller instead of by the checked-out selection. Docs that aren't draft
+ * content pass through to the real doc, exactly like the overlay.
  *
  * This is what lets every chat tab's agent write to ITS OWN draft while the
  * user switches tabs or browses other branches: run-time reads/writes go
@@ -448,10 +529,7 @@ export async function resolveInDraft(
 	if (existing) return repo.find(canonicalUrl(existing.cloneUrl))
 
 	const originalHandle = await repo.find<Record<string, unknown>>(original)
-	const type = (originalHandle.doc() as any)?.["@patchwork"]?.type
-	if (typeof type === "string" && SKIPPED_DATATYPES.has(type)) {
-		return originalHandle
-	}
+	if (!isDraftContent(originalHandle.doc())) return originalHandle
 	// Re-check after the async find: a concurrent resolution (another run, or
 	// the overlay itself while this draft is checked out) may have recorded a
 	// clone meanwhile.
