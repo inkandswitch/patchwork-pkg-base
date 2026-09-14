@@ -276,6 +276,7 @@ export async function mergeAgentDraft(
 		}
 		const target = await repo.find<unknown>(targetUrl)
 		target.merge(clone)
+		resolveBranchThreads(target, clone, entry.clonedAt)
 		const mergedAt = target.heads()
 		draftHandle.change((d) => {
 			const e = d.clones[originalUrl]
@@ -340,6 +341,44 @@ async function findMergeTarget(
 
 const MEMBER_LOAD_CONCURRENCY = 16
 const MEMBER_LOAD_TIMEOUT_MS = 30_000
+
+/** Merging a branch closes its review: every comment thread born on the
+ * branch (present in the clone, absent at its fork point) is marked resolved
+ * on the TARGET, after the merge. The clone gets no such write, so checking
+ * the branch out again still shows its threads open; and a later re-merge
+ * can't reopen them, the target's write being the newer one. Threads the
+ * branch merely inherited are left alone. Mirrors the sidebar's copy. */
+type DocWithCommentThreads = {
+	"@comments"?: {threads?: {id?: string; isResolved?: boolean}[]}
+}
+function resolveBranchThreads(
+	target: DocHandle<unknown>,
+	clone: DocHandle<unknown>,
+	forkHeads: UrlHeads
+): void {
+	let born: string[]
+	try {
+		const before = commentThreadIds(clone.view(forkHeads).doc())
+		born = [...commentThreadIds(clone.doc())].filter((id) => !before.has(id))
+	} catch {
+		return // fork point not in the clone's history: attribute nothing
+	}
+	if (born.length === 0) return
+	const bornSet = new Set(born)
+	;(target as DocHandle<DocWithCommentThreads>).change((d) => {
+		for (const t of d["@comments"]?.threads ?? []) {
+			if (t.id && bornSet.has(t.id) && !t.isResolved) t.isResolved = true
+		}
+	})
+}
+
+function commentThreadIds(doc: unknown): Set<string> {
+	const ids = new Set<string>()
+	const threads = (doc as DocWithCommentThreads | undefined)?.["@comments"]
+		?.threads
+	for (const t of threads ?? []) if (t.id) ids.add(t.id)
+	return ids
+}
 
 /** Runs `work` over `items` with at most `limit` in flight. */
 async function forEachLimited<T>(

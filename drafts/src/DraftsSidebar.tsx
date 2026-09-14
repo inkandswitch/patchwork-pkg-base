@@ -72,7 +72,7 @@ const EMPTY_DRAFT_LIST: DraftList = {
 
 // Shown in the panel footer, logged on load, and stamped into fork
 // diagnostics; bump on deploy to tell builds apart.
-const DRAFTS_VERSION = "0.0.68";
+const DRAFTS_VERSION = "0.0.69";
 
 // Logged at module load so the console shows which build is running even
 // before the panel renders.
@@ -1029,6 +1029,7 @@ async function mergeDraft(
       return;
     }
     target.merge(clone);
+    resolveBranchThreads(target, clone, entry.clonedAt);
     const mergedAt = target.heads();
     draftHandle.change((d) => {
       const e = d.clones[originalUrl];
@@ -1125,6 +1126,36 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
         reject(err instanceof Error ? err : new Error(String(err)));
       }
     );
+  });
+}
+
+// Merging a branch closes its review: every comment thread born on the
+// branch (present in the clone, absent at its fork point) is marked resolved
+// — on the TARGET, after the merge. The clone is a separate document and
+// gets no such write, so checking the branch out again still shows its
+// threads open, exactly as they were discussed; and should the branch ever
+// be merged again, the target's later write wins, so nothing reopens.
+// Threads the branch merely inherited from its parent are left alone.
+function resolveBranchThreads(
+  target: DocHandle<unknown>,
+  clone: DocHandle<unknown>,
+  forkHeads: UrlHeads
+): void {
+  let born: string[];
+  try {
+    const before = commentThreadIds(clone.view(forkHeads).doc());
+    born = [...commentThreadIds(clone.doc())].filter((id) => !before.has(id));
+  } catch {
+    return; // fork point not in the clone's history: attribute nothing
+  }
+  if (born.length === 0) return;
+  const bornSet = new Set(born);
+  (target as DocHandle<DocWithCommentThreads>).change((d) => {
+    const threads = d["@comments"]?.threads;
+    if (!threads) return;
+    for (const t of threads) {
+      if (t.id && bornSet.has(t.id) && !t.isResolved) t.isResolved = true;
+    }
   });
 }
 
@@ -2274,6 +2305,7 @@ type DocWithCommentThreads = {
   "@comments"?: {
     threads?: {
       id?: string;
+      isResolved?: boolean;
       comments?: {
         id?: string;
         content?: string;
@@ -2294,6 +2326,7 @@ type DocWithCommentThreads = {
 // comments panel on click.
 type TimelineComment = {
   key: string;
+  threadId: string | null;
   contactUrl: AutomergeUrl | null;
   content: string;
   timestamp: number;
@@ -2461,12 +2494,16 @@ function DraftChangesList(props: {
   // Every sent comment across the member docs, newest first. Draft-only
   // comments (`draftContent`, not yet sent) are skipped; a document-reference
   // comment (its `@patchwork` marker set) gets a generic label instead of the
-  // raw url.
+  // raw url. Identity is the thread id plus comment id, not the member: after
+  // a merge the same thread can be reachable through two members (the
+  // original and an adopted clone, or two entries for one doc), and that is
+  // still one comment.
   const allComments = createMemo<TimelineComment[]>(() => {
     commentsTick();
     const srcs = sources();
     if (!srcs) return [];
     const out: TimelineComment[] = [];
+    const seen = new Set<string>();
     for (const { member, handle, originalHandle } of srcs) {
       const doc = handle.doc() as DocWithCommentThreads | undefined;
       const threads = doc?.["@comments"]?.threads;
@@ -2478,8 +2515,15 @@ function DraftChangesList(props: {
         thread.comments?.forEach((comment, commentIndex) => {
           if (typeof comment.timestamp !== "number") return;
           if (!comment.content) return;
+          const key =
+            thread.id && comment.id
+              ? `${thread.id}:${comment.id}`
+              : `${member.url}:${thread.id ?? threadIndex}:${comment.id ?? commentIndex}`;
+          if (seen.has(key)) return;
+          seen.add(key);
           out.push({
-            key: `${member.url}:${thread.id ?? threadIndex}:${comment.id ?? commentIndex}`,
+            key,
+            threadId: thread.id ?? null,
             contactUrl: comment.contactUrl ?? null,
             content: comment["@patchwork"]
               ? "Attached document"
@@ -2503,12 +2547,58 @@ function DraftChangesList(props: {
     if (groups.length === 0) return [];
     const oldestMs = groups[groups.length - 1].startTime * 1000;
     const cutoff = createdAt();
+    const inMerge = mergeBornThreadIds();
     return allComments().filter(
       (c) =>
         c.timestamp >= oldestMs &&
-        (cutoff === undefined || c.timestamp >= cutoff * 1000)
+        (cutoff === undefined || c.timestamp >= cutoff * 1000) &&
+        !(c.threadId && inMerge.has(c.threadId))
     );
   });
+
+  // A comment made on a branch belongs to the branch's merge block, not to
+  // the top level of the timeline it was merged into: it was part of that
+  // review. The comment itself carries no provenance — it is content, merged
+  // along with everything else — but the merge group does: its per-member
+  // head ranges. A thread present at `mergeHeads` and absent at `baseHeads`
+  // was born on that branch. Merge groups are immutable once written, so
+  // this is cached per group id.
+  const bornCache = new Map<string, ReadonlySet<string>>();
+  const threadsBornIn = (group: ChangeGroup): ReadonlySet<string> => {
+    const hit = bornCache.get(group.id);
+    if (hit) return hit;
+    const born = new Set<string>();
+    const srcs = sources();
+    if (!group.merge || !srcs) return born; // uncached: sources may still load
+    for (const { member, handle } of srcs) {
+      const range = group.merge.members[member.url];
+      if (!range) continue;
+      try {
+        const before = commentThreadIds(handle.view(range.baseHeads).doc());
+        for (const id of commentThreadIds(handle.view(range.mergeHeads).doc())) {
+          if (!before.has(id)) born.add(id);
+        }
+      } catch {
+        // Heads not (yet) in this doc: nothing attributable from it.
+      }
+    }
+    bornCache.set(group.id, born);
+    return born;
+  };
+  const mergeBornThreadIds = createMemo<ReadonlySet<string>>(() => {
+    const all = new Set<string>();
+    for (const group of timeGroups()) {
+      if (!group.merge) continue;
+      for (const id of threadsBornIn(group)) all.add(id);
+    }
+    return all;
+  });
+  // The comments to show inside a merge block, newest first.
+  const commentsForMerge = (group: ChangeGroup): TimelineComment[] => {
+    const born = threadsBornIn(group);
+    if (born.size === 0) return [];
+    return allComments().filter((c) => c.threadId && born.has(c.threadId));
+  };
 
   // Groups and comments merged newest-first for rendering. A comment sorts by
   // its timestamp against each group's END time — groups split at comment
@@ -3496,25 +3586,57 @@ function DraftChangesList(props: {
                               {(runs) => (
                                 <div class="draft-merge-runs">
                                   <For
-                                    each={runs().filter((run) =>
-                                      isAttributed(run.actors, run.agent)
+                                    each={mergeEntries(
+                                      runs(),
+                                      commentsForMerge(group())
                                     )}
                                   >
-                                    {(run) => (
-                                      <MergeRunRow
-                                        run={run}
-                                        rowRef={(el) =>
-                                          runRowEls.set(
-                                            `${group().id}:${run.offset}`,
-                                            el
-                                          )
-                                        }
-                                        selected={runSelected(group(), run)}
-                                        onSelect={() =>
-                                          selectRun(group(), run)
-                                        }
-                                        onOpenAgent={props.onOpenAgentChat}
-                                      />
+                                    {(item) => (
+                                      <Switch>
+                                        <Match
+                                          when={
+                                            item.kind === "run" ? item.run : null
+                                          }
+                                        >
+                                          {(run) => (
+                                            <MergeRunRow
+                                              run={run()}
+                                              rowRef={(el) =>
+                                                runRowEls.set(
+                                                  `${group().id}:${run().offset}`,
+                                                  el
+                                                )
+                                              }
+                                              selected={runSelected(
+                                                group(),
+                                                run()
+                                              )}
+                                              onSelect={() =>
+                                                selectRun(group(), run())
+                                              }
+                                              onOpenAgent={props.onOpenAgentChat}
+                                            />
+                                          )}
+                                        </Match>
+                                        <Match
+                                          when={
+                                            item.kind === "comment"
+                                              ? item.comment
+                                              : null
+                                          }
+                                        >
+                                          {(comment) => (
+                                            <CommentRow
+                                              comment={comment()}
+                                              inMerge
+                                              onSelect={() => {
+                                                selectComment(comment());
+                                                props.onOpenComment(comment());
+                                              }}
+                                            />
+                                          )}
+                                        </Match>
+                                      </Switch>
                                     )}
                                   </For>
                                 </div>
@@ -3777,14 +3899,51 @@ function MergeRunRow(props: {
 // carry a contact url directly, no actor attribution needed). Clicking pins
 // the view to the doc as of that moment and opens the comment in the
 // comments panel.
+// The rows inside an unfolded merge block: the attributed contributor runs
+// and the branch's comments, newest first, a comment sorting above a run
+// whose newest change it isn't older than — the top level's rule.
+type MergeEntry =
+  | { kind: "run"; run: ContributorRun }
+  | { kind: "comment"; comment: TimelineComment };
+function mergeEntries(
+  runs: ContributorRun[],
+  comments: TimelineComment[]
+): MergeEntry[] {
+  const entries: MergeEntry[] = [
+    ...runs
+      .filter((run) => isAttributed(run.actors, run.agent))
+      .map((run) => ({ kind: "run" as const, run })),
+    ...comments.map((comment) => ({ kind: "comment" as const, comment })),
+  ];
+  const timeOf = (e: MergeEntry) =>
+    e.kind === "run" ? e.run.time * 1000 : e.comment.timestamp;
+  return entries.sort(
+    (a, b) =>
+      timeOf(b) - timeOf(a) ||
+      (a.kind === b.kind ? 0 : a.kind === "comment" ? -1 : 1)
+  );
+}
+
+// The ids of a doc's comment threads.
+function commentThreadIds(doc: unknown): Set<string> {
+  const threads = (doc as DocWithCommentThreads | undefined)?.["@comments"]
+    ?.threads;
+  const ids = new Set<string>();
+  for (const t of threads ?? []) if (t.id) ids.add(t.id);
+  return ids;
+}
+
 function CommentRow(props: {
   comment: TimelineComment;
+  // Rendered inside an unfolded merge block, at run-row size and indent.
+  inMerge?: boolean;
   onSelect: () => void;
 }) {
   return (
     <button
       type="button"
       class="draft-comment-row"
+      data-in-merge={props.inMerge ? "" : undefined}
       title={`“${props.comment.content}” — click to open the comment and view the draft as of it`}
       onClick={props.onSelect}
     >

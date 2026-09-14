@@ -532,6 +532,14 @@
   background: color-mix(in oklch, var(--drafts-hover-bg) 60%, transparent);
 }
 
+/* A branch's comment inside its unfolded merge block: run-row size and
+   indent, so it lines up with the contributor runs around it. */
+.draft-comment-row[data-in-merge] {
+  padding: 0.25rem 0.375rem 0.25rem 1.875rem;
+  border-radius: 0;
+  font-size: 0.6875rem;
+}
+
 .draft-comment-label {
   flex: none;
   color: var(--drafts-muted-fg);
