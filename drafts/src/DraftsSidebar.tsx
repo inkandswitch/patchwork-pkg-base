@@ -72,7 +72,7 @@ const EMPTY_DRAFT_LIST: DraftList = {
 
 // Shown in the panel footer, logged on load, and stamped into fork
 // diagnostics; bump on deploy to tell builds apart.
-const DRAFTS_VERSION = "0.0.70";
+const DRAFTS_VERSION = "0.0.71";
 
 // Logged at module load so the console shows which build is running even
 // before the panel renders.
@@ -961,6 +961,15 @@ async function mergeDraft(
     CloneEntry,
   ][];
   const skipped: AutomergeUrl[] = [];
+  // Debug: what the draft's members actually are, by datatype.
+  const byType: Record<string, number> = {};
+  const tally = (doc: unknown) => {
+    const type = (doc as { "@patchwork"?: { type?: unknown } } | undefined)?.[
+      "@patchwork"
+    ]?.type;
+    const label = typeof type === "string" ? type : "(untyped)";
+    byType[label] = (byType[label] ?? 0) + 1;
+  };
 
   const mergeMember = async ([originalUrl, entry]: [
     AutomergeUrl,
@@ -981,8 +990,10 @@ async function mergeDraft(
         err
       );
       skipped.push(originalUrl);
+      byType["(unavailable)"] = (byType["(unavailable)"] ?? 0) + 1;
       return;
     }
+    tally(clone.doc());
     // Where this member's changes go: the parent's copy if it has one; else
     // a real draft adopts the clone itself (the target is the clone, nothing
     // moves), while main — or no resolvable parent at all — takes the
@@ -1057,6 +1068,7 @@ async function mergeDraft(
 
   console.info(`[drafts] merging ${String(entries.length)} members`);
   await forEachLimited(entries, MEMBER_LOAD_CONCURRENCY, mergeMember);
+  console.info("[drafts] merged members by type:", byType);
   if (skipped.length > 0) {
     console.warn(
       `[drafts] merged with ${String(skipped.length)} of ${String(

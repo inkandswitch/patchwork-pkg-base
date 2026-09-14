@@ -50,6 +50,59 @@ export const SKIPPED_DATATYPES: ReadonlySet<string> = new Set([
 // left checked out for a while accumulated well over a thousand dead clones
 // of session docs, each resolved on every load and each a point of failure
 // at merge time. So the rule is positive: typed, and not on the skip-list.
+// Debug trail for forks. Every clone a draft makes is logged with the doc's
+// type, the element whose handle request caused it, and a running tally by
+// type, so a draft that ends up with hundreds of members can be traced back
+// to whoever keeps asking for docs it shouldn't.
+const forkTally: Record<string, number> = {};
+let forkCount = 0;
+export function logFork(details: {
+  original: string;
+  cloneUrl: string;
+  doc: unknown;
+  draftUrl: string | null | undefined;
+  requester?: EventTarget | null;
+  via: string;
+}): void {
+  const type =
+    (details.doc as { "@patchwork"?: { type?: unknown } } | undefined)?.[
+      "@patchwork"
+    ]?.type;
+  const label = typeof type === "string" ? type : "(untyped)";
+  forkTally[label] = (forkTally[label] ?? 0) + 1;
+  forkCount += 1;
+  console.info(
+    `[drafts] fork #${String(forkCount)} ${label} ${details.original} -> ${
+      details.cloneUrl
+    } via ${details.via}`,
+    {
+      draft: details.draftUrl,
+      requester: describeRequester(details.requester),
+      tally: { ...forkTally },
+    }
+  );
+}
+
+// A short description of the element behind a handle request: its tag, the
+// attributes that say what it shows, and the nearest enclosing
+// <patchwork-view>'s tool — enough to name the culprit.
+export function describeRequester(target: EventTarget | null | undefined): string {
+  if (!(target instanceof Element)) return target ? String(target) : "(none)";
+  const attrs = ["tool-id", "doc-url", "url", "component", "id"]
+    .map((name) => {
+      const value = target.getAttribute(name);
+      return value ? `${name}="${value.slice(0, 60)}"` : null;
+    })
+    .filter(Boolean)
+    .join(" ");
+  const view = target.closest("patchwork-view");
+  const viewTool =
+    view && view !== target ? view.getAttribute("tool-id") ?? view.getAttribute("component") : null;
+  return `<${target.tagName.toLowerCase()}${attrs ? " " + attrs : ""}>${
+    viewTool ? ` in <patchwork-view ${viewTool}>` : ""
+  }`;
+}
+
 export function isDraftContent(doc: unknown): boolean {
   const type = (doc as { "@patchwork"?: { type?: unknown } } | undefined)?.[
     "@patchwork"

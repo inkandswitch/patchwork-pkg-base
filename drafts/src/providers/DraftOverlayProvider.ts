@@ -14,7 +14,7 @@ import {
 } from "@inkandswitch/patchwork-providers";
 
 import type { CheckedOutDraft, DraftDoc } from "../draft-types.js";
-import { canonicalUrl, isDraftContent } from "../clone-policy.js";
+import { canonicalUrl, isDraftContent, logFork } from "../clone-policy.js";
 
 const HANDLE_DESCRIPTOR_SELECTOR = "repo:handle-descriptor";
 const CHECKED_OUT_SELECTOR = "draft:checked-out";
@@ -149,7 +149,7 @@ export const DraftOverlayProvider = (element: HTMLElement) => {
         const subscriber: DescriptorSubscriber = { original, respond };
         descriptorSubscribers.add(subscriber);
         const { signal } = refresh;
-        void resolveDescriptor(original)
+        void resolveDescriptor(original, event.target)
           .then((descriptor) => {
             // A re-point raced this resolution; `applyDraft`'s refresh pass
             // answers this subscriber with the new mapping instead.
@@ -238,7 +238,8 @@ export const DraftOverlayProvider = (element: HTMLElement) => {
   //  - Skipped docs (account, contacts): the real doc, never forked.
   //  - Everything else on a draft: the per-draft clone (pinned when checked out).
   async function resolveDescriptor(
-    original: AutomergeUrl
+    original: AutomergeUrl,
+    requester?: EventTarget | null
   ): Promise<DocHandleDescriptor> {
     const to = checkedOutHandle?.doc()?.at?.[original]?.to ?? undefined;
     if (!draftUrl || (await isSkippedDoc(original))) {
@@ -246,7 +247,7 @@ export const DraftOverlayProvider = (element: HTMLElement) => {
         ? { url: original, cloneUrl: withHeads(original, to) }
         : { url: original };
     }
-    const cloneUrl = await resolveClone(original);
+    const cloneUrl = await resolveClone(original, requester);
     return { url: original, cloneUrl: withHeads(cloneUrl, to) };
   }
 
@@ -281,7 +282,10 @@ export const DraftOverlayProvider = (element: HTMLElement) => {
   // url. Reuses an existing clone recorded in `DraftDoc.clones`; otherwise
   // forks `original` at its current heads and records the fork point so the
   // baseline and merge-back can find it.
-  function resolveClone(original: AutomergeUrl): Promise<AutomergeUrl> {
+  function resolveClone(
+    original: AutomergeUrl,
+    requester?: EventTarget | null
+  ): Promise<AutomergeUrl> {
     const cached = cloneResolutions.get(original);
     if (cached) return cached;
     const ready = draftReady;
@@ -297,6 +301,14 @@ export const DraftOverlayProvider = (element: HTMLElement) => {
       const clonedAt = originalHandle.heads();
       const clone = liveRepo.clone(originalHandle);
       const cloneUrl = canonicalUrl(clone.url);
+      logFork({
+        original,
+        cloneUrl,
+        doc: originalHandle.doc(),
+        draftUrl,
+        requester,
+        via: "overlay handle-descriptor",
+      });
 
       handle.change((d) => {
         d.clones[original] = { cloneUrl, clonedAt };

@@ -388,6 +388,20 @@ function resolveBranchThreads(
 	})
 }
 
+const forkTally: Record<string, number> = {}
+function typeLabel(doc: unknown): string {
+	const type = (doc as {"@patchwork"?: {type?: unknown}} | undefined)?.["@patchwork"]?.type
+	return typeof type === "string" ? type : "(untyped)"
+}
+// The few stack frames above resolveInDraft — enough to see which tool
+// (read_doc, automerge_op, a skill) asked for the doc.
+function callerFrames(): string[] {
+	return (new Error().stack ?? "")
+		.split("\n")
+		.slice(2, 8)
+		.map((l) => l.trim())
+}
+
 function commentThreadIds(doc: unknown): Set<string> {
 	const ids = new Set<string>()
 	const threads = (doc as DocWithCommentThreads | undefined)?.["@comments"]
@@ -594,6 +608,13 @@ export async function resolveInDraft(
 	const clonedAt = originalHandle.heads()
 	const clone = repo.clone(originalHandle)
 	const cloneUrl = canonicalUrl(clone.url)
+	// Debug trail, matching the drafts overlay's: every fork the agent makes,
+	// with the doc's type and the tool call that asked for it.
+	forkTally[typeLabel(originalHandle.doc())] = (forkTally[typeLabel(originalHandle.doc())] ?? 0) + 1
+	console.info(
+		`[agent] fork ${typeLabel(originalHandle.doc())} ${original} -> ${cloneUrl} via resolveInDraft`,
+		{draft: draftUrl, tally: {...forkTally}, stack: callerFrames()}
+	)
 	draft.change((d) => {
 		if (!d.clones[original]) d.clones[original] = {cloneUrl, clonedAt}
 	})
