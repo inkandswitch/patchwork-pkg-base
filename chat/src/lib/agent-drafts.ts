@@ -296,7 +296,7 @@ export async function mergeAgentDraft(
 	}
 	if (skipped.length > 0) {
 		console.info(
-			`[agent] merge: ${String(skipped.length)} of ${String(
+			`[agent:merge] ${String(skipped.length)} of ${String(
 				entries.length
 			)} members couldn't be loaded and were left out`,
 			skipped
@@ -389,6 +389,19 @@ function resolveBranchThreads(
 }
 
 const forkTally: Record<string, number> = {}
+/** The original `url` is a clone of in `clones`, or null. Mirrors the drafts
+ * package's cloneOwner: the map is keyed by originals, so a clone url has to
+ * be found by value. */
+function cloneOwner(
+	clones: Record<string, {cloneUrl: AutomergeUrl}> | undefined,
+	url: AutomergeUrl
+): AutomergeUrl | null {
+	if (!clones) return null
+	for (const [original, entry] of Object.entries(clones)) {
+		if (canonicalUrl(entry.cloneUrl) === url) return original as AutomergeUrl
+	}
+	return null
+}
 function typeLabel(doc: unknown): string {
 	const type = (doc as {"@patchwork"?: {type?: unknown}} | undefined)?.["@patchwork"]?.type
 	return typeof type === "string" ? type : "(untyped)"
@@ -596,6 +609,16 @@ export async function resolveInDraft(
 	const draft = await repo.find<DraftDoc>(draftUrl)
 	const existing = draft.doc()?.clones?.[original]
 	if (existing) return repo.find(canonicalUrl(existing.cloneUrl))
+	// A url that is already one of this draft's clones resolves to itself:
+	// forking it again would chain clone-of-clone members. Log who asked.
+	const owner = cloneOwner(draft.doc()?.clones, original)
+	if (owner) {
+		console.warn(
+			`[agent:fork] REFUSED clone-of-clone: ${original} is already this draft's clone of ${owner}; asked via resolveInDraft`,
+			{draft: draftUrl, stack: callerFrames()}
+		)
+		return repo.find(original)
+	}
 
 	const originalHandle = await repo.find<Record<string, unknown>>(original)
 	if (!isDraftContent(originalHandle.doc())) return originalHandle
@@ -612,7 +635,7 @@ export async function resolveInDraft(
 	// with the doc's type and the tool call that asked for it.
 	forkTally[typeLabel(originalHandle.doc())] = (forkTally[typeLabel(originalHandle.doc())] ?? 0) + 1
 	console.info(
-		`[agent] fork ${typeLabel(originalHandle.doc())} ${original} -> ${cloneUrl} via resolveInDraft`,
+		`[agent:fork] ${typeLabel(originalHandle.doc())} ${original} -> ${cloneUrl} via resolveInDraft`,
 		{draft: draftUrl, tally: {...forkTally}, stack: callerFrames()}
 	)
 	draft.change((d) => {

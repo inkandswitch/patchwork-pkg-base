@@ -54,6 +54,9 @@ export const SKIPPED_DATATYPES: ReadonlySet<string> = new Set([
 // type, the element whose handle request caused it, and a running tally by
 // type, so a draft that ends up with hundreds of members can be traced back
 // to whoever keeps asking for docs it shouldn't.
+//
+// Console filter: `:fork` shows every line from this trail (drafts and agent),
+// `:merge` the merge-time summary.
 const forkTally: Record<string, number> = {};
 let forkCount = 0;
 export function logFork(details: {
@@ -64,23 +67,55 @@ export function logFork(details: {
   requester?: EventTarget | null;
   via: string;
 }): void {
-  const type =
-    (details.doc as { "@patchwork"?: { type?: unknown } } | undefined)?.[
-      "@patchwork"
-    ]?.type;
-  const label = typeof type === "string" ? type : "(untyped)";
+  const label = typeLabel(details.doc);
   forkTally[label] = (forkTally[label] ?? 0) + 1;
   forkCount += 1;
   console.info(
-    `[drafts] fork #${String(forkCount)} ${label} ${details.original} -> ${
+    `[drafts:fork] #${String(forkCount)} ${label} ${details.original} -> ${
       details.cloneUrl
-    } via ${details.via}`,
-    {
-      draft: details.draftUrl,
-      requester: describeRequester(details.requester),
-      tally: { ...forkTally },
-    }
+    } via ${details.via} · ${describeRequester(details.requester)}`,
+    { draft: details.draftUrl, tally: { ...forkTally } }
   );
+}
+
+// The original a url is a clone of in `clones`, or null when it isn't one.
+// A draft's clone map is keyed by ORIGINALS, so a clone url handed back in as
+// if it were an original is not found there and would be forked again — a
+// clone of a clone, carrying the whole history of the first, and a fresh
+// member on every hop. Callers use this to refuse that fork and name the
+// requester that leaked the clone url.
+export function cloneOwner(
+  clones: Record<string, { cloneUrl: string }> | undefined,
+  url: string
+): string | null {
+  if (!clones) return null;
+  for (const [original, entry] of Object.entries(clones)) {
+    if (canonicalUrl(entry.cloneUrl as AutomergeUrl) === url) return original;
+  }
+  return null;
+}
+
+export function logCloneReentry(details: {
+  cloneUrl: string;
+  original: string;
+  draftUrl: string | null | undefined;
+  requester?: EventTarget | null;
+  via: string;
+}): void {
+  console.warn(
+    `[drafts:fork] REFUSED clone-of-clone: ${details.cloneUrl} is already this ` +
+      `draft's clone of ${details.original}; asked via ${details.via} · ${describeRequester(
+        details.requester
+      )}`,
+    { draft: details.draftUrl }
+  );
+}
+
+export function typeLabel(doc: unknown): string {
+  const type = (doc as { "@patchwork"?: { type?: unknown } } | undefined)?.[
+    "@patchwork"
+  ]?.type;
+  return typeof type === "string" ? type : "(untyped)";
 }
 
 // A short description of the element behind a handle request: its tag, the

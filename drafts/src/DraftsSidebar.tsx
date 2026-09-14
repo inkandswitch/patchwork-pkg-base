@@ -51,7 +51,12 @@ import {
   splitIntoGroups,
 } from "./change-group-cache";
 import { attributedHashes, frontierHashes } from "./merge-attribution";
-import { canonicalUrl, isDraftContent } from "./clone-policy";
+import {
+  canonicalUrl,
+  cloneOwner,
+  isDraftContent,
+  typeLabel,
+} from "./clone-policy";
 import { ensureMainDraft } from "./draft-docs";
 
 // Seed for the read-only `draft:list` subscription until the provider answers.
@@ -72,7 +77,7 @@ const EMPTY_DRAFT_LIST: DraftList = {
 
 // Shown in the panel footer, logged on load, and stamped into fork
 // diagnostics; bump on deploy to tell builds apart.
-const DRAFTS_VERSION = "0.0.71";
+const DRAFTS_VERSION = "0.0.72";
 
 // Logged at module load so the console shows which build is running even
 // before the panel renders.
@@ -961,15 +966,16 @@ async function mergeDraft(
     CloneEntry,
   ][];
   const skipped: AutomergeUrl[] = [];
-  // Debug: what the draft's members actually are, by datatype.
+  // Debug: what the draft's members actually are, by datatype, and how many
+  // are clones of other members' clones (a clone url leaked back in as an
+  // original and got forked again — see cloneOwner in clone-policy.ts).
   const byType: Record<string, number> = {};
   const tally = (doc: unknown) => {
-    const type = (doc as { "@patchwork"?: { type?: unknown } } | undefined)?.[
-      "@patchwork"
-    ]?.type;
-    const label = typeof type === "string" ? type : "(untyped)";
-    byType[label] = (byType[label] ?? 0) + 1;
+    byType[typeLabel(doc)] = (byType[typeLabel(doc)] ?? 0) + 1;
   };
+  const clonesOfClones = entries.filter(
+    ([originalUrl]) => cloneOwner(doc?.clones, originalUrl) !== null
+  );
 
   const mergeMember = async ([originalUrl, entry]: [
     AutomergeUrl,
@@ -1066,12 +1072,24 @@ async function mergeDraft(
     });
   };
 
-  console.info(`[drafts] merging ${String(entries.length)} members`);
+  console.info(
+    `[drafts:merge] merging ${String(entries.length)} members, ${String(
+      clonesOfClones.length
+    )} of them clones of other members' clones`
+  );
   await forEachLimited(entries, MEMBER_LOAD_CONCURRENCY, mergeMember);
-  console.info("[drafts] merged members by type:", byType);
+  console.info("[drafts:merge] members by type:", byType);
+  if (clonesOfClones.length > 0) {
+    console.warn(
+      "[drafts:merge] clone-of-clone members (original -> clone):",
+      Object.fromEntries(
+        clonesOfClones.map(([o, e]) => [o, e.cloneUrl] as const)
+      )
+    );
+  }
   if (skipped.length > 0) {
     console.warn(
-      `[drafts] merged with ${String(skipped.length)} of ${String(
+      `[drafts:merge] merged with ${String(skipped.length)} of ${String(
         entries.length
       )} members skipped:`,
       skipped

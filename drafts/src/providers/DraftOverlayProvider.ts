@@ -14,7 +14,13 @@ import {
 } from "@inkandswitch/patchwork-providers";
 
 import type { CheckedOutDraft, DraftDoc } from "../draft-types.js";
-import { canonicalUrl, isDraftContent, logFork } from "../clone-policy.js";
+import {
+  canonicalUrl,
+  cloneOwner,
+  isDraftContent,
+  logCloneReentry,
+  logFork,
+} from "../clone-policy.js";
 
 const HANDLE_DESCRIPTOR_SELECTOR = "repo:handle-descriptor";
 const CHECKED_OUT_SELECTOR = "draft:checked-out";
@@ -296,6 +302,19 @@ export const DraftOverlayProvider = (element: HTMLElement) => {
       const handle = await ready;
       const existing = handle.doc()?.clones?.[original];
       if (existing) return canonicalUrl(existing.cloneUrl);
+      // A url that is already one of this draft's clones resolves to itself:
+      // forking it again would chain clone-of-clone members. Log who asked.
+      const owner = cloneOwner(handle.doc()?.clones, original);
+      if (owner) {
+        logCloneReentry({
+          cloneUrl: original,
+          original: owner,
+          draftUrl,
+          requester,
+          via: "overlay handle-descriptor",
+        });
+        return original;
+      }
 
       const originalHandle = await liveRepo.find<unknown>(original);
       const clonedAt = originalHandle.heads();

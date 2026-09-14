@@ -420,20 +420,6 @@ function collectMemberRows(
     };
     const agent = parseAgentTag(meta.message);
     if (agent) row.agent = agent;
-    if (meta.message) {
-      // Debug: every change that carries a message, and whether it parsed as
-      // an agent tag — the first place to look when attribution seems dead.
-      console.log(
-        "[drafts] change",
-        meta.hash.slice(0, 8),
-        "on",
-        member.url,
-        "message:",
-        meta.message,
-        "→ agent:",
-        agent ? agent.chatUrl : "NO (not a valid agent tag)"
-      );
-    }
     out.push(row);
   });
 }
@@ -558,7 +544,7 @@ async function buildGroup(
   };
   const agent = agentForRows(rowsNewestFirst);
   if (agent) group.agent = agent;
-  console.log(
+  console.debug(
     "[drafts] built group",
     group.id,
     "changes:",
@@ -613,7 +599,7 @@ export function createChangeGrouper(
   let running = false;
   let disposed = false;
 
-  console.log(
+  console.debug(
     "[drafts] change grouper created (v" +
       CHANGE_GROUP_DOC_VERSION +
       "), resolveContact wired:",
@@ -868,7 +854,7 @@ export function createChangeGrouper(
     if (tails.length > 0) {
       // Debug: one line per grouping run — proves the grouper saw the new
       // changes and how many carried an agent tag.
-      console.log(
+      console.debug(
         "[drafts] grouping run for",
         spec.draftHandle.url,
         "— tail rows:",
