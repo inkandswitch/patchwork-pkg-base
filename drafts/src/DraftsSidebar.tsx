@@ -71,7 +71,7 @@ const EMPTY_DRAFT_LIST: DraftList = {
 
 // Shown in the panel footer, logged on load, and stamped into fork
 // diagnostics; bump on deploy to tell builds apart.
-const DRAFTS_VERSION = "0.0.64";
+const DRAFTS_VERSION = "0.0.65";
 
 // Logged at module load so the console shows which build is running even
 // before the panel renders.
@@ -712,7 +712,10 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     if (!draftUrl) return;
     const approvedBy = approvers();
     const parentUrl = mergeParentUrl();
-    if (!window.confirm(`Merge this draft into "${mergeTargetName()}"?`)) {
+    // Read once: the selection moves to the target below, and with it what
+    // `mergeTargetName` means.
+    const targetName = mergeTargetName();
+    if (!window.confirm(`Merge this draft into "${targetName}"?`)) {
       console.info("[drafts] merge cancelled at the confirm dialog");
       return;
     }
@@ -724,20 +727,33 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     // A merge that fails halfway must not look like nothing happened: the
     // draft stays listed and the view stays put, which reads as a dead
     // button. Say what went wrong instead.
+    let report: MergeReport;
     try {
-      console.info("[drafts] merging", draftUrl, "into", mergeTargetName());
+      console.info("[drafts] merging", draftUrl, "into", targetName);
       const draftHandle = await repo.find<DraftDoc>(draftUrl);
-      await mergeDraft(repo, draftHandle, approvedBy);
+      report = await mergeDraft(repo, draftHandle, approvedBy);
     } catch (err) {
       console.error("[drafts] merge failed:", err);
       window.alert(
-        `Merging into "${mergeTargetName()}" failed: ${
+        `Merging into "${targetName}" failed: ${
           err instanceof Error ? err.message : String(err)
         }`
       );
       return;
     }
     selectDraft(parentUrl && parentUrl !== list().main.url ? parentUrl : null);
+    if (report.skipped.length > 0) {
+      // Said after the switch so the user sees the merge did land, and this
+      // is a footnote to it rather than a failure.
+      window.alert(
+        `Merged into "${targetName}", but ${String(
+          report.skipped.length
+        )} of the draft's ${String(
+          report.members
+        )} documents couldn't be loaded and were left out. ` +
+          "Their urls are in the console."
+      );
+    }
   };
 
   // Delete the selected draft: unlink it from its parent's `drafts` list,
@@ -905,11 +921,17 @@ function reviewCoversHeads(
 // timeline the merge landed in (`mergedInto`). Finally the draft is marked
 // merged (which hides it from the list) and its children are handed up to
 // the merge target, so they never dangle under a hidden draft.
+//
+// A member whose clone (or target) can't be loaded — a doc that only ever
+// lived in some other browser's storage, or one the sync server has never
+// seen — is skipped and reported, not fatal: one dead reference must not
+// hold the other thousand members' changes hostage. Its clone entry is left
+// without `mergedFrom`, so attribution ignores it too.
 async function mergeDraft(
   repo: Repo,
   draftHandle: DocHandle<DraftDoc>,
   approvedBy: AutomergeUrl[]
-): Promise<void> {
+): Promise<MergeReport> {
   const doc = draftHandle.doc();
   const parentHandle = await findMergeTarget(repo, doc?.parent);
   const parentIsMain = parentHandle?.doc()?.isMain === true;
@@ -917,7 +939,29 @@ async function mergeDraft(
     AutomergeUrl,
     CloneEntry,
   ][];
-  for (const [originalUrl, entry] of entries) {
+  const skipped: AutomergeUrl[] = [];
+
+  const mergeMember = async ([originalUrl, entry]: [
+    AutomergeUrl,
+    CloneEntry,
+  ]) => {
+    // Load the clone before touching anything: a member that isn't there
+    // should leave no trace on the target.
+    let clone: DocHandle<unknown>;
+    try {
+      clone = await withTimeout(
+        repo.find<unknown>(entry.cloneUrl),
+        MEMBER_LOAD_TIMEOUT_MS
+      );
+    } catch (err) {
+      console.warn(
+        "[drafts] skipping member whose clone can't be loaded:",
+        entry.cloneUrl,
+        err
+      );
+      skipped.push(originalUrl);
+      return;
+    }
     // A member the target never forked: a real draft adopts the clone (no
     // data moves); main gets the identity entry `syncMainDraftClones` would
     // eventually add, so its timeline is guaranteed to include the member.
@@ -938,8 +982,6 @@ async function mergeDraft(
     // creator winning its guard) may have just changed the mapping.
     const parentClones = parentHandle?.doc()?.clones ?? {};
     const targetUrl = parentClones[originalUrl]?.cloneUrl ?? originalUrl;
-    console.info("[drafts] merging member", entry.cloneUrl, "->", targetUrl);
-    const clone = await repo.find<unknown>(entry.cloneUrl);
     const mergedFrom = clone.heads();
     if (entry.cloneUrl === targetUrl) {
       // The clone IS the target's copy (adopted above, or an identity
@@ -951,9 +993,23 @@ async function mergeDraft(
           e.mergedFrom = mergedFrom;
         }
       });
-      continue;
+      return;
     }
-    const target = await repo.find<unknown>(targetUrl);
+    let target: DocHandle<unknown>;
+    try {
+      target = await withTimeout(
+        repo.find<unknown>(targetUrl),
+        MEMBER_LOAD_TIMEOUT_MS
+      );
+    } catch (err) {
+      console.warn(
+        "[drafts] skipping member whose target can't be loaded:",
+        targetUrl,
+        err
+      );
+      skipped.push(originalUrl);
+      return;
+    }
     target.merge(clone);
     const mergedAt = target.heads();
     draftHandle.change((d) => {
@@ -963,7 +1019,19 @@ async function mergeDraft(
         e.mergedFrom = mergedFrom;
       }
     });
+  };
+
+  console.info(`[drafts] merging ${String(entries.length)} members`);
+  await forEachLimited(entries, MEMBER_LOAD_CONCURRENCY, mergeMember);
+  if (skipped.length > 0) {
+    console.warn(
+      `[drafts] merged with ${String(skipped.length)} of ${String(
+        entries.length
+      )} members skipped:`,
+      skipped
+    );
   }
+
   draftHandle.change((d) => {
     d.mergedAt = Date.now();
     if (parentHandle) d.mergedInto = parentHandle.url;
@@ -1002,6 +1070,60 @@ async function mergeDraft(
       }
     }
   }
+
+  return { members: entries.length, skipped };
+}
+
+type MergeReport = {
+  members: number;
+  // Originals whose clone or target couldn't be loaded; their changes, if
+  // any, are not in the merge.
+  skipped: AutomergeUrl[];
+};
+
+// A doc the sync server has never heard of is reported unavailable fairly
+// quickly, but one it is still fetching can hang a `find` indefinitely; a
+// draft with a thousand members can't afford either to block the rest.
+const MEMBER_LOAD_TIMEOUT_MS = 20_000;
+const MEMBER_LOAD_CONCURRENCY = 16;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`Timed out after ${String(ms)}ms`)),
+      ms
+    );
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err: unknown) => {
+        clearTimeout(timer);
+        reject(err instanceof Error ? err : new Error(String(err)));
+      }
+    );
+  });
+}
+
+// Runs `work` over `items` with at most `limit` in flight. Each call handles
+// its own failures; a rejection here is a bug, not a skipped member.
+async function forEachLimited<T>(
+  items: T[],
+  limit: number,
+  work: (item: T) => Promise<void>
+): Promise<void> {
+  let next = 0;
+  const lanes = Array.from(
+    { length: Math.min(limit, items.length) },
+    async () => {
+      while (next < items.length) {
+        const item = items[next++];
+        await work(item);
+      }
+    }
+  );
+  await Promise.all(lanes);
 }
 
 // Resolve the draft the merge should land in: the nearest non-merged
