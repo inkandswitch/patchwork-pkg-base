@@ -33,6 +33,11 @@ const SLICE_BUDGET_MS = 8;
 
 // Coalesce bursts of member-doc change events into one grouping update.
 const GROUPING_DEBOUNCE_MS = 250;
+// Member docs are resolved this many at a time, each bounded: a timeline can
+// carry members that no peer has any more, and a pass that waits on them one
+// by one never finishes — which reads as "Building history…" forever.
+const MEMBER_LOAD_CONCURRENCY = 16;
+const MEMBER_LOAD_TIMEOUT_MS = 30_000;
 
 // Change-event sources that mean a LOCAL edit (made through this client's
 // doc instance), as opposed to synced/merged remote changes.
@@ -455,6 +460,43 @@ function agentForRows(rowsNewestFirst: PendingChange[]): AgentTag | undefined {
 }
 
 // Yield to the main thread between diff slices.
+// Runs `work` over `items` with at most `limit` in flight.
+async function forEachLimited<T>(
+  items: readonly T[],
+  limit: number,
+  work: (item: T) => Promise<void>
+): Promise<void> {
+  let next = 0;
+  const lane = async () => {
+    while (next < items.length) {
+      const item = items[next++]!;
+      await work(item);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, lane)
+  );
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`Timed out after ${String(ms)}ms`)),
+      ms
+    );
+    promise.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e: unknown) => {
+        clearTimeout(timer);
+        reject(e instanceof Error ? e : new Error(String(e)));
+      }
+    );
+  });
+}
+
 function idle(): Promise<void> {
   return new Promise((resolve) => {
     if (typeof requestIdleCallback === "function") {
@@ -673,8 +715,8 @@ export function createChangeGrouper(
         task.listeners.delete(url);
       }
     }
-    for (const url of wanted) {
-      if (task.listeners.has(url)) continue;
+    const pending = [...wanted].filter((url) => !task.listeners.has(url));
+    await forEachLimited(pending, MEMBER_LOAD_CONCURRENCY, async (url) => {
       const onChange = (payload: DocHandleChangePayload<unknown>) => {
         if (
           options.onLocalChange &&
@@ -692,21 +734,20 @@ export function createChangeGrouper(
       const slot: SourceListener = { handle: null, onChange };
       task.listeners.set(url, slot);
       try {
-        const handle = await repo.find<unknown>(url);
+        const handle = await withTimeout(
+          repo.find<unknown>(url),
+          MEMBER_LOAD_TIMEOUT_MS
+        );
         // The task was torn down or the slot dropped while resolving.
         if (disposed || tasks.get(task.key) !== task) return;
         if (task.listeners.get(url) !== slot) return;
         handle.on("change", onChange);
         slot.handle = handle;
-      } catch (err) {
+      } catch {
+        // Unwatchable members are reported once per pass, below.
         if (task.listeners.get(url) === slot) task.listeners.delete(url);
-        console.warn(
-          "[drafts] change grouping: failed to watch member:",
-          url,
-          err
-        );
       }
-    }
+    });
   }
 
   function schedule(key: AutomergeUrl): void {
@@ -763,22 +804,37 @@ export function createChangeGrouper(
     // Resolve member sources, sorted by member url so cross-doc timestamp
     // ties interleave identically on every client.
     const members = [...spec.members].sort(byMemberUrl);
+    const loaded = new Map<AutomergeUrl, Automerge.Doc<unknown>>();
+    const unresolved: AutomergeUrl[] = [];
+    await forEachLimited(members, MEMBER_LOAD_CONCURRENCY, async (member) => {
+      const url = member.cloneUrl ?? member.url;
+      try {
+        const handle = await withTimeout(
+          repo.find<unknown>(url),
+          MEMBER_LOAD_TIMEOUT_MS
+        );
+        const doc = handle.doc();
+        if (doc) loaded.set(member.url, doc as Automerge.Doc<unknown>);
+      } catch {
+        unresolved.push(url);
+      }
+    });
+    if (isAborted()) return;
+    if (unresolved.length > 0) {
+      console.warn(
+        `[drafts] change grouping for ${spec.draftHandle.url}: ${String(
+          unresolved.length
+        )} of ${String(members.length)} members couldn't be loaded`,
+        unresolved
+      );
+    }
+    // Keep member order: the ties above must interleave identically everywhere.
     const sources: { member: DraftMemberDoc; doc: Automerge.Doc<unknown> }[] =
       [];
     for (const member of members) {
-      try {
-        const handle = await repo.find<unknown>(member.cloneUrl ?? member.url);
-        const doc = handle.doc();
-        if (doc) sources.push({ member, doc: doc as Automerge.Doc<unknown> });
-      } catch (err) {
-        console.warn(
-          "[drafts] change grouping: failed to resolve member:",
-          member,
-          err
-        );
-      }
+      const doc = loaded.get(member.url);
+      if (doc) sources.push({ member, doc });
     }
-    if (isAborted()) return;
 
     const changeGroupDoc = changeGroupHandle.doc();
     if (!changeGroupDoc) return;

@@ -230,21 +230,35 @@ export async function mergeAgentDraft(
 			skipped.push(entry.cloneUrl)
 		}
 	})
-	if (skipped.length > 0) {
-		console.info(
-			`[agent] merge: ${String(skipped.length)} of ${String(
-				entries.length
-			)} members couldn't be loaded and were left out`,
-			skipped
-		)
-	}
 	for (const [originalUrl, entry] of entries) {
 		const clone = loaded.get(originalUrl)
 		if (!clone) continue
+		// Where this member's changes go: the parent's copy if it has one; else
+		// a real draft adopts the clone itself (nothing moves), while main — or
+		// no resolvable parent — takes the original.
+		const parentClones = parentHandle?.doc()?.clones ?? {}
+		const parentEntry = parentClones[originalUrl]
+		const targetUrl = parentEntry
+			? parentEntry.cloneUrl
+			: parentHandle && !parentIsMain
+				? entry.cloneUrl
+				: originalUrl
+		const mergedFrom = clone.heads()
+		// Load the target before the parent learns of the member: a dead
+		// original must not end up in main's clone map as an identity entry.
+		let target: DocHandle<unknown> | null = null
+		if (entry.cloneUrl !== targetUrl) {
+			try {
+				target = await withTimeout(repo.find<unknown>(targetUrl), MEMBER_LOAD_TIMEOUT_MS)
+			} catch {
+				skipped.push(targetUrl)
+				continue
+			}
+		}
 		// A member the target never forked: a real draft adopts the clone (no
 		// data moves); main gets the identity entry its clone sync would
 		// eventually add, so its timeline is guaranteed to include the member.
-		if (parentHandle && !parentHandle.doc()?.clones[originalUrl]) {
+		if (parentHandle && !parentEntry) {
 			// Copy the heads array: it was read out of the draft's doc, and a
 			// live Automerge object must not be assigned into another document.
 			const adopted: CloneEntry = parentIsMain
@@ -257,12 +271,7 @@ export async function mergeAgentDraft(
 				if (!d.clones[originalUrl]) d.clones[originalUrl] = adopted
 			})
 		}
-		// Re-read the target's clones: the adoption above (or a concurrent
-		// creator winning its guard) may have just changed the mapping.
-		const parentClones = parentHandle?.doc()?.clones ?? {}
-		const targetUrl = parentClones[originalUrl]?.cloneUrl ?? originalUrl
-		const mergedFrom = clone.heads()
-		if (entry.cloneUrl === targetUrl) {
+		if (!target) {
 			// The clone IS the target's copy (adopted above, or an identity
 			// entry); nothing to merge — just record the join point.
 			draftHandle.change((d) => {
@@ -274,7 +283,6 @@ export async function mergeAgentDraft(
 			})
 			continue
 		}
-		const target = await repo.find<unknown>(targetUrl)
 		target.merge(clone)
 		resolveBranchThreads(target, clone, entry.clonedAt)
 		const mergedAt = target.heads()
@@ -285,6 +293,14 @@ export async function mergeAgentDraft(
 				e.mergedFrom = mergedFrom
 			}
 		})
+	}
+	if (skipped.length > 0) {
+		console.info(
+			`[agent] merge: ${String(skipped.length)} of ${String(
+				entries.length
+			)} members couldn't be loaded and were left out`,
+			skipped
+		)
 	}
 	draftHandle.change((d) => {
 		d.mergedAt = Date.now()

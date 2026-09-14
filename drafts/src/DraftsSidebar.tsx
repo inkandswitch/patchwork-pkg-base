@@ -72,7 +72,7 @@ const EMPTY_DRAFT_LIST: DraftList = {
 
 // Shown in the panel footer, logged on load, and stamped into fork
 // diagnostics; bump on deploy to tell builds apart.
-const DRAFTS_VERSION = "0.0.69";
+const DRAFTS_VERSION = "0.0.70";
 
 // Logged at module load so the console shows which build is running even
 // before the panel renders.
@@ -575,7 +575,10 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
   // map is additive otherwise, so nothing else ever shrinks it.
   const pruned = new Set<AutomergeUrl>();
   createEffect(() => {
-    const url = selected();
+    // Main is `selected() === null`; its DraftDoc is the list's main entry
+    // (once one exists — before that the url is the host doc's, which has no
+    // clone map and is left alone by pruneDraftClones).
+    const url = selected() ?? list().main.url;
     const repo = getRepo();
     if (!url || !repo || pruned.has(url)) return;
     pruned.add(url);
@@ -980,10 +983,42 @@ async function mergeDraft(
       skipped.push(originalUrl);
       return;
     }
+    // Where this member's changes go: the parent's copy if it has one; else
+    // a real draft adopts the clone itself (the target is the clone, nothing
+    // moves), while main — or no resolvable parent at all — takes the
+    // original.
+    const parentClones = parentHandle?.doc()?.clones ?? {};
+    const parentEntry = parentClones[originalUrl];
+    const targetUrl = parentEntry
+      ? parentEntry.cloneUrl
+      : parentHandle && !parentIsMain
+        ? entry.cloneUrl
+        : originalUrl;
+    const mergedFrom = clone.heads();
+    // Load the target before the parent learns of the member: a dead
+    // original must not end up in main's clone map as an identity entry
+    // (every pass over main's history would then wait on it).
+    let target: DocHandle<unknown> | null = null;
+    if (entry.cloneUrl !== targetUrl) {
+      try {
+        target = await withTimeout(
+          repo.find<unknown>(targetUrl),
+          MEMBER_LOAD_TIMEOUT_MS
+        );
+      } catch (err) {
+        console.warn(
+          "[drafts] skipping member whose target can't be loaded:",
+          targetUrl,
+          err
+        );
+        skipped.push(originalUrl);
+        return;
+      }
+    }
     // A member the target never forked: a real draft adopts the clone (no
     // data moves); main gets the identity entry `syncMainDraftClones` would
     // eventually add, so its timeline is guaranteed to include the member.
-    if (parentHandle && !parentHandle.doc()?.clones[originalUrl]) {
+    if (parentHandle && !parentEntry) {
       // Copy the heads array: it was read out of the draft's doc, and a live
       // Automerge object must not be assigned into another document.
       const adopted: CloneEntry = parentIsMain
@@ -996,12 +1031,7 @@ async function mergeDraft(
         if (!d.clones[originalUrl]) d.clones[originalUrl] = adopted;
       });
     }
-    // Re-read the target's clones: the adoption above (or a concurrent
-    // creator winning its guard) may have just changed the mapping.
-    const parentClones = parentHandle?.doc()?.clones ?? {};
-    const targetUrl = parentClones[originalUrl]?.cloneUrl ?? originalUrl;
-    const mergedFrom = clone.heads();
-    if (entry.cloneUrl === targetUrl) {
+    if (!target) {
       // The clone IS the target's copy (adopted above, or an identity
       // entry); nothing to merge — just record the join point.
       draftHandle.change((d) => {
@@ -1011,21 +1041,6 @@ async function mergeDraft(
           e.mergedFrom = mergedFrom;
         }
       });
-      return;
-    }
-    let target: DocHandle<unknown>;
-    try {
-      target = await withTimeout(
-        repo.find<unknown>(targetUrl),
-        MEMBER_LOAD_TIMEOUT_MS
-      );
-    } catch (err) {
-      console.warn(
-        "[drafts] skipping member whose target can't be loaded:",
-        targetUrl,
-        err
-      );
-      skipped.push(originalUrl);
       return;
     }
     target.merge(clone);
@@ -1174,7 +1189,7 @@ async function pruneDraftClones(
   draftHandle: DocHandle<DraftDoc>
 ): Promise<void> {
   const doc = draftHandle.doc();
-  if (!doc || doc.mergedAt !== undefined) return;
+  if (!doc || !doc.clones || doc.mergedAt !== undefined) return;
   const online =
     typeof repo.isSubductionConnected !== "function" ||
     repo.isSubductionConnected();
