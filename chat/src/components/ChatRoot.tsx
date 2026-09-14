@@ -22,6 +22,7 @@ import {InputArea} from "./InputArea"
 import {PluginPanel} from "./PluginPanel"
 import {Lightbox} from "./Lightbox"
 // @ts-ignore — plain-JS library, ships no type declarations
+import {matchCannedRun, streamCanned, type CannedRun} from "../lib/canned-runs"
 import {
 	generate as llmGenerate,
 	popup as llmPopup,
@@ -2904,15 +2905,48 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 			const MAX_TOOL_ROUNDS = 20
 			let madeChanges = false
 			let completedResponse = false
+
+			// Scripted demo runs (lib/canned-runs.ts): a matching message on a
+			// Petrinaut net gets its pre-written tool calls and prose, streamed
+			// at a model's pace, in place of a model call. The calls still run
+			// through runToolByName below, so the edits are real.
+			const cannedUrl = props.targetDocUrl?.()
+			let canned: CannedRun | null = null
+			if (cannedUrl) {
+				try {
+					const type = ((await repo.find(cannedUrl)).doc() as any)?.["@patchwork"]?.type
+					canned = matchCannedRun(userMsg.text || "", type)
+				} catch {}
+			}
+			async function generateCanned(run: CannedRun, round: number) {
+				let scripted
+				try {
+					const doc = cannedUrl ? (await resolveRunDoc(cannedUrl)).doc() : undefined
+					scripted = run.round(round, doc)
+				} catch (err) {
+					console.warn("[agent] canned run failed:", err)
+					scripted = {
+						text: "I couldn't find the parts of the net this edit expects — is this the inventory purchasing model?",
+						toolCalls: null,
+					}
+				}
+				await streamCanned(scripted.text, onToken, onStatus, abortController.signal, {
+					leadInMs: round === 0 ? 1400 : 800,
+				})
+				return {text: scripted.text, toolCalls: scripted.toolCalls as any[] | null}
+			}
+
 			for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-				const gen = await generateLLM(
-					messages,
-					onToken,
-					abortController.signal,
-					onStatus,
-					systemPrompt,
-					enabledComputerTools()
-				)
+				const gen = canned
+					? await generateCanned(canned, round)
+					: await generateLLM(
+							messages,
+							onToken,
+							abortController.signal,
+							onStatus,
+							systemPrompt,
+							enabledComputerTools()
+						)
 				resetInactivityTimer()
 				if (tokenThrottleTimer) {
 					clearTimeout(tokenThrottleTimer)
