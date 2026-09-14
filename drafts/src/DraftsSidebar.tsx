@@ -71,7 +71,7 @@ const EMPTY_DRAFT_LIST: DraftList = {
 
 // Shown in the panel footer, logged on load, and stamped into fork
 // diagnostics; bump on deploy to tell builds apart.
-const DRAFTS_VERSION = "0.0.65";
+const DRAFTS_VERSION = "0.0.66";
 
 // Logged at module load so the console shows which build is running even
 // before the panel renders.
@@ -742,16 +742,15 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
       return;
     }
     selectDraft(parentUrl && parentUrl !== list().main.url ? parentUrl : null);
+    // Members that couldn't be loaded are left out quietly: today a draft
+    // carries hundreds of dead infrastructure clones (see clone-policy.ts),
+    // and a dialog counting them on every merge would be noise, not news.
+    // `mergeDraft` has already listed them in the console.
     if (report.skipped.length > 0) {
-      // Said after the switch so the user sees the merge did land, and this
-      // is a footnote to it rather than a failure.
-      window.alert(
-        `Merged into "${targetName}", but ${String(
+      console.info(
+        `[drafts] merged into "${targetName}" with ${String(
           report.skipped.length
-        )} of the draft's ${String(
-          report.members
-        )} documents couldn't be loaded and were left out. ` +
-          "Their urls are in the console."
+        )} of ${String(report.members)} members left out`
       );
     }
   };
