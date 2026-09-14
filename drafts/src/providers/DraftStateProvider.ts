@@ -23,7 +23,7 @@ import type {
   DraftSummary,
   HasDrafts,
 } from "../draft-types.js";
-import { SKIPPED_DATATYPES, canonicalUrl } from "../clone-policy.js";
+import { canonicalUrl, isDraftContent } from "../clone-policy.js";
 import {
   createChangeGrouper,
   type TimelineGroupingSpec,
@@ -184,10 +184,10 @@ export const DraftStateProvider = (element: HTMLElement) => {
     // its ChangeGroupDoc has a persistent home even if the sidebar is never
     // opened. Main's clones are identity mappings — nothing is forked;
     // the only host-doc side effect is the `mainDraftUrl` scalar, which the
-    // timeline's `@patchwork` path skip filters out. App-global datatypes the
-    // draft machinery never treats as content are left alone.
-    const hostType = handle.doc()?.["@patchwork"]?.type;
-    if (hostType == null || !SKIPPED_DATATYPES.has(hostType)) {
+    // timeline's `@patchwork` path skip filters out. Docs the draft machinery
+    // never treats as content (see `isDraftContent`) are left alone: a
+    // provider mounted over a session doc must not stamp a main draft onto it.
+    if (isDraftContent(handle.doc())) {
       try {
         const mainDraft = await ensureMainDraft(repo, handle);
         if (disposed) return;
@@ -550,8 +550,7 @@ export const DraftStateProvider = (element: HTMLElement) => {
       try {
         const handle = await repo.find<HasDrafts>(url);
         if (disposed) return;
-        const type = handle.doc()?.["@patchwork"]?.type;
-        const skipped = type != null && SKIPPED_DATATYPES.has(type);
+        const skipped = !isDraftContent(handle.doc());
         if (skipVerdicts.get(url) === skipped) return;
         skipVerdicts.set(url, skipped);
         // A now-confirmed not-skipped doc may belong in the main draft.

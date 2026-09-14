@@ -51,6 +51,7 @@ import {
   splitIntoGroups,
 } from "./change-group-cache";
 import { attributedHashes, frontierHashes } from "./merge-attribution";
+import { isDraftContent } from "./clone-policy";
 import { ensureMainDraft } from "./draft-docs";
 
 // Seed for the read-only `draft:list` subscription until the provider answers.
@@ -71,7 +72,7 @@ const EMPTY_DRAFT_LIST: DraftList = {
 
 // Shown in the panel footer, logged on load, and stamped into fork
 // diagnostics; bump on deploy to tell builds apart.
-const DRAFTS_VERSION = "0.0.66";
+const DRAFTS_VERSION = "0.0.67";
 
 // Logged at module load so the console shows which build is running even
 // before the panel renders.
@@ -566,6 +567,23 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
   const mergeParentUrl = createMemo<AutomergeUrl | null>(
     () => selectedSummary()?.parent ?? null
   );
+
+  // Opening a draft prunes its clone map of members that are no longer worth
+  // carrying: docs that aren't draft content under the current policy (a
+  // draft checked out before the policy tightened is full of session docs),
+  // and clones nothing can load any more. Once per draft per session — the
+  // map is additive otherwise, so nothing else ever shrinks it.
+  const pruned = new Set<AutomergeUrl>();
+  createEffect(() => {
+    const url = selected();
+    const repo = getRepo();
+    if (!url || !repo || pruned.has(url)) return;
+    pruned.add(url);
+    void repo.find<DraftDoc>(url).then(
+      (handle) => pruneDraftClones(repo, handle),
+      (err: unknown) => console.warn("[drafts] prune: draft not found:", err)
+    );
+  });
   // Display name of the merge target (the parent): the tooltip and the
   // confirm dialog both name it.
   const mergeTargetName = createMemo<string>(() => {
@@ -613,22 +631,23 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
       cancelled = true;
       for (const stop of stopWatching) stop();
     });
-    void (async () => {
-      for (const url of urls) {
-        let handle: DocHandle<unknown>;
-        try {
-          handle = await repo.find<unknown>(url);
-        } catch {
-          continue; // An unresolvable member can't retract anyone's approval.
-        }
-        if (cancelled) return;
-        const read = () =>
-          setCloneHeads((prev) => ({ ...prev, [url]: handle.heads() }));
-        read();
-        handle.on("change", read);
-        stopWatching.push(() => handle.off("change", read));
+    void forEachLimited(urls, MEMBER_LOAD_CONCURRENCY, async (url) => {
+      let handle: DocHandle<unknown>;
+      try {
+        handle = await withTimeout(
+          repo.find<unknown>(url),
+          MEMBER_LOAD_TIMEOUT_MS
+        );
+      } catch {
+        return; // An unresolvable member can't retract anyone's approval.
       }
-    })();
+      if (cancelled) return;
+      const read = () =>
+        setCloneHeads((prev) => ({ ...prev, [url]: handle.heads() }));
+      read();
+      handle.on("change", read);
+      stopWatching.push(() => handle.off("change", read));
+    });
   });
 
   // A draft's reviews, each marked with whether it still covers what is in
@@ -1083,15 +1102,19 @@ type MergeReport = {
 // A doc the sync server has never heard of is reported unavailable fairly
 // quickly, but one it is still fetching can hang a `find` indefinitely; a
 // draft with a thousand members can't afford either to block the rest.
-const MEMBER_LOAD_TIMEOUT_MS = 20_000;
+const MEMBER_LOAD_TIMEOUT_MS = 30_000;
 const MEMBER_LOAD_CONCURRENCY = 16;
+
+class LoadTimeout extends Error {
+  constructor(ms: number) {
+    super(`Timed out after ${String(ms)}ms`);
+    this.name = "LoadTimeout";
+  }
+}
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error(`Timed out after ${String(ms)}ms`)),
-      ms
-    );
+    const timer = setTimeout(() => reject(new LoadTimeout(ms)), ms);
     promise.then(
       (value) => {
         clearTimeout(timer);
@@ -1103,6 +1126,52 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
       }
     );
   });
+}
+
+// Drops clone entries a draft has no business carrying: members that aren't
+// draft content under the current policy, and clones that can't be loaded.
+// Merged entries stay — they are the attribution record. Nothing is dropped
+// while offline: without the sync server every doc reads as unavailable, and
+// that must not empty the draft.
+//
+// Dropping an unavailable clone does forfeit edits that exist only in some
+// browser that never synced them; the overlay re-forks the original on next
+// use. Given what these entries are in practice (session docs from other
+// sessions), that is the right trade.
+async function pruneDraftClones(
+  repo: Repo,
+  draftHandle: DocHandle<DraftDoc>
+): Promise<void> {
+  const doc = draftHandle.doc();
+  if (!doc || doc.mergedAt !== undefined) return;
+  const online =
+    typeof repo.isSubductionConnected !== "function" ||
+    repo.isSubductionConnected();
+  const entries = Object.entries(doc.clones) as [AutomergeUrl, CloneEntry][];
+  const drop: AutomergeUrl[] = [];
+  await forEachLimited(entries, MEMBER_LOAD_CONCURRENCY, async ([url, entry]) => {
+    if (entry.mergedFrom) return;
+    try {
+      const clone = await withTimeout(
+        repo.find<unknown>(entry.cloneUrl),
+        MEMBER_LOAD_TIMEOUT_MS
+      );
+      if (!isDraftContent(clone.doc())) drop.push(url);
+    } catch (err) {
+      // Only a definite "unavailable" counts. A load that merely timed out
+      // may be a large doc still on its way; it keeps its place.
+      if (online && !(err instanceof LoadTimeout)) drop.push(url);
+    }
+  });
+  if (drop.length === 0) return;
+  draftHandle.change((d) => {
+    for (const url of drop) delete d.clones[url];
+  });
+  console.info(
+    `[drafts] pruned ${String(drop.length)} of ${String(
+      entries.length
+    )} members from "${doc.name ?? "Draft"}"`
+  );
 }
 
 // Runs `work` over `items` with at most `limit` in flight. Each call handles
@@ -2330,23 +2399,39 @@ function DraftChangesList(props: {
     setSources(null);
     void (async () => {
       const next: MemberSource[] = [];
-      for (const member of list) {
+      const unresolved: DraftMemberDoc[] = [];
+      await forEachLimited(list, MEMBER_LOAD_CONCURRENCY, async (member) => {
         try {
-          const handle = await repo.find<unknown>(
-            member.cloneUrl ?? member.url
+          const handle = await withTimeout(
+            repo.find<unknown>(member.cloneUrl ?? member.url),
+            MEMBER_LOAD_TIMEOUT_MS
           );
           const originalHandle =
             member.cloneUrl && member.cloneUrl !== member.url
-              ? await repo.find<unknown>(member.url)
+              ? await withTimeout(
+                  repo.find<unknown>(member.url),
+                  MEMBER_LOAD_TIMEOUT_MS
+                )
               : handle;
           next.push({ member, handle, originalHandle });
-        } catch (err) {
-          console.warn(
-            "[drafts] failed to resolve member for scrubbing:",
-            member,
-            err
-          );
+        } catch {
+          unresolved.push(member);
         }
+      });
+      // Keep the members in list order: `forEachLimited` finishes them in
+      // whatever order the network answers.
+      const order = new Map(list.map((m, i) => [m.url, i]));
+      next.sort((a, b) => order.get(a.member.url)! - order.get(b.member.url)!);
+      if (unresolved.length > 0) {
+        // One line, not one per member: a draft can carry hundreds of dead
+        // clones (see clone-policy.ts) and the console is not where to list
+        // them one by one.
+        console.warn(
+          `[drafts] ${String(unresolved.length)} of ${String(
+            list.length
+          )} members couldn't be loaded for scrubbing`,
+          unresolved.map((m) => m.cloneUrl ?? m.url)
+        );
       }
       const created = await getDocCreationTime(repo, mainDocUrl);
       if (disposed) return;

@@ -36,7 +36,26 @@ export const SKIPPED_DATATYPES: ReadonlySet<string> = new Set([
   // their draft-scoped semantics. See chat/src/lib/agent-drafts.ts.
   "agent-chat",
   "agent-chats",
+  // Per-account tool settings (e.g. the chat's remembered default plugins):
+  // app state, not the document being drafted.
+  "patchwork:tool-storage",
 ]);
+
+// Whether a document is something a draft should fork, track and merge.
+//
+// Content carries a `@patchwork.type` naming its datatype. A doc without one
+// is infrastructure — the per-session focus doc, the checked-out-draft doc,
+// a chat's read positions — or a raw blob (a pasted screenshot), none of
+// which anyone edits inside a draft. Forking those did real damage: a draft
+// left checked out for a while accumulated well over a thousand dead clones
+// of session docs, each resolved on every load and each a point of failure
+// at merge time. So the rule is positive: typed, and not on the skip-list.
+export function isDraftContent(doc: unknown): boolean {
+  const type = (doc as { "@patchwork"?: { type?: unknown } } | undefined)?.[
+    "@patchwork"
+  ]?.type;
+  return typeof type === "string" && !SKIPPED_DATATYPES.has(type);
+}
 
 // Reduce a url to its bare document identity by stripping any path/heads
 // suffix, so urls arriving from different traversals dedupe to the same key.

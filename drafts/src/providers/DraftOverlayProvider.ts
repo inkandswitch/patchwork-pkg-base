@@ -14,7 +14,7 @@ import {
 } from "@inkandswitch/patchwork-providers";
 
 import type { CheckedOutDraft, DraftDoc } from "../draft-types.js";
-import { SKIPPED_DATATYPES, canonicalUrl } from "../clone-policy.js";
+import { canonicalUrl, isDraftContent } from "../clone-policy.js";
 
 const HANDLE_DESCRIPTOR_SELECTOR = "repo:handle-descriptor";
 const CHECKED_OUT_SELECTOR = "draft:checked-out";
@@ -264,17 +264,14 @@ export const DraftOverlayProvider = (element: HTMLElement) => {
     });
   }
 
-  // A doc is skipped when its `@patchwork.type` is in `SKIPPED_DATATYPES`. On
+  // A doc is skipped unless it is draft content (see `isDraftContent`). On
   // any failure we fall back to cloning (the existing behaviour), which is the
   // safe default — a doc that should be skipped merely keeps forking, it isn't
   // lost.
   async function isSkippedDoc(original: AutomergeUrl): Promise<boolean> {
     try {
-      const handle = await liveRepo.find<{ "@patchwork"?: { type?: string } }>(
-        original
-      );
-      const type = handle.doc()?.["@patchwork"]?.type;
-      return type != null && SKIPPED_DATATYPES.has(type);
+      const handle = await liveRepo.find<unknown>(original);
+      return !isDraftContent(handle.doc());
     } catch {
       return false;
     }
