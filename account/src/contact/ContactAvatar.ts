@@ -5,6 +5,7 @@ import { createAvatar, setAvatarImage, setAvatarFallback, getInitials } from "./
 import { generateColorFromString } from "../user-colors";
 import { getImportableUrlFromAutomergeUrl } from "@inkandswitch/patchwork-filesystem";
 import { subscribe } from "@inkandswitch/patchwork-providers";
+import { attachContactHoverCard } from "./HoverCard";
 
 declare global {
   interface Window {
@@ -25,6 +26,7 @@ export function renderContactAvatar(
 
   let selfName = "me";
   const cleanups: (() => void)[] = [];
+  cleanups.push(attachContactHoverCard(avatar, handle, element.repo));
 
   // Track presence via ephemeral messages
   const heartbeats: Record<string, number> = {};

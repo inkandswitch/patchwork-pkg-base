@@ -8,6 +8,7 @@
   --contact-fallback-bg: var(--editor-fill-offset-20, #ccc);
   --contact-fallback-fg: var(--editor-line-offset-30, #4d4d4d);
   --contact-family: var(--editor-family-sans, system-ui, sans-serif);
+  --contact-card-bg: var(--editor-fill, white);
 }
 }
 
@@ -68,6 +69,83 @@
   border-radius: 9999px;
   background: var(--contact-fallback-bg);
   color: var(--contact-fallback-fg);
+}
+
+/* Hover card: the contact's picture at a size you can recognise, and their
+   full name, floated beside a small avatar the pointer is resting on. Lives
+   on <body> (see HoverCard.ts), so it is positioned against the viewport and
+   styled from the :root tokens. */
+.contact-hover-card {
+  position: fixed;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 1rem 0.625rem 0.625rem;
+  border: 1px solid var(--contact-border);
+  border-radius: 0.75rem;
+  background: var(--contact-card-bg);
+  color: var(--contact-fg);
+  font-family: var(--contact-family);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.06),
+    0 8px 24px rgba(0, 0, 0, 0.14);
+  pointer-events: none;
+  animation: contact-hover-card-in 120ms ease-out;
+}
+
+.contact-hover-card .contact-avatar-fallback {
+  font-size: 1.5rem;
+  font-weight: 500;
+}
+
+.contact-hover-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.contact-hover-card-name {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 18rem;
+}
+
+.contact-hover-card-meta {
+  font-size: 0.75rem;
+  color: var(--contact-muted-fg);
+  white-space: nowrap;
+}
+
+@keyframes contact-hover-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.contact-hover-card[data-side="above"] {
+  animation-name: contact-hover-card-in-above;
+}
+
+@keyframes contact-hover-card-in-above {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* Contact Viewer */

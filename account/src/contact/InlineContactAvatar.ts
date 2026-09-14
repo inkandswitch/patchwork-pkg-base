@@ -2,7 +2,11 @@ import type { DocHandle } from "@automerge/automerge-repo/slim";
 import type { ToolElement } from "@inkandswitch/patchwork-plugins";
 import type { ContactDoc } from "../types";
 import { createAvatar, setAvatarImage, setAvatarFallback, getInitials } from "./Avatar";
-import { automergeUrlToServiceWorkerUrl } from "@inkandswitch/patchwork-filesystem";
+import {
+  attachContactHoverCard,
+  contactDisplayName,
+  resolveAvatarImageUrl,
+} from "./HoverCard";
 
 export function renderInlineContactAvatar(
   handle: DocHandle<ContactDoc>,
@@ -10,6 +14,9 @@ export function renderInlineContactAvatar(
 ) {
   const avatar = createAvatar("sm");
   element.appendChild(avatar);
+  // The hover card names the person; a native title tooltip on top of it
+  // would say the same thing twice.
+  const detachHoverCard = attachContactHoverCard(avatar, handle, element.repo);
 
   async function update() {
     const contact = handle.doc();
@@ -20,20 +27,10 @@ export function renderInlineContactAvatar(
     avatar.style.display = "";
 
     const isRegistered = contact.type === "registered";
-    const name = isRegistered ? contact.name : "Anonymous";
-    avatar.title = name;
+    const name = contactDisplayName(contact);
+    avatar.setAttribute("aria-label", name);
 
-    // avatar image
-    let avatarImgUrl: string | undefined;
-    if (isRegistered && contact.avatarUrl) {
-      try {
-        const avatarHandle = await element.repo.find(contact.avatarUrl);
-        avatarImgUrl = automergeUrlToServiceWorkerUrl(avatarHandle.url);
-      } catch {
-        // ignore failed avatar lookup
-      }
-    }
-    setAvatarImage(avatar, avatarImgUrl, name);
+    setAvatarImage(avatar, await resolveAvatarImageUrl(contact, element.repo), name);
 
     // fallback
     if (isRegistered && name) {
@@ -48,5 +45,6 @@ export function renderInlineContactAvatar(
 
   return () => {
     handle.off("change", update);
+    detachHoverCard();
   };
 }
