@@ -196,7 +196,6 @@ export function DocumentListPanel(props: {
             clearFilter={() => setFilter("")}
             changeFolder={(fn) => folderHandle()?.change(fn)}
             repo={props.repo}
-            hive={props.element.hive}
             open={open}
           />
           <div class="document-list__filter-container">
@@ -218,8 +217,7 @@ export function DocumentListPanel(props: {
               docs={folder()?.docs}
               handle={folderHandle.latest!}
               open={open}
-              hive={props.element.hive}
-              selectedDocUrls={selectedDocUrls()}
+                selectedDocUrls={selectedDocUrls()}
               element={props.element}
               rootFolderHandle={folderHandle.latest!}
               filter={filter()}

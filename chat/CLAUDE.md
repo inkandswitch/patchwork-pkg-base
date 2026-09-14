@@ -188,7 +188,6 @@ After any change: `cd` into this directory, run `pnpm build`, then `pushwork syn
 ```js
 window.repo                  // the automerge Repo
 window.accountDocHandle      // current user's account DocHandle
-window.hive                  // tool/datatype registry
 ```
 
 ### automerge-repo (current API)

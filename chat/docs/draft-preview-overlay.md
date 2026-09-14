@@ -85,4 +85,4 @@ a no-op and behavior is unchanged.
 
 Delete `DESCRIPTOR_LIFT_SHIM` and its injection from
 `chitterchatter/src/lib/preview-frame.ts`; the plain `overlay > #root` wrap plus
-shared `parent.repo`/`parent.hive` is then sufficient.
+shared `parent.repo` is then sufficient.

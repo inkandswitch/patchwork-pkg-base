@@ -4,7 +4,6 @@ import {
   type Repo,
   type DocHandle,
 } from "@automerge/automerge-repo/slim";
-import type { AutomergeRepoKeyhive } from "@automerge/automerge-repo-keyhive";
 import { useDocument } from "solid-automerge";
 import type {
   OpenDocumentEventDetail,
@@ -54,7 +53,6 @@ export default function Folder(props: {
   removeFromParent(): void;
   open(detail: OpenDocumentEventDetail): void;
   name?: string;
-  hive?: AutomergeRepoKeyhive;
   selectedDocUrls: AutomergeUrl[];
   visitedFolders?: Set<AutomergeUrl>;
   element: PatchworkViewElement;
@@ -127,7 +125,7 @@ export default function Folder(props: {
   async function createInside(datatype: Plugin<DatatypeDescription>) {
     const h = handle();
     if (!h) return;
-    const freshy = await createNew(props.repo, datatype, props.hive);
+    const freshy = await createNew(props.repo, datatype);
     let newIndex = 0;
     h.change((folder) => {
       folder.docs.push(freshy);
@@ -318,7 +316,6 @@ export default function Folder(props: {
               depth={depth() + 1}
               handle={handle.latest!}
               open={props.open}
-              hive={props.hive}
               selectedDocUrls={props.selectedDocUrls}
               visitedFolders={nextVisitedFolders}
               element={props.element}

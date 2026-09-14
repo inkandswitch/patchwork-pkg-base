@@ -183,12 +183,11 @@ function listableDatatypes() {
 
 // Create a fresh document of the given datatype and return a DocLink for it.
 // Mirrors the sideboard's createNew: load the plugin on demand, create the doc,
-// register it with the sync server (if a hive is present), then read its title.
-async function createDocLink(repo, hive, datatype) {
+// then read its title.
+async function createDocLink(repo, datatype) {
   const loaded = await getRegistry("patchwork:datatype").load(datatype.id);
   if (!loaded) throw new Error(`couldn't load datatype "${datatype.id}"`);
   const docHandle = await createDocOfDatatype2(loaded, repo);
-  if (hive) await hive.addSyncServerPullToDoc(docHandle.url);
   return {
     url: docHandle.url,
     name: loaded.module.getTitle(docHandle.doc()),
@@ -258,7 +257,7 @@ function buildCreateNew(handle, element) {
     const repo = element.repo;
     if (!repo) return;
     try {
-      const link = await createDocLink(repo, element.hive, datatype);
+      const link = await createDocLink(repo, datatype);
       handle.change((doc) => {
         doc.docs.push(link);
       });
