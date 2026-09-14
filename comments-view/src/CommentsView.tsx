@@ -239,7 +239,7 @@ export function CommentsView(props: { element: HTMLElement }) {
   return (
     <div class="comments-panel">
       <div class="comments-panel-header">
-        <span class="comments-panel-header-title">Comments</span>
+        <span class="comments-panel-header-title">Review</span>
       </div>
       {/* Only renders while a draft is checked out and a drafts tool is
           answering; on main it is absent entirely. */}

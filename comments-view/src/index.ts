@@ -8,7 +8,7 @@ export const plugins: Plugin<any>[] = [
     type: "patchwork:component",
     id: "comments-view",
     tags: ["context-tool"],
-    name: "Comments",
+    name: "Review",
     async load() {
       const { renderCommentsView } = await import("./main");
       return (element: ToolElement) => renderCommentsView(null as never, element);
