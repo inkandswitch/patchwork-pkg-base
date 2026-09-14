@@ -51,7 +51,7 @@ import {
   splitIntoGroups,
 } from "./change-group-cache";
 import { attributedHashes, frontierHashes } from "./merge-attribution";
-import { isDraftContent } from "./clone-policy";
+import { canonicalUrl, isDraftContent } from "./clone-policy";
 import { ensureMainDraft } from "./draft-docs";
 
 // Seed for the read-only `draft:list` subscription until the provider answers.
@@ -72,7 +72,7 @@ const EMPTY_DRAFT_LIST: DraftList = {
 
 // Shown in the panel footer, logged on load, and stamped into fork
 // diagnostics; bump on deploy to tell builds apart.
-const DRAFTS_VERSION = "0.0.67";
+const DRAFTS_VERSION = "0.0.68";
 
 // Logged at module load so the console shows which build is running even
 // before the panel renders.
@@ -2671,10 +2671,11 @@ function DraftChangesList(props: {
     if (hit) return hit;
     const rows = resolveGroupChanges(group);
     if (!rows || rows.length === 0) return null;
-    const keyOf = (row: ScanChange): string =>
-      row.agent
-        ? `agent:${row.agent.chatUrl}`
-        : (attribution[row.actor] ?? `actor:${row.actor}`);
+    const keyOf = (row: ScanChange): string => {
+      if (row.agent) return `agent:${row.agent.chatUrl}`;
+      const pinned = attribution[row.actor];
+      return pinned ? canonicalUrl(pinned) : `actor:${row.actor}`;
+    };
     const runs: ContributorRun[] = [];
     let offset = 0;
     for (const runRows of splitIntoGroups(rows, [], keyOf)) {
@@ -4018,16 +4019,18 @@ async function computeCheckpoint(
 // Module-level, like the `nowMs` ticker below: attribution (actor id ->
 // contact url) is globally true, not per host doc, so one merged store can
 // serve every card and survive doc switches. Fed by the sidebar's
-// attribution-doc subscription. Rendering (including the name tooltip) is
-// delegated to the contact tool (`tool-id="contact-inline"`).
+// attribution-doc subscription. The urls are pinned to the contact's heads
+// at attribution time (see ActorAttributionDoc), and rendering is delegated
+// to the contact tool (`tool-id="contact-inline"`) at exactly that url, so
+// the avatar and hover card show the person as they were then.
 
 const [actorContacts, setActorContacts] = createSignal<
   Record<string, AutomergeUrl>
 >({});
 
 // What an avatar renders for one author. `key` dedupes (and seeds the
-// fallback rendering): the contact url when attributed, the actor id
-// otherwise.
+// fallback rendering): the canonical contact url when attributed, the actor
+// id otherwise. `contactUrl` is the pinned url to render.
 type AuthorDisplay = {
   key: string;
   contactUrl: AutomergeUrl | null;
@@ -4048,9 +4051,11 @@ function resolveAuthors(actors: string[]): AuthorDisplay[] {
   const attribution = actorContacts();
   const out: AuthorDisplay[] = [];
   const seen = new Set<string>();
+  // Actors arrive newest contributor first, so the pin that survives the
+  // dedupe is the person's most recent one within the group.
   for (const actor of actors) {
     const contactUrl = attribution[actor] ?? null;
-    const key = contactUrl ?? actor;
+    const key = contactUrl ? canonicalUrl(contactUrl) : actor;
     if (seen.has(key)) continue;
     seen.add(key);
     out.push({ key, contactUrl });

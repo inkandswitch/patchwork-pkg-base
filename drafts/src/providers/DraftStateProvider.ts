@@ -124,7 +124,7 @@ export const DraftStateProvider = (element: HTMLElement) => {
   };
   // Author attribution: stamps actor ids from local member-doc changes into
   // the host doc's shared ActorAttributionDoc.
-  const actorRecorder = createActorRecorder(element);
+  const actorRecorder = createActorRecorder(element, repo);
   // Keep every timeline's ChangeGroupDoc current whether or not the sidebar
   // is open. Member-doc listeners drive updates between list recomputes.
   const changeGrouper = createChangeGrouper(repo, {

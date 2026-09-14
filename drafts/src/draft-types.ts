@@ -93,6 +93,13 @@ export type DraftDoc = {
 // actor-attribution.ts). One doc per host doc (actor ids span main and every
 // draft), stamped on the main draft via `actorAttributionUrl`. Keyed by
 // actor id so concurrent writers converge per-entry.
+//
+// The value is the contact url PINNED to the contact doc's heads at the
+// moment the actor was attributed (`automerge:<id>#h1|h2`), so a history row
+// shows the name and picture the person had when they made the change, not
+// whatever they changed it to since. Identity questions (is this the same
+// person?) go through `canonicalUrl` to strip the pin. Entries written
+// before pinning existed are bare urls and read as the live contact.
 export type ActorAttributionDoc = {
   "@patchwork": { type: "actor-attribution" };
   actors: Record<string, AutomergeUrl>;

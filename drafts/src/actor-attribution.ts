@@ -1,5 +1,7 @@
 import {
   isValidAutomergeUrl,
+  parseAutomergeUrl,
+  stringifyAutomergeUrl,
   type AutomergeUrl,
   type DocHandle,
   type Repo,
@@ -7,14 +9,24 @@ import {
 import * as Automerge from "@automerge/automerge/slim";
 import { subscribe } from "@inkandswitch/patchwork-providers";
 
+import { canonicalUrl } from "./clone-policy.js";
 import type { ActorAttributionDoc, DraftDoc } from "./draft-types.js";
 
 // Only the writing client knows which Automerge actor ids are its own. Each
 // local change reveals one id, which the ActorRecorder attributes to the
-// current user's contact. Changes seen before dependencies resolve are
+// current user's contact — pinned to the contact doc's heads at that moment,
+// so the row keeps showing the name and picture of the time (see
+// ActorAttributionDoc). Changes seen before dependencies resolve are
 // buffered.
-export function createActorRecorder(element: HTMLElement): ActorRecorder {
+export function createActorRecorder(
+  element: HTMLElement,
+  repo: Repo
+): ActorRecorder {
   let contactUrl: AutomergeUrl | null = null;
+  // The live contact doc, for reading its heads at attribution time. Null
+  // until it resolves; attributions made meanwhile are pinned to nothing
+  // (a bare url), which is the pre-pinning behaviour.
+  let contactHandle: DocHandle<unknown> | null = null;
   let attributionHandle: DocHandle<ActorAttributionDoc> | null = null;
   const recordedActorIds = new Set<string>();
   const pendingActorIds = new Set<string>();
@@ -26,8 +38,18 @@ export function createActorRecorder(element: HTMLElement): ActorRecorder {
     (value) => {
       if (disposed || contactUrl) return;
       if (typeof value === "string" && isValidAutomergeUrl(value)) {
-        contactUrl = value;
-        flushPendingActors();
+        contactUrl = canonicalUrl(value);
+        void repo.find<unknown>(contactUrl).then(
+          (handle) => {
+            if (disposed) return;
+            contactHandle = handle;
+            flushPendingActors();
+          },
+          () => {
+            if (disposed) return;
+            flushPendingActors(); // attribute unpinned rather than not at all
+          }
+        );
       }
     }
   );
@@ -51,7 +73,8 @@ export function createActorRecorder(element: HTMLElement): ActorRecorder {
       flushPendingActors();
     },
     contactFor(actorId) {
-      return attributionHandle?.doc()?.actors?.[actorId] ?? null;
+      const pinned = attributionHandle?.doc()?.actors?.[actorId];
+      return pinned ? canonicalUrl(pinned) : null;
     },
     dispose() {
       disposed = true;
@@ -62,16 +85,31 @@ export function createActorRecorder(element: HTMLElement): ActorRecorder {
 
   function flushPendingActors(): void {
     if (!attributionHandle || !contactUrl || pendingActorIds.size === 0) return;
-    const url = contactUrl;
+    const url = pinnedContactUrl();
     const actorIds = [...pendingActorIds];
     pendingActorIds.clear();
     for (const id of actorIds) recordedActorIds.add(id);
     const existing = attributionHandle.doc()?.actors ?? {};
-    const missing = actorIds.filter((id) => existing[id] !== url);
+    // An id already attributed to this person keeps its original pin: the
+    // entry records the first time the actor wrote, and that is the moment
+    // whose name and picture the rows should carry.
+    const missing = actorIds.filter(
+      (id) => !existing[id] || canonicalUrl(existing[id]) !== contactUrl
+    );
     if (missing.length === 0) return;
     attributionHandle.change((d) => {
       for (const id of missing) d.actors[id] = url;
     });
+  }
+
+  // The contact url with the contact doc's current heads attached; bare if
+  // the doc hasn't resolved (or has no changes yet).
+  function pinnedContactUrl(): AutomergeUrl {
+    const url = contactUrl!;
+    const heads = contactHandle?.heads();
+    if (!heads || heads.length === 0) return url;
+    const { documentId } = parseAutomergeUrl(url);
+    return stringifyAutomergeUrl({ documentId, heads });
   }
 }
 
@@ -110,7 +148,8 @@ export type ActorRecorder = {
   setAttributionHandle: (handle: DocHandle<ActorAttributionDoc>) => void;
   // The contact an actor id is attributed to — ANY writer's, not just this
   // client's (the attribution doc syncs). Null while unknown (attribution
-  // pending, or the handle not resolved yet).
+  // pending, or the handle not resolved yet). Canonical (no heads pin): this
+  // answers "who", and is what groups split on.
   contactFor: (actorId: string) => AutomergeUrl | null;
   dispose: () => void;
 };
