@@ -127,9 +127,6 @@ export default function Item(props: {
   openWith(toolId?: string): void;
   startRenaming(): void;
   remove(): void;
-  share?(): void;
-  shareDisabled?: boolean;
-  makeSecureCopy?(): void;
   element: PatchworkViewElement;
   repo: Repo;
   rootFolderHandle: DocHandle<FolderDoc>;
@@ -751,23 +748,6 @@ export default function Item(props: {
               ? `Remove ${dragstack.size} items`
               : "Remove"}
           </ContextMenu.Item>
-          <Show when={props.share}>
-            <ContextMenu.Item
-              class="popmenu__item"
-              onSelect={() => props.share?.()}
-              disabled={props.shareDisabled}
-            >
-              Share
-            </ContextMenu.Item>
-          </Show>
-          <Show when={props.makeSecureCopy}>
-            <ContextMenu.Item
-              class="popmenu__item"
-              onSelect={() => props.makeSecureCopy?.()}
-            >
-              Duplicate (unshared)
-            </ContextMenu.Item>
-          </Show>
         </ContextMenu.Content>
       </ContextMenu.Portal>
     </ContextMenu>

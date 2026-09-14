@@ -83,7 +83,7 @@ export async function buildPreviewSrcdoc(
 
 	// Before the deferred module entry runs (classic inline scripts execute
 	// during parse, ahead of modules), do three things:
-	//  1. Share this tab's repo + keyhive with the preview by setting them on its
+	//  1. Share this tab's repo with the preview by setting it on its
 	//     window. The bootloader reuses an existing window.repo instead of making
 	//     a fresh one, so the preview resolves the same documents we see — incl.
 	//     the draft's clones, which live in this tab's repo and a separate
@@ -99,7 +99,7 @@ export async function buildPreviewSrcdoc(
 	if (typeof dl.pin === "string" && dl.pin) params.set("frame", dl.pin)
 	const bootScript = parsed.createElement("script")
 	bootScript.textContent =
-		"try{window.repo=parent.repo;window.hive=parent.hive;}catch(e){}" +
+		"try{window.repo=parent.repo;}catch(e){}" +
 		DESCRIPTOR_LIFT_SHIM +
 		"location.hash=" +
 		JSON.stringify(params.toString())

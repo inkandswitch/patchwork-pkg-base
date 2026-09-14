@@ -39,7 +39,6 @@
   "devDependencies": {
     "@automerge/automerge": "^3.2.5",
     "@automerge/automerge-repo": "^2.6.0-subduction.9",
-    "@automerge/automerge-repo-keyhive": "^0.2.0-alpha.1d",
     "@babel/core": "7.28.4",
     "@babel/parser": "7.28.4",
     "@inkandswitch/patchwork-filesystem": "^0.0.4",

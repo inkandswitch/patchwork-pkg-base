@@ -5,12 +5,6 @@ import {
   type DocHandle,
   type Repo,
 } from "@automerge/automerge-repo/slim";
-import {
-  docIdFromAutomergeUrl,
-  Access,
-  ContactCard,
-  type AutomergeRepoKeyhive,
-} from "@automerge/automerge-repo-keyhive";
 import type {
   OpenDocumentEventDetail,
   PatchworkViewElement,
@@ -23,7 +17,6 @@ import type {
 import { getRegistry, isLoadedPlugin, type Datatype } from "@inkandswitch/patchwork-plugins";
 import {
   createEffect,
-  createSignal,
   For,
   Match,
   onCleanup,
@@ -42,19 +35,6 @@ import Item from "./item.tsx";
 import { ItemName } from "./name.tsx";
 import { LoadingRow } from "./loading-row.tsx";
 import { NewDocPlaceholder } from "../create-new.tsx";
-import { ShareModal } from "../share-modal.tsx";
-
-// TODO: Re-enable when secure copy feature is ready
-const MAKE_SECURE_COPY_ENABLED = false;
-
-function isKeyhiveProtected(url: AutomergeUrl): boolean {
-  try {
-    docIdFromAutomergeUrl(url);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 export interface DocumentListProps {
   handle: DocHandle<FolderDoc>;
@@ -62,7 +42,6 @@ export interface DocumentListProps {
   depth: number;
   repo: Repo;
   open(detail: OpenDocumentEventDetail): void;
-  hive?: AutomergeRepoKeyhive;
   selectedDocUrls: AutomergeUrl[];
   visitedFolders?: Set<AutomergeUrl>;
   element: PatchworkViewElement;
@@ -72,9 +51,6 @@ export interface DocumentListProps {
 }
 
 export function DocumentList(props: DocumentListProps) {
-  const [shareModalUrl, setShareModalUrl] = createSignal<AutomergeUrl | null>(
-    null
-  );
   const visitedFolders = props.visitedFolders ?? new Set<AutomergeUrl>();
 
   function removeItem(index: number) {
@@ -101,7 +77,6 @@ export function DocumentList(props: DocumentListProps) {
     <div class="document-list__item document-list__item--visible">
       <NewDocPlaceholder
         repo={props.repo}
-        hive={props.hive}
         onCreate={commitPending}
         onDismiss={() => setPendingNewDoc(null)}
         clearFilter={props.clearFilter}
@@ -109,58 +84,6 @@ export function DocumentList(props: DocumentListProps) {
     </div>
   );
 
-  async function makeSecureCopy(docLink: DocLink) {
-    if (!props.hive) return;
-
-    // Get the old document
-    const oldHandle = await props.repo.find<HasPatchworkMetadata>(docLink.url);
-    const oldDoc = oldHandle.doc();
-
-    // Create new secure doc with create2 (uses keyhive idFactory)
-    const newHandle = await props.repo.create2<HasPatchworkMetadata>(
-      structuredClone(oldDoc)
-    );
-
-    // Add sync server with pull access
-    if (props.hive.syncServer) {
-      try {
-        const serverContactCard = ContactCard.fromJson(
-          props.hive.syncServer.contactCard.toJson()
-        );
-        if (serverContactCard) {
-          const relayAccess = Access.tryFromString("relay");
-          if (relayAccess) {
-            await props.hive.addMemberToDoc(
-              newHandle.url,
-              serverContactCard,
-              relayAccess
-            );
-          }
-        }
-      } catch (err) {
-        console.error(
-          "[DocumentList] Failed to add sync server to secure copy:",
-          err
-        );
-      }
-    }
-
-    // Add to sidebar
-    props.handle.change((folder) => {
-      folder.docs.unshift({
-        name: docLink.name + " (secure)",
-        type: docLink.type,
-        url: newHandle.url,
-      });
-    });
-
-    // Open the new document
-    props.open({
-      url: newHandle.url,
-      title: docLink.name + " (secure)",
-      type: docLink.type,
-    });
-  }
   return (
     <>
       <For each={props.docs}>
@@ -293,7 +216,6 @@ export function DocumentList(props: DocumentListProps) {
                       itemIndex={index()}
                       open={props.open}
                       name={doc.name}
-                      hive={props.hive}
                       selectedDocUrls={props.selectedDocUrls}
                       visitedFolders={visitedFolders}
                       element={props.element}
@@ -326,26 +248,8 @@ export function DocumentList(props: DocumentListProps) {
                         type: doc.type,
                       })
                     }
-                    share={
-                      props.hive ? () => setShareModalUrl(doc.url) : undefined
-                    }
-                    shareDisabled={
-                      props.hive ? !isKeyhiveProtected(doc.url) : false
-                    }
-                    makeSecureCopy={
-                      MAKE_SECURE_COPY_ENABLED &&
-                      props.hive &&
-                      !isKeyhiveProtected(doc.url)
-                        ? () => makeSecureCopy(doc)
-                        : undefined
-                    }
                   >
                     <ItemName name={doc.name} id={relid()} rename={rename} />
-                    <Show when={props.hive && !isKeyhiveProtected(doc.url)}>
-                      <span class="document-list-item__unprotected">
-                        [insecure]
-                      </span>
-                    </Show>
                   </Item>
                 </Match>
                 </Switch>
@@ -359,14 +263,6 @@ export function DocumentList(props: DocumentListProps) {
         when={pendingHere() && pendingNewDoc()!.index >= (props.docs?.length ?? 0)}
       >
         {placeholder()}
-      </Show>
-      <Show when={shareModalUrl() && props.hive}>
-        <ShareModal
-          isOpen={!!shareModalUrl()}
-          docUrl={shareModalUrl()!}
-          hive={props.hive!}
-          onClose={() => setShareModalUrl(null)}
-        />
       </Show>
   </>
   );

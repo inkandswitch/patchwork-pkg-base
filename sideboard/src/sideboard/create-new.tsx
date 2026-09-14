@@ -19,13 +19,11 @@ import { docLinkFromUrl } from "./lib/doc-link.ts";
 import { useFilteredDatatypes } from "./lib/solid-plugins";
 import { DropdownMenu } from "@kobalte/core/dropdown-menu";
 import type { OpenDocumentEventDetail } from "@inkandswitch/patchwork-elements";
-import type { AutomergeRepoKeyhive } from "@automerge/automerge-repo-keyhive";
 import { NEW_DOC_DND_TYPE, setNewDocDragging, clearDropTarget } from "./dnd/dnd.ts";
 
 export async function createNew(
   repo: Repo,
-  datatype: Plugin<DatatypeDescription>,
-  hive?: AutomergeRepoKeyhive
+  datatype: Plugin<DatatypeDescription>
 ): Promise<DocLink> {
   if (isLoadablePlugin(datatype)) {
     const registry = getRegistry("patchwork:datatype");
@@ -36,9 +34,6 @@ export async function createNew(
   }
 
   const docHandle = await createDocOfDatatype2(datatype, repo);
-  if (hive) {
-    await hive.addSyncServerPullToDoc(docHandle.url);
-  }
   const doc = docHandle.doc();
   const name = datatype.module.getTitle(doc);
 
@@ -170,7 +165,6 @@ function DatatypeMenuContent(props: {
 
 export interface CreateNewProps {
   repo: Repo;
-  hive?: AutomergeRepoKeyhive;
   changeFolder(fn: ChangeFn<FolderDoc>): void;
   open(detail: OpenDocumentEventDetail): void;
   context?: string;
@@ -185,7 +179,7 @@ export default function CreateNew(props: CreateNewProps) {
   const [open, setOpen] = createSignal(false);
 
   async function selectDatatype(datatype: Plugin<DatatypeDescription>) {
-    const freshy = await createNew(props.repo, datatype, props.hive);
+    const freshy = await createNew(props.repo, datatype);
     props.changeFolder((doc) => {
       doc.docs.push(freshy);
     });
@@ -298,7 +292,6 @@ export default function CreateNew(props: CreateNewProps) {
  */
 export function NewDocPlaceholder(props: {
   repo: Repo;
-  hive?: AutomergeRepoKeyhive;
   onCreate(docLink: DocLink): void;
   onDismiss(): void;
   clearFilter(): void;
@@ -306,7 +299,7 @@ export function NewDocPlaceholder(props: {
   const [open, setOpen] = createSignal(true);
 
   async function pickDatatype(datatype: Plugin<DatatypeDescription>) {
-    const freshy = await createNew(props.repo, datatype, props.hive);
+    const freshy = await createNew(props.repo, datatype);
     props.clearFilter();
     props.onCreate(freshy);
   }

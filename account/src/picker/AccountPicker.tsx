@@ -86,8 +86,6 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
   );
   const [showAccountUrl, setShowAccountUrl] = createSignal(false);
   const [isCopyTooltipOpen, setIsCopyTooltipOpen] = createSignal(false);
-  const [isContactCardCopyTooltipOpen, setIsContactCardCopyTooltipOpen] =
-    createSignal(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = createSignal(false);
   const [showColorPopup, setShowColorPopup] = createSignal(false);
   const [pendingAvatar, setPendingAvatar] =
@@ -270,15 +268,6 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
     setTimeout(() => setIsCopyTooltipOpen(false), 1000);
   };
 
-  const onCopyContactCard = () => {
-    const hive = props.element.hive;
-    if (!hive?.active?.contactCard) return;
-    const contactCardJson = hive.active.contactCard.toJson();
-    navigator.clipboard.writeText(contactCardJson);
-    setIsContactCardCopyTooltipOpen(true);
-    setTimeout(() => setIsContactCardCopyTooltipOpen(false), 1000);
-  };
-
   const isLoggedIn = () => self()?.type === "registered";
   const canSignUp = () =>
     !isLoggedIn() && activeTab() === AccountPickerTab.SignUp && signupName();
@@ -446,24 +435,6 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
               <p>Copied</p>
             </TooltipContent>
           </Tooltip>
-
-          <Show when={props.element.hive?.active?.contactCard}>
-            <Tooltip open={isContactCardCopyTooltipOpen()}>
-              <TooltipTrigger
-                as="div"
-                onClick={onCopyContactCard}
-                onBlur={() => setIsContactCardCopyTooltipOpen(false)}
-              >
-                <Button variant="outline" type="button">
-                  <CopyIcon class="icon-inline" />
-                  Copy contact card
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent class="tooltip-content">
-                <p>Copied</p>
-              </TooltipContent>
-            </Tooltip>
-          </Show>
 
           <Button onClick={() => setShowSignOutConfirm(true)} variant="ghost" class="sign-out">
             Sign out
