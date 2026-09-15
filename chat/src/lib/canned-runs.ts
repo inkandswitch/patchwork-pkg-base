@@ -4,13 +4,13 @@
 // real (and land in the agent's draft like any other), and the prose is
 // streamed word by word with small delays so the turn reads like generation.
 //
-// The two runs below target the "Inventory purchasing SDCPN" Petrinaut net and
-// are written so their edits never touch the same field: run 1 splices two
+// The three runs below target the "Inventory purchasing SDCPN" Petrinaut net
+// and are written so their edits never touch the same field: run 1 splices two
 // existing arrival kernels and appends a parameter; run 2 appends a parameter
-// and a transition. Both append to `parameters`, which is safe — concurrent
-// list inserts are both kept by Automerge, and Petrinaut reaches parameters by
-// `variableName`, not index — so the two can be made on separate drafts and
-// merged in either order.
+// and a transition; run 3 only writes `@patchwork.metadata`. Runs 1 and 2 both
+// append to `parameters`, which is safe — concurrent list inserts are both kept
+// by Automerge, and Petrinaut reaches parameters by `variableName`, not index —
+// so the three can be made on separate drafts and merged in any order.
 
 export type CannedToolCall = {id: string; name: string; args: Record<string, unknown>}
 
@@ -31,6 +31,9 @@ export function matchCannedRun(userText: string, docType: string | undefined): C
 	const text = userText.trim()
 	if (/\bminimum\s+orders?\b/i.test(text)) return MINIMUM_ORDERS
 	if (/\bpartial(ly)?[\s-]*fulfil?l?(ment|ments|ed)?\b/i.test(text)) return PARTIAL_FULFILMENT
+	if (/\bgeo(?:[\s-]?data|graph\w*|[\s-]?locat\w*)?\b|\bcoordinates?\b|\b(?:on|to) (?:the|a) map\b/i.test(text)) {
+		return GEO_DATA
+	}
 	return null
 }
 
@@ -283,14 +286,97 @@ const CONSOLIDATE_KERNEL = `export default TransitionKernel((input, parameters) 
   };
 });`
 
+// ---- Run 3: geo data --------------------------------------------------------
+//
+// Writes nothing but `@patchwork.metadata` — the per-element annotation map
+// the Petrinaut Map view reads (`metadata[<elementId>].geo = { lat, lng }`
+// becomes a labelled marker). Runs 1 and 2 never touch `@patchwork`, so this
+// is disjoint from both. Highlight sync needs no extra data: the Map view and
+// the canvas share the focus doc, so hovering a marker lights the element and
+// selecting the element lights its marker.
+//
+// The sites are ASSUMED — the net's data comes from SAP tables that name the
+// suppliers only by country and the plant not at all — so each is a real,
+// well-known industry location of the right kind. The three plant buildings
+// are spread a few hundred metres apart inside one real industrial park so the
+// labels don't sit on top of each other at any zoom.
+
+const GEO_SITES: {id: string; site: string; lat: number; lng: number}[] = [
+	{id: "place__supplier_1", site: "Taizhou, Zhejiang (API chemicals cluster)", lat: 28.656, lng: 121.421},
+	{id: "place__supplier_2", site: "Hyderabad, Genome Valley", lat: 17.545, lng: 78.572},
+	{id: "place__supplier_3", site: "Frankfurt, Industriepark Höchst", lat: 50.0985, lng: 8.5417},
+	{id: "place__quarantine", site: "our plant — goods-receipt dock, Grange Castle, Dublin", lat: 53.3115, lng: -6.447},
+	{id: "place__line", site: "our plant — Sonic Flow production line", lat: 53.314, lng: -6.442},
+	{id: "place__fg", site: "our plant — finished-goods warehouse", lat: 53.31, lng: -6.4395},
+]
+
+const GEO_DATA: CannedRun = {
+	round(n, doc) {
+		if (n > 0) {
+			return {
+				text:
+					"Done. Six elements now carry coordinates and show up as markers in the Map view:\n\n" +
+					"**Suppliers** — *ChineseSupplier* at Taizhou, Zhejiang (28.656 N, 121.421 E; the API-chemicals cluster), *IndianSupplier* at Genome Valley, Hyderabad (17.545 N, 78.572 E), *GermanSupplier* at Industriepark Höchst, Frankfurt (50.099 N, 8.542 E).\n\n" +
+					"**Our plant** — Grange Castle, Dublin, as three buildings: *Quarantine* is the goods-receipt dock where every supplier route ends (53.312 N, 6.447 W), *ProductionLineFree* the Sonic Flow line (53.314 N, 6.442 W), *FinishedGoods* the warehouse orders ship from (53.310 N, 6.440 W).\n\n" +
+					"Highlighting is synced both ways through the shared focus: hover or click a marker and the element glows on the canvas and in the text; select a place on the canvas and its marker lights up. The positions are assumed — the source tables name suppliers by country only — so move any marker by editing its `geo` entry under `@patchwork.metadata`.",
+				toolCalls: null,
+			}
+		}
+		const metadata = elementMetadata(doc)
+		const missing = GEO_SITES.filter((s) => !elementExists(doc, s.id))
+		if (missing.length > 0) {
+			throw new Error(`canned run: no element ${missing.map((s) => s.id).join(", ")} in this net`)
+		}
+		let k = 0
+		const call = (args: Record<string, unknown>): CannedToolCall => ({
+			id: `canned-geo-${String(++k)}`,
+			name: "automerge_op",
+			args,
+		})
+		const geo = (s: (typeof GEO_SITES)[number]) => ({lat: s.lat, lng: s.lng})
+		const toolCalls: CannedToolCall[] = metadata
+			? GEO_SITES.map((s) =>
+					metadata[s.id]
+						? // The element already has annotations: add geo beside them.
+							call({path: ["@patchwork", "metadata", s.id], range: "geo", value: geo(s)})
+						: call({path: ["@patchwork", "metadata"], range: s.id, value: {geo: geo(s)}})
+				)
+			: [
+					// No metadata section yet: create it with every site in one op.
+					call({
+						path: ["@patchwork"],
+						range: "metadata",
+						value: Object.fromEntries(GEO_SITES.map((s) => [s.id, {geo: geo(s)}])),
+					}),
+				]
+		return {
+			text:
+				"The net has three supplier places and a plant, none of them located, so the Map view is empty. The tables behind it name the suppliers by country only and the plant not at all, so I'll place each at a real site of the right kind — an API-chemicals cluster in China, a pharma park in India, a chemical park in Germany — and put the plant in Dublin as three buildings: the goods-receipt dock the supplier routes end at, the production line, and the finished-goods warehouse. Coordinates go under `@patchwork.metadata` keyed by element id, which is what the Map view reads and what the focus highlight syncs on.",
+			toolCalls,
+		}
+	},
+}
+
 // ---- helpers ----------------------------------------------------------------
 
 const PETRINAUT_TYPE = "petrinaut-petrinet"
 
+type ElementMetadata = Record<string, Record<string, unknown> | undefined>
+
+function elementMetadata(doc: unknown): ElementMetadata | undefined {
+	const section = (doc as {"@patchwork"?: {metadata?: unknown}} | undefined)?.["@patchwork"]?.metadata
+	return section && typeof section === "object" ? (section as ElementMetadata) : undefined
+}
+
+function elementExists(doc: unknown, id: string): boolean {
+	const net = petriNet(doc)
+	return net.places.some((p) => p.id === id) || net.transitions.some((t) => t.id === id)
+}
+
 type Net = {
 	parameters: unknown[]
-	places: {name: string; x?: number; y?: number}[]
-	transitions: {name: string; x?: number; y?: number}[]
+	places: {id?: string; name: string; x?: number; y?: number}[]
+	transitions: {id?: string; name: string; x?: number; y?: number}[]
 	metrics: {id?: string}[]
 }
 
