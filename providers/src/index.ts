@@ -46,4 +46,13 @@ export const plugins: Plugin<any>[] = [
       return ToolStorageProvider;
     },
   },
+  {
+    type: "patchwork:component",
+    id: "patchwork-worker-provider",
+    name: "Worker Provider",
+    async load() {
+      const { WorkerProvider } = await import("./WorkerProvider.js");
+      return WorkerProvider;
+    },
+  },
 ];
