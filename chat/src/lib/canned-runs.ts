@@ -297,17 +297,18 @@ const CONSOLIDATE_KERNEL = `export default TransitionKernel((input, parameters) 
 //
 // The sites are ASSUMED — the net's data comes from SAP tables that name the
 // suppliers only by country and the plant not at all — so each is a real,
-// well-known industry location of the right kind. The three plant buildings
-// are spread a few hundred metres apart inside one real industrial park so the
-// labels don't sit on top of each other at any zoom.
+// well-known industry location of the right kind. The plant's three
+// departments are three real business parks 3–5 km apart in west Dublin, so
+// their labels come apart as soon as the map is zoomed to the city rather than
+// stacking until street level.
 
 const GEO_SITES: {id: string; site: string; lat: number; lng: number}[] = [
 	{id: "place__supplier_1", site: "Taizhou, Zhejiang (API chemicals cluster)", lat: 28.656, lng: 121.421},
 	{id: "place__supplier_2", site: "Hyderabad, Genome Valley", lat: 17.545, lng: 78.572},
 	{id: "place__supplier_3", site: "Frankfurt, Industriepark Höchst", lat: 50.0985, lng: 8.5417},
-	{id: "place__quarantine", site: "our plant — goods-receipt dock, Grange Castle, Dublin", lat: 53.3115, lng: -6.447},
-	{id: "place__line", site: "our plant — Sonic Flow production line", lat: 53.314, lng: -6.442},
-	{id: "place__fg", site: "our plant — finished-goods warehouse", lat: 53.31, lng: -6.4395},
+	{id: "place__quarantine", site: "our plant — goods receipt, Grange Castle Business Park, Dublin", lat: 53.3115, lng: -6.447},
+	{id: "place__line", site: "our plant — Sonic Flow production, Citywest Business Campus, Dublin", lat: 53.2885, lng: -6.4225},
+	{id: "place__fg", site: "our plant — finished-goods warehouse, Park West, Dublin", lat: 53.3315, lng: -6.3785},
 ]
 
 const GEO_DATA: CannedRun = {
@@ -317,7 +318,7 @@ const GEO_DATA: CannedRun = {
 				text:
 					"Done. Six elements now carry coordinates and show up as markers in the Map view:\n\n" +
 					"**Suppliers** — *ChineseSupplier* at Taizhou, Zhejiang (28.656 N, 121.421 E; the API-chemicals cluster), *IndianSupplier* at Genome Valley, Hyderabad (17.545 N, 78.572 E), *GermanSupplier* at Industriepark Höchst, Frankfurt (50.099 N, 8.542 E).\n\n" +
-					"**Our plant** — Grange Castle, Dublin, as three buildings: *Quarantine* is the goods-receipt dock where every supplier route ends (53.312 N, 6.447 W), *ProductionLineFree* the Sonic Flow line (53.314 N, 6.442 W), *FinishedGoods* the warehouse orders ship from (53.310 N, 6.440 W).\n\n" +
+					"**Our plant** — west Dublin, as three departments a few kilometres apart: *Quarantine* is goods receipt at Grange Castle Business Park, where every supplier route ends (53.312 N, 6.447 W); *ProductionLineFree* is the Sonic Flow line at Citywest Business Campus (53.289 N, 6.423 W); *FinishedGoods* is the warehouse orders ship from at Park West (53.332 N, 6.379 W).\n\n" +
 					"Highlighting is synced both ways through the shared focus: hover or click a marker and the element glows on the canvas and in the text; select a place on the canvas and its marker lights up. The positions are assumed — the source tables name suppliers by country only — so move any marker by editing its `geo` entry under `@patchwork.metadata`.",
 				toolCalls: null,
 			}
@@ -351,7 +352,7 @@ const GEO_DATA: CannedRun = {
 				]
 		return {
 			text:
-				"The net has three supplier places and a plant, none of them located, so the Map view is empty. The tables behind it name the suppliers by country only and the plant not at all, so I'll place each at a real site of the right kind — an API-chemicals cluster in China, a pharma park in India, a chemical park in Germany — and put the plant in Dublin as three buildings: the goods-receipt dock the supplier routes end at, the production line, and the finished-goods warehouse. Coordinates go under `@patchwork.metadata` keyed by element id, which is what the Map view reads and what the focus highlight syncs on.",
+				"The net has three supplier places and a plant, none of them located, so the Map view is empty. The tables behind it name the suppliers by country only and the plant not at all, so I'll place each at a real site of the right kind — an API-chemicals cluster in China, a pharma park in India, a chemical park in Germany — and put the plant in west Dublin as three departments on separate business parks: goods receipt, where the supplier routes end; the production line; and the finished-goods warehouse. Coordinates go under `@patchwork.metadata` keyed by element id, which is what the Map view reads and what the focus highlight syncs on.",
 			toolCalls,
 		}
 	},
