@@ -24,7 +24,7 @@ export async function seedGaiosExamples(
 
 const SEIRV = {
   "@patchwork": {
-    title: "SEIRV",
+    title: "CatColab: Stock & Flow",
     type: "catcolab-model",
   },
   analysisDocUrl: "automerge:qJJEiMQo21VwaLToRtYENuYSuTC",
