@@ -4,7 +4,6 @@ import { createDocOfDatatype2 } from "@inkandswitch/patchwork-plugins";
 import type { FolderDoc } from "@inkandswitch/patchwork-filesystem";
 import type { AccountDoc } from "../types";
 import { loadDatatypeWhenReady } from "./loadDatatypeWhenReady";
-import { seedGaiosExamples } from "./gaiosExamples";
 
 const log = debug("patchwork:threepane:examples");
 
@@ -72,7 +71,10 @@ export async function seedExampleDocuments(
     }
   );
 
-  if (gaios) await seedGaiosExamples(repo, folder);
+  if (gaios) {
+    const { seedGaiosExamples } = await import("./gaiosExamples");
+    await seedGaiosExamples(repo, folder);
+  }
 
   for (const url of initUrls) {
     try {

@@ -1,5 +1,6 @@
 import type { DocHandle, Repo } from "@automerge/automerge-repo/slim";
 import type { FolderDoc } from "@inkandswitch/patchwork-filesystem";
+import inventoryPurchasing from "./examples/inventoryPurchasing.json";
 
 /**
  * Examples for gaios deployments, seeded in place of the module bundles'
@@ -235,4 +236,7 @@ const SEIRV = {
   version: "2",
 };
 
-const EXAMPLES = [{ name: "CatColab: Stock & Flow", doc: SEIRV }];
+const EXAMPLES = [
+  { name: "CatColab: Stock & Flow", doc: SEIRV },
+  { name: "Petri Net: Inventory purchasing", doc: inventoryPurchasing },
+];
