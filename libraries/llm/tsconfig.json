@@ -15,6 +15,7 @@
     "index.js",
     "config.js",
     "client.js",
+    "request.js",
     "worker.js",
     "picker.js",
     "tools.js",
