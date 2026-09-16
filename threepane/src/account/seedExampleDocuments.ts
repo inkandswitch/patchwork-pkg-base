@@ -4,6 +4,7 @@ import { createDocOfDatatype2 } from "@inkandswitch/patchwork-plugins";
 import type { FolderDoc } from "@inkandswitch/patchwork-filesystem";
 import type { AccountDoc } from "../types";
 import { loadDatatypeWhenReady } from "./loadDatatypeWhenReady";
+import { seedGaiosExamples } from "./gaiosExamples";
 
 const log = debug("patchwork:threepane:examples");
 
@@ -50,9 +51,10 @@ export async function seedExampleDocuments(
     return;
   }
 
-  const initUrls = await bundleInitScriptUrls();
-  log("bundle init scripts:", initUrls);
-  if (!initUrls.length) {
+  const gaios = window.location.hostname.includes("gaios");
+  const initUrls = gaios ? [] : await bundleInitScriptUrls();
+  log(gaios ? "gaios examples" : "bundle init scripts:", initUrls);
+  if (!gaios && !initUrls.length) {
     log("skipped — no static module bundles to ask");
     return;
   }
@@ -69,6 +71,8 @@ export async function seedExampleDocuments(
       doc.title = "Examples";
     }
   );
+
+  if (gaios) await seedGaiosExamples(repo, folder);
 
   for (const url of initUrls) {
     try {
