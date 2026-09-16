@@ -102,6 +102,32 @@ Pass a stable `sessionKey` (e.g. a doc URL) to `generate`/`stream`; after a
 reload, `resume(sessionKey, { onToken, onDone })` re-attaches to the still-running
 stream in the worker.
 
+### Request preparation (`request.js`)
+
+`generate()` is two halves: preparing the request and posting it to the worker.
+The first half is exported so a host-side worker spec (one that serves this
+library over a stream to sandboxed tools) prepares requests exactly the way
+`generate()` does:
+
+```js
+import { prepareGenerate, buildGeneratePayload } from "@patchwork/llm"
+
+const { cfg, config, extraSystem, builtin, input } = await prepareGenerate(cfg0, {
+  messages,          // chat messages or a string
+  system,            // extra system prompt, already provider-resolved
+  tools,             // tool descriptors, already filtered
+  continuation,      // treat a string as a raw continuation
+  overrides,         // passed to callConfig verbatim
+})
+if (builtin) { /* run builtinGenerate(input, { system: effectiveSystem(cfg, extraSystem), … }) */ }
+else worker.postMessage(buildGeneratePayload(config, input, { id, sessionKey }))
+```
+
+Resolving a provider-conditional `system` map, filtering tools by the user's
+`toolToggles`, and choosing which `overrides` to forward are the caller's job:
+`callConfig` honours provider / apiKey / model / url overrides, so a host serving
+untrusted tools passes only sampling knobs.
+
 ## Events reference
 
 | event        | fields                                                            | local | openrouter | ollama |

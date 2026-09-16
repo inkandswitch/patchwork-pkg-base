@@ -91,6 +91,15 @@ export {
 export const createWorker = () =>
   new Worker(new URL("./worker.js", import.meta.url), { type: "module" });
 
+// Transport-neutral request preparation, shared by generate() and by
+// host-side worker specs that serve this library over a stream.
+export {
+  prepareGenerate,
+  buildGeneratePayload,
+  NATIVE_TOOL_PROVIDERS,
+  TEMPLATE_TOOL_PROVIDERS,
+} from "./request.js";
+
 // LLM tools (user-defined tools the model can be given)
 export {
   createLLMTool,
