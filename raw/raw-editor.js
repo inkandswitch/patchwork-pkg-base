@@ -354,10 +354,19 @@ function deleteAtPath(doc, path) {
   }
 }
 
+function cloneValue(v) {
+  if (v instanceof Automerge.Counter) return new Automerge.Counter(v.value)
+  if (v instanceof Automerge.ImmutableString) return new Automerge.ImmutableString(v.val)
+  if (Array.isArray(v)) return v.map(cloneValue)
+  if (v instanceof Date || v instanceof Uint8Array || !v || typeof v !== "object") return v
+  return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, cloneValue(x)]))
+}
+
 function renameKey(d, parentPath, oldKey, newKey) {
   let parent = parentPath.length === 0 ? d : parentPath.reduce((o, k) => o[k], d)
-  parent[newKey] = parent[oldKey]
+  let value = cloneValue(parent[oldKey])
   delete parent[oldKey]
+  parent[newKey] = value
 }
 
 function applyUndo(d, e) {
