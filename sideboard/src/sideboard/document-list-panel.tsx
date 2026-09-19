@@ -3,7 +3,15 @@ import type { AutomergeUrl, Repo } from "@automerge/automerge-repo/slim";
 import type { PatchworkViewElement } from "@inkandswitch/patchwork-elements";
 import type { OpenDocumentEventDetail } from "@inkandswitch/patchwork-elements";
 import type { FolderDoc } from "@inkandswitch/patchwork-filesystem";
-import { createEffect, createSignal, onCleanup, Show, Suspense } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSelector,
+  createSignal,
+  onCleanup,
+  Show,
+  Suspense,
+} from "solid-js";
 import { render } from "solid-js/web";
 
 import {
@@ -15,6 +23,7 @@ import CreateNew from "./create-new.tsx";
 import { createOpenEvent } from "./events.ts";
 import { SearchIcon } from "./icons.tsx";
 import { DocumentList } from "./document-list/document-list.tsx";
+import { ItemMenu } from "./document-list/item-menu.tsx";
 import { LoadingRows } from "./document-list/loading-row.tsx";
 import { subscribe } from "@inkandswitch/patchwork-providers-solid";
 import { handleFilesDrop } from "./document-list/file-drop.ts";
@@ -51,6 +60,14 @@ export function DocumentListPanel(props: {
     props.element,
     { type: "patchwork:selected-doc" },
     []
+  );
+
+  // A selector so a selection change only notifies the rows whose selected
+  // state actually flipped, instead of every row re-scanning the array.
+  const selectedSet = createMemo(() => new Set(selectedDocUrls()));
+  const isSelected = createSelector(
+    selectedSet,
+    (url: AutomergeUrl, set) => set.has(url)
   );
 
   // Whenever the selection changes, walk the folder tree to find which folders
@@ -217,13 +234,18 @@ export function DocumentListPanel(props: {
               docs={folder()?.docs}
               handle={folderHandle.latest!}
               open={open}
-                selectedDocUrls={selectedDocUrls()}
+              isSelected={isSelected}
               element={props.element}
               rootFolderHandle={folderHandle.latest!}
               filter={filter()}
               clearFilter={() => setFilter("")}
             />
           </Suspense>
+          <ItemMenu
+            repo={props.repo}
+            rootFolderHandle={folderHandle.latest!}
+            element={props.element}
+          />
         </Show>
       </nav>
     </aside>

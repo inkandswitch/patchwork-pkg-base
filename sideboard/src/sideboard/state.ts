@@ -1,5 +1,9 @@
 import { createSignal } from "solid-js";
 import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
+import type {
+  DatatypeDescription,
+  Plugin,
+} from "@inkandswitch/patchwork-plugins";
 
 // A "new document" drag (or click) is asking for a doc to be created inside the
 // folder at `containerUrl`, inserted at `index`. The DocumentList whose handle
@@ -30,3 +34,24 @@ export const [renaming, setRenaming] = createSignal("");
 export const [autoExpandedFolders, setAutoExpandedFolders] = createSignal<
   Set<AutomergeUrl>
 >(new Set());
+
+// The row whose context menu is open. Rows don't own a menu each (a Kobalte
+// menu per row is far too heavy for big trees); the panel renders one shared
+// menu for whichever row last asked, anchored at the pointer.
+export interface MenuTarget {
+  x: number;
+  y: number;
+  element: HTMLElement;
+  id: string;
+  url: AutomergeUrl;
+  name: string;
+  type: string;
+  openWith(toolId?: string): void;
+  startRenaming(): void;
+  remove(): void;
+  createInside?(datatype: Plugin<DatatypeDescription>): void;
+}
+
+export const [menuTarget, setMenuTarget] = createSignal<MenuTarget | null>(
+  null
+);

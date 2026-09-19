@@ -36,22 +36,15 @@ export async function collectExpandedFolders(
   }
   if (!doc?.docs) return false;
 
-  let contains = false;
-  for (const child of doc.docs) {
-    if (selected.has(child.url)) {
-      contains = true;
-    }
-    if (child.type === "folder") {
-      const childContains = await collectExpandedFolders(
-        repo,
-        child.url,
-        selected,
-        result,
-        nextVisited
-      );
-      if (childContains) contains = true;
-    }
-  }
+  let contains = doc.docs.some((child) => selected.has(child.url));
+  const subfolders = await Promise.all(
+    doc.docs
+      .filter((child) => child.type === "folder")
+      .map((child) =>
+        collectExpandedFolders(repo, child.url, selected, result, nextVisited)
+      )
+  );
+  if (subfolders.some(Boolean)) contains = true;
 
   if (contains) result.add(folderUrl);
   return contains;

@@ -53,7 +53,7 @@ export default function Folder(props: {
   removeFromParent(): void;
   open(detail: OpenDocumentEventDetail): void;
   name?: string;
-  selectedDocUrls: AutomergeUrl[];
+  isSelected(url: AutomergeUrl): boolean;
   visitedFolders?: Set<AutomergeUrl>;
   element: PatchworkViewElement;
   rootFolderHandle: DocHandle<FolderDoc>;
@@ -255,7 +255,7 @@ export default function Folder(props: {
         id={props.url}
         url={props.url}
         name={folder()?.title ?? props.name ?? ""}
-        pressed={props.selectedDocUrls.includes(props.url)}
+        pressed={props.isSelected(props.url)}
         type="folder"
         element={props.element}
         repo={props.repo}
@@ -316,7 +316,7 @@ export default function Folder(props: {
               depth={depth() + 1}
               handle={handle.latest!}
               open={props.open}
-              selectedDocUrls={props.selectedDocUrls}
+              isSelected={props.isSelected}
               visitedFolders={nextVisitedFolders}
               element={props.element}
               rootFolderHandle={props.rootFolderHandle}

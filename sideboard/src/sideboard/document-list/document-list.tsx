@@ -17,12 +17,15 @@ import type {
 import { getRegistry, isLoadedPlugin, type Datatype } from "@inkandswitch/patchwork-plugins";
 import {
   createEffect,
+  createMemo,
+  createSignal,
   For,
   Match,
   onCleanup,
   Show,
   Suspense,
   Switch,
+  untrack,
 } from "solid-js";
 import {
   filterMatches,
@@ -42,7 +45,7 @@ export interface DocumentListProps {
   depth: number;
   repo: Repo;
   open(detail: OpenDocumentEventDetail): void;
-  selectedDocUrls: AutomergeUrl[];
+  isSelected(url: AutomergeUrl): boolean;
   visitedFolders?: Set<AutomergeUrl>;
   element: PatchworkViewElement;
   rootFolderHandle: DocHandle<FolderDoc>;
@@ -50,8 +53,35 @@ export interface DocumentListProps {
   clearFilter(): void;
 }
 
+// Rows mounted per frame-budget slice while a big folder streams in.
+const CHUNK = 40;
+const FRAME_BUDGET_MS = 8;
+
 export function DocumentList(props: DocumentListProps) {
   const visitedFolders = props.visitedFolders ?? new Set<AutomergeUrl>();
+
+  // Mount a long list incrementally: the first chunk paints right away, and
+  // each animation frame mounts as many more chunks as fit in its budget, so a
+  // folder with thousands of entries never freezes the page. Rows keep their
+  // identity across slices (automerge preserves it for untouched objects), so
+  // For doesn't re-create the ones already on screen.
+  const [limit, setLimit] = createSignal(CHUNK);
+  createEffect(() => {
+    const total = props.docs?.length ?? 0;
+    if (untrack(limit) >= total) return;
+    let frame = requestAnimationFrame(function more() {
+      const start = performance.now();
+      let n = untrack(limit);
+      do setLimit((n += CHUNK));
+      while (n < total && performance.now() - start < FRAME_BUDGET_MS);
+      if (n < total) frame = requestAnimationFrame(more);
+    });
+    onCleanup(() => cancelAnimationFrame(frame));
+  });
+  const docs = createMemo(() => {
+    const all = props.docs ?? [];
+    return all.length > limit() ? all.slice(0, limit()) : all;
+  });
 
   function removeItem(index: number) {
     props.handle.change((folder) => deleteAt(folder.docs, index));
@@ -86,7 +116,7 @@ export function DocumentList(props: DocumentListProps) {
 
   return (
     <>
-      <For each={props.docs}>
+      <For each={docs()}>
         {(doc, index) => {
           const visible = () =>
             !props.filter.length || filterMatches(props.filter, doc.name);
@@ -117,7 +147,7 @@ export function DocumentList(props: DocumentListProps) {
 
           // Sync title from doc content → folder docref + @patchwork.title
           createEffect(() => {
-            if (!props.selectedDocUrls.includes(doc.url)) return;
+            if (!props.isSelected(doc.url)) return;
 
             let cancelled = false;
             let removeListener: (() => void) | undefined;
@@ -216,7 +246,7 @@ export function DocumentList(props: DocumentListProps) {
                       itemIndex={index()}
                       open={props.open}
                       name={doc.name}
-                      selectedDocUrls={props.selectedDocUrls}
+                      isSelected={props.isSelected}
                       visitedFolders={visitedFolders}
                       element={props.element}
                       rootFolderHandle={props.rootFolderHandle}
@@ -233,7 +263,7 @@ export function DocumentList(props: DocumentListProps) {
                     id={relid()}
                     startRenaming={() => setRenaming(relid())}
                     remove={remove}
-                    pressed={props.selectedDocUrls.includes(doc.url)}
+                    pressed={props.isSelected(doc.url)}
                     type={doc.type}
                     element={props.element}
                     repo={props.repo}
