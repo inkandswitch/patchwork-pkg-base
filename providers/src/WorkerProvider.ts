@@ -55,13 +55,8 @@
 
 import { getRegistry, type PluginDescription, type PluginRegistry } from "@inkandswitch/patchwork-plugins";
 import { accept, type SubscribeEvent } from "@inkandswitch/patchwork-providers";
-import { CHANNEL_SELECTOR } from "@grjte/patchwork-worker/connect.js";
+import { CHANNEL_SELECTOR, WORKER_PLUGIN_TYPE } from "@grjte/patchwork-worker/connect.js";
 import { serveWorkerSpec, type WorkerSpec } from "@grjte/patchwork-worker/serve.js";
-
-// The plugin type is a bare string in @grjte/patchwork-worker's entry
-// (`WORKER_PLUGIN_TYPE`); re-stated here so this module's graph does not pull
-// the barrel in for one constant.
-const WORKER_PLUGIN_TYPE = "patchwork:worker";
 
 /**
  * How long to wait for a registered worker plugin to LOAD before refusing.
@@ -77,7 +72,7 @@ const LOAD_TIMEOUT_MS = 10000;
 type WorkerChannelValue = { readable: ReadableStream; writable: WritableStream } | null;
 
 /** The selector a consumer dispatches (see connect.js `CHANNEL_SELECTOR`). */
-type WorkerChannelSelector = { type: string; kind?: string; request?: unknown };
+type WorkerChannelSelector = { type: string; kind?: string };
 
 /**
  * Mount the worker provider on `element`. Returns a cleanup function
@@ -108,7 +103,7 @@ export const WorkerProvider = (element: HTMLElement): (() => void) => {
     // its teardown, and the `{type:"change", value}` envelope. We only choose
     // the value.
     accept<WorkerChannelValue>(event as SubscribeEvent, (respond) => {
-      void serve(kind, selector.request, respond);
+      void serve(kind, respond);
     });
   };
 
@@ -119,7 +114,6 @@ export const WorkerProvider = (element: HTMLElement): (() => void) => {
    */
   async function serve(
     kind: string,
-    request: unknown,
     respond: (value: WorkerChannelValue, transfer?: Transferable[]) => void
   ) {
     try {
@@ -146,7 +140,7 @@ export const WorkerProvider = (element: HTMLElement): (() => void) => {
       // this provider knowing anything about that service. serveWorkerSpec owns
       // the streams, the per-connection worker, and the id demux; the spec owns
       // the service vocabulary.
-      const streams = serveWorkerSpec(spec, request, { element });
+      const streams = serveWorkerSpec(spec, { element });
 
       // The streams ride IN the value; naming them in the transfer list only
       // upgrades the structured clone to a move. Both are required — a
