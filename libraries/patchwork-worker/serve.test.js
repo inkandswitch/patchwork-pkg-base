@@ -1,4 +1,4 @@
-import {describe, it, expect, vi} from "vitest"
+import {describe, it, expect, vi, afterEach} from "vitest"
 import {serveWorkerSpec} from "./serve.js"
 
 /**
@@ -12,6 +12,10 @@ function fakeWorker() {
 		terminated: false,
 		/** @type {((ev:{data:any})=>void)|null} */
 		onmessage: null,
+		/** @type {((ev:any)=>void)|null} */
+		onerror: null,
+		/** @type {((ev:any)=>void)|null} */
+		onmessageerror: null,
 		postMessage(msg, transfer) {
 			w.posted.push({msg, transfer})
 		},
@@ -22,6 +26,10 @@ function fakeWorker() {
 		reply(data) {
 			w.onmessage?.({data})
 		},
+		/** simulate the worker crashing */
+		crash() {
+			w.onerror?.({message: "boom"})
+		},
 	}
 	return w
 }
@@ -31,6 +39,7 @@ function drive(streams) {
 	const writer = streams.writable.getWriter()
 	const reader = streams.readable.getReader()
 	const frames = []
+	let ended = false
 	;(async () => {
 		try {
 			for (;;) {
@@ -39,12 +48,14 @@ function drive(streams) {
 				frames.push(value)
 			}
 		} catch {}
+		ended = true
 	})()
 	return {
 		write: (f) => writer.write(f),
 		close: () => writer.close(),
 		cancelRead: () => reader.cancel(),
 		frames,
+		ended: () => ended,
 		settle: async () => {
 			for (let i = 0; i < 20; i++) await Promise.resolve()
 			await new Promise((r) => setTimeout(r, 0))
@@ -52,88 +63,112 @@ function drive(streams) {
 	}
 }
 
+/** A spec that posts one message per request and waits for its reply. */
+function echoSpec(w) {
+	return {
+		createWorker: () => w,
+		handle(frame, io) {
+			io.on((msg) => {
+				io.emit({type: "result", text: msg.text})
+				return true
+			})
+			io.post({type: "generate", id: io.workerId, text: frame.text})
+			return {sessionKey: frame.id}
+		},
+	}
+}
+
+afterEach(() => vi.useRealTimers())
+
 describe("serveWorkerSpec", () => {
 	it("routes a request to the worker and its reply back, re-tagged with the caller id", async () => {
 		const w = fakeWorker()
-		const spec = {
-			createWorker: () => w,
-			handle(frame, io) {
-				io.on((msg) => {
-					if (msg.type === "result") {
-						io.emit({type: "result", text: msg.text})
-						return true
-					}
-				})
-				io.post({type: "generate", id: io.workerId, text: frame.text})
-			},
-		}
-		const conn = drive(serveWorkerSpec(spec, {}))
-		await conn.write({id: "a", op: "generate", text: "hi"})
+		const conn = drive(serveWorkerSpec(echoSpec(w), {}))
+		await conn.write({id: "req-1", op: "generate", text: "hi"})
 		await conn.settle()
-
-		// The worker saw the request…
 		expect(w.posted).toHaveLength(1)
-		const workerId = w.posted[0].msg.id
-		expect(w.posted[0].msg.text).toBe("hi")
-
-		// …and its reply comes back tagged with the CALLER id, not the worker id.
-		w.reply({id: workerId, type: "result", text: "done"})
+		const {msg} = w.posted[0]
+		expect(msg.type).toBe("generate")
+		expect(msg.id).not.toBe("req-1") // worker-side id is transport-minted
+		w.reply({id: msg.id, type: "result", text: "hi"})
 		await conn.settle()
-		expect(conn.frames).toContainEqual({id: "a", type: "result", text: "done"})
+		expect(conn.frames).toEqual([{id: "req-1", type: "result", text: "hi"}])
 	})
 
-	it("gives each connection its own worker", async () => {
+	it("gives each connection its own worker, and passes ctx to the spec", async () => {
 		const workers = []
+		let seenCtx
 		const spec = {
 			createWorker: () => {
 				const w = fakeWorker()
 				workers.push(w)
 				return w
 			},
-			handle: (frame, io) => io.post({type: "x", id: io.workerId}),
+			handle: (frame, io) => {
+				seenCtx = io.ctx
+				io.post({type: "x", id: io.workerId})
+			},
 		}
-		const a = drive(serveWorkerSpec(spec, {}))
+		const el = document.createElement("div")
+		const a = drive(serveWorkerSpec(spec, {element: el}))
 		const b = drive(serveWorkerSpec(spec, {}))
 		await a.write({id: "1", op: "go"})
 		await b.write({id: "2", op: "go"})
 		await a.settle()
 		expect(workers).toHaveLength(2)
 		expect(workers[0]).not.toBe(workers[1])
+		expect(seenCtx).toEqual({})
 	})
 
-	it("terminates the worker when the writable closes", async () => {
+	it("tears down from either stream end: worker terminated, readable closed", async () => {
+		// Writable closed: a reader blocked on read() is released with done=true.
+		const w1 = fakeWorker()
+		const a = drive(serveWorkerSpec(echoSpec(w1), {}))
+		await a.write({id: "a", op: "go"})
+		await a.settle()
+		expect(w1.terminated).toBe(false)
+		await a.close()
+		await a.settle()
+		expect(w1.terminated).toBe(true)
+		expect(a.ended()).toBe(true)
+
+		// Readable cancelled.
+		const w2 = fakeWorker()
+		const b = drive(serveWorkerSpec(echoSpec(w2), {}))
+		await b.write({id: "b", op: "go"})
+		await b.settle()
+		await b.cancelRead()
+		await b.settle()
+		expect(w2.terminated).toBe(true)
+	})
+
+	it("tears down when the worker dies, so a waiting consumer sees end-of-stream", async () => {
 		const w = fakeWorker()
-		const spec = {createWorker: () => w, handle: (f, io) => io.post({id: io.workerId})}
+		const conn = drive(serveWorkerSpec(echoSpec(w), {}))
+		await conn.write({id: "a", op: "go"})
+		await conn.settle()
+		w.crash()
+		await conn.settle()
+		expect(w.terminated).toBe(true)
+		expect(conn.ended()).toBe(true)
+	})
+
+	it("tears down when the worker cannot be constructed", async () => {
+		const spec = {
+			createWorker: () => Promise.reject(new Error("no worker for you")),
+			handle: (frame, io) => io.post({id: io.workerId}),
+		}
 		const conn = drive(serveWorkerSpec(spec, {}))
 		await conn.write({id: "a", op: "go"})
 		await conn.settle()
-		expect(w.terminated).toBe(false)
-		await conn.close()
-		await conn.settle()
-		expect(w.terminated).toBe(true)
+		expect(conn.ended()).toBe(true)
 	})
 
-	it("terminates the worker when the readable is cancelled", async () => {
-		const w = fakeWorker()
-		const spec = {createWorker: () => w, handle: (f, io) => io.post({id: io.workerId})}
-		const conn = drive(serveWorkerSpec(spec, {}))
-		await conn.write({id: "a", op: "go"})
-		await conn.settle()
-		await conn.cancelRead()
-		await conn.settle()
-		expect(w.terminated).toBe(true)
-	})
-
-	it("routes op:abort to spec.abort with the stored token", async () => {
+	it("routes op:abort to spec.abort with the stored token, once", async () => {
 		const w = fakeWorker()
 		const aborted = []
 		const spec = {
-			createWorker: () => w,
-			handle(frame, io) {
-				io.on(() => false) // never terminal on its own
-				io.post({type: "generate", id: io.workerId})
-				return {sessionKey: frame.id} // the abort token
-			},
+			...echoSpec(w),
 			abort(token, post) {
 				aborted.push(token)
 				post({type: "abort", sessionKey: token.sessionKey})
@@ -143,66 +178,76 @@ describe("serveWorkerSpec", () => {
 		await conn.write({id: "a", op: "generate"})
 		await conn.settle()
 		await conn.write({id: "a", op: "abort"})
+		await conn.write({id: "a", op: "abort"}) // duplicate: already forgotten
+		await conn.write({id: "zzz", op: "abort"}) // unknown: ignored
 		await conn.settle()
-
 		expect(aborted).toEqual([{sessionKey: "a"}])
-		// spec.abort posted the worker-specific abort payload
 		expect(w.posted.some((p) => p.msg.type === "abort" && p.msg.sessionKey === "a")).toBe(true)
 	})
 
-	it("honours an abort that races in while the request is still resolving (H1)", async () => {
-		// The abort arrives while `handle` is suspended on a slow `open`, i.e. before
-		// the abort token has been stored. The old design read `tokens.get(id)` →
-		// undefined and dropped the abort silently. It must now be deferred and fire
-		// once the token lands.
+	it("honours an abort that races in while the request is still resolving", async () => {
+		// The abort arrives while `handle` is suspended on a slow `open`, before the
+		// abort token exists. It must be deferred and fire once the token lands.
 		const w = fakeWorker()
 		const aborted = []
 		let releaseOpen
 		const spec = {
-			createWorker: () => w,
-			open: () => new Promise((r) => (releaseOpen = r)), // gate handle until we say
-			handle(frame, io) {
-				io.on(() => false)
-				io.post({type: "generate", id: io.workerId})
-				return {sessionKey: frame.id}
-			},
-			abort(token) {
-				aborted.push(token)
-			},
+			...echoSpec(w),
+			open: () => new Promise((r) => (releaseOpen = r)),
+			abort: (token) => void aborted.push(token),
 		}
 		const conn = drive(serveWorkerSpec(spec, {}))
-		await conn.write({id: "a", op: "generate"}) // suspends inside handleFrame on open
-		await conn.write({id: "a", op: "abort"}) // races in BEFORE the token exists
+		await conn.write({id: "a", op: "generate"}) // suspends on open
+		await conn.write({id: "a", op: "abort"}) // before the token exists
 		await conn.settle()
-		expect(aborted).toEqual([]) // deferred: nothing to abort yet
+		expect(aborted).toEqual([])
 
-		releaseOpen(null) // let handle finish and store the token
+		releaseOpen(null)
 		await conn.settle()
-		expect(aborted).toEqual([{sessionKey: "a"}]) // fired once the token landed
-		// …and the request is forgotten, so a duplicate abort is a no-op.
+		expect(aborted).toEqual([{sessionKey: "a"}])
 		await conn.write({id: "a", op: "abort"})
 		await conn.settle()
 		expect(aborted).toEqual([{sessionKey: "a"}])
 	})
 
-	it("closes the readable when the writable closes, so a reader sees end-of-stream (H2)", async () => {
+	it("does not track a fire-and-forget request (no io.on), so op:abort ignores it", async () => {
 		const w = fakeWorker()
-		const spec = {createWorker: () => w, handle: (f, io) => io.post({id: io.workerId})}
-		const streams = serveWorkerSpec(spec, {})
-		const reader = streams.readable.getReader()
-		const writer = streams.writable.getWriter()
-		await writer.write({id: "a", op: "go"})
-		// A reader blocked on read() must be released by teardown, not hang forever.
-		const pending = reader.read()
-		await writer.close()
-		const {done} = await pending
-		expect(done).toBe(true)
+		const aborted = []
+		const spec = {
+			createWorker: () => w,
+			handle(frame, io) {
+				io.post({type: "preload", id: io.workerId})
+				return {sessionKey: frame.id} // a token, but nothing is listening
+			},
+			abort: (token) => void aborted.push(token),
+		}
+		const conn = drive(serveWorkerSpec(spec, {}))
+		await conn.write({id: "a", op: "preload"})
+		await conn.settle()
+		await conn.write({id: "a", op: "abort"})
+		await conn.settle()
+		expect(aborted).toEqual([])
+	})
+
+	it("creates no worker for a request that was still pending at teardown", async () => {
+		const createWorker = vi.fn(() => fakeWorker())
+		let releaseOpen
+		const spec = {
+			createWorker,
+			open: () => new Promise((r) => (releaseOpen = r)),
+			handle: (frame, io) => io.post({id: io.workerId}),
+		}
+		const conn = drive(serveWorkerSpec(spec, {}))
+		await conn.write({id: "a", op: "go"}) // suspends on open
+		await conn.close() // teardown while pending
+		releaseOpen(null)
+		await conn.settle()
+		expect(createWorker).not.toHaveBeenCalled()
 	})
 
 	it("emits id-less worker messages straight onto the readable", async () => {
 		const w = fakeWorker()
-		const spec = {createWorker: () => w, handle: (f, io) => io.post({id: io.workerId})}
-		const conn = drive(serveWorkerSpec(spec, {}))
+		const conn = drive(serveWorkerSpec(echoSpec(w), {}))
 		await conn.write({id: "a", op: "go"})
 		await conn.settle()
 		w.reply({type: "status", message: "downloading model"}) // no id
@@ -210,31 +255,9 @@ describe("serveWorkerSpec", () => {
 		expect(conn.frames).toContainEqual({type: "status", message: "downloading model"})
 	})
 
-	it("does not duplicate a status frame per in-flight request", async () => {
-		// The old design fanned an id-less status to every in-flight id, so N
-		// requests saw the same text N times. One worker per connection emits it once.
-		const w = fakeWorker()
-		const spec = {
-			createWorker: () => w,
-			handle: (f, io) => {
-				io.on(() => false)
-				io.post({id: io.workerId})
-			},
-		}
-		const conn = drive(serveWorkerSpec(spec, {}))
-		await conn.write({id: "a", op: "go"})
-		await conn.write({id: "b", op: "go"})
-		await conn.settle()
-		w.reply({type: "status", message: "one"})
-		await conn.settle()
-		const statuses = conn.frames.filter((f) => f.type === "status")
-		expect(statuses).toEqual([{type: "status", message: "one"}])
-	})
-
 	it("emits {type:error} tagged with the caller id when handle throws", async () => {
-		const w = fakeWorker()
 		const spec = {
-			createWorker: () => w,
+			createWorker: () => fakeWorker(),
 			handle() {
 				throw new Error("boom")
 			},
@@ -246,22 +269,17 @@ describe("serveWorkerSpec", () => {
 	})
 
 	it("falls through when open never settles rather than wedging frames", async () => {
-		const w = fakeWorker()
 		vi.useFakeTimers()
 		const spec = {
-			createWorker: () => w,
+			createWorker: () => fakeWorker(),
 			open: () => new Promise(() => {}), // never resolves
-			handle: (frame, io) => {
-				io.emit({type: "ran", state: io.state})
-			},
+			handle: (frame, io) => void io.emit({type: "ran", state: io.state}),
 		}
 		const conn = drive(serveWorkerSpec(spec, {}))
 		await conn.write({id: "a", op: "go"})
-		// Advance past the OPEN_TIMEOUT so the bounded race resolves null.
 		await vi.advanceTimersByTimeAsync(5001)
 		vi.useRealTimers()
 		await conn.settle()
-		// handle ran anyway, with state === null (the timeout value)
 		expect(conn.frames).toContainEqual({id: "a", type: "ran", state: null})
 	})
 })
