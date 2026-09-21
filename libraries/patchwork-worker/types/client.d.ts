@@ -1,5 +1,5 @@
 /**
- * @typedef {ReturnType<typeof openSession>} WorkerSession
+ * @typedef {import("./session.js").Session} WorkerSession
  * @typedef {(session: WorkerSession) => any} WorkerClientFactory
  * @typedef {{type: "patchwork:worker-client", id: string, name?: string, load: () => Promise<WorkerClientFactory>}} WorkerClientPlugin
  */
@@ -13,26 +13,16 @@
  *
  * @param {string} kind
  * @param {{
- *   sessionOpts?: {element?: HTMLElement, idPrefix?: string, onLog?: (...a:any[])=>void},
+ *   sessionOpts?: import("./session.js").SessionOpts,
  *   timeoutMs?: number,
  * }} [opts]
  * @returns {Promise<any>}
  */
 export function connectWorkerClient(kind: string, opts?: {
-    sessionOpts?: {
-        element?: HTMLElement;
-        idPrefix?: string;
-        onLog?: (...a: any[]) => void;
-    };
+    sessionOpts?: import("./session.js").SessionOpts;
     timeoutMs?: number;
 }): Promise<any>;
-/**
- * The plugin type a service package registers to offer a typed client for its
- * worker. Paired with `patchwork:worker` by `id`. Also exported (as a bare
- * string) from index.js so naming it costs no import.
- */
-export const WORKER_CLIENT_PLUGIN_TYPE: "patchwork:worker-client";
-export type WorkerSession = ReturnType<typeof openSession>;
+export type WorkerSession = import("./session.js").Session;
 export type WorkerClientFactory = (session: WorkerSession) => any;
 export type WorkerClientPlugin = {
     type: "patchwork:worker-client";
@@ -40,4 +30,3 @@ export type WorkerClientPlugin = {
     name?: string;
     load: () => Promise<WorkerClientFactory>;
 };
-import { openSession } from "./connect.js";
