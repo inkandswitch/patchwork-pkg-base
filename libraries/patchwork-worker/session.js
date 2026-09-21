@@ -1,16 +1,12 @@
 /**
  * openSession — request/response multiplexing over a worker connection.
  *
- * `connectWorker` gives you a raw `{readable, writable}` pair. Every consumer
- * then writes the same layer on top of it: open the connection lazily, keep one
- * writer, pump the readable, tag each request with an id, route event frames
- * back to the right in-flight caller, and settle on a terminal frame. That layer
- * had been written three times (chat's llm-client, patchwork-llm's client, and
- * the mirror-image demux inside patchwork-llm's own service), which is also why
- * the same reconnect bug existed in three places.
- *
- * This module owns it once. It stays service-agnostic: frames are opaque, and
- * the caller says which `type` values are terminal.
+ * `connectWorker` gives you a raw `{readable, writable}` pair. This module owns
+ * the layer every consumer needs on top of it: open the connection lazily, keep
+ * one writer, pump the readable, tag each request with an id, route event frames
+ * back to the right in-flight caller, and settle on a terminal frame. It stays
+ * service-agnostic: frames are opaque, and the caller says which `type` values
+ * are terminal.
  *
  *   const session = openSession("llm", {element})
  *   const {promise, abort} = session.request(
@@ -22,14 +18,19 @@
  *     }
  *   )
  *
+ * Frame routing: a frame with an `id` goes to that request's `onFrame` (or its
+ * terminal handler). A frame with NO id is a connection-wide broadcast from the
+ * worker — a status or progress message not tied to one request — and is
+ * delivered to every in-flight request's `onFrame`, so a caller sees the
+ * worker's status the same way it would from a same-realm worker.
+ *
  * Connection lifetime: opened on the first request, shared by every request
  * after it, and DROPPED whenever it fails or ends — so the next request
  * reconnects instead of replaying a dead or rejected connection forever.
+ * `close()` drops it on purpose (and terminates the host worker behind it).
  *
- * NOTE: this module deliberately does NOT import ./connect.js. `connectWorker`
- * is injected by `createOpenSession` instead, so the dependency runs one way
- * (connect.js -> session.js) and the package keeps a single entry point. See the
- * entry-point note in connect.js for why a second entry point is a hazard here.
+ * This module does not import ./connect.js. `connectWorker` is injected by
+ * `createOpenSession`, so the dependency runs one way (connect.js -> session.js).
  */
 
 /**
@@ -37,31 +38,47 @@
  * @property {Record<string, (frame:any)=>any>} terminal  frame.type -> settle. The
  *   return value resolves the request; throw to reject it. Any type listed here
  *   ends the request.
- * @property {(frame:any)=>void} [onFrame]  every non-terminal frame for this id
+ * @property {(frame:any)=>void} [onFrame]  every non-terminal frame for this id,
+ *   plus every id-less broadcast frame received while the request is in flight
  * @property {AbortSignal} [signal]  aborting sends {op:"abort", id} and rejects
  * @property {HTMLElement} [element]  discovery element, if not set on the session
+ *
+ * @typedef {Object} SessionOpts
+ * @property {HTMLElement} [element]  default discovery element for every request
+ * @property {string} [idPrefix]      request id prefix (defaults to the kind)
+ * @property {(...a:any[])=>void} [onLog]
+ *
+ * @typedef {{readable: ReadableStream, writable: WritableStream, disconnect: () => void}} Connection
+ * @typedef {Connection & {writer: WritableStreamDefaultWriter, reader: ReadableStreamDefaultReader}} OpenConnection
+ *
+ * @typedef {Object} Session
+ * @property {(frame: any, opts: RequestOpts) => {promise: Promise<any>, abort: () => void}} request
+ * @property {() => void} close  drop the connection (terminating the worker behind
+ *   it) and reject every in-flight request; the next request reconnects
  */
 
 /**
  * Build the `openSession` export, bound to a `connectWorker` implementation.
  * Called once from connect.js; consumers use the resulting `openSession`.
  *
- * @param {(kind: string, request: any, opts?: any) => Promise<any>} connectWorker
+ * @param {(kind: string, opts: {element: HTMLElement}) => Promise<Connection>} connectWorker
  */
 export function createOpenSession(connectWorker) {
 	/**
 	 * Open a lazily-connected, multiplexed session for a worker `kind`.
 	 *
 	 * @param {string} kind
-	 * @param {{element?: HTMLElement, idPrefix?: string, onLog?: (...a:any[])=>void}} [sessionOpts]
+	 * @param {SessionOpts} [sessionOpts]
+	 * @returns {Session}
 	 */
 	return function openSession(kind, sessionOpts = {}) {
 		const idPrefix = sessionOpts.idPrefix || kind
 		const log = sessionOpts.onLog || (() => {})
 
-		/** @type {Promise<any>|null} */
+		/** @type {Promise<OpenConnection>|null} */
 		let connectionPromise = null
-		/** id -> {onFrame, onClosed} for every request still in flight */
+		/** id -> handlers for every request still in flight
+		 * @type {Map<string, {onFrame: (f:any)=>void, onClosed: (cause:any)=>void}>} */
 		const handlers = new Map()
 		let idSeq = 0
 
@@ -76,11 +93,10 @@ export function createOpenSession(connectWorker) {
 		 * never reopen.
 		 *
 		 * Failing the in-flight requests matters more. They are waiting on frames
-		 * that can no longer arrive: the stream they were reading is gone. Leaving
-		 * them in `handlers` orphans each promise forever — no rejection, no
-		 * timeout, and their abort listeners stay attached to whatever signal the
-		 * caller passed. A consumer that awaits generation with no deadline (chat
-		 * does) wedges permanently with no error to show.
+		 * that can no longer arrive. Leaving them in `handlers` would orphan each
+		 * promise forever — no rejection, no timeout — and a consumer awaiting with
+		 * no deadline would wedge with no error to show.
+		 * @param {any} cause
 		 */
 		function reset(cause) {
 			connectionPromise = null
@@ -89,34 +105,47 @@ export function createOpenSession(connectWorker) {
 			for (const h of inFlight) h.onClosed(cause)
 		}
 
+		/** @param {HTMLElement | undefined} element */
 		function ensureConnection(element) {
 			if (connectionPromise) return connectionPromise
 			const el = element ?? sessionOpts.element
 			connectionPromise = (async () => {
-				const conn = await connectWorker(kind, {}, {element: el})
-				// Keep the writer ON the connection, not in closure state: `send`
-				// awaits `ensureConnection` and the connection can end during that
-				// await, so a shared `writer` variable may be null — or belong to a
-				// newer connection — by the time the write lands.
-				conn.writer = conn.writable.getWriter()
-				void pump(conn.readable)
-				return conn
+				const conn = await connectWorker(kind, {element: /** @type {HTMLElement} */ (el)})
+				// Keep the reader and writer ON the connection, not in closure state:
+				// `send` awaits `ensureConnection` and the connection can end during
+				// that await, so shared variables may be null — or belong to a newer
+				// connection — by the time they are used. Holding both locks also
+				// means `close()` must release through them (a locked stream rejects
+				// cancel/abort from anyone else).
+				const open = /** @type {OpenConnection} */ (
+					Object.assign(conn, {
+						writer: conn.writable.getWriter(),
+						reader: conn.readable.getReader(),
+					})
+				)
+				void pump(open.reader)
+				return open
 			})()
 			// Don't let an unawaited rejection surface as unhandled; just uncache it.
 			connectionPromise.catch((e) => reset(e))
 			return connectionPromise
 		}
 
-		async function pump(readable) {
-			const reader = readable.getReader()
+		/** @param {ReadableStreamDefaultReader} reader */
+		async function pump(reader) {
 			/** @type {any} */
 			let cause = null
 			try {
 				while (true) {
 					const {value, done} = await reader.read()
 					if (done) break
-					const h = value && value.id != null && handlers.get(value.id)
-					if (h) h.onFrame(value)
+					if (!value) continue
+					if (value.id != null) {
+						handlers.get(value.id)?.onFrame(value)
+					} else {
+						// Connection-wide broadcast: every in-flight request hears it.
+						for (const h of [...handlers.values()]) h.onFrame(value)
+					}
 				}
 			} catch (e) {
 				cause = e
@@ -126,12 +155,13 @@ export function createOpenSession(connectWorker) {
 			}
 		}
 
-		/** Write one frame, opening the connection if needed. */
+		/**
+		 * Write one frame, opening the connection if needed.
+		 * @param {any} frame
+		 * @param {HTMLElement | undefined} element
+		 */
 		async function send(frame, element) {
 			const conn = await ensureConnection(element)
-			// Don't use `?.` here: silently resolving without writing would leave the
-			// caller's request unsettled with no error to explain it.
-			if (!conn.writer) throw new Error(`worker connection for "${kind}" is closed`)
 			await conn.writer.write(frame)
 		}
 
@@ -147,25 +177,24 @@ export function createOpenSession(connectWorker) {
 
 			let settled = false
 			/** @type {(v:any)=>void} */
-			let resolveFn
+			let resolveFn = () => {}
 			/** @type {(e:any)=>void} */
-			let rejectFn
+			let rejectFn = () => {}
 
 			const cleanup = () => {
 				handlers.delete(id)
 				opts.signal?.removeEventListener("abort", onAbort)
 			}
 
-			// Only tell the service to stop if we actually asked it to start. An
-			// already-aborted signal would otherwise open a whole connection — up to
-			// the full discovery timeout — purely to abort a request that was never
-			// sent.
-			let sent = false
-
 			function onAbort() {
 				if (settled) return
 				settled = true
-				if (sent) void send({op: "abort", id}, opts.element).catch(() => {})
+				// Only tell the service to stop if a connection exists or is opening:
+				// an already-aborted signal must not open a whole connection (up to the
+				// full discovery timeout) purely to abort a request that was never
+				// sent. If the request frame is still in flight the abort simply
+				// follows it; the serve half ignores aborts for ids it doesn't know.
+				if (connectionPromise) void send({op: "abort", id}, opts.element).catch(() => {})
 				cleanup()
 				rejectFn(new DOMException("Aborted", "AbortError"))
 			}
@@ -217,25 +246,35 @@ export function createOpenSession(connectWorker) {
 				opts.signal.addEventListener("abort", onAbort)
 			}
 
-			send({...frame, id}, opts.element).then(
-				() => {
-					sent = true
-				},
-				(e) => {
-					if (settled) return
-					settled = true
-					cleanup()
-					rejectFn(e)
-				}
-			)
+			send({...frame, id}, opts.element).catch((e) => {
+				if (settled) return
+				settled = true
+				cleanup()
+				rejectFn(e)
+			})
 
 			return {promise, abort: onAbort}
 		}
 
-		return {
-			request,
-			/** Send a fire-and-forget frame (no id correlation, no reply expected). */
-			notify: (frame, element) => send(frame, element).catch(() => {}),
+		/**
+		 * Close the connection on purpose. The serve half tears down its worker when
+		 * the streams end; in-flight requests reject; the next request reconnects.
+		 */
+		function close() {
+			const pending = connectionPromise
+			if (!pending) return
+			reset(new Error(`worker connection for "${kind}" was closed`))
+			pending
+				.then((conn) => {
+					// Release through the locks this session holds: cancelling the
+					// reader ends the pump; aborting the writer ends the serve half,
+					// which terminates the worker.
+					conn.reader.cancel().catch(() => {})
+					conn.writer.abort().catch(() => {})
+				})
+				.catch(() => {})
 		}
+
+		return {request, close}
 	}
 }

@@ -2,86 +2,86 @@
  * connectWorker — a generic, transferable-stream connection to a worker-backed
  * service.
  *
- * A tool asks to connect to a worker doing some kind of work and, for the
- * lifetime of that connection, holds a `WritableStream` (to send request frames)
- * and a `ReadableStream` (to receive event frames). The worker itself, and any
+ * A tool asks to connect to a worker of some `kind` and, for the lifetime of
+ * that connection, holds a `WritableStream` (to send request frames) and a
+ * `ReadableStream` (to receive event frames). The worker itself, and any
  * privileged setup it needs (config/secrets), live on whichever side answers the
  * connection — the SAME realm when there's no isolation boundary, or the host
- * realm when the consumer runs inside a sandboxed iframe. Either way the consumer
- * sees an identical `{readable, writable}` pair; the streams are transferable, so
- * they cross the isolation boundary unchanged.
+ * realm when the consumer runs in a sandboxed realm. Either way the consumer sees
+ * an identical `{readable, writable}` pair; the streams are transferable, so they
+ * cross an isolation boundary unchanged.
  *
- * This file is the CONSUMER half. `connectWorker(kind, request, opts?)` returns
+ * This file is the CONSUMER half. `connectWorker(kind, {element})` returns
  * `{readable, writable, disconnect}`; a provider answers via the discovery event
- * (in-realm, or — across isolation — a bridge that produces host-realm streams).
- * If nothing answers, it rejects. There is no local fallback.
+ * (in-realm, or relayed from the host realm by whatever isolation mechanism is
+ * in use). If nothing answers, it rejects. There is no local fallback.
  *
  * The SERVING half is `serveWorkerSpec` (./serve.js), driven by the host-realm
  * `patchwork-worker-provider` component (shipped by the `providers` package),
  * which resolves a WorkerSpec for the requested `kind` from the
- * `patchwork:worker` plugin registry. Consumers never import serve.js — chat
- * loads only this file into the sandbox.
+ * `patchwork:worker` plugin registry. Consumers never import serve.js.
  *
- * This module is service-agnostic: it knows nothing about LLMs. It only moves a
- * request out and a stream of events back, and lets something in between (a
- * middlebox) sit on the streams. The LLM is the first consumer: `@grjte/llm-host`
- * registers a `patchwork:worker` plugin with id "llm".
- *
- * Frame shapes are the service's concern; connect.js treats them as opaque
- * structured-cloneable values. For the LLM these reuse the worker's existing
- * message vocabulary (token / prediction / stats / result / error / …), tagged
- * with an `id` so many requests can multiplex over one connection.
+ * This module is service-agnostic: it knows nothing about LLMs. Frame shapes are
+ * the service's concern; connect.js treats them as opaque structured-cloneable
+ * values, tagged with an `id` so many requests can multiplex over one connection.
  *
  * Discovery/handoff goes through patchwork-providers: this file calls
  * `subscribe()` and the host provider answers with `accept()`. The stream pair
  * rides in the value; `respond`'s transfer list moves rather than clones it, so
  * the streams stay live across the isolation boundary.
+ *
+ * Layering: this file stays free of the plugin registry so the sandbox-loaded
+ * transport carries no more than it needs; the registry lookup lives in
+ * ./client.js.
  */
 
 import {createOpenSession} from "./session.js"
 
+// --- Protocol constants -----------------------------------------------------
+// Deliberately STRINGS, not Symbols. Comparisons against them are `===` on the
+// value (here, in the host worker provider, and possibly as inlined literals in
+// code that relays the subscription across a boundary), so they keep working
+// even if this module is evaluated more than once. A Symbol would silently stop
+// matching.
+
 /**
  * The selector type used to discover a worker-connection provider. A consumer
- * dispatches a `patchwork:subscribe` for `{ type: CHANNEL_SELECTOR, kind, request }`
+ * dispatches a `patchwork:subscribe` for `{ type: CHANNEL_SELECTOR, kind }`
  * carrying a MessagePort in `detail.port`. The answering side replies over that
- * port with exactly one of:
+ * port, in the standard providers envelope (`{type:"change", value}`), with
+ * exactly one of:
  *
  *   {readable, writable}  — success; the pair is TRANSFERRED, not cloned
  *   null                  — refused; fail fast
  *
- * Both arrive in the standard providers envelope (`{type:"change", value}`),
- * because the answering side responds through `accept()`.
- *
- * Refusal is a `null` VALUE rather than its own message type: `accept()` owns
- * the envelope, so there is no second type to use. That is the trade for
- * speaking the canonical protocol, and it matches what every other provider in
- * the repo now answers when it cannot serve.
- *
  * Silence is also a valid outcome (nothing is mounted to answer), which the
  * consumer's bounded discovery timeout covers. Answering sides that KNOW they're
- * refusing should respond `null` rather than staying silent, so the consumer
- * doesn't wait out the timeout for an answer that already exists.
- *
- * Deliberately a STRING, not a Symbol. Comparisons against it are `===` on the
- * value (here, in the host worker provider, and as an inlined literal in the
- * isolation iframe bridge), so it keeps working even if this module is somehow
- * evaluated more than once. A Symbol would silently stop matching.
+ * refusing should respond `null` rather than staying silent.
  */
 export const CHANNEL_SELECTOR = "patchwork:worker-channel"
+
+/**
+ * The plugin type a service package registers to offer a worker. Its `id` is
+ * the worker `kind`; `load()` resolves to a WorkerSpec (see ./serve.js).
+ */
+export const WORKER_PLUGIN_TYPE = "patchwork:worker"
+
+/**
+ * The paired plugin type a service package registers to offer a typed client
+ * for its worker. Same `id` as the worker; `load()` resolves to a factory
+ * `(session) => clientApi` (see ./client.js).
+ */
+export const WORKER_CLIENT_PLUGIN_TYPE = "patchwork:worker-client"
 
 /**
  * BACKSTOP: how long to wait for a provider to answer before giving up.
  *
  * Not control flow. A mounted provider either serves the kind (streams) or
- * refuses it (`worker-unavailable`), and both are immediate — so in a healthy
- * frame this timer never fires. It exists because an unclaimed
- * `patchwork:subscribe` never settles by design (upstream removed the
- * `<fallback-provider>` that used to answer `null`, so a subscription can wait
- * for a provider that mounts later). Without a bound, a missing provider would
- * hang the caller forever instead of erroring.
- *
- * If you find yourself tuning this number, something upstream is wrong: the
- * frame should be gating its subtree on the provider being mounted.
+ * refuses it (`null`), and both are immediate — so in a healthy frame this timer
+ * never fires. It exists because an unclaimed `patchwork:subscribe` never
+ * settles by design (a subscription may wait for a provider that mounts later).
+ * Without a bound, a missing provider would hang the caller forever instead of
+ * erroring.
  */
 const DISCOVERY_TIMEOUT_MS = 8000
 
@@ -94,10 +94,9 @@ const DISCOVERY_TIMEOUT_MS = 8000
  * the provider's mount point, so a worker can resolve host-realm context (a
  * settings doc, say) without the provider knowing about that service.
  *
- * (Shape mirrored from serve.js's `WorkerSpec`; kept as a local typedef rather
- * than importing serve.js, because this file is the sandbox-loaded consumer half
- * and must not pull the host-only serve module into its graph. Types erase, so
- * this costs nothing at runtime.)
+ * (Shape mirrored from serve.js's `WorkerSpec`, kept as a local typedef so this
+ * sandbox-loaded file does not import the host-only serve module. Types erase,
+ * so this costs nothing at runtime.)
  * @typedef {{
  *   createWorker: () => Worker | Promise<Worker>,
  *   open?: (ctx: {element?: HTMLElement}) => any,
@@ -114,14 +113,14 @@ const DISCOVERY_TIMEOUT_MS = 8000
 /**
  * Open a connection to a worker of `kind`.
  *
- * A `patchwork:subscribe` provider for `{type: CHANNEL_SELECTOR, kind}` in the
- * DOM subtree of `opts.element` answers, transferring streams back over the
- * port. In the host realm that's a mounted worker provider; inside isolation
- * it's the providers-bridge, which relays to the host and transfers the host's
- * streams across the boundary. Either way the consumer gets the same
- * `{readable, writable, disconnect}` and never learns which answered.
+ * A `patchwork:subscribe` provider for `{type: CHANNEL_SELECTOR, kind}` above
+ * `element` answers, transferring streams back over the port. In the host realm
+ * that's a mounted worker provider; in a sandboxed realm it's whatever relays
+ * the subscription to the host and transfers the host's streams back across the
+ * boundary. The consumer gets the same `{readable, writable, disconnect}` either
+ * way and never learns which answered.
  *
- * There is deliberately NO fallback to a locally-registered worker. Inside the
+ * There is deliberately NO fallback to a locally-constructed worker. Inside the
  * sandbox that fallback was a hole: any in-boundary tool that imported a service
  * package would register its worker as an import side-effect, and a connection
  * that should have been refused would instead run the worker in the opaque
@@ -130,52 +129,51 @@ const DISCOVERY_TIMEOUT_MS = 8000
  * consumer with no provider ancestor fails loudly instead.
  *
  * @param {string} kind
- * @param {any} request  the opening request (service-specific; carried to `run`)
- * @param {{ element?: HTMLElement | null, signal?: AbortSignal }} [opts]
+ * @param {{ element: HTMLElement }} opts  a node inside a mounted <patchwork-view>,
+ *   to dispatch the discovery subscribe from
  * @returns {Promise<WorkerConnection>}
  */
-export async function connectWorker(kind, request, opts = {}) {
-	const el = opts.element ?? discoveryElement()
+export async function connectWorker(kind, opts) {
+	const el = opts?.element
 	if (!el) {
 		throw new Error(
 			`no worker available for kind "${kind}": no element to discover a provider from`
 		)
 	}
-	const streams = await discoverViaProvider(el, kind, request)
+	const streams = await discoverViaProvider(el, kind)
 	if (!streams) {
 		throw new Error(`no worker available for kind "${kind}"`)
 	}
 	return withDisconnect(streams)
 }
 
-/** Wrap a {readable, writable} with a disconnect() that tears both ends down. */
+/**
+ * Wrap a {readable, writable} with a disconnect() that tears both ends down.
+ * Only valid while the caller holds no reader/writer lock (a locked stream
+ * rejects cancel/abort); a consumer that has taken locks releases through them.
+ * @param {WorkerStreams} streams
+ * @returns {WorkerConnection}
+ */
 function withDisconnect(streams) {
 	return {
 		...streams,
 		disconnect() {
-			try {
-				streams.readable.cancel?.()
-			} catch {}
-			try {
-				streams.writable.abort?.()
-			} catch {}
+			streams.readable.cancel().catch(() => {})
+			streams.writable.abort().catch(() => {})
 		},
 	}
 }
 
 /**
  * Ask a `patchwork:worker-channel` provider to open a connection, via providers
- * `subscribe()`. The answering side responds through `accept()` with the stream
- * pair in the value and both streams named in the transfer list, so they are
- * moved rather than cloned. Resolves null on an explicit refusal, or if nothing
- * answers within the discovery timeout.
+ * `subscribe()`. Resolves null on an explicit refusal, or if nothing answers
+ * within the discovery timeout.
  *
  * @param {HTMLElement} element
  * @param {string} kind
- * @param {any} request
  * @returns {Promise<WorkerStreams | null>}
  */
-function discoverViaProvider(element, kind, request) {
+function discoverViaProvider(element, kind) {
 	return new Promise((resolve) => {
 		let settled = false
 		/** @type {(() => void) | null} */
@@ -194,14 +192,6 @@ function discoverViaProvider(element, kind, request) {
 		}
 		const timer = setTimeout(() => finish(null), DISCOVERY_TIMEOUT_MS)
 
-		// patchwork-providers is imported DYNAMICALLY, and that is load-bearing.
-		// This file is in the entry graph (index.js -> connect.js), and the module
-		// loader evaluates the entry in a WORKER to read `plugins`. Every static
-		// import here becomes part of that evaluation; a bare specifier the worker
-		// cannot resolve kills the whole package with "ReferenceError: window is
-		// not defined". Before this migration connect.js had ONLY relative
-		// imports — keep it that way.
-		//
 		// `subscribe` is typed `T extends JSONValue`, but a transferred stream pair
 		// is not JSON — the cast is that constraint biting. `accept<T = JSONValue>`
 		// is deliberately unconstrained for exactly this case; the consumer half
@@ -211,7 +201,7 @@ function discoverViaProvider(element, kind, request) {
 				if (settled) return
 				unsubscribe = /** @type {any} */ (subscribe)(
 					element,
-					{type: CHANNEL_SELECTOR, kind, request},
+					{type: CHANNEL_SELECTOR, kind},
 					(/** @type {WorkerStreams | null} */ value) => {
 						// `null` is an explicit refusal — settle now rather than burning
 						// the full discovery timeout for an answer that already exists.
@@ -235,22 +225,6 @@ function discoverViaProvider(element, kind, request) {
 				finish(null)
 			})
 	})
-}
-
-// A DOM node inside a mounted <patchwork-view> is needed to dispatch the
-// discovery `patchwork:subscribe`. Consumers pass one via opts.element; when they
-// don't, remember the most recent element any caller supplied (mirrors config.js's
-// lastElement bootstrap), so elementless callers can still discover.
-/** @type {HTMLElement | null} */
-let lastElement = null
-
-/** Record an element for elementless discovery (call from a UI that has one). */
-export function rememberDiscoveryElement(element) {
-	if (element) lastElement = element
-}
-
-function discoveryElement() {
-	return lastElement
 }
 
 // --- Session layer ----------------------------------------------------------

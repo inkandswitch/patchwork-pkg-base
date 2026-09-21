@@ -1,6 +1,6 @@
 {
   "name": "@grjte/patchwork-worker",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Run a worker in the host realm and hand any consumer a transferable stream pair — the same code inside or outside a Patchwork isolation boundary. Owns the patchwork:worker plugin type and the connect/session/serve transport; the host-realm provider that drives it ships from the providers package.",
   "type": "module",
   "main": "index.js",

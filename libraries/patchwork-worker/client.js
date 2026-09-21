@@ -10,53 +10,39 @@
  * The first is the SERVE half: the host-realm provider runs its WorkerSpec. The
  * second is the CONSUME half: a factory that turns an open `openSession(kind)`
  * session into the service's API (`{generate}` for the LLM, say). Both ship from
- * the service package, so the frame vocabulary they share can never drift apart
- * across releases — and a tool that calls
+ * the service package, so the frame vocabulary they share cannot drift apart —
+ * and a tool that calls
  *
  *   const llm = await connectWorkerClient("llm", {sessionOpts: {idPrefix: "chat"}})
  *   await llm.generate(messages, {element, ...})
  *
- * has no build-time dependency on that package at all. The lookup is late-bound
- * through the registry (AGENTS.md's sanctioned coupling) and degrades to a
- * rejection if nothing registered the kind.
+ * has no build-time dependency on that package. The lookup is late-bound through
+ * the registry and rejects if nothing registered the kind.
  *
- * Works in both realms. Inside an isolation iframe the plugin registry is
- * mirrored from the host (every registry type, ungated), the plugin's `load()`
- * fetches the service package's entry through the iframe module loader, and the
- * session is served by the host provider across the boundary — the same call.
+ * Works in any realm that has a plugin registry the service is registered in:
+ * the lookup is an ordinary registry lookup, and the session is served by the
+ * host provider wherever it is mounted, in-realm or across an isolation
+ * boundary — the same call either way.
  *
- * ⚠ This file is deliberately NOT re-exported from index.js. It imports
- * `@inkandswitch/patchwork-plugins` statically, whose graph reaches `window`;
- * index.js -> connect.js is the graph the module loader evaluates in a Worker
- * when it reads a package's `plugins`, and a bare import there kills it (see
- * connect.js). Nothing evaluates this file except a consumer that asked for it:
- * in the host it resolves through the bootloader importmap, in the iframe through
- * the es-module-shims importmap (which already loads patchwork-plugins for the
- * iframe's own registry). connect.test.js's "package shape" tests enforce the
- * split.
+ * Layering: this is the one file in the package that touches the plugin
+ * registry. connect.js / session.js stay registry-free; serve.js is host-only
+ * and is never imported here.
  */
 
 import {getRegistry} from "@inkandswitch/patchwork-plugins"
-import {openSession} from "./connect.js"
-
-/**
- * The plugin type a service package registers to offer a typed client for its
- * worker. Paired with `patchwork:worker` by `id`. Also exported (as a bare
- * string) from index.js so naming it costs no import.
- */
-export const WORKER_CLIENT_PLUGIN_TYPE = "patchwork:worker-client"
+import {openSession, WORKER_CLIENT_PLUGIN_TYPE} from "./connect.js"
 
 /**
  * How long to wait for the client plugin to be registered AND loaded before
  * giving up. `loadWhenReady` is unbounded by design (it waits for a late
- * registration — in the iframe, entries arrive via the bridge after the tool
- * may already have mounted), so this is the only thing standing between a
+ * registration — in a sandboxed realm the service may be registered after the
+ * consumer has already mounted), so this is the only thing standing between a
  * missing service package and a consumer that awaits forever.
  */
 const LOAD_TIMEOUT_MS = 10000
 
 /**
- * @typedef {ReturnType<typeof openSession>} WorkerSession
+ * @typedef {import("./session.js").Session} WorkerSession
  * @typedef {(session: WorkerSession) => any} WorkerClientFactory
  * @typedef {{type: "patchwork:worker-client", id: string, name?: string, load: () => Promise<WorkerClientFactory>}} WorkerClientPlugin
  */
@@ -71,7 +57,7 @@ const LOAD_TIMEOUT_MS = 10000
  *
  * @param {string} kind
  * @param {{
- *   sessionOpts?: {element?: HTMLElement, idPrefix?: string, onLog?: (...a:any[])=>void},
+ *   sessionOpts?: import("./session.js").SessionOpts,
  *   timeoutMs?: number,
  * }} [opts]
  * @returns {Promise<any>}
