@@ -4,20 +4,25 @@
  * `openSession` (session.js) is the consumer side: it owns a `{readable,
  * writable}` pair, mints request ids, multiplexes many requests over one
  * connection, and routes event frames back to the right caller. `serveWorkerSpec`
- * is the same machinery on the OTHER end. A worker library supplies a small
- * `WorkerSpec` — how to construct its worker, an optional per-connection warm-up,
- * and a `handle(frame)` that turns one consumer request into worker traffic — and
+ * is the same machinery on the OTHER end. A service supplies a small `WorkerSpec`
+ * — how to construct its worker, an optional per-connection warm-up, and a
+ * `handle(frame, io)` that turns one consumer request into worker traffic — and
  * this file owns everything kind-agnostic around it:
  *
  *   - the `{readable, writable}` stream pair and its controller lifecycle
  *   - ONE dedicated Worker per connection, terminated on teardown (no reuse, no
  *     sharing — a worker belongs to the connection that opened it and dies with it)
  *   - id minting and demux for requests multiplexed within the connection
- *   - the reserved `op:"abort"` (session.js:168 already sends it, so it is part of
- *     the transport protocol, not any service's vocabulary)
- *   - teardown on cancel/close/abort of either stream
- *   - a bounded `open` hook (the same never-settling-primitive guard the rest of
- *     this package applies with LOAD_TIMEOUT_MS / DISCOVERY_TIMEOUT_MS)
+ *   - the reserved `op:"abort"` (session.js sends it, so it is part of the
+ *     transport protocol, not any service's vocabulary)
+ *   - teardown on cancel/close/abort of either stream, on worker death, and on a
+ *     worker that cannot be constructed
+ *   - a bounded `open` hook
+ *
+ * Frames the worker posts with NO `id` (status, progress) are emitted straight
+ * onto the connection's readable; the consumer side fans them out to its
+ * in-flight requests. With one worker per connection there is nothing else to
+ * route them to.
  *
  * The spec knows nothing about streams, ids, or workers-as-transport; the
  * transport knows nothing about the service's op vocabulary, config, or secrets.
@@ -27,8 +32,8 @@
  * How long `spec.open` may take before the transport gives up and serves frames
  * anyway. Bounds an upstream primitive that can hang: a settings-doc warm resolves
  * through patchwork-providers' `request()`, which never settles if no provider
- * answers. Falling through is the spec's responsibility to make safe (the LLM
- * re-checks and retries); wedging every frame forever is strictly worse.
+ * answers. Falling through is the spec's responsibility to make safe; wedging
+ * every frame forever is strictly worse.
  */
 const OPEN_TIMEOUT_MS = 5000
 
@@ -41,7 +46,9 @@ const OPEN_TIMEOUT_MS = 5000
  * @property {Emit} emit              enqueue a frame onto THIS consumer's readable
  * @property {(fn: (msg:any)=>boolean|void) => void} on
  *   register a handler for worker messages tagged with `workerId`; return a truthy
- *   value from `fn` when the request is complete and the transport should clean up
+ *   value from `fn` when the request is complete and the transport should clean up.
+ *   A request whose handle never calls `on` is fire-and-forget: nothing is
+ *   tracked for it and `op:"abort"` cannot target it.
  * @property {string} workerId        the transport-minted id to tag worker payloads with
  * @property {any} state              whatever `spec.open` resolved (or null)
  * @property {{element?: HTMLElement}} ctx  host-realm context from the provider
@@ -50,7 +57,7 @@ const OPEN_TIMEOUT_MS = 5000
  * @property {() => Worker | Promise<Worker>} createWorker
  * @property {(ctx: {element?: HTMLElement}) => any} [open]
  * @property {(frame: any, io: IO) => any} handle
- *   returns an opaque abort token (or nothing) stored per request
+ *   returns an opaque abort token (or nothing) stored per tracked request
  * @property {(token: any, post: Post) => void} [abort]
  */
 
@@ -62,14 +69,13 @@ function nextWorkerId() {
 /**
  * Serve one worker connection from a spec. Returns the `{readable, writable}` the
  * provider transfers to the consumer. One Worker is created for this connection
- * and terminated when either stream ends.
+ * and terminated when either stream ends or the worker dies.
  *
  * @param {WorkerSpec} spec
- * @param {any} _request  the opening request (reserved; specs read per-frame data instead)
  * @param {{element?: HTMLElement}} [ctx]
  * @returns {{readable: ReadableStream, writable: WritableStream}}
  */
-export function serveWorkerSpec(spec, _request, ctx = {}) {
+export function serveWorkerSpec(spec, ctx = {}) {
 	/** @type {Worker | null} */
 	let worker = null
 	/** @type {Promise<Worker> | null} */
@@ -77,17 +83,15 @@ export function serveWorkerSpec(spec, _request, ctx = {}) {
 	// worker message id -> handler. One connection, so one flat map is enough.
 	/** @type {Map<string, (msg:any)=>boolean|void>} */
 	const handlers = new Map()
-	// caller id -> the abort token the spec returned, so `op:"abort"` can cancel it.
-	// A request is entered here SYNCHRONOUSLY at the value `PENDING` the moment its
+	// caller id -> the abort token the spec returned, so `op:"abort"` can cancel
+	// it. A request is entered here SYNCHRONOUSLY at `PENDING` the moment its
 	// frame arrives, before any await — so an `op:"abort"` that races in while the
 	// spec is still resolving (`await openState` / `await spec.handle`) finds the
-	// request and is honoured once the token lands, rather than being silently
-	// dropped. The value becomes the real token (or `undefined`) when `handle`
-	// returns; see the `PENDING`/`aborted` handling in `handleFrame`.
+	// request and is honoured once the token lands, rather than being dropped.
 	/** @type {Map<string, any>} */
 	const tokens = new Map()
-	// caller ids aborted while still `PENDING` — the token wasn't available yet, so
-	// the abort is deferred to when the handler stores it.
+	// caller ids aborted while still `PENDING` — the abort is deferred to when the
+	// handler stores its token.
 	/** @type {Set<string>} */
 	const aborted = new Set()
 	const PENDING = Symbol("pending")
@@ -111,27 +115,39 @@ export function serveWorkerSpec(spec, _request, ctx = {}) {
 			]).catch(() => null)
 		: Promise.resolve(null)
 
-	const post = (/** @type {any} */ msg, /** @type {Transferable[]=} */ transfer) => {
-		void getWorker().then((w) => w.postMessage(msg, transfer || []))
+	/** @type {Post} */
+	const post = (msg, transfer) => {
+		if (closed) return
+		void getWorker()
+			.then((w) => w.postMessage(msg, transfer || []))
+			.catch(() => {}) // a failed construction has already torn the connection down
 	}
 
-	/** Lazily construct the worker (once) and wire its message pump. */
+	/**
+	 * Lazily construct the worker (once) and wire its message pump. A worker that
+	 * cannot be constructed, or that later dies, ends the connection: the
+	 * consumer's in-flight requests reject when its readable closes, instead of
+	 * waiting on a worker that will never answer.
+	 */
 	function getWorker() {
 		if (workerReady) return workerReady
-		workerReady = Promise.resolve(spec.createWorker()).then((w) => {
-			worker = w
-			w.onmessage = (/** @type {MessageEvent} */ ev) => dispatch(ev.data)
-			return w
-		})
+		workerReady = Promise.resolve()
+			.then(() => spec.createWorker())
+			.then((w) => {
+				worker = w
+				w.onmessage = (/** @type {MessageEvent} */ ev) => dispatch(ev.data)
+				w.onerror = teardown
+				w.onmessageerror = teardown
+				return w
+			})
+		workerReady.catch(teardown)
 		return workerReady
 	}
 
 	/**
 	 * Route a worker message. A message with an `id` goes to that request's
 	 * handler (which reports terminal by returning truthy). A message with no `id`
-	 * (status, log, progress with no request attached) is emitted straight onto the
-	 * connection's readable — with one worker per connection there is nothing to
-	 * fan out to.
+	 * is a connection-wide broadcast and goes straight onto the readable.
 	 */
 	function dispatch(/** @type {any} */ msg) {
 		if (!msg || closed) return
@@ -150,8 +166,8 @@ export function serveWorkerSpec(spec, _request, ctx = {}) {
 
 		// Reserved transport op. Cancel one in-flight request: let the spec send
 		// whatever the worker needs, then forget it. If the request is still
-		// `PENDING` (its handler hasn't returned a token yet — we're mid-`await`),
-		// defer: record the id and let the handler abort as soon as it stores it.
+		// `PENDING` (its handler hasn't returned a token yet), defer: record the id
+		// and let the handler abort as soon as it stores the token.
 		if (op === "abort") {
 			if (!tokens.has(id)) return // unknown / already-finished request
 			const token = tokens.get(id)
@@ -167,11 +183,13 @@ export function serveWorkerSpec(spec, _request, ctx = {}) {
 		}
 
 		// Claim the id SYNCHRONOUSLY, before the first await, so an abort racing in
-		// during `await openState` / `await spec.handle` isn't dropped (H1).
+		// during `await openState` / `await spec.handle` isn't dropped.
 		tokens.set(id, PENDING)
 
 		const state = await openState
+		if (closed) return
 		const workerId = nextWorkerId()
+		let tracked = false
 
 		/** @type {IO} */
 		const io = {
@@ -179,6 +197,7 @@ export function serveWorkerSpec(spec, _request, ctx = {}) {
 			// Frames the spec emits carry the WORKER id; re-tag with the caller id.
 			emit: (f) => emit({...f, id}),
 			on: (fn) => {
+				tracked = true
 				handlers.set(workerId, (msg) => {
 					const done = fn(msg)
 					if (done) {
@@ -206,9 +225,10 @@ export function serveWorkerSpec(spec, _request, ctx = {}) {
 				} catch {}
 				return
 			}
-			// Store the abort token even if undefined, so `op:"abort"` can find the
-			// request (a spec that never aborts simply returns nothing).
-			tokens.set(id, token)
+			// Track the request only if the spec is listening for a reply; a
+			// fire-and-forget handle has nothing to abort and must not accumulate.
+			if (tracked) tokens.set(id, token)
+			else tokens.delete(id)
 		} catch (e) {
 			const err = /** @type {any} */ (e)
 			emit({id, type: "error", message: err?.message || String(e)})
@@ -225,10 +245,9 @@ export function serveWorkerSpec(spec, _request, ctx = {}) {
 		tokens.clear()
 		aborted.clear()
 		// Close the readable so a consumer still reading it sees end-of-stream rather
-		// than hanging forever (H2). Teardown can be driven from the WRITABLE side
-		// (close/abort) or worker death, where the readable was never cancelled; a
-		// bare `controller = null` would strand that reader. `close()` throws if the
-		// stream was already closed/cancelled (the readable-cancel path), so guard it.
+		// than hanging forever. Teardown can be driven from the WRITABLE side
+		// (close/abort) or worker death, where the readable was never cancelled.
+		// `close()` throws if the stream was already closed/cancelled, so guard it.
 		try {
 			controller?.close()
 		} catch {}

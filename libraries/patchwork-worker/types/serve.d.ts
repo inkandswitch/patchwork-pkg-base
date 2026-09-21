@@ -1,14 +1,13 @@
 /**
  * Serve one worker connection from a spec. Returns the `{readable, writable}` the
  * provider transfers to the consumer. One Worker is created for this connection
- * and terminated when either stream ends.
+ * and terminated when either stream ends or the worker dies.
  *
  * @param {WorkerSpec} spec
- * @param {any} _request  the opening request (reserved; specs read per-frame data instead)
  * @param {{element?: HTMLElement}} [ctx]
  * @returns {{readable: ReadableStream, writable: WritableStream}}
  */
-export function serveWorkerSpec(spec: WorkerSpec, _request: any, ctx?: {
+export function serveWorkerSpec(spec: WorkerSpec, ctx?: {
     element?: HTMLElement;
 }): {
     readable: ReadableStream;
@@ -30,7 +29,9 @@ export type IO = {
     emit: Emit;
     /**
      * register a handler for worker messages tagged with `workerId`; return a truthy
-     * value from `fn` when the request is complete and the transport should clean up
+     * value from `fn` when the request is complete and the transport should clean up.
+     * A request whose handle never calls `on` is fire-and-forget: nothing is
+     * tracked for it and `op:"abort"` cannot target it.
      */
     on: (fn: (msg: any) => boolean | void) => void;
     /**
@@ -54,7 +55,7 @@ export type WorkerSpec = {
         element?: HTMLElement;
     }) => any) | undefined;
     /**
-     * returns an opaque abort token (or nothing) stored per request
+     * returns an opaque abort token (or nothing) stored per tracked request
      */
     handle: (frame: any, io: IO) => any;
     abort?: ((token: any, post: Post) => void) | undefined;
