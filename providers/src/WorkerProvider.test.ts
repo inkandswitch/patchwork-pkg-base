@@ -75,7 +75,7 @@ function ask(el: HTMLElement, kind: string) {
   document.addEventListener("patchwork:subscribe", sentinel);
   el.dispatchEvent(
     new CustomEvent("patchwork:subscribe", {
-      detail: { selector: { type: "patchwork:worker-channel", kind, request: {} }, port: channel.port2 },
+      detail: { selector: { type: "patchwork:worker-channel", kind }, port: channel.port2 },
       bubbles: true,
       composed: true,
     })
