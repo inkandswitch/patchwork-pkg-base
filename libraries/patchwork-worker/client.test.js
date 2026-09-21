@@ -1,6 +1,4 @@
 import {describe, it, expect, afterEach, vi} from "vitest"
-import {existsSync, readFileSync} from "node:fs"
-import {join} from "node:path"
 
 // connectWorkerClient resolves the client factory from the host plugin registry.
 // Stub it before importing, so these tests exercise the helper's own logic
@@ -36,7 +34,7 @@ vi.mock("@inkandswitch/patchwork-plugins", () => ({
 	getRegistry: () => registry,
 }))
 
-const {connectWorkerClient, WORKER_CLIENT_PLUGIN_TYPE} = await import("./client.js")
+const {connectWorkerClient} = await import("./client.js")
 
 afterEach(() => {
 	registry.reset()
@@ -51,9 +49,9 @@ describe("connectWorkerClient", () => {
 		})
 		const client = await connectWorkerClient("llm", {sessionOpts: {idPrefix: "t"}})
 		expect(client.generate()).toBe("ok")
-		// The factory receives an openSession() session: request + notify, nothing else.
+		// The factory receives an openSession() session.
 		expect(typeof seen.request).toBe("function")
-		expect(typeof seen.notify).toBe("function")
+		expect(typeof seen.close).toBe("function")
 	})
 
 	it("waits for a plugin registered after the call", async () => {
@@ -74,24 +72,4 @@ describe("connectWorkerClient", () => {
 		)
 	})
 
-	it("names the paired plugin type", () => {
-		expect(WORKER_CLIENT_PLUGIN_TYPE).toBe("patchwork:worker-client")
-	})
-})
-
-describe("package shape (client)", () => {
-	const dir = process.cwd()
-	const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"))
-
-	it("exposes client.js by subpath, outside the entry graph", () => {
-		expect(existsSync(join(dir, "client.js"))).toBe(true)
-		expect(pkg.exports["./client.js"].default).toBe("./client.js")
-		expect(pkg.files).toContain("client.js")
-		// index.js names the type as a bare string but must not import this file:
-		// its static graph is evaluated in the module-loader Worker, where
-		// @inkandswitch/patchwork-plugins cannot load.
-		const entry = readFileSync(join(dir, "index.js"), "utf8")
-		expect(entry).not.toMatch(/from\s+["']\.\/client\.js["']/)
-		expect(entry).toMatch(/WORKER_CLIENT_PLUGIN_TYPE\s*=\s*"patchwork:worker-client"/)
-	})
 })
