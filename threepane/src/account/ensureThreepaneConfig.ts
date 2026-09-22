@@ -3,6 +3,7 @@ import { createDocOfDatatype2 } from "@inkandswitch/patchwork-plugins";
 import type { AccountDoc, ThreepaneConfigDoc, ToolRef, ToolSlot } from "../types";
 import { DEFAULT_DOCTITLE_TOOLS, DEFAULT_TRAY_TOOLS } from "../datatypes";
 import { loadDatatypeWhenReady } from "./loadDatatypeWhenReady";
+import { slotId } from "../components/SlotView";
 
 // Title + spacer are intrinsic to the frame's top bar, never configured tools.
 const INTRINSIC_DOCTITLE_TOOLS = new Set(["document-title", "spacer"]);
@@ -51,6 +52,15 @@ export async function ensureThreepaneConfig(
       // registry onto this doc, so existing accounts keep their system tray.
       if (!doc.tray) {
         doc.tray = DEFAULT_TRAY_TOOLS.slice();
+      } else {
+        // Add any newly-introduced default tray tools (e.g. llm-config-tray) that
+        // an existing account's saved tray predates — matched by id (slotId handles
+        // the string-vs-tuple + Automerge RawString cases) — while preserving the
+        // user's order and any tools they added/removed.
+        const present = new Set(doc.tray.map((s) => slotId(s)));
+        for (const id of DEFAULT_TRAY_TOOLS) {
+          if (!present.has(id)) doc.tray.push(id);
+        }
       }
       // An account whose doctitle lane ended up empty (nothing to migrate from
       // the legacy field) gets the defaults rather than a bare top bar.
