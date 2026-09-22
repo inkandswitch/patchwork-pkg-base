@@ -28,7 +28,6 @@ import type {
   ProvidersBridge,
 } from "./providers-bridge.js";
 import type { setupEsModuleShims } from "./es-module-shims.js";
-import type { installWorkerShim } from "./worker-shim.js";
 import type { createRegistry, Registry } from "./registry.js";
 import type {
   createRootComponentData,
@@ -76,13 +75,6 @@ interface BootDeps {
   createRpcClient: typeof createRpcClient;
   createProvidersBridge: typeof createProvidersBridge;
   setupEsModuleShims: typeof setupEsModuleShims;
-  installWorkerShim: typeof installWorkerShim;
-  /**
-   * `workerBootstrap` serialized to source (`.toString()`), assembled in
-   * ../host/srcdoc.ts. Passed as a string (not a function) because it runs
-   * inside a worker blob, not the iframe — `installWorkerShim` embeds it.
-   */
-  workerBootstrapSource: string;
   createRegistry: typeof createRegistry;
   createRootComponentData: typeof createRootComponentData;
   createDragDrop: typeof createDragDrop;
@@ -100,8 +92,6 @@ export async function boot(deps: BootDeps) {
     createRpcClient,
     createProvidersBridge,
     setupEsModuleShims,
-    installWorkerShim,
-    workerBootstrapSource,
     createRegistry,
     createRootComponentData,
     createDragDrop,
@@ -181,7 +171,11 @@ export async function boot(deps: BootDeps) {
   // 4. Create the message consumers and start routing the RPC port.
   rpcPort = init.rpcPort;
   rpc = createRpcClient(rpcPort);
-  providers = createProvidersBridge(rpcPort, log);
+  providers = createProvidersBridge(
+    rpcPort,
+    log,
+    (init.data as {bridgedProviders?: string[]}).bridgedProviders ?? []
+  );
   registry = createRegistry(log);
   rootComponentData = createRootComponentData(log);
   dragDrop = createDragDrop(log);
@@ -261,20 +255,6 @@ export async function boot(deps: BootDeps) {
     installFetchProxy(hostOrigin, rpc.fetchResource, log);
     installLinkInterception(hostOrigin, log);
 
-    // Also intercept tool-spawned Web Workers: a worker can't load a host-origin
-    // script from the opaque-origin iframe, so route its module loading back
-    // through this iframe's RPC (same automerge filter, no new host surface, no
-    // sync port). See ./worker-shim.ts.
-    installWorkerShim({
-      fetchModule: rpc.fetchModule,
-      fetchResource: rpc.fetchResource,
-      esmsSource: d.esmsSource,
-      workerBootstrapSource,
-      importMap: d.importMap,
-      hostOrigin,
-      log,
-    });
-
     // 11. Create in-memory Repo
     const syncAdapter = new messagechannel.MessageChannelNetworkAdapter(
       init.syncPort
@@ -318,6 +298,8 @@ export async function boot(deps: BootDeps) {
 
     // 15. Providers bridge — forward unclaimed patchwork:subscribe events to
     // the host so host-side providers can answer them (see ./providers-bridge.ts).
+    // This includes `patchwork:worker-channel`: a worker connection is an
+    // ordinary subscription whose value carries transferred streams.
     providers.install();
 
     log(`boot complete — root "${d.rootComponentId}"`);
