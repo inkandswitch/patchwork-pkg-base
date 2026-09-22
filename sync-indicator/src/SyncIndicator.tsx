@@ -6,10 +6,7 @@ import {
   type UrlHeads,
   type PeerId,
 } from "@automerge/automerge-repo/slim";
-import {
-  useRepo,
-  RepoContext,
-} from "solid-automerge";
+import { useRepo, RepoContext } from "solid-automerge";
 import {
   createSignal,
   createMemo,
@@ -21,11 +18,6 @@ import {
   For,
 } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
-import {
-  SYNCSTATE_CHANNEL,
-  type SyncStateDocMessage,
-  type SyncStateBroadcast,
-} from "@inkandswitch/patchwork-bootloader/types";
 import { render } from "solid-js/web";
 import type { ToolImplementation } from "@inkandswitch/patchwork-plugins";
 import { getRelativeTimeString } from "./lib/relative-time";
@@ -35,24 +27,6 @@ import { CopyIcon } from "./CopyIcon";
 import "./styles.css";
 
 const log = Debug("patchwork:sync-indicator");
-
-declare global {
-  // eslint-disable-next-line no-var
-  var patchwork:
-    | {
-        sw?: {
-          /**
-           * Watch one document's sync heads. Calls `listener` on every update,
-           * replaying current state on subscribe. Returns an unsubscribe fn.
-           */
-          subscribeSyncState?: (
-            documentId: string,
-            listener: (update: SyncStateDocMessage) => void
-          ) => () => void;
-        };
-      }
-    | undefined;
-}
 
 export { RepoContext };
 
@@ -82,17 +56,11 @@ export function SyncIndicator(props: { handle: DocHandle<unknown> }) {
   const [now, setNow] = createSignal(Date.now());
   const [ownHeads, setOwnHeads] = createSignal<UrlHeads | undefined>();
 
-  // Global sync signals from the shared worker's @patchwork/syncstate channel.
-  // `connected` is the real Subduction link to the sync server — authoritative,
-  // unlike navigator.onLine which only knows the OS network is up. `serverPeerIds`
-  // are the sync server's storage ids and `workerPeerId` is the shared worker's
-  // id; together they let us tell the server's heads apart from the worker's own
-  // (which are identical to ours) instead of guessing "unknown ⇒ server".
-  const [connected, setConnected] = createSignal(false);
+  // The tab's repo talks to the sync server itself over a Subduction websocket,
+  // so connection state and server heads come straight off the repo.
+  const [connected, setConnected] = createSignal(repo.isSubductionConnected());
   const [serverPeerIds, setServerPeerIds] = createSignal<string[]>([]);
-  const [workerPeerId, setWorkerPeerId] = createSignal<string | undefined>();
 
-  // sync server state — driven by the shared worker's BroadcastChannel
   const [syncServerHeads, setSyncServerHeads] = createSignal<
     UrlHeads | undefined
   >();
@@ -103,29 +71,25 @@ export function SyncIndicator(props: { handle: DocHandle<unknown> }) {
     StorageId | undefined
   >();
 
-  // connected peers (shared worker, etc)
+  // classic automerge-sync peers (other tabs, workers)
   const [peers, setPeers] = createStore<PeerSyncInfo[]>([]);
 
-  // "Up to date with the sync server". The server advertises Subduction
-  // *sedimentree* heads (loose-commit + fragment-boundary ids), NOT the Automerge
-  // frontier, so they can't be compared to our heads with A.equals — that's why
-  // the row only ever read "synced" off the (mis-attributed) worker's automerge
-  // heads. Ask the handle whether we already hold everything the server
-  // advertises instead, exactly like the worker's own resync check.
+  // The server advertises Subduction *sedimentree* heads, NOT the Automerge
+  // frontier, so they can't be compared to ours with A.equals. Ask the handle
+  // whether we already hold everything the server advertises instead.
   const containsServerHeads = (heads: UrlHeads | undefined): boolean => {
     if (!heads || heads.length === 0) return false;
     try {
       return props.handle.containsHeads(heads);
     } catch {
-      return false; // doc not ready, or an undecodable head
+      return false;
     }
   };
 
   /**
    * Trim the sync server's advertised heads for display: drop heads we already
-   * hold in our history (most server sedimentree tips are interior commits we
-   * have), keeping our current frontier tip(s) plus any head we genuinely lack.
-   * Display only; the synced verdict still considers the full set.
+   * hold in our history, keeping our current frontier tip(s) plus any head we
+   * genuinely lack. Display only; the synced verdict considers the full set.
    */
   function trimSeenServerHeads(
     heads: UrlHeads | undefined
@@ -140,19 +104,15 @@ export function SyncIndicator(props: { handle: DocHandle<unknown> }) {
     }
 
     return heads.filter((h) => {
-      if (frontier.has(h)) return true; // our latest shared tip — keep
+      if (frontier.has(h)) return true;
       try {
         return !props.handle.containsHeads([h] as UrlHeads);
       } catch {
-        return true; // can't decide → keep
+        return true;
       }
     }) as UrlHeads;
   }
 
-  // tick every second while popover is open (for relative times), and rebuild
-  // the peer list from repo.peers each time it opens so every currently
-  // connected peer shows up (the repo has no peer connect/disconnect event to
-  // subscribe to, so we refresh on open rather than trying to track it live).
   createEffect(
     on(isPopoverOpen, (open) => {
       if (!open) return;
@@ -162,37 +122,25 @@ export function SyncIndicator(props: { handle: DocHandle<unknown> }) {
     })
   );
 
-  // Global connection + whoami signals arrive over the worker's
-  // @patchwork/syncstate BroadcastChannel (per-doc heads do NOT — those are the
-  // addressed subscribeSyncState pushes below). Open it once, ask the worker to
-  // replay the current snapshot, and keep our signals live.
+  const refreshServerPeerIds = () => {
+    repo
+      .connectedSubductionPeerIds()
+      .then(setServerPeerIds)
+      .catch((err) => log("connectedSubductionPeerIds failed", err));
+  };
+
   createEffect(() => {
-    let channel: BroadcastChannel;
-    try {
-      channel = new BroadcastChannel(SYNCSTATE_CHANNEL);
-    } catch {
-      return; // no BroadcastChannel available — degrade gracefully
-    }
-    const onMessage = (event: MessageEvent) => {
-      const data = event.data as SyncStateBroadcast | undefined;
-      if (!data) return;
-      if (data.type === "connection") {
-        setConnected(data.connected);
-        setServerPeerIds(data.serverPeerIds ?? []);
-      } else if (data.type === "whoami") {
-        setWorkerPeerId(data.peerId);
-      }
+    const onConnection = ({ connected }: { connected: boolean }) => {
+      setConnected(connected);
+      if (connected) refreshServerPeerIds();
+      else setServerPeerIds([]);
     };
-    channel.addEventListener("message", onMessage);
-    // Replay the current global snapshot to this freshly-opened tab.
-    channel.postMessage({ type: "request" });
-    onCleanup(() => {
-      channel.removeEventListener("message", onMessage);
-      channel.close();
-    });
+    repo.on("subduction-connection", onConnection);
+    setConnected(repo.isSubductionConnected());
+    refreshServerPeerIds();
+    onCleanup(() => repo.off("subduction-connection", onConnection));
   });
 
-  /** Update sync-server signals and the "Sync Server" peer-list entry. */
   function applySyncServerUpdate(
     storageId: StorageId,
     heads: UrlHeads,
@@ -201,19 +149,8 @@ export function SyncIndicator(props: { handle: DocHandle<unknown> }) {
     setSyncServerStorageId(storageId);
     setSyncServerHeads(heads);
     setSyncServerTimestamp(timestamp);
-
-    const idx = peers.findIndex((p) => p.name === "Sync Server");
-    if (idx >= 0) {
-      setPeers(idx, {
-        storageId,
-        heads,
-        lastSyncTimestamp: timestamp,
-        inSync: containsServerHeads(heads),
-      });
-    }
   }
 
-  // track own heads + remote heads
   createEffect(() => {
     const h = props.handle;
 
@@ -221,6 +158,15 @@ export function SyncIndicator(props: { handle: DocHandle<unknown> }) {
 
     const onChange = () => {
       if (h.doc()) setOwnHeads(h.heads());
+    };
+
+    const updatePeerRow = (idx: number, heads: UrlHeads, timestamp: number) => {
+      const currentHeads = ownHeads();
+      setPeers(idx, {
+        heads,
+        lastSyncTimestamp: timestamp,
+        inSync: currentHeads ? A.equals(currentHeads, heads) : false,
+      });
     };
 
     const onRemoteHeads = ({
@@ -233,92 +179,50 @@ export function SyncIndicator(props: { handle: DocHandle<unknown> }) {
       timestamp: number;
     }) => {
       log("remote-heads", { storageId, heads, timestamp });
-
-      // update peer entry if it matches a known peer
       const idx = peers.findIndex((p) => p.storageId === storageId);
-      if (idx >= 0) {
-        const currentHeads = ownHeads();
-        setPeers(idx, {
-          heads,
-          lastSyncTimestamp: timestamp,
-          inSync: currentHeads ? A.equals(currentHeads, heads) : false,
-        });
-      }
+      if (idx >= 0) updatePeerRow(idx, heads, timestamp);
+    };
+
+    const onSubductionHeads = (payload: {
+      documentId: string;
+      storageId: StorageId;
+      heads: UrlHeads;
+      timestamp: number;
+    }) => {
+      if (payload.documentId !== h.documentId) return;
+      log("subduction-remote-heads", payload);
+      const ids = serverPeerIds();
+      if (ids.length && !ids.includes(payload.storageId)) return;
+      applySyncServerUpdate(payload.storageId, payload.heads, payload.timestamp);
     };
 
     h.on("change", onChange);
     h.on("remote-heads", onRemoteHeads);
+    repo.on("subduction-remote-heads", onSubductionHeads);
 
-    // Update one repo-peer row (another tab, storage server): those advertise
-    // Automerge frontier heads, so A.equals is the right "in sync" test here.
-    const updatePeerRow = (idx: number, heads: UrlHeads, timestamp: number) => {
-      const currentHeads = ownHeads();
-      setPeers(idx, {
-        heads,
-        lastSyncTimestamp: timestamp,
-        inSync: currentHeads ? A.equals(currentHeads, heads) : false,
-      });
-    };
-
-    // Subscribe to this doc's sync heads from the automerge worker. It replays
-    // the current state on subscribe and pushes every update, keyed by the
-    // sender's storage id. Attribute each update by *who* sent it, using the
-    // identities the worker announces on the syncstate channel — NEVER "unknown
-    // ⇒ must be the server", which funnels the worker's OWN heads (identical to
-    // ours) into the server row so it looks perpetually "synced".
-    const onSyncState = (update: SyncStateDocMessage) => {
-      if (update.documentId !== h.documentId) return;
-      log("sync-state", update);
-
-      const heads = update.heads as UrlHeads;
-      const sid = update.storageId;
-
-      // The real sync server (definitive: it told us its ids over `connection`).
-      if (serverPeerIds().includes(sid)) {
-        applySyncServerUpdate(sid as StorageId, heads, update.timestamp);
-        return;
-      }
-      // The shared worker's own heads (keyed by its whoami peerId). Its row is
-      // hidden outside debug; update it if present, otherwise ignore — it must
-      // never fall through to the sync-server slot.
-      if (workerPeerId() && sid === workerPeerId()) {
-        const idx = peers.findIndex((p) => p.storageId === sid);
-        if (idx >= 0) updatePeerRow(idx, heads, update.timestamp);
-        return;
-      }
-      // A known repo peer, matched by storage id.
-      const idx = peers.findIndex((p) => p.storageId === sid);
-      if (idx >= 0) {
-        updatePeerRow(idx, heads, update.timestamp);
-        return;
-      }
-      // Unknown sender that isn't the worker: once whoami has arrived the only
-      // remaining Subduction sender is the sync server, so attribute it there.
-      // Before whoami lands, drop it rather than risk mislabeling worker heads.
-      if (workerPeerId()) {
-        applySyncServerUpdate(sid as StorageId, heads, update.timestamp);
-      }
-    };
-
-    const unsubscribeSyncState =
-      globalThis?.patchwork?.sw?.subscribeSyncState?.(
-        h.documentId,
-        onSyncState
-      );
-
-    // Build the initial peer list. refreshPeers() reads the syncServer* signals,
-    // and onSyncState *writes* them on every update — so tracking those reads
-    // here would make this effect re-run (tearing down and re-subscribing, which
-    // makes the worker replay) on every single sync-state message: a feedback
-    // loop that floods messages, flickers the peer list, and kills the shared
-    // worker. untrack keeps this effect depending on props.handle alone.
     untrack(refreshPeers);
 
     onCleanup(() => {
       h.off("change", onChange);
       h.off("remote-heads", onRemoteHeads);
-      unsubscribeSyncState?.();
+      repo.off("subduction-remote-heads", onSubductionHeads);
     });
+  });
+
+  // Whatever the repo already knows about the server's heads for this doc
+  // (persisted sync info survives reload).
+  createEffect(() => {
+    const h = props.handle;
+    for (const sid of serverPeerIds()) {
+      const info = h.getSyncInfo(sid as StorageId);
+      if (info?.lastHeads) {
+        applySyncServerUpdate(
+          sid as StorageId,
+          info.lastHeads,
+          info.lastSyncTimestamp
+        );
+      }
+    }
   });
 
   function refreshPeers() {
@@ -340,43 +244,28 @@ export function SyncIndicator(props: { handle: DocHandle<unknown> }) {
       };
     });
 
-    // Always add sync server as a virtual peer — the main thread
-    // doesn't talk to it directly; its state comes from the shared
-    // worker's @patchwork/syncstate BroadcastChannel / IndexedDB.
-    {
-      const serverHeads = syncServerHeads();
-      const serverTs = syncServerTimestamp();
-      peerList.push({
-        id: "sync-server",
-        name: "Sync Server",
-        storageId: syncServerStorageId(),
-        heads: serverHeads,
-        lastSyncTimestamp: serverTs,
-        // sedimentree heads — use containsHeads, not A.equals (see helper).
-        inSync: containsServerHeads(serverHeads),
-      });
-    }
+    peerList.push({
+      id: "sync-server",
+      name: "Sync Server",
+      storageId: syncServerStorageId(),
+      heads: syncServerHeads(),
+      lastSyncTimestamp: syncServerTimestamp(),
+      inSync: containsServerHeads(syncServerHeads()),
+    });
 
-    // sort: shared worker first, sync server last
     const peerOrder = (p: PeerSyncInfo) =>
       p.name === "Shared Worker" ? 0 : p.name === "Sync Server" ? 2 : 1;
     peerList.sort((a, b) => peerOrder(a) - peerOrder(b));
 
     log("peers", peerList);
-    // Show every connected peer, including our own shared worker — the icon
-    // stays driven by the sync server (see syncedToServer), but the popover is
-    // a full readout of who we're talking to.
     setPeers(reconcile(peerList));
   }
 
-  // recompute inSync when own heads change
   createEffect(() => {
     const currentHeads = ownHeads();
     if (!currentHeads) return;
     for (let i = 0; i < peers.length; i++) {
       const peer = peers[i];
-      // The sync server advertises sedimentree heads → containsHeads, not
-      // A.equals (which is right for automerge-frontier peers).
       const inSync =
         peer.name === "Sync Server"
           ? containsServerHeads(peer.heads)
@@ -389,35 +278,35 @@ export function SyncIndicator(props: { handle: DocHandle<unknown> }) {
     }
   });
 
-  // Single source of truth for "are we up to date with the sync server". Both
-  // the icon AND the Sync Server row read this one memo. Previously the icon
-  // derived it live (`containsServerHeads`) while the row rendered a separately
-  // stored `peer.inSync` snapshot, set on a different code path — so a fast
-  // burst of edits could settle with the two disagreeing (icon still "syncing"
-  // while the row already said "synced"). One memo, read in both places, can't
-  // diverge.
+  // Single source of truth for "are we up to date with the sync server"; both
+  // the icon and the Sync Server row read this memo.
   const syncedToServer = createMemo(() => {
-    ownHeads(); // re-evaluate when our heads move (containsHeads reads the doc)
+    ownHeads();
     return containsServerHeads(syncServerHeads());
   });
 
   const syncServerKnown = () => !!syncServerHeads();
 
-  // Status label for one peer row. The Sync Server row reflects `syncedToServer`
-  // (the same memo the icon uses); everyone else compares stored heads.
   const peerStatusLabel = (peer: PeerSyncInfo) => {
     const inSync = peer.name === "Sync Server" ? syncedToServer() : peer.inSync;
     return inSync ? "synced" : peer.heads ? "behind" : "unknown";
   };
 
-  const displayHeads = (peer: PeerSyncInfo) => {
-    if (peer.name !== "Sync Server") return peer.heads;
-    ownHeads(); // re-render the trimmed display when our frontier moves
-    return trimSeenServerHeads(peer.heads);
+  const serverRowHeads = () => {
+    ownHeads();
+    return trimSeenServerHeads(syncServerHeads());
   };
 
+  const serverRowTimestamp = () => syncServerTimestamp();
+
+  const displayHeads = (peer: PeerSyncInfo) =>
+    peer.name === "Sync Server" ? serverRowHeads() : peer.heads;
+
+  const displayTimestamp = (peer: PeerSyncInfo) =>
+    peer.name === "Sync Server" ? serverRowTimestamp() : peer.lastSyncTimestamp;
+
   const iconState = (): "synced" | "syncing" | "error" | "unknown" => {
-    if (!connected()) return "error"; // no live link to the sync server
+    if (!connected()) return "error";
     if (!syncServerKnown()) return "unknown";
     return syncedToServer() ? "synced" : "syncing";
   };
@@ -431,6 +320,8 @@ export function SyncIndicator(props: { handle: DocHandle<unknown> }) {
   const onCopy = async () => {
     const data = {
       ownHeads: ownHeads(),
+      connected: connected(),
+      serverPeerIds: serverPeerIds(),
       syncServer: {
         storageId: syncServerStorageId(),
         heads: syncServerHeads(),
@@ -495,32 +386,30 @@ export function SyncIndicator(props: { handle: DocHandle<unknown> }) {
 
             <For each={peers}>
               {(peer) => (
-                <>
-                  <div
-                    class="sync-peer sync-peer-clickable"
-                    onClick={() => copyHeads(peer.heads)}
-                  >
-                    <div class="sync-peer-header">
-                      <span class="sync-peer-name">{peer.name}</span>
-                      <span class="sync-peer-status">
-                        {peerStatusLabel(peer)}
-                      </span>
-                    </div>
-                    <Show when={displayHeads(peer)}>
-                      {(heads) => (
-                        <div class="sync-peer-detail">
-                          heads:{" "}
-                          {JSON.stringify(heads().map((h) => h.slice(0, 6)))}
-                        </div>
-                      )}
-                    </Show>
-                    <Show when={peer.lastSyncTimestamp}>
-                      <div class="sync-peer-detail">
-                        {relativeTime(peer.lastSyncTimestamp)}
-                      </div>
-                    </Show>
+                <div
+                  class="sync-peer sync-peer-clickable"
+                  onClick={() => copyHeads(displayHeads(peer))}
+                >
+                  <div class="sync-peer-header">
+                    <span class="sync-peer-name">{peer.name}</span>
+                    <span class="sync-peer-status">
+                      {peerStatusLabel(peer)}
+                    </span>
                   </div>
-                </>
+                  <Show when={displayHeads(peer)}>
+                    {(heads) => (
+                      <div class="sync-peer-detail">
+                        heads:{" "}
+                        {JSON.stringify(heads().map((h) => h.slice(0, 6)))}
+                      </div>
+                    )}
+                  </Show>
+                  <Show when={displayTimestamp(peer)}>
+                    <div class="sync-peer-detail">
+                      {relativeTime(displayTimestamp(peer))}
+                    </div>
+                  </Show>
+                </div>
               )}
             </For>
           </div>
