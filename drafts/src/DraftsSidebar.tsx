@@ -165,7 +165,7 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
 
   const selectDraft = (url: AutomergeUrl | null) => {
     const handle = checkedOutHandle();
-    if (!handle) return;
+    if (!handle || disposed) return;
     setScrubber(null);
     setBaseliner(null);
     handle.change((d) => {
@@ -181,6 +181,13 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
   // Monotonic counter so a slow checkpoint computation can't overwrite a newer
   // scrub position (a drag fires one recompute per snapped change).
   let scrubSeq = 0;
+  // The checkout doc outlives this sidebar (the provider reuses it across
+  // mounts), so work still in flight at unmount must not write into it.
+  let disposed = false;
+  onCleanup(() => {
+    disposed = true;
+    scrubSeq++;
+  });
 
   // Recompute and persist the checkpoint from the current head (`scrubber`)
   // and baseline (`baseliner`) signals: `to`s follow the head, `from`s follow
