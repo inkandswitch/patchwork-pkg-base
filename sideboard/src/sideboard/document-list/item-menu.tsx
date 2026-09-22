@@ -1,6 +1,10 @@
-import { DropdownMenu } from "@kobalte/core/dropdown-menu";
+import { Menu, MenuItem, SubMenu } from "../popmenu.tsx";
 import { For, Show } from "solid-js";
-import { parseAutomergeUrl, type DocHandle, type Repo } from "@automerge/automerge-repo/slim";
+import {
+  parseAutomergeUrl,
+  type DocHandle,
+  type Repo,
+} from "@automerge/automerge-repo/slim";
 import type { PatchworkViewElement } from "@inkandswitch/patchwork-elements";
 import type { FolderDoc } from "@inkandswitch/patchwork-filesystem";
 import {
@@ -34,33 +38,21 @@ export function ItemMenu(props: {
   }
 
   return (
-    <DropdownMenu
-      open={!!target()}
-      onOpenChange={(open) => {
-        if (!open) close();
-      }}
-      getAnchorRect={() => {
-        const t = target();
-        return t ? { x: t.x, y: t.y } : undefined;
-      }}
-      placement="right-start"
-      gutter={2}
-      shift={2}
-    >
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content class="popmenu__content">
-          <Show when={target()} keyed>
-            {(t) => (
-              <MenuItems
-                target={t}
-                repo={props.repo}
-                rootFolderHandle={props.rootFolderHandle}
-              />
-            )}
-          </Show>
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu>
+    <Show when={target()} keyed>
+      {(t) => (
+        <Menu
+          anchor={{ x: t.x, y: t.y }}
+          placement="right-start"
+          onClose={close}
+        >
+          <MenuItems
+            target={t}
+            repo={props.repo}
+            rootFolderHandle={props.rootFolderHandle}
+          />
+        </Menu>
+      )}
+    </Show>
   );
 }
 
@@ -94,99 +86,58 @@ function MenuItems(props: {
   return (
     <>
       <Show when={t.createInside}>
-        <DropdownMenu.Sub>
-          <DropdownMenu.SubTrigger class="popmenu__sub-trigger">
-            Create
-          </DropdownMenu.SubTrigger>
-          <DropdownMenu.Portal>
-            <DropdownMenu.SubContent class="popmenu__sub-content">
-              <For each={datatypes}>
-                {(datatype) => (
-                  <DropdownMenu.Item
-                    class="popmenu__item"
-                    onSelect={() => t.createInside!(datatype)}
-                  >
-                    {datatype.name}
-                  </DropdownMenu.Item>
-                )}
-              </For>
-            </DropdownMenu.SubContent>
-          </DropdownMenu.Portal>
-        </DropdownMenu.Sub>
+        <SubMenu label="Create">
+          <For each={datatypes}>
+            {(datatype) => (
+              <MenuItem onSelect={() => t.createInside!(datatype)}>
+                {datatype.name}
+              </MenuItem>
+            )}
+          </For>
+        </SubMenu>
       </Show>
       <Show when={tools.length}>
-        <DropdownMenu.Sub>
-          <DropdownMenu.SubTrigger class="popmenu__sub-trigger">
-            Open with...
-          </DropdownMenu.SubTrigger>
-          <DropdownMenu.Portal>
-            <DropdownMenu.SubContent class="popmenu__sub-content">
-              <For each={tools}>
-                {(tool) => (
-                  <DropdownMenu.Item
-                    class="popmenu__item"
-                    onSelect={() => t.openWith(tool.id)}
-                  >
-                    {tool.name}
-                  </DropdownMenu.Item>
-                )}
-              </For>
-            </DropdownMenu.SubContent>
-          </DropdownMenu.Portal>
-        </DropdownMenu.Sub>
+        <SubMenu label="Open with...">
+          <For each={tools}>
+            {(tool) => (
+              <MenuItem onSelect={() => t.openWith(tool.id)}>
+                {tool.name}
+              </MenuItem>
+            )}
+          </For>
+        </SubMenu>
       </Show>
-      <DropdownMenu.Sub>
-        <DropdownMenu.SubTrigger class="popmenu__sub-trigger">
-          Copy
-        </DropdownMenu.SubTrigger>
-        <DropdownMenu.Portal>
-          <DropdownMenu.SubContent class="popmenu__sub-content">
-            <DropdownMenu.Item
-              class="popmenu__item"
-              onSelect={() => navigator.clipboard.writeText(t.url)}
-            >
-              Automerge url
-            </DropdownMenu.Item>
-            <DropdownMenu.Item
-              class="popmenu__item"
-              onSelect={() => navigator.clipboard.writeText(patchworkUrl())}
-            >
-              Patchwork url
-            </DropdownMenu.Item>
-            <Show when={tools.length}>
-              <DropdownMenu.Sub>
-                <DropdownMenu.SubTrigger class="popmenu__sub-trigger">
-                  Patchwork url with...
-                </DropdownMenu.SubTrigger>
-                <DropdownMenu.Portal>
-                  <DropdownMenu.SubContent class="popmenu__sub-content">
-                    <For each={tools}>
-                      {(tool) => (
-                        <DropdownMenu.Item
-                          class="popmenu__item"
-                          onSelect={() =>
-                            navigator.clipboard.writeText(
-                              `${patchworkUrl()}&tool=${tool.id}`
-                            )
-                          }
-                        >
-                          {tool.name}
-                        </DropdownMenu.Item>
-                      )}
-                    </For>
-                  </DropdownMenu.SubContent>
-                </DropdownMenu.Portal>
-              </DropdownMenu.Sub>
-            </Show>
-          </DropdownMenu.SubContent>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Sub>
-      <DropdownMenu.Item class="popmenu__item" onSelect={() => t.startRenaming()}>
-        Rename
-      </DropdownMenu.Item>
-      <DropdownMenu.Item class="popmenu__item" onSelect={handleRemove}>
+      <SubMenu label="Copy">
+        <MenuItem onSelect={() => navigator.clipboard.writeText(t.url)}>
+          Automerge url
+        </MenuItem>
+        <MenuItem
+          onSelect={() => navigator.clipboard.writeText(patchworkUrl())}
+        >
+          Patchwork url
+        </MenuItem>
+        <Show when={tools.length}>
+          <SubMenu label="Patchwork url with...">
+            <For each={tools}>
+              {(tool) => (
+                <MenuItem
+                  onSelect={() =>
+                    navigator.clipboard.writeText(
+                      `${patchworkUrl()}&tool=${tool.id}`
+                    )
+                  }
+                >
+                  {tool.name}
+                </MenuItem>
+              )}
+            </For>
+          </SubMenu>
+        </Show>
+      </SubMenu>
+      <MenuItem onSelect={() => t.startRenaming()}>Rename</MenuItem>
+      <MenuItem onSelect={handleRemove}>
         {multi() ? `Remove ${dragstack.size} items` : "Remove"}
-      </DropdownMenu.Item>
+      </MenuItem>
     </>
   );
 }

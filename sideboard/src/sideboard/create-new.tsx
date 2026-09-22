@@ -12,14 +12,16 @@ import {
   isLoadablePlugin,
   isLoadedPlugin,
 } from "@inkandswitch/patchwork-plugins";
-import { createSignal, For, Show } from "solid-js";
+import { createSignal, lazy, Show } from "solid-js";
 import { NewDocIcon } from "./icons.tsx";
 import type { DocLink, FolderDoc } from "@inkandswitch/patchwork-filesystem";
 import { docLinkFromUrl } from "./lib/doc-link.ts";
-import { useFilteredDatatypes } from "./lib/solid-plugins";
-import { DropdownMenu } from "@kobalte/core/dropdown-menu";
 import type { OpenDocumentEventDetail } from "@inkandswitch/patchwork-elements";
-import { NEW_DOC_DND_TYPE, setNewDocDragging, clearDropTarget } from "./dnd/dnd.ts";
+import {
+  NEW_DOC_DND_TYPE,
+  setNewDocDragging,
+  clearDropTarget,
+} from "./dnd/dnd.ts";
 
 export async function createNew(
   repo: Repo,
@@ -44,124 +46,9 @@ export async function createNew(
   };
 }
 
-/**
- * The contents of the create-new dropdown: a filter input (also accepts a pasted
- * automerge url) and the list of datatypes. Rendered inside a <DropdownMenu> so
- * it can be reused by the toolbar button and the drag-created placeholder.
- */
-function DatatypeMenuContent(props: {
-  onPickDatatype(datatype: Plugin<DatatypeDescription>): void;
-  onSubmitUrl(url: string): void;
-}) {
-  const datatypes = useFilteredDatatypes((item) => !item.unlisted);
-  const [query, setQuery] = createSignal("");
-  const [highlightIndex, setHighlightIndex] = createSignal(0);
-
-  const isUrl = () => isValidAutomergeUrl(query().trim());
-
-  const filteredDatatypes = () => {
-    const q = query().toLowerCase();
-    const matching = q
-      ? datatypes.filter((d) => d.name.toLowerCase().includes(q))
-      : datatypes;
-    return [...matching].sort((a, b) => a.name.localeCompare(b.name));
-  };
-
-  // total number of selectable items (url item + datatypes)
-  const itemCount = () => (isUrl() ? 1 : 0) + filteredDatatypes().length;
-
-  function selectHighlighted() {
-    const idx = highlightIndex();
-    if (isUrl()) {
-      if (idx === 0) {
-        props.onSubmitUrl(query());
-        return;
-      }
-      // offset by 1 for the url item
-      const datatype = filteredDatatypes()[idx - 1];
-      if (datatype) props.onPickDatatype(datatype);
-    } else {
-      const datatype = filteredDatatypes()[idx];
-      if (datatype) props.onPickDatatype(datatype);
-    }
-  }
-
-  return (
-    <DropdownMenu.Portal>
-      <DropdownMenu.Content class="popmenu__content create-new-menu__content">
-        <div class="create-new-filter">
-          <input
-            class="create-new-filter__input"
-            placeholder="Filter or paste automerge url…"
-            value={query()}
-            onInput={(e) => {
-              setQuery(e.target.value);
-              setHighlightIndex(0);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                selectHighlighted();
-              } else if (e.key === "ArrowDown") {
-                e.preventDefault();
-                setHighlightIndex((i) => Math.min(i + 1, itemCount() - 1));
-              } else if (e.key === "ArrowUp") {
-                e.preventDefault();
-                setHighlightIndex((i) => Math.max(i - 1, 0));
-              } else if (e.key === "Escape") {
-                // let the menu handle escape to close
-                return;
-              }
-              // prevent the menu from handling other keys
-              e.stopPropagation();
-            }}
-            onPaste={(e) => {
-              // Pasting an automerge url should *offer* to add it (revealing the
-              // "Add by URL" item) rather than silently adding it. Drop the
-              // pasted text into the query; isUrl() then shows the button.
-              const text = e.clipboardData?.getData("text/plain") ?? "";
-              if (isValidAutomergeUrl(text.trim())) {
-                e.preventDefault();
-                setQuery(text.trim());
-                setHighlightIndex(0);
-              }
-            }}
-            ref={(el) => {
-              requestAnimationFrame(() => el.focus());
-            }}
-          />
-        </div>
-        <Show when={isUrl()}>
-          <DropdownMenu.Item
-            class="popmenu__item"
-            classList={{
-              "popmenu__item--highlighted": highlightIndex() === 0,
-            }}
-            onSelect={() => props.onSubmitUrl(query())}
-            onPointerMove={() => setHighlightIndex(0)}
-          >
-            Add by URL
-          </DropdownMenu.Item>
-        </Show>
-        <For each={filteredDatatypes()}>
-          {(datatype, i) => (
-            <DropdownMenu.Item
-              class="popmenu__item"
-              classList={{
-                "popmenu__item--highlighted":
-                  highlightIndex() === i() + (isUrl() ? 1 : 0),
-              }}
-              onSelect={() => props.onPickDatatype(datatype)}
-              onPointerMove={() => setHighlightIndex(i() + (isUrl() ? 1 : 0))}
-            >
-              {datatype.name}
-            </DropdownMenu.Item>
-          )}
-        </For>
-      </DropdownMenu.Content>
-    </DropdownMenu.Portal>
-  );
-}
+const CreateNewMenu = lazy(() =>
+  import("./create-new-menu.tsx").then((m) => ({ default: m.CreateNewMenu }))
+);
 
 export interface CreateNewProps {
   repo: Repo;
@@ -240,95 +127,43 @@ export default function CreateNew(props: CreateNewProps) {
     setTimeout(() => preview.remove(), 0);
   }
 
+  let anchor!: HTMLDivElement;
+
   return (
-    <DropdownMenu
-      open={open()}
-      onOpenChange={(isOpen) => {
-        setOpen(isOpen);
-        if (!isOpen) lastCloseAt = performance.now();
-      }}
-    >
-      <div class="create-new-button-anchor">
-        <button
-          type="button"
-          class="create-new-button"
-          classList={{ "create-new-button--square": props.square }}
-          aria-label="create new"
-          draggable={props.draggable}
-          onClick={() => {
-            // skip the click that immediately follows an outside-close
-            if (performance.now() - lastCloseAt > 200) setOpen(true);
+    <div ref={anchor} class="create-new-button-anchor">
+      <button
+        type="button"
+        class="create-new-button"
+        classList={{ "create-new-button--square": props.square }}
+        aria-label="create new"
+        draggable={props.draggable}
+        onClick={() => {
+          // skip the click that immediately follows an outside-close
+          if (performance.now() - lastCloseAt > 200) setOpen(true);
+        }}
+        on:dragstart={props.draggable ? handleDragStart : undefined}
+        on:dragend={() => {
+          setNewDocDragging(false);
+          clearDropTarget();
+        }}
+      >
+        <NewDocIcon class="create-new-button__icon" />
+        <Show when={!props.square}>
+          {" "}
+          <span class="create-new-button__text">Create new</span>
+        </Show>
+      </button>
+      <Show when={open()}>
+        <CreateNewMenu
+          anchor={anchor.getBoundingClientRect()}
+          onClose={() => {
+            setOpen(false);
+            lastCloseAt = performance.now();
           }}
-          on:dragstart={props.draggable ? handleDragStart : undefined}
-          on:dragend={() => {
-            setNewDocDragging(false);
-            clearDropTarget();
-          }}
-        >
-          <NewDocIcon class="create-new-button__icon" />
-          <Show when={!props.square}>
-            {" "}
-            <span class="create-new-button__text">Create new</span>
-          </Show>
-        </button>
-        <DropdownMenu.Trigger
-          class="create-new-button-anchor__trigger"
-          aria-hidden="true"
-          tabindex={-1}
+          onPickDatatype={selectDatatype}
+          onSubmitUrl={handleUrlSubmit}
         />
-      </div>
-      <DatatypeMenuContent
-        onPickDatatype={selectDatatype}
-        onSubmitUrl={handleUrlSubmit}
-      />
-    </DropdownMenu>
-  );
-}
-
-/**
- * A pending "…new doc…" row inserted at a drag-drop location. Auto-opens the
- * type picker anchored to itself; picking a type (or dismissing) is reported via
- * the callbacks so the owning DocumentList can insert the doc at the right index.
- */
-export function NewDocPlaceholder(props: {
-  repo: Repo;
-  onCreate(docLink: DocLink): void;
-  onDismiss(): void;
-  clearFilter(): void;
-}) {
-  const [open, setOpen] = createSignal(true);
-
-  async function pickDatatype(datatype: Plugin<DatatypeDescription>) {
-    const freshy = await createNew(props.repo, datatype);
-    props.clearFilter();
-    props.onCreate(freshy);
-  }
-
-  async function submitUrl(url: string) {
-    const trimmed = url.trim();
-    if (!isValidAutomergeUrl(trimmed)) return;
-    const docLink = await docLinkFromUrl(props.repo, trimmed as AutomergeUrl);
-    props.clearFilter();
-    props.onCreate(docLink);
-  }
-
-  return (
-    <DropdownMenu
-      open={open()}
-      onOpenChange={(isOpen) => {
-        setOpen(isOpen);
-        if (!isOpen) props.onDismiss();
-      }}
-      placement="bottom-start"
-      flip={false}
-    >
-      <DropdownMenu.Trigger class="document-list-item document-list-placeholder">
-        <span class="document-list-item__name">New document</span>
-      </DropdownMenu.Trigger>
-      <DatatypeMenuContent
-        onPickDatatype={pickDatatype}
-        onSubmitUrl={submitUrl}
-      />
-    </DropdownMenu>
+      </Show>
+    </div>
   );
 }
