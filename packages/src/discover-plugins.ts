@@ -59,14 +59,29 @@ function getWorker(): Worker {
   return w;
 }
 
-/**
- * Discover the plugins the package at `folderUrl` exports, off-thread. Rejects
- * (rather than hanging) after `timeoutMs`, or if the worker can't be reached at
- * all — callers treat a rejection as "couldn't preview", not "can't install".
- */
-export function discoverPlugins(
+type AutomergeImporter = (url: string) => Promise<unknown>;
+
+function hostImporter(): AutomergeImporter | undefined {
+  try {
+    const watcher = (
+      globalThis as {
+        window?: {
+          patchwork?: { packages?: { importAutomergePackage?: unknown } };
+        };
+      }
+    ).window?.patchwork?.packages;
+    const importer = watcher?.importAutomergePackage;
+    return typeof importer === "function"
+      ? (importer as AutomergeImporter).bind(watcher)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function discoverViaWorker(
   folderUrl: string,
-  timeoutMs = 15000
+  timeoutMs: number
 ): Promise<PluginDescriptor[]> {
   const id = nextRequestId++;
   return new Promise<PluginDescriptor[]>((resolve, reject) => {
@@ -91,6 +106,30 @@ export function discoverPlugins(
       reject(e instanceof Error ? e : new Error(String(e)));
     }
   });
+}
+
+/**
+ * Discover the plugins the package at `folderUrl` exports, off-thread. Rejects
+ * (rather than hanging) after `timeoutMs`, or if the worker can't be reached at
+ * all — callers treat a rejection as "couldn't preview", not "can't install".
+ */
+export async function discoverPlugins(
+  folderUrl: string,
+  timeoutMs = 15000
+): Promise<PluginDescriptor[]> {
+  const importer = hostImporter();
+  if (!importer) return discoverViaWorker(folderUrl, timeoutMs);
+  const mod = await withTimeout(
+    importer(folderUrl),
+    timeoutMs,
+    "importing the package"
+  );
+  return descriptorsOf(mod);
+}
+
+function descriptorsOf(mod: unknown): PluginDescriptor[] {
+  const plugins = (mod as { plugins?: unknown } | undefined)?.plugins;
+  return Array.isArray(plugins) ? plugins.map(toDescriptor) : [];
 }
 
 // Keep only the structured/cloneable description fields — `load` is a closure,
@@ -143,10 +182,7 @@ export async function discoverHttpPlugins(
     timeoutMs,
     "importing the package"
   );
-  const plugins: any[] = Array.isArray((mod as any)?.plugins)
-    ? (mod as any).plugins
-    : [];
-  return plugins.map(toDescriptor);
+  return descriptorsOf(mod);
 }
 
 /**
