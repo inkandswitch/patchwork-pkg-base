@@ -35,8 +35,8 @@
     "@codemirror/state": "^6.5.2",
     "@codemirror/view": "^6.38.4",
     "@lezer/highlight": "^1.2.1",
-    "@inkandswitch/patchwork-bootloader": "^0.2.4",
-    "@inkandswitch/patchwork-plugins": "^0.0.11",
+    "@inkandswitch/patchwork-bootloader": "^0.7.2",
+    "@inkandswitch/patchwork-plugins": "^1.2.5",
     "solid-js": "^1.9.9"
   },
   "devDependencies": {
