@@ -20,6 +20,7 @@ import {
   createMemo,
   createSignal,
   For,
+  lazy,
   Match,
   onCleanup,
   Show,
@@ -37,7 +38,12 @@ import Folder from "./folder.tsx";
 import Item from "./item.tsx";
 import { ItemName } from "./name.tsx";
 import { LoadingRow } from "./loading-row.tsx";
-import { NewDocPlaceholder } from "../create-new.tsx";
+
+const NewDocPlaceholder = lazy(() =>
+  import("../create-new-menu.tsx").then((m) => ({
+    default: m.NewDocPlaceholder,
+  }))
+);
 
 export interface DocumentListProps {
   handle: DocHandle<FolderDoc>;

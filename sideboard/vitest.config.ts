@@ -7,8 +7,17 @@ export default defineConfig({
     environment: "happy-dom",
     globals: true,
     passWithNoTests: true,
+    server: {
+      deps: { inline: [/@inkandswitch\/patchwork-plugins/] },
+    },
   },
   resolve: {
     conditions: ["development", "browser"],
+    alias: {
+      "@automerge/automerge-repo-keyhive": new URL(
+        "./src/test/keyhive-stub.ts",
+        import.meta.url
+      ).pathname,
+    },
   },
 });

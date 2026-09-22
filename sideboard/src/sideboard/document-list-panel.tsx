@@ -8,6 +8,7 @@ import {
   createMemo,
   createSelector,
   createSignal,
+  lazy,
   onCleanup,
   Show,
   Suspense,
@@ -23,7 +24,6 @@ import CreateNew from "./create-new.tsx";
 import { createOpenEvent } from "./events.ts";
 import { SearchIcon } from "./icons.tsx";
 import { DocumentList } from "./document-list/document-list.tsx";
-import { ItemMenu } from "./document-list/item-menu.tsx";
 import { LoadingRows } from "./document-list/loading-row.tsx";
 import { subscribe } from "@inkandswitch/patchwork-providers-solid";
 import { handleFilesDrop } from "./document-list/file-drop.ts";
@@ -31,6 +31,13 @@ import { copyMode, isNewDocDrag, isSameDragOriginView } from "./dnd/dnd.ts";
 import { executeDrop } from "./dnd/operations.ts";
 import { getDndPayload, hasDocumentDrag } from "./dnd/payload.ts";
 import { createMarquee } from "./document-list/marquee.ts";
+import { menuTarget } from "./state.ts";
+
+const ItemMenu = lazy(() =>
+  import("./document-list/item-menu.tsx").then((m) => ({
+    default: m.ItemMenu,
+  }))
+);
 
 /**
  * The document-list panel: a sticky toolbar (new-doc button + filter) over a
@@ -241,11 +248,13 @@ export function DocumentListPanel(props: {
               clearFilter={() => setFilter("")}
             />
           </Suspense>
-          <ItemMenu
-            repo={props.repo}
-            rootFolderHandle={folderHandle.latest!}
-            element={props.element}
-          />
+          <Show when={menuTarget()}>
+            <ItemMenu
+              repo={props.repo}
+              rootFolderHandle={folderHandle.latest!}
+              element={props.element}
+            />
+          </Show>
         </Show>
       </nav>
     </aside>
