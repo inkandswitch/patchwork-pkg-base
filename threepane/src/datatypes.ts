@@ -5,7 +5,7 @@ import type { AccountDoc, ThreepaneConfigDoc } from "./types";
  * The default system-tray tools for a fresh account. The tray is an explicit
  * list on the threepane config doc, so a new account seeds this set.
  */
-export const DEFAULT_TRAY_TOOLS: string[] = ["theme-tray"];
+export const DEFAULT_TRAY_TOOLS: string[] = ["theme-tray", "llm-config-tray"];
 
 /**
  * The default doctitle tools for a fresh (or empty) account. Title + spacer are
