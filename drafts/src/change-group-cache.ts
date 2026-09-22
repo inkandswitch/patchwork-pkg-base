@@ -4,7 +4,6 @@ import {
   isValidAutomergeUrl,
   type AutomergeUrl,
   type DocHandle,
-  type DocHandleChangePayload,
   type Repo,
   type UrlHeads,
 } from "@automerge/automerge-repo/slim";
@@ -18,6 +17,9 @@ import type {
 } from "./draft-types.js";
 
 // Bump to discard every existing group doc's contents (they self-rebuild).
+// Not bumped for the switch from per-change diffs to op counting: the numbers
+// agree, and a bump would make still-deployed clients and this one wipe each
+// other's group docs in turn.
 export const CHANGE_GROUP_DOC_VERSION = 1;
 
 // A pause between consecutive changes longer than this starts a new group:
@@ -31,10 +33,6 @@ const SLICE_BUDGET_MS = 8;
 
 // Coalesce bursts of member-doc change events into one grouping update.
 const GROUPING_DEBOUNCE_MS = 250;
-
-// Change-event sources that mean a LOCAL edit (made through this client's
-// doc instance), as opposed to synced/merged remote changes.
-const LOCAL_PATCH_SOURCES = new Set(["change", "changeAt", "emptyChange"]);
 
 // One timeline the ChangeGrouper is responsible for: the DraftDoc that owns it
 // (main included — the main draft is always real), the member docs whose
@@ -52,13 +50,6 @@ export type ChangeGrouper = {
   // timelines absent from the list are torn down.
   setTimelines: (specs: TimelineGroupingSpec[]) => void;
   dispose: () => void;
-};
-
-export type ChangeGrouperOptions = {
-  // Called when a watched member doc receives a local change — i.e. the
-  // current user just wrote with that doc instance's actor id. Feeds the
-  // ActorRecorder (see actor-attribution.ts).
-  onLocalChange?: (doc: Automerge.Doc<unknown>) => void;
 };
 
 // Resolve a draft's change-group doc, creating it and stamping
@@ -171,6 +162,71 @@ export function computeRangeEditCounts(
   }
 }
 
+// The same +/- magnitude for every change since `since`, straight from each
+// change's own ops and keyed by hash: every insert / set / make / mark counts
+// as one addition, every del as one deletion (a text splice is one op per
+// character, so the totals match the patch-based count). Ops under
+// `@patchwork` are ignored: the skip set starts from the objects currently in
+// that subtree and, since changes come back in causal order, picks up objects
+// created inside it along the way.
+export async function editCountsSince(
+  doc: Automerge.Doc<unknown>,
+  since: Automerge.Heads,
+  tick: () => Promise<boolean> = async () => true
+): Promise<Map<string, EditCounts> | null> {
+  const skipObjs = new Set<string>();
+  objectIdsUnder((doc as Record<string, unknown>)["@patchwork"], skipObjs);
+  const counts = new Map<string, EditCounts>();
+  for (const change of Automerge.getChangesSince(doc, since)) {
+    if (!(await tick())) return null;
+    const decoded = Automerge.decodeChange(change);
+    counts.set(decoded.hash, countOps(decoded, skipObjs));
+  }
+  return counts;
+}
+
+// Object ids of a materialized container and everything inside it, including
+// the text objects behind string values in maps (strings inside lists carry
+// no reachable id).
+function objectIdsUnder(value: unknown, out: Set<string>): void {
+  if (!value || typeof value !== "object") return;
+  const id = Automerge.getObjectId(value);
+  if (id) out.add(id);
+  if (Array.isArray(value)) {
+    for (const item of value) objectIdsUnder(item, out);
+    return;
+  }
+  for (const [key, child] of Object.entries(value)) {
+    if (typeof child === "string") {
+      const textId = Automerge.getObjectId(value, key);
+      if (typeof textId === "string") out.add(textId);
+    } else {
+      objectIdsUnder(child, out);
+    }
+  }
+}
+
+function countOps(
+  change: Automerge.DecodedChange,
+  skipObjs: Set<string>
+): EditCounts {
+  let additions = 0;
+  let deletions = 0;
+  change.ops.forEach((op, i) => {
+    const skipped =
+      skipObjs.has(op.obj) || (op.obj === "_root" && op.key === "@patchwork");
+    if (op.action.startsWith("make") && skipped) {
+      skipObjs.add(`${change.startOp + i}@${change.actor}`);
+    }
+    if (skipped || op.action === "markEnd") return;
+    if (op.action === "del") deletions += 1;
+    else additions += 1;
+  });
+  return { additions, deletions };
+}
+
+export type EditCounts = { additions: number; deletions: number };
+
 // Shared patch-counting rules for the two diff flavors above.
 function countPatches(patches: Automerge.Patch[]): {
   additions: number;
@@ -199,32 +255,37 @@ function countPatches(patches: Automerge.Patch[]): {
 // full history and returns its first change's time (the creation change).
 // Returns undefined when the doc, its history, or that time can't be resolved,
 // in which case callers skip the "before creation" filter rather than hiding
-// everything.
+// everything. Immutable once known, so resolved times are cached per url.
 export async function getDocCreationTime(
   repo: Repo,
   url: AutomergeUrl | undefined
 ): Promise<number | undefined> {
   if (!url) return undefined;
+  const cached = creationTimes.get(url);
+  if (cached !== undefined) return cached;
   try {
     const handle = await repo.find<unknown>(url);
     const doc = handle.doc();
     if (!doc) return undefined;
     const metas = Automerge.getChangesMetaSince(doc, []);
-    return metas[0]?.time || undefined;
+    const time = metas[0]?.time || undefined;
+    if (time !== undefined) creationTimes.set(url, time);
+    return time;
   } catch (err) {
     console.warn("[drafts] failed to resolve creation time for:", url, err);
     return undefined;
   }
 }
 
-// One member change awaiting aggregation. `seq` is the change's index within
-// its member's gathered metas, used only to break same-second timestamp ties
-// (meta.time is second-resolution) with the doc's own causal order.
-type PendingChange = {
+const creationTimes = new Map<AutomergeUrl, number>();
+
+// One member change awaiting aggregation, with its edit counts already
+// resolved. `seq` is the change's index within its member's gathered metas,
+// used only to break same-second timestamp ties (meta.time is
+// second-resolution) with the doc's own causal order.
+type PendingChange = EditCounts & {
   memberUrl: AutomergeUrl;
-  doc: Automerge.Doc<unknown>;
   hash: string;
-  deps: string[];
   time: number;
   actor: string;
   seq: number;
@@ -272,37 +333,42 @@ function groupId(rowsNewestFirst: PendingChange[]): string {
 // before the root document was created (a member dragged in after the fact
 // would otherwise contribute pre-existing history that reads as noise). `seq`
 // still reflects each change's position in the gathered metas, so filtering
-// doesn't disturb the tie-break ordering.
-function collectMemberRows(
+// doesn't disturb the tie-break ordering. Each change is decoded once for its
+// edit counts, in idle slices; resolves false if the run was aborted.
+async function collectMemberRows(
   out: PendingChange[],
   member: DraftMemberDoc,
   doc: Automerge.Doc<unknown>,
   since: Automerge.Heads,
-  createdAt: number | undefined
-): void {
-  let metas;
+  createdAt: number | undefined,
+  slicer: Slicer
+): Promise<boolean> {
+  let metas: Automerge.ChangeMetadata[];
+  let counts: Map<string, EditCounts> | null;
   try {
     metas = Automerge.getChangesMetaSince(doc, since);
+    counts = await editCountsSince(doc, since, slicer.tick);
   } catch (err) {
     console.warn(
       "[drafts] change grouping: failed to read changes for member:",
       member.url,
       err
     );
-    return;
+    return true;
   }
+  if (!counts) return false;
   metas.forEach((meta, seq) => {
     if (createdAt !== undefined && meta.time && meta.time < createdAt) return;
     out.push({
       memberUrl: member.url,
-      doc,
       hash: meta.hash,
-      deps: meta.deps,
       time: meta.time,
       actor: meta.actor,
       seq,
+      ...(counts!.get(meta.hash) ?? { additions: 0, deletions: 0 }),
     });
   });
+  return true;
 }
 
 function dedupedActors(rowsNewestFirst: PendingChange[]): string[] {
@@ -317,7 +383,7 @@ function dedupedActors(rowsNewestFirst: PendingChange[]): string[] {
 function idle(): Promise<void> {
   return new Promise((resolve) => {
     if (typeof requestIdleCallback === "function") {
-      requestIdleCallback(() => resolve());
+      requestIdleCallback(() => resolve(), { timeout: 200 });
     } else {
       setTimeout(resolve, 0);
     }
@@ -325,17 +391,16 @@ function idle(): Promise<void> {
 }
 
 // Time-budgeted cooperative slicing: `tick()` resolves immediately while the
-// current slice has budget left, otherwise runs `onYield` (flush pending
-// writes) and waits for idle time. Resolves false once the run is aborted.
+// current slice has budget left, otherwise waits for idle time. Resolves
+// false once the run is aborted.
 type Slicer = { tick: () => Promise<boolean> };
 
-function createSlicer(isAborted: () => boolean, onYield: () => void): Slicer {
+function createSlicer(isAborted: () => boolean): Slicer {
   let sliceStart = performance.now();
   return {
     async tick(): Promise<boolean> {
       if (isAborted()) return false;
       if (performance.now() - sliceStart < SLICE_BUDGET_MS) return true;
-      onYield();
       await idle();
       sliceStart = performance.now();
       return !isAborted();
@@ -343,21 +408,19 @@ function createSlicer(isAborted: () => boolean, onYield: () => void): Slicer {
   };
 }
 
-// Diff every change in a group (newest-first, sliced) and aggregate the
-// result down to the ChangeGroup a timeline row renders. Returns null when
-// the run was aborted mid-diff.
-async function buildGroup(
-  rowsNewestFirst: PendingChange[],
-  slicer: Slicer
-): Promise<ChangeGroup | null> {
+function sumCounts(rows: PendingChange[]): EditCounts {
   let additions = 0;
   let deletions = 0;
-  for (const row of rowsNewestFirst) {
-    if (!(await slicer.tick())) return null;
-    const counts = computeEditCounts(row.doc, row.hash, row.deps);
-    additions += counts.additions;
-    deletions += counts.deletions;
+  for (const row of rows) {
+    additions += row.additions;
+    deletions += row.deletions;
   }
+  return { additions, deletions };
+}
+
+// Aggregate a group's changes (newest-first) down to the ChangeGroup a
+// timeline row renders.
+function buildGroup(rowsNewestFirst: PendingChange[]): ChangeGroup {
   const newest = rowsNewestFirst[0];
   const oldest = rowsNewestFirst[rowsNewestFirst.length - 1];
   return {
@@ -367,8 +430,7 @@ async function buildGroup(
     newestMemberUrl: newest.memberUrl,
     newestHash: newest.hash,
     actors: dedupedActors(rowsNewestFirst),
-    additions,
-    deletions,
+    ...sumCounts(rowsNewestFirst),
     changeCount: rowsNewestFirst.length,
   };
 }
@@ -391,16 +453,13 @@ export function sameHeads(
 // background task per timeline, listens to member docs for edits, and updates
 // newest groups first while older history backfills. One global runner
 // processes timelines sequentially in the priority order it was given.
-export function createChangeGrouper(
-  repo: Repo,
-  options: ChangeGrouperOptions = {}
-): ChangeGrouper {
+export function createChangeGrouper(repo: Repo): ChangeGrouper {
   // Change listeners on the docs a timeline reads (originals for main,
   // clones for drafts). `handle` is null while the doc is still resolving —
   // the slot is reserved up front so concurrent syncs don't double-attach.
   type SourceListener = {
     handle: DocHandle<unknown> | null;
-    onChange: (payload: DocHandleChangePayload<unknown>) => void;
+    onChange: () => void;
   };
 
   type Task = {
@@ -415,17 +474,6 @@ export function createChangeGrouper(
   const queue: AutomergeUrl[] = [];
   let running = false;
   let disposed = false;
-
-  // Host-doc creation times, resolved once per root url.
-  const creationTimes = new Map<AutomergeUrl, Promise<number | undefined>>();
-  const creationTime = (url: AutomergeUrl): Promise<number | undefined> => {
-    let cached = creationTimes.get(url);
-    if (!cached) {
-      cached = getDocCreationTime(repo, url);
-      creationTimes.set(url, cached);
-    }
-    return cached;
-  };
 
   function setTimelines(specs: TimelineGroupingSpec[]): void {
     if (disposed) return;
@@ -489,14 +537,7 @@ export function createChangeGrouper(
     }
     for (const url of wanted) {
       if (task.listeners.has(url)) continue;
-      const onChange = (payload: DocHandleChangePayload<unknown>) => {
-        if (
-          options.onLocalChange &&
-          LOCAL_PATCH_SOURCES.has(payload.patchInfo.source) &&
-          payload.doc
-        ) {
-          options.onLocalChange(payload.doc);
-        }
+      const onChange = () => {
         if (task.debounce) clearTimeout(task.debounce);
         task.debounce = setTimeout(() => {
           task.debounce = null;
@@ -571,7 +612,7 @@ export function createChangeGrouper(
       repo,
       spec.draftHandle
     );
-    const createdAt = await creationTime(spec.rootDocUrl);
+    const createdAt = await getDocCreationTime(repo, spec.rootDocUrl);
     if (isAborted()) return;
 
     // Resolve member sources, sorted by member url so cross-doc timestamp
@@ -601,6 +642,7 @@ export function createChangeGrouper(
     // Each member's frontier as of this gather; the consumed marker advances
     // to exactly these once the run completes, so the next run's
     // getChangesMetaSince yields precisely the unconsumed tail.
+    const slicer = createSlicer(isAborted);
     const frontier: Record<AutomergeUrl, UrlHeads> = {};
     const tails: PendingChange[] = [];
     for (const { member, doc } of sources) {
@@ -611,8 +653,11 @@ export function createChangeGrouper(
         : member.clonedAt
           ? decodeHeads(member.clonedAt)
           : [];
-      collectMemberRows(tails, member, doc, since, createdAt);
+      if (!(await collectMemberRows(tails, member, doc, since, createdAt, slicer))) {
+        return;
+      }
     }
+    if (isAborted()) return;
 
     if (tails.length === 0) {
       // Nothing new to group; just record any frontier movement (e.g. members
@@ -651,34 +696,28 @@ export function createChangeGrouper(
         tailOldestMs - secondStored.endTime * 1000 > INACTIVITY_GAP_MS);
 
     if (fastOk) {
-      await appendTail(
-        changeGroupHandle,
-        newestStored,
-        tails,
-        frontier,
-        isAborted
-      );
+      appendTail(changeGroupHandle, newestStored, tails, frontier);
     } else {
       await rebuildAll(
         changeGroupHandle,
         sources,
         createdAt,
         frontier,
-        isAborted
+        isAborted,
+        slicer
       );
     }
   }
 
-  // Incremental append: diff only the tail, then extend the newest stored
-  // group (accumulate counts, union actors, bump the anchor) and/or open new
-  // groups above it. No stored aggregate is ever decomposed.
-  async function appendTail(
+  // Incremental append: extend the newest stored group with the tail
+  // (accumulate counts, union actors, bump the anchor) and/or open new groups
+  // above it. No stored aggregate is ever decomposed.
+  function appendTail(
     changeGroupHandle: DocHandle<ChangeGroupDoc>,
     newestStored: ChangeGroup,
     tailsNewestFirst: PendingChange[],
-    frontier: Record<AutomergeUrl, UrlHeads>,
-    isAborted: () => boolean
-  ): Promise<void> {
+    frontier: Record<AutomergeUrl, UrlHeads>
+  ): void {
     const tailGroups = splitIntoGroups(tailsNewestFirst);
     const oldestGroup = tailGroups[tailGroups.length - 1];
     const oldestGroupOldestMs =
@@ -689,37 +728,29 @@ export function createChangeGrouper(
       oldestGroupOldestMs <= newestStored.endTime * 1000 + INACTIVITY_GAP_MS;
     const freshGroups = attaches ? tailGroups.slice(0, -1) : tailGroups;
 
-    const slicer = createSlicer(isAborted, () => {});
-    const built: ChangeGroup[] = [];
-    for (const rows of freshGroups) {
-      const group = await buildGroup(rows, slicer);
-      if (group === null) return;
-      built.push(group);
-    }
-
-    let extensionSums: { additions: number; deletions: number } | null = null;
-    if (attaches) {
-      let additions = 0;
-      let deletions = 0;
-      for (const row of oldestGroup) {
-        if (!(await slicer.tick())) return;
-        const counts = computeEditCounts(row.doc, row.hash, row.deps);
-        additions += counts.additions;
-        deletions += counts.deletions;
-      }
-      extensionSums = { additions, deletions };
-    }
-
-    if (isAborted()) return;
     changeGroupHandle.change((d) => {
-      for (const group of built) d.groups[group.id] = group;
-      if (attaches && extensionSums) {
-        extendGroup(d, newestStored, oldestGroup, extensionSums);
+      for (const rows of freshGroups) {
+        const group = buildGroup(rows);
+        d.groups[group.id] = group;
       }
-      for (const [url, heads] of Object.entries(frontier)) {
+      if (attaches) {
+        extendGroup(d, newestStored, oldestGroup, sumCounts(oldestGroup));
+      }
+      advanceConsumed(d, frontier);
+    });
+  }
+
+  // Move each member's consumed marker to its gathered frontier. Assigning an
+  // array is never a no-op in Automerge, so unchanged markers are left alone.
+  function advanceConsumed(
+    d: ChangeGroupDoc,
+    frontier: Record<AutomergeUrl, UrlHeads>
+  ): void {
+    for (const [url, heads] of Object.entries(frontier)) {
+      if (!sameHeads(d.computedThrough[url as AutomergeUrl], heads)) {
         d.computedThrough[url as AutomergeUrl] = heads;
       }
-    });
+    }
   }
 
   // Fold a tail run into the newest stored group inside an open change():
@@ -777,64 +808,50 @@ export function createChangeGrouper(
     d.groups[extended.id] = extended;
   }
 
-  // Full rebuild: regather every member's post-fork history, re-split, and
-  // diff newest-first in idle slices — flushing completed groups as each
-  // slice ends so recent history paints while older history backfills. A
-  // stored group whose id, span, and change count match is reused without
-  // re-diffing (cheap warm restarts, and no redundant work when another
-  // client's grouping update syncs in). Stale ids and consumed markers settle
-  // in the final write.
+  // Full rebuild: regather every member's post-fork history (decoded in idle
+  // slices), re-split, and write the groups in one change. A stored group
+  // whose id, span, and change count match is left untouched (no write when
+  // another client's grouping update syncs in). Stale ids and consumed
+  // markers settle in the same write.
   async function rebuildAll(
     changeGroupHandle: DocHandle<ChangeGroupDoc>,
     sources: { member: DraftMemberDoc; doc: Automerge.Doc<unknown> }[],
     createdAt: number | undefined,
     frontier: Record<AutomergeUrl, UrlHeads>,
-    isAborted: () => boolean
+    isAborted: () => boolean,
+    slicer: Slicer
   ): Promise<void> {
     const rows: PendingChange[] = [];
     for (const { member, doc } of sources) {
       const since = member.clonedAt ? decodeHeads(member.clonedAt) : [];
-      collectMemberRows(rows, member, doc, since, createdAt);
+      if (!(await collectMemberRows(rows, member, doc, since, createdAt, slicer))) {
+        return;
+      }
     }
+    if (isAborted()) return;
     rows.sort(newestFirst);
     const groupsRows = splitIntoGroups(rows);
     const expectedIds = new Set(groupsRows.map(groupId));
 
-    const batch: ChangeGroup[] = [];
-    const flush = () => {
-      if (batch.length === 0) return;
-      changeGroupHandle.change((d) => {
-        for (const group of batch) d.groups[group.id] = group;
-      });
-      batch.length = 0;
-    };
+    const stored = changeGroupHandle.doc()?.groups ?? {};
+    const fresh = groupsRows
+      .filter((groupRows) => {
+        const existing = stored[groupId(groupRows)];
+        return !(
+          existing &&
+          existing.changeCount === groupRows.length &&
+          existing.startTime === groupRows[groupRows.length - 1].time &&
+          existing.endTime === groupRows[0].time
+        );
+      })
+      .map(buildGroup);
 
-    const slicer = createSlicer(isAborted, flush);
-    for (const groupRows of groupsRows) {
-      const id = groupId(groupRows);
-      const existing = changeGroupHandle.doc()?.groups?.[id];
-      if (
-        existing &&
-        existing.changeCount === groupRows.length &&
-        existing.startTime === groupRows[groupRows.length - 1].time &&
-        existing.endTime === groupRows[0].time
-      ) {
-        continue;
-      }
-      const group = await buildGroup(groupRows, slicer);
-      if (group === null) return; // aborted mid-diff; markers stay put
-      batch.push(group);
-    }
-
-    if (isAborted()) return;
     changeGroupHandle.change((d) => {
-      for (const group of batch) d.groups[group.id] = group;
+      for (const group of fresh) d.groups[group.id] = group;
       for (const id of Object.keys(d.groups)) {
         if (!expectedIds.has(id)) delete d.groups[id];
       }
-      for (const [url, heads] of Object.entries(frontier)) {
-        d.computedThrough[url as AutomergeUrl] = heads;
-      }
+      advanceConsumed(d, frontier);
     });
   }
 }
