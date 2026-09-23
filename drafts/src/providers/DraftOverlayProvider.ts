@@ -14,7 +14,7 @@ import {
 } from "@inkandswitch/patchwork-providers";
 
 import type { CheckedOutDraft, DraftDoc } from "../draft-types.js";
-import { SKIPPED_DATATYPES, canonicalUrl } from "../clone-policy.js";
+import { SKIPPED_DATATYPES, canonicalUrl, cloneDoc } from "../clone-policy.js";
 
 const HANDLE_DESCRIPTOR_SELECTOR = "repo:handle-descriptor";
 const CHECKED_OUT_SELECTOR = "draft:checked-out";
@@ -298,7 +298,7 @@ export const DraftOverlayProvider = (element: HTMLElement) => {
 
       const originalHandle = await liveRepo.find<unknown>(original);
       const clonedAt = originalHandle.heads();
-      const clone = liveRepo.clone(originalHandle);
+      const clone = cloneDoc(liveRepo, originalHandle);
       const cloneUrl = canonicalUrl(clone.url);
 
       handle.change((d) => {

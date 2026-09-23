@@ -45,6 +45,7 @@ import {
   sameHeads,
 } from "./change-group-cache";
 import { ensureMainDraft } from "./draft-docs";
+import { cloneDoc } from "./clone-policy";
 
 // Seed for the read-only `draft:list` subscription until the provider answers.
 // `main.url` is a placeholder; the Main card displays the host doc url instead.
@@ -435,7 +436,7 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
             member.cloneUrl ?? member.url
           );
           const clonedAt = source.heads();
-          const clone = repo.clone(source);
+          const clone = cloneDoc(repo, source);
           clones[member.url] = { cloneUrl: clone.url, clonedAt };
         } catch (err) {
           console.warn("[drafts] failed to fork member:", member, err);
