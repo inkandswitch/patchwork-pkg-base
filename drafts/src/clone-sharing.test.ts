@@ -1,9 +1,10 @@
 // `repo.clone` shares nested materialized JS objects between the source doc
 // and its clone; Solid stores (`reconcile`) mutate those raw objects in place.
-// Drafts creates exactly this pairing: main and its per-draft clones live in
-// one repo (DraftOverlayProvider `resolveClone`), and the sidebar mirrors main
-// into a `subscribeDoc` store (DraftsSidebar `draft:root-doc`). A change to
-// main then leaks into the clone's `doc()` without the clone ever changing.
+// Drafts pairs main with its per-draft clones in one repo (DraftOverlayProvider
+// `resolveClone`) while the sidebar mirrors main into a `subscribeDoc` store
+// (DraftsSidebar `draft:root-doc`), so a shared clone would pick up main's
+// edits without ever changing. `cloneDoc` (clone-policy.ts) forks via
+// `save`/`load` to avoid the sharing; these tests guard that.
 // See https://github.com/chee/solid-automerge/pull/8.
 import {
   afterEach,
@@ -21,6 +22,8 @@ import {
   type DocHandle,
   type PeerId,
 } from "@automerge/automerge-repo";
+import { initializeBase64Wasm } from "@automerge/automerge/slim";
+import { automergeWasmBase64 } from "@automerge/automerge/automerge.wasm.base64";
 import {
   subscribe,
   type DocHandleDescriptor,
@@ -88,7 +91,13 @@ async function waitForClone(env: Env, descriptor: () => DocHandleDescriptor | un
 }
 
 describe("draft clones vs. main", () => {
-  beforeAll(() => initSubduction());
+  beforeAll(async () => {
+    await initSubduction();
+    // In production the bootloader externalizes `@automerge/*` to one shared
+    // instance; here drafts' own `@automerge/automerge/slim` copy (used by
+    // clone-policy.ts) is separate from automerge-repo's and needs its wasm.
+    await initializeBase64Wasm(automergeWasmBase64);
+  });
   let env: Env;
   beforeEach(() => {
     env = setup();

@@ -2,7 +2,10 @@ import {
   parseAutomergeUrl,
   stringifyAutomergeUrl,
   type AutomergeUrl,
+  type DocHandle,
+  type Repo,
 } from "@automerge/automerge-repo/slim";
+import * as Automerge from "@automerge/automerge/slim";
 
 // HACK: datatypes the draft machinery must never treat as draft content.
 //
@@ -30,6 +33,17 @@ export const SKIPPED_DATATYPES: ReadonlySet<string> = new Set([
   // Legacy marker retained while existing ChangeGroupDocs are migrated.
   "change-group-cache",
 ]);
+
+// Fork `source` into a new doc in `repo`. Same as `repo.clone`, except the
+// clone is hydrated through `save`/`load` rather than `Automerge.clone`, which
+// shares nested materialized JS objects with the source. Solid stores mutate
+// those objects in place, so a shared clone would pick up edits made to main
+// (see clone-sharing.test.ts).
+export function cloneDoc<T>(repo: Repo, source: DocHandle<T>): DocHandle<T> {
+  const clone = repo.create<T>();
+  clone.update(() => Automerge.load<T>(Automerge.save(source.doc())));
+  return clone;
+}
 
 // Reduce a url to its bare document identity by stripping any path/heads
 // suffix, so urls arriving from different traversals dedupe to the same key.
