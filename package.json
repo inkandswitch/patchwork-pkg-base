@@ -16,6 +16,7 @@
     "build:static": "node scripts/build-static.mjs",
     "build:static:fresh": "node scripts/build-static.mjs --build",
     "build:ci": "node scripts/build-static.mjs --install",
+    "modules-doc": "pnpm --dir scripts/modules-doc install --frozen-lockfile && node scripts/modules-doc/index.mjs",
     "bundle": "node scripts/bundle.mjs",
     "serve:tools": "node scripts/serve-tools.mjs",
     "dev:tools": "pnpm build:static && pnpm serve:tools",

@@ -51,6 +51,11 @@ jobs:
         env:
           PATCHWORK_EXIT_IDLE_MS: 120000
 
+      - run: npm install -g pushwork
+
+      # pushwork inits every package and writes the module-settings doc url to static-dist/url
+      - run: pnpm modules-doc
+
       - name: prepare static-dist/package.json
         run: |
           node -e '
