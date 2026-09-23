@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import {existsSync, readFileSync, readdirSync, rmSync, writeFileSync} from "node:fs"
-import {execFile} from "node:child_process"
+import {execFile, fork} from "node:child_process"
 import {promisify} from "node:util"
 import {join, dirname, resolve} from "node:path"
 import {fileURLToPath} from "node:url"
@@ -59,15 +59,38 @@ if (failed.length) {
   process.exit(1)
 }
 
+const registry = {
+  "@patchwork": {type: "patchwork:plugin-registry"},
+  "patchwork:tool": {},
+  "patchwork:datatype": {},
+}
+const plugins = await new Promise((done, fail) => {
+  const child = fork(join(dirname(fileURLToPath(import.meta.url)), "plugins.mjs"), [packagesDir], {stdio: "ignore"})
+  child.on("message", done)
+  child.on("exit", (code) => fail(new Error(`plugins.mjs exited with ${code}`)))
+})
+for (const name of names) {
+  if (plugins[name]?.error) {
+    console.error(`[warn]  ${name} plugins unreadable, left out of the registry: ${plugins[name].error}`)
+    continue
+  }
+  for (const {type, id} of plugins[name]?.plugins ?? []) {
+    registry[type] ??= {}
+    if (registry[type][id]) console.error(`[warn]  ${type} ${id} provided twice, ${name} wins`)
+    registry[type][id] = urls.get(name)
+  }
+}
+
 await initSubduction()
 const repo = new Repo({subductionWebsocketEndpoints: [SYNC_SERVER]})
 
-const handle = repo.create({
+const moduleSettings = repo.create({
   "@patchwork": {type: "patchwork:module-settings"},
   modules: names.map((name) => urls.get(name)),
 })
+const pluginRegistry = repo.create(registry)
 
-async function waitForServer(deadline = Date.now() + 30_000) {
+async function waitForServer(handle, deadline = Date.now() + 30_000) {
   let nudged = false
   const start = Date.now()
   while (Date.now() < deadline) {
@@ -83,14 +106,17 @@ async function waitForServer(deadline = Date.now() + 30_000) {
   return false
 }
 
-if (!(await waitForServer())) console.error("warning: sync server hasn't confirmed the modules doc yet")
+for (const handle of [moduleSettings, pluginRegistry]) {
+  if (!(await waitForServer(handle))) console.error(`warning: sync server hasn't confirmed ${handle.url} yet`)
+}
 
 await repo.flush()
 await Promise.race([repo.shutdown().catch(() => {}), new Promise((r) => setTimeout(r, 15_000))])
 
-writeFileSync(join(outDir, "url"), handle.url + "\n")
+writeFileSync(join(outDir, "module-settings-url"), moduleSettings.url + "\n")
+writeFileSync(join(outDir, "plugin-registry-url"), pluginRegistry.url + "\n")
 writeFileSync(join(outDir, ".npmignore"), ".pushwork\n")
 
-console.error(`\n${names.length} modules`)
-console.log(handle.url)
+console.log(`module-settings-url ${moduleSettings.url}`)
+console.log(`plugin-registry-url ${pluginRegistry.url}`)
 process.exit(0)

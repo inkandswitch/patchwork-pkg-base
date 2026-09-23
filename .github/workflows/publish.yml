@@ -53,7 +53,7 @@ jobs:
 
       - run: npm install -g pushwork
 
-      # pushwork inits every package and writes the module-settings doc url to static-dist/url
+      # pushwork inits every package and writes static-dist/module-settings-url and static-dist/plugin-registry-url
       - run: pnpm modules-doc
 
       - name: prepare static-dist/package.json
