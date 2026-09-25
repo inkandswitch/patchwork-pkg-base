@@ -100,7 +100,7 @@ const DISCOVERY_TIMEOUT_MS = 8000
  * @typedef {{
  *   createWorker: () => Worker | Promise<Worker>,
  *   open?: (ctx: {element?: HTMLElement}) => any,
- *   handle: (frame: any, io: any) => any,
+ *   handle: (frame: any, io: import("./serve.js").IO) => any,
  *   abort?: (token: any, post: (msg: any, transfer?: Transferable[]) => void) => void,
  * }} WorkerSpec
  */
