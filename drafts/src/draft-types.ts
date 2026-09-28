@@ -144,12 +144,12 @@ export type Baseline = {
 
 // One document that makes up a draft (or main), nested inside `DraftSummary`.
 //
-// On a draft these are the docs the overlay has forked — `cloneUrl` is the
+// On a draft these are the docs the draft has forked — `cloneUrl` is the
 // per-draft clone and `clonedAt` its fork point (mirrors `CloneEntry`). On
 // "main" they come from the main draft's identity clones (`cloneUrl === url`,
 // `clonedAt === []`) once it exists; before the first draft is created there is
-// no main draft, so membership is observed from `patchwork:mounted` events and
-// both fields are `null`. Like `Baseline`, the nullable fields use `null`
+// no main draft, so they are the docs reachable from the host doc and both
+// fields are `null`. Like `Baseline`, the nullable fields use `null`
 // rather than optional so the value stays a valid structured-cloneable
 // `JSONValue` crossing the provider channel.
 export type DraftMemberDoc = {

@@ -7,10 +7,6 @@ import {
   type UrlHeads,
 } from "@automerge/automerge-repo/slim";
 import { accept, type SubscribeEvent } from "@inkandswitch/patchwork-providers";
-import type {
-  MountedEvent,
-  UnmountedEvent,
-} from "@inkandswitch/patchwork-elements";
 
 import type {
   ActorAttributionDoc,
@@ -23,7 +19,11 @@ import type {
   DraftSummary,
   HasDrafts,
 } from "../draft-types.js";
-import { SKIPPED_DATATYPES, canonicalUrl } from "../clone-policy.js";
+import { UNDRAFTABLE_HOST_TYPES, canonicalUrl } from "../clone-policy.js";
+import {
+  trackMembership,
+  type MembershipTracker,
+} from "../draft-membership.js";
 import {
   createChangeGrouper,
   type TimelineGroupingSpec,
@@ -80,8 +80,8 @@ function checkoutFor(
 //   - `draft:list`        → DraftList: the read-only main entry plus one
 //     `DraftSummary` per non-merged draft, each carrying its member docs (on a
 //     draft, the forked docs from `DraftDoc.clones`; on main, the main draft's
-//     identity clones, or — before the first draft — the docs mounted beneath
-//     this provider observed via `patchwork:mounted`, fork fields `null`).
+//     identity clones, or — before the first draft — the docs reachable from
+//     the host doc (see draft-membership.ts), fork fields `null`).
 //
 // Consumers recover the live `DocHandle`s from the realm-local `window.repo`,
 // so member entries carry only plain `AutomergeUrl`s. The link from a host doc
@@ -155,15 +155,11 @@ export const DraftStateProvider = (element: HTMLElement) => {
   const actorRecorder = createActorRecorder(element, repo, ensureAttribution);
   // Groups each timeline into its ChangeGroupDoc while the sidebar is open.
   const changeGrouper = createChangeGrouper(repo);
-  // Main-case membership: docs mounted beneath this provider, ref-counted so a
-  // doc shown in several views is only dropped on its last unmount. Populated
-  // even while a draft is selected (where it goes unused) so switching back to
-  // main is instant.
-  const mountCounts = new Map<AutomergeUrl, number>();
-  // Cached "is this an app-global datatype we skip?" verdict per mounted url,
-  // resolved lazily since reading `@patchwork.type` means loading the doc.
-  // Absent = unresolved, treated as not-skipped (visible) until known.
-  const skipVerdicts = new Map<AutomergeUrl, boolean>();
+  // Main-case membership: the docs reachable from the host doc, the same set a
+  // new draft would fork. Kept current even while a draft is selected (where
+  // it goes unused) so switching back to main is instant. Only grows.
+  const mainMembers = new Set<AutomergeUrl>();
+  let mainMembership: MembershipTracker | null = null;
 
   let disposed = false;
   let rewalkInFlight = false;
@@ -189,31 +185,12 @@ export const DraftStateProvider = (element: HTMLElement) => {
     reconcile();
   };
 
-  const onMounted = (event: MountedEvent) => {
-    const detail = event.detail;
-    if (!("url" in detail)) return;
-    const url = canonicalUrl(detail.url);
-    mountCounts.set(url, (mountCounts.get(url) ?? 0) + 1);
-    ensureSkipVerdict(url);
-    scheduleCloneSync();
-    reconcile();
-  };
-
-  const onUnmounted = (event: UnmountedEvent) => {
-    const detail = event.detail;
-    if (!("url" in detail)) return;
-    const url = canonicalUrl(detail.url);
-    const count = mountCounts.get(url) ?? 0;
-    if (count <= 1) mountCounts.delete(url);
-    else mountCounts.set(url, count - 1);
-    reconcile();
-  };
-
   const ready: Promise<void> = (async () => {
     const handle = await repo.find<HasDrafts>(docUrl);
     if (disposed) return;
     hostDocHandle = handle;
     handle.on("change", onHostDocChange);
+    trackMainMembers(handle);
     scheduleRewalk();
     reconcile();
   })();
@@ -285,18 +262,16 @@ export const DraftStateProvider = (element: HTMLElement) => {
   };
 
   element.addEventListener("patchwork:subscribe", onSubscribe);
-  element.addEventListener("patchwork:mounted", onMounted);
-  element.addEventListener("patchwork:unmounted", onUnmounted);
 
   return () => {
     disposed = true;
     if (cloneSyncTimer !== null) clearTimeout(cloneSyncTimer);
+    mainMembership?.dispose();
+    mainMembership = null;
     changeGrouper.dispose();
     actorRecorder.dispose();
     draftRouter.dispose();
     element.removeEventListener("patchwork:subscribe", onSubscribe);
-    element.removeEventListener("patchwork:mounted", onMounted);
-    element.removeEventListener("patchwork:unmounted", onUnmounted);
     hostDocHandle?.off("change", onHostDocChange);
     mainDraftHandle?.off("change", onTrackedChange);
     for (const [, h] of trackedDrafts) h.off("change", onTrackedChange);
@@ -306,14 +281,36 @@ export const DraftStateProvider = (element: HTMLElement) => {
     listSubscribers.clear();
     baselineSubscribers.clear();
     sentBaselines.clear();
-    mountCounts.clear();
-    skipVerdicts.clear();
+    mainMembers.clear();
     hostDocHandle = null;
   };
 
+  // Walk the host doc's membership and keep it current. Undraftable hosts
+  // have none. A folder host counts only itself: drafting a folder isn't
+  // supported, and walking one would load everything filed under it.
+  function trackMainMembers(handle: DocHandle<HasDrafts>): void {
+    const hostType = handle.doc()?.["@patchwork"]?.type;
+    if (hostType != null && UNDRAFTABLE_HOST_TYPES.has(hostType)) return;
+    if (hostType === "folder") {
+      mainMembers.add(docUrl);
+      return;
+    }
+    mainMembership = trackMembership({
+      repo,
+      roots: [docUrl],
+      backingUrl: (url) => url,
+      onAdded: (urls) => {
+        if (disposed) return;
+        for (const url of urls) mainMembers.add(url);
+        scheduleCloneSync();
+        reconcile();
+      },
+    });
+  }
+
   // The sidebar is open: make sure the host doc has its main draft (so the
-  // Main timeline has a home), record what's mounted as main's members, and
-  // keep the timelines grouped.
+  // Main timeline has a home), record main's members in it, and keep the
+  // timelines grouped.
   function activate(): void {
     ensureMainDraftDoc().then(
       () => {
@@ -340,7 +337,7 @@ export const DraftStateProvider = (element: HTMLElement) => {
       await ready;
       if (disposed || !hostDocHandle) return null;
       const hostType = hostDocHandle.doc()?.["@patchwork"]?.type;
-      if (hostType != null && SKIPPED_DATATYPES.has(hostType)) return null;
+      if (hostType != null && UNDRAFTABLE_HOST_TYPES.has(hostType)) return null;
       const mainDraft = await ensureMainDraft(repo, hostDocHandle);
       if (disposed) return null;
       scheduleRewalk();
@@ -429,12 +426,10 @@ export const DraftStateProvider = (element: HTMLElement) => {
     for (const respond of listSubscribers) respond(next);
   }
 
-  // The docs the user can write to right now: the mounted originals on main,
-  // plus the checked-out draft's clones, where the overlay routes edits.
+  // The docs whose local edits the timelines attribute: main's members, plus
+  // the checked-out draft's clones, where the overlay routes edits.
   function writableDocUrls(): AutomergeUrl[] {
-    const urls = [...mountCounts.keys()].filter(
-      (url) => skipVerdicts.get(url) === false
-    );
+    const urls = [...mainMembers];
     const selected = checkedOutHandle.doc()?.checkedOut ?? null;
     const clones = selected
       ? trackedDrafts.get(selected)?.doc()?.clones
@@ -521,8 +516,8 @@ export const DraftStateProvider = (element: HTMLElement) => {
 
   // Main's summary. Its members come from the main draft's identity clones once
   // it exists; before the first draft is created (no main draft) we fall back to
-  // the docs mounted beneath us, minus the app-global datatypes the overlay
-  // would never fork. Members are sorted by url so the diff above is positional.
+  // the docs reachable from the host doc. Members are sorted by url so the diff
+  // above is positional.
   function computeMainSummary(): DraftSummary {
     const url = mainDraftHandle?.url ?? docUrl;
     const childCount = mainDraftHandle?.doc()?.drafts.length ?? 0;
@@ -542,8 +537,7 @@ export const DraftStateProvider = (element: HTMLElement) => {
       };
     }
 
-    const members = [...mountCounts.keys()]
-      .filter((u) => skipVerdicts.get(u) !== true)
+    const members = [...mainMembers]
       .map((u) => ({ url: u, cloneUrl: null, clonedAt: null }))
       .sort(byMemberUrl);
     return { url, parent: null, members, childCount, name, changeGroupDocUrl };
@@ -572,28 +566,6 @@ export const DraftStateProvider = (element: HTMLElement) => {
     }
   }
 
-  // Resolve (once, cached) whether a mounted doc is an app-global datatype we
-  // exclude from the main-case membership. On failure we leave it unresolved,
-  // so the doc stays visible — mirroring the overlay's "fall back to forking".
-  function ensureSkipVerdict(url: AutomergeUrl): void {
-    if (skipVerdicts.has(url)) return;
-    void (async () => {
-      try {
-        const handle = await repo.find<HasDrafts>(url);
-        if (disposed) return;
-        const type = handle.doc()?.["@patchwork"]?.type;
-        const skipped = type != null && SKIPPED_DATATYPES.has(type);
-        if (skipVerdicts.get(url) === skipped) return;
-        skipVerdicts.set(url, skipped);
-        // A now-confirmed not-skipped doc may belong in the main draft.
-        scheduleCloneSync();
-        reconcile();
-      } catch {
-        // Leave unresolved: the doc keeps showing up, which is the safe default.
-      }
-    })();
-  }
-
   // Resolve and start tracking the host doc's main draft, if any. Returns the
   // handle, or null when the host doc has no `mainDraftUrl` yet. Re-resolves
   // when the pointer changes and attaches `onTrackedChange` so the main draft's
@@ -614,8 +586,8 @@ export const DraftStateProvider = (element: HTMLElement) => {
     return handle;
   }
 
-  // Mounts and skip verdicts arrive one doc at a time; batch them into a single
-  // main-draft write (each write would otherwise rewalk and regroup).
+  // New members arrive in bursts; batch them into a single main-draft write
+  // (each write would otherwise rewalk and regroup).
   function scheduleCloneSync(): void {
     if (cloneSyncTimer !== null) return;
     cloneSyncTimer = setTimeout(() => {
@@ -624,18 +596,15 @@ export const DraftStateProvider = (element: HTMLElement) => {
     }, 0);
   }
 
-  // Keep the main draft's identity clone map in step with the live mounted set
-  // while the sidebar is open: every confirmed not-skipped mounted doc gets an
-  // identity entry (`cloneUrl === url`, empty fork heads). Additive only —
-  // entries are never removed, so main's membership (and history) is stable
-  // across unmounts. Writes are diffed, so this is a no-op once everything
-  // mounted is already recorded.
+  // Keep the main draft's identity clone map in step with main's members while
+  // the sidebar is open: every member gets an identity entry (`cloneUrl ===
+  // url`, empty fork heads). Additive only — entries are never removed, so
+  // main's membership (and history) is stable. Writes are diffed, so this is a
+  // no-op once every member is already recorded.
   function syncMainDraftClones(): void {
     if (disposed || !mainDraftHandle || listSubscribers.size === 0) return;
     const existing = mainDraftHandle.doc()?.clones ?? {};
-    const toAdd = [...mountCounts.keys()].filter(
-      (url) => skipVerdicts.get(url) === false && !existing[url]
-    );
+    const toAdd = [...mainMembers].filter((url) => !existing[url]);
     if (toAdd.length === 0) return;
     mainDraftHandle.change((d) => {
       for (const url of toAdd) {
