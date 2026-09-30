@@ -4,7 +4,8 @@
 // writes the current document back out as an archive.
 
 import { createContext, useContext, type FC, type ReactNode } from "react";
-import { useRepo, type DocHandle, type Repo } from "@automerge/react";
+import { useRepo } from "@automerge/automerge-repo-react-hooks";
+import type { DocHandle, Repo } from "@automerge/automerge-repo/slim";
 import {
   DefaultMainMenu,
   DefaultMainMenuContent,
