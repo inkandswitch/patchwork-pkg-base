@@ -1,4 +1,4 @@
-import { makeDocumentProjection } from "solid-automerge";
+import { makeDocumentProjection } from "./lib/document-projection.ts";
 import { Show } from "solid-js";
 import { render } from "solid-js/web";
 import type { DocHandle, Repo } from "@automerge/automerge-repo/slim";

@@ -1,4 +1,4 @@
-import { useDocument } from "solid-automerge";
+import { useDocument } from "./lib/document-projection.ts";
 import type { AutomergeUrl, Repo } from "@automerge/automerge-repo/slim";
 import type { PatchworkViewElement } from "@inkandswitch/patchwork-elements";
 import type { OpenDocumentEventDetail } from "@inkandswitch/patchwork-elements";

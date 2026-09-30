@@ -4,7 +4,7 @@ import {
   type Repo,
   type DocHandle,
 } from "@automerge/automerge-repo/slim";
-import { useDocument } from "solid-automerge";
+import { useDocument } from "../lib/document-projection.ts";
 import type {
   OpenDocumentEventDetail,
   PatchworkViewElement,
