@@ -22,7 +22,7 @@ import {
   type LoadedTool,
 } from "@inkandswitch/patchwork-plugins";
 import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
-import { useDocument, useRepo } from "@automerge/react";
+import { useDocument, useRepo } from "@automerge/automerge-repo-react-hooks";
 import { automergeUrlToServiceWorkerUrl } from "@inkandswitch/patchwork-filesystem";
 
 // A tldraw shape that embeds another Patchwork document, rendered via the

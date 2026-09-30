@@ -14,7 +14,7 @@ import {
   getRegistry,
   type DatatypeDescription,
 } from "@inkandswitch/patchwork-plugins";
-import type { DocHandle } from "@automerge/react";
+import type { DocHandle } from "@automerge/automerge-repo/slim";
 
 import type { TLDrawDoc } from "./datatype.ts";
 import { PatchworkDocShapeUtil } from "./PatchworkDocShape.tsx";

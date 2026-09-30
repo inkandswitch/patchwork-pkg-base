@@ -9,7 +9,7 @@
 // documents rather than paths, so each file is rewritten and handed to the
 // browser as a blob module.
 
-import type { DocHandle, Repo } from "@automerge/react";
+import type { DocHandle, Repo } from "@automerge/automerge-repo/slim";
 import type {
   DocLink,
   FolderDoc,
