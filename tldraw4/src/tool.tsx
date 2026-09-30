@@ -5,7 +5,7 @@ import {
   useDocHandle,
   useDocument,
   useRepo,
-} from "@automerge/react";
+} from "@automerge/automerge-repo-react-hooks";
 import {
   Tldraw,
   useEditor,
