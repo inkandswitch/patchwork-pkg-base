@@ -1,12 +1,11 @@
-import type { AutomergeUrl, DocHandle } from "@automerge/automerge-repo/slim";
+import type { AutomergeUrl, DocHandle, Repo } from "@automerge/automerge-repo/slim";
 import { decodeHeads, type UrlHeads } from "@automerge/automerge-repo/slim";
 import {
   RepoContext,
   useDocHandle,
   useDocument,
   useRepo,
-  type Repo,
-} from "@automerge/react";
+} from "@automerge/automerge-repo-react-hooks";
 import {
   Tldraw,
   useEditor,
