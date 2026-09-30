@@ -27,9 +27,11 @@ export async function createNew(
   repo: Repo,
   datatype: Plugin<DatatypeDescription>
 ): Promise<DocLink> {
+  // registry.load returns a new loaded plugin rather than mutating the one
+  // we were handed, so use what it gives back.
   if (isLoadablePlugin(datatype)) {
     const registry = getRegistry("patchwork:datatype");
-    await registry.load(datatype.id);
+    datatype = (await registry.load(datatype.id)) ?? datatype;
   }
   if (!isLoadedPlugin(datatype)) {
     throw new Error("plugin not loaded after loading");
