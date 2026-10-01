@@ -8,12 +8,12 @@ import { log } from "./log.js";
  * In patchwork-base, cross-package units are resolved through the registry by
  * id — never imported. So isolation ships as a `patchwork:component`
  * (`patchwork-isolation`) rather than the custom element it is in core. The
- * consumer mounts it with `<patchwork-view component="patchwork-isolation">` and
- * puts all the config on that element's DOM surface:
+ * consumer mounts it with `<patchwork-view component="patchwork-isolation">`
+ * and puts all the config on that element's DOM surface:
  *
  *   <patchwork-view
  *     component="patchwork-isolation"
- *     root-component="threepane-isolation-root"         // which root to mount inside the iframe
+ *     root-component="threepane-isolation-root"     // which root to mount inside the iframe
  *     automerge-allowlist="automerge:abc,automerge:def" // sync allowlist seeds
  *     shared-providers="patchwork:contact,...">         // bridged providers
  *     <script type="application/json" data-root-component-data> // opaque root-component data
@@ -50,6 +50,7 @@ export const mountIsolation: ComponentRender = (element) => {
       "root-component",
       "automerge-allowlist",
       "shared-providers",
+      "shared-tools",
     ],
   });
 

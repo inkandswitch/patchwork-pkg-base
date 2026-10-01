@@ -28,8 +28,13 @@ export {
 } from "./access-control.js";
 export { startHostNavigationBridge } from "./navigation-bridge.js";
 export { startHostDragDropBridge } from "./drag-drop-bridge.js";
+export { resolveGatedAttribute } from "./gating.js";
 export {
   startHostProvidersBridge,
   resolveBridgedProviders,
   makeBridgedValueFilter,
 } from "./providers-bridge.js";
+export {
+  startHostOpenToolBridge,
+  resolveSharedTools,
+} from "./open-tool-bridge.js";
