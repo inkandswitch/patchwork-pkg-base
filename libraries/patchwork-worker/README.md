@@ -6,7 +6,7 @@ it runs behind an isolation boundary.
 
 ```js
 // consumer — the same code in any realm
-import { connectWorkerClient } from "@grjte/patchwork-worker/client.js";
+import { connectWorkerClient } from "@grjte/patchwork-worker/client";
 const search = await connectWorkerClient("search-index");
 const hits = await search.query("patchwork", { element });
 ```
@@ -95,7 +95,7 @@ transfers the streams is that mechanism's concern, not this package's.
   by the sibling `providers` package and mounted by the host frame) answers the
   connection request: it looks up `kind` in the `patchwork:worker` plugin
   registry, loads its `WorkerSpec`, and hands that to `serveWorkerSpec`, which it
-  imports from `@grjte/patchwork-worker/serve.js`.
+  imports from `@grjte/patchwork-worker/serve`.
 - **`serveWorkerSpec`** owns everything kind-agnostic: the stream pair and its
   controller lifecycle, **one dedicated worker per connection** (terminated on
   teardown; no sharing, no reuse), request-id demux, the reserved `op:"abort"`,
@@ -110,7 +110,7 @@ dependency on a registry package, which the repo rules forbid), the package
 registers it as a second plugin with the **same id** as its worker, whose `load()`
 resolves to a factory `(session) => clientApi`.
 
-A consumer then calls, from `@grjte/patchwork-worker/client.js`:
+A consumer then calls, from `@grjte/patchwork-worker/client`:
 
 ```js
 const api = await connectWorkerClient("kind", { sessionOpts: { idPrefix: "mytool" } });
@@ -245,7 +245,7 @@ service can cancel the matching worker work.
   abort, reconnect, `close()`.
 - `serve.js` — `serveWorkerSpec`: streams, per-connection worker, id demux, abort.
   The serve half, imported by the host provider as
-  `@grjte/patchwork-worker/serve.js`.
+  `@grjte/patchwork-worker/serve`.
 - `client.js` — `connectWorkerClient`: resolves the paired
   `patchwork:worker-client` plugin from the registry and binds its factory to
   `openSession(kind)`. The one file here that touches the plugin registry.
