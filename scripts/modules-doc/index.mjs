@@ -31,7 +31,7 @@ const names = readdirSync(packagesDir, {withFileTypes: true})
 async function pushworkInit(name) {
   const dir = join(packagesDir, name)
   rmSync(join(dir, ".pushwork"), {recursive: true, force: true})
-  const flags = ["--silent", "init", "--shape", "patchwork-folder"]
+  const flags = ["init", "--shape", "patchwork-folder"]
   if (existsSync(join(dir, "dist"))) flags.push("--artifact-dir", "dist")
   await promisify(execFile)("pushwork", [...flags, "."], {cwd: dir})
   return JSON.parse(readFileSync(join(dir, ".pushwork", "config.json"), "utf8")).rootUrl
