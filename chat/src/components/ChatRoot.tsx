@@ -19,24 +19,53 @@ import {TypingBar} from "./TypingBar"
 import {InputArea} from "./InputArea"
 import {PluginPanel} from "./PluginPanel"
 import {Lightbox} from "./Lightbox"
-// @ts-ignore — plain-JS library, ships no type declarations
-import {
-	generate as llmGenerate,
-	popup as llmPopup,
-	ensureConfig as llmEnsureConfig,
-	readConfig as llmReadConfig,
-	writeConfig as llmWriteConfig,
-	readScopedConfig as llmReadScopedConfig,
-	describeConfig as llmDescribeConfig,
-	fetchOpenRouterModels as llmFetchOpenRouterModels,
-	parseToolCalls as llmParseToolCalls,
-} from "@chee/patchwork-llm"
+// Chat imports NOTHING from patchwork-llm and has NO build-time dependency on the
+// LLM host package. Generation goes through the generic @grjte/patchwork-worker
+// transport; the LLM client (the protocol layer: frame vocabulary in, {text,
+// toolCalls} out) is resolved at RUNTIME from the plugin registry — whichever
+// package registered a `patchwork:worker-client` plugin with id "llm" (today
+// @grjte/llm-host) supplies a factory `(session) => {generate}`. The host
+// worker-provider resolves config and runs the worker; config lives entirely in
+// the host-side LLM config tray, opened via a patchwork:open-tool event. See
+// libraries/patchwork-worker/README.md ("The paired client plugin").
+import {connectWorkerClient} from "@grjte/patchwork-worker/client.js"
 import {generateId} from "../lib/helpers"
 import {automergeUrlToServiceWorkerUrl} from "@inkandswitch/patchwork-filesystem"
 import {transcribeVoiceNote} from "../lib/transcription"
 import {reloadPreviewIframe} from "../lib/preview-frame"
 import "../styles/chat.css"
 
+function clog(...args: any[]) {
+	try {
+		console.log("[chat-llm]", ...args)
+	} catch {}
+}
+
+/** The LLM client API the "llm" worker-client factory returns (llm-host/src/client.js). */
+interface LLMClient {
+	generate(
+		messages: any[] | string,
+		opts?: Record<string, any>
+	): Promise<{text: string; toolCalls: any[] | null; toolMode?: string}>
+}
+
+// One client for the whole tool, resolved on first use. The registry lookup is
+// global (no element needed); the session inside it opens on the first request,
+// multiplexes every generation by id, and reconnects on its own. A FAILED
+// resolution is not cached: a tool that asked before the LLM package registered
+// gets another try on the next generation instead of being wedged.
+let llmClientPromise: Promise<LLMClient> | null = null
+function llmClient(): Promise<LLMClient> {
+	if (!llmClientPromise) {
+		llmClientPromise = connectWorkerClient("llm", {
+			sessionOpts: {idPrefix: "chatllm", onLog: clog},
+		}) as Promise<LLMClient>
+		llmClientPromise.catch(() => {
+			llmClientPromise = null
+		})
+	}
+	return llmClientPromise
+}
 
 export function ChatRoot(props: {
 	handle: DocHandle<ChatDoc>
@@ -103,57 +132,45 @@ export function ChatRoot(props: {
 	// Sidebar state
 	const [sidebarVisible, setSidebarVisible] = createSignal(false)
 
-	// The per-tool / per-doc config scope this chat resolves against. Generation
-	// passes the same scope to generate(), so every config READ in the UI must go
-	// through scopedCfg() too — otherwise the UI shows the global default while the
-	// computer runs with this chat's override.
-	const llmScope = () => ({toolId: "chitterchatter", docId: props.handle.url})
-	function scopedCfg(): any {
-		try {
-			return llmReadScopedConfig(llmScope())
-		} catch {
-			return llmReadConfig()
-		}
-	}
+	// The per-tool / per-doc config scope this chat resolves against. Chat never
+	// reads config itself — it passes this scope to the host on every generation
+	// (the host worker-provider resolves provider/model/apiKey/prompts/toolToggles
+	// from it) and when opening the config picker. `docName` is a display label for
+	// the picker's scope switcher.
+	const llmScope = () => ({
+		toolId: "chitterchatter",
+		docId: props.handle.url,
+		toolName: "Chitterchatter",
+		docName: (props.handle.doc() as any)?.title || "this chat",
+	})
 
-	// Model picker (the @chee/patchwork-llm popover lives in the light DOM)
-	let modelPickerEl: HTMLElement | null = null
-	async function openModelPicker() {
-		if (modelPickerEl) return
-		await llmEnsureConfig(llmScope(), props.element)
-		// Surface @computer's built-in system prompt in the picker so it's visible
-		// and can be forked into an editable override.
-		const el = llmPopup({
-			toolName: "Chitterchatter",
-			// Per-tool / per-doc config scope (Default · This tool · This doc switcher).
-			scope: {
-				toolId: "chitterchatter",
-				docId: props.handle.url,
-				toolName: "Chitterchatter",
-				docName: (props.handle.doc() as any)?.title || "this chat",
-			},
-			toolPrompt: {
-				name: "Chitterchatter · Computer",
-				text: computerSystemPrompt(),
-			},
-			toolTools: activeTools().map((t) => ({
-				name: t.name,
-				description: t.description,
-			})),
-		})
-		modelPickerEl = el
-		document.body.append(el)
-		;(el as any).showPopover?.()
-		try {
-			await (el as any).result
-		} finally {
-			el.remove()
-			modelPickerEl = null
-			// Refresh the label and, if the model actually changed, announce it in
-			// the chat — regardless of whether this tab is the computer host, so a
-			// model switch is always visible to everyone.
-			void syncModelLabel({announce: true})
-		}
+	// Open the host-side LLM config tool (the @grjte/llm-config tray). Chat can't
+	// render the picker itself (config lives in the host; the settings doc is
+	// denylisted under isolation) — it dispatches a patchwork:open-tool event that
+	// the host tray answers directly, or that the isolation open-tool bridge
+	// relays to the host when chat runs inside the sandbox. Same call either way.
+	// We pass chat's system prompt + tool list (with defaultOff flags) so the host
+	// picker can surface them; opt-in tools render unchecked with no doc write.
+	function openModelPicker() {
+		props.element.dispatchEvent(
+			new CustomEvent("patchwork:open-tool", {
+				detail: {
+					component: "llm-config-tray",
+					scope: llmScope(),
+					toolPrompt: {
+						name: "Chitterchatter · Computer",
+						text: computerSystemPrompt(),
+					},
+					toolTools: activeTools().map((t) => ({
+						name: t.name,
+						description: t.description,
+						defaultOff: GLOBAL_DEFAULT_OFF.includes(t.name) || CONTEXT_DEFAULT_OFF.includes(t.name),
+					})),
+				},
+				bubbles: true,
+				composed: true,
+			})
+		)
 	}
 
 	// Drop state
@@ -173,19 +190,17 @@ export function ChatRoot(props: {
 	// Human-readable label of the model the computer is currently running, shown
 	// in the computer's username (e.g. "computer (OpenRouter Claude Opus 4)").
 	const [modelLabel, setModelLabel] = createSignal("")
-	function refreshModelLabel() {
-		describeCurrentModel().then(setModelLabel).catch(() => {})
-	}
-	// Resolve the live model label and, if it changed, announce it in the chat so
-	// everyone sees which model the computer switched to. Returns the new label.
-	async function syncModelLabel({announce = false} = {}): Promise<string> {
+	// The model label now arrives on the generation stream (the host worker emits a
+	// {type:"model", label} frame — chat reads no config to compute it). This is
+	// called from the generate loop's onModel callback: it updates the label and,
+	// if it changed since last time, announces the switch in the chat.
+	function noteModelLabel(label: string) {
+		if (!label) return
 		const before = modelLabel()
-		const after = await describeCurrentModel().catch(() => before)
-		setModelLabel(after)
-		if (announce && after && after !== before) {
-			sendComputerMessage("🔌 switched model to " + after)
+		setModelLabel(label)
+		if (before && label !== before) {
+			sendComputerMessage("🔌 switched model to " + label)
 		}
-		return after
 	}
 	// The model name suffix shown after the computer's username, e.g. " (Browser
 	// Qwen3 0.6B)". Empty until the label resolves.
@@ -199,11 +214,9 @@ export function ChatRoot(props: {
 		const owner = (props.handle.doc() as any)?.computerOwner
 		return "computer" + (owner ? " (" + owner + ")" : "") + modelSuffix()
 	}
-	// Keep the label populated from the start so the very first computer message
-	// already carries the model name (not just messages sent after the picker).
-	onMount(() => {
-		refreshModelLabel()
-	})
+	// The model label is populated from the generation stream (noteModelLabel), so
+	// there's nothing to resolve at rest — the first computer message picks it up
+	// as soon as generation emits the model frame.
 	const [computerAbort, setComputerAbort] =
 		createSignal<AbortController | null>(null)
 	const computerRespondedToIds = new Set<string>()
@@ -516,16 +529,24 @@ Keep responses concise. When you create a tool, explain briefly what it does.`
 
 	// Pick the prompt for the active model: local/in-browser models (small,
 	// limited context) get the compact prompt; capable cloud providers get the
-	// full one with worked examples. Falls back to full on any read error.
+	// full one with worked examples. The provider is resolved HOST-side, so chat
+	// no longer reads config to choose — it sends BOTH variants as a
+	// provider-conditional map and the worker picks by resolved provider (see
+	// computerSystemForFrame). computerSystemPrompt() returns the full prompt for
+	// display (e.g. in the picker).
 	function computerSystemPrompt(): string {
 		if (isContext()) return CONTEXT_SYSTEM_PROMPT
-		try {
-			const cfg = scopedCfg()
-			return cfg?.provider === "local"
-				? COMPUTER_SYSTEM_PROMPT_COMPACT
-				: COMPUTER_SYSTEM_PROMPT_FULL
-		} catch {
-			return COMPUTER_SYSTEM_PROMPT_FULL
+		return COMPUTER_SYSTEM_PROMPT_FULL
+	}
+
+	// The provider-conditional system prompt sent on each generation: local models
+	// get the compact prompt, everything else the full one. The worker resolves
+	// the provider and picks the matching entry (falling back to `default`).
+	function computerSystemForFrame(): string | Record<string, string> {
+		if (isContext()) return CONTEXT_SYSTEM_PROMPT
+		return {
+			default: COMPUTER_SYSTEM_PROMPT_FULL,
+			local: COMPUTER_SYSTEM_PROMPT_COMPACT,
 		}
 	}
 
@@ -686,94 +707,68 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 		return ["tool: " + call.name, ...lines].join("\n")
 	}
 
-	// Tools to offer this turn — the active mode's set, minus any the user disabled
-	// in the picker (cfg.toolToggles[name] === false). Most default to enabled;
-	// define_tool (any mode) and context mode's inspect_dom/eval_js are opt-IN
-	// (offered only if the toggle is explicitly true).
+	// Tools to offer this turn: the active mode's full set, each tagged with
+	// `defaultOff` (chat's opt-in policy). Chat does NOT filter by toolToggles —
+	// the host worker applies the generic rule (include unless off; defaultOff
+	// tools included only when explicitly on) using the config it resolves. So the
+	// user's per-tool toggles still take effect, host-side, without chat reading
+	// config. Picker default-off rendering is handled via the same `defaultOff`
+	// flag (no seed-write needed).
 	function enabledComputerTools() {
-		const toggles = (scopedCfg()?.toolToggles) || {}
-		return activeTools().filter((t) => {
-			const optIn =
+		return activeTools().map((t) => ({
+			...t,
+			defaultOff:
 				GLOBAL_DEFAULT_OFF.includes(t.name) ||
-				(isContext() && CONTEXT_DEFAULT_OFF.includes(t.name))
-			if (optIn) return toggles[t.name] === true
-			return toggles[t.name] !== false
-		})
+				(isContext() && CONTEXT_DEFAULT_OFF.includes(t.name)),
+		}))
 	}
 
-	// The model picker renders a tool's checkbox CHECKED unless
-	// toolToggles[name] === false (it has no "default off" concept). So our opt-in
-	// tools would show checked while actually being off. Seed them to `false` once
-	// (only if unset — a user who turns one ON stays ON) so the picker shows them
-	// unchecked, matching enabledComputerTools().
-	onMount(async () => {
-		if (!has("computer")) return
-		try {
-			await llmEnsureConfig(llmScope(), props.element)
-			const tg = {...((llmReadConfig() as any)?.toolToggles || {})}
-			let changed = false
-			for (const n of [...GLOBAL_DEFAULT_OFF, ...CONTEXT_DEFAULT_OFF]) {
-				if (tg[n] === undefined) {
-					tg[n] = false
-					changed = true
-				}
-			}
-			if (changed) llmWriteConfig({toolToggles: tg} as any)
-		} catch {}
-	})
+	// (Former onMount toolToggles seed-write removed: the picker now renders opt-in
+	// tools unchecked via their `defaultOff` flag, and the worker filters by that
+	// flag + the user's toggles — no client-side config read/write needed.)
 
-	// ---- LLM generation (via @chee/patchwork-llm) ----
-	// Provider / model / API key / sampling parameters all live on the account
-	// doc and are configured through the shared model picker (`/model` →
-	// openModelPicker). The library runs local (transformers.js) / OpenRouter /
-	// Ollama in a refresh-surviving SharedWorker and streams tokens back.
+	// ---- LLM generation (via the host worker over @grjte/patchwork-worker) ----
+	// Provider / model / API key / sampling all live in the LLM settings doc and
+	// are configured through the host-side config tool (`/model` → openModelPicker
+	// dispatches patchwork:open-tool). The host worker-provider resolves config
+	// from `scope` and runs the worker (local transformers.js / OpenRouter /
+	// Ollama), streaming tokens back. Chat reads no config. The client itself
+	// comes from the registry (see llmClient), not from an import.
 	async function generateLLM(
 		messages: any[],
 		onToken: (text: string) => void,
 		signal?: AbortSignal,
 		onStatus?: (status: string) => void,
-		system?: string,
-		tools?: any[]
+		system?: string | Record<string, string>,
+		tools?: any[],
+		onModel?: (label: string) => void
 	): Promise<{text: string; toolCalls: any[] | null}> {
-		const {text, toolCalls} = await llmGenerate(messages, {
+		const client = await llmClient()
+		const {text, toolCalls} = await client.generate(messages, {
 			sessionKey: props.handle.url,
-			// Resolve config for this tool + this chat doc (whole-scope overrides
-			// configured in the picker; falls back to tool, then default).
+			// A node inside the mounted <patchwork-view>, so connectWorker's
+			// discovery dispatches patchwork:worker-channel from here — reaching the
+			// host-realm worker provider (directly, or relayed across isolation).
+			element: props.element,
+			// The scope the host resolves config from (provider/model/apiKey/prompts/
+			// toolToggles) — chat sends it but reads none of it.
 			scope: llmScope(),
-			// The system prompt goes through the lib (opts.system) so it composes
-			// with any user-selected/forked system prompt via effectiveSystem.
+			// Provider-conditional system prompt ({default, local}); the worker picks
+			// by resolved provider and composes with any user-forked prompt host-side.
 			...(system ? {system} : {}),
-			// Real tool calls: native function-calling for OpenRouter/Ollama, the
-			// <tool_call> convention for local. Execution stays in runToolByName.
+			// All active tools, each tagged defaultOff; the worker filters by the
+			// user's toolToggles. Execution stays in runToolByName.
 			...(tools && tools.length ? {tools} : {}),
 			onToken: (_delta: string, full: string) => onToken(full),
 			onStatus: (status: string) => onStatus?.(status),
+			onModel,
 			signal,
 		})
 		return {text, toolCalls: (toolCalls as any) || null}
 	}
 
-	// Human-readable label for the model that's currently selected (provider +
-	// model name). Used in the computer's join message so people can see/change
-	// which model is answering. Falls back gracefully if the config or the
-	// OpenRouter catalogue can't be read.
-	async function describeCurrentModel(): Promise<string> {
-		try {
-			await llmEnsureConfig(llmScope(), props.element)
-			const cfg = scopedCfg()
-			let openrouterModels: any[] = []
-			if (cfg.provider === "openrouter") {
-				try {
-					openrouterModels = await llmFetchOpenRouterModels()
-				} catch {
-					openrouterModels = []
-				}
-			}
-			return llmDescribeConfig(cfg, {openrouterModels})
-		} catch {
-			return "the configured model"
-		}
-	}
+	// (describeCurrentModel removed — the model label is computed HOST-side and
+	// arrives on the generation stream via noteModelLabel; chat reads no config.)
 
 	// ---- Rich block parsing ----
 	function parseRichBlocks(response: string) {
@@ -2118,20 +2113,19 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 		}
 		setComputerActive(true)
 		claimComputerHost()
-		describeCurrentModel().then((model) => {
-			setModelLabel(model)
-			sendComputerMessage(
-				[
-					"hello! i'm computer, a computer program. mention @computer or reply to my messages and i'll respond.",
-					"",
-					"• currently running: " + model,
-					"• /model — pick a different model or provider",
-					"• /computer nosey — make me respond to everything",
-					"• /computer owner — see who's hosting me; /computer own to take over",
-					"• /computer kick — send me away",
-				].join("\n")
-			)
-		})
+		// The model label arrives on the first generation stream (noteModelLabel);
+		// we don't resolve it at join time (chat reads no config). The join message
+		// points people at /model to see/change which model is running.
+		sendComputerMessage(
+			[
+				"hello! i'm computer, a computer program. mention @computer or reply to my messages and i'll respond.",
+				"",
+				"• /model — pick the model or provider (opens the config panel)",
+				"• /computer nosey — make me respond to everything",
+				"• /computer owner — see who's hosting me; /computer own to take over",
+				"• /computer kick — send me away",
+			].join("\n")
+		)
 		startComputerListener()
 	}
 
@@ -2454,22 +2448,26 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 				.includes("@momputer")
 			// Generate a tool name for this response — the LLM uses it if it builds a tool
 			const suggestedToolName = randomToolName()
-			// The built-in COMPUTER_SYSTEM_PROMPT is the *default* — but if the user
-			// forked it (a selected system prompt doc, cfg.systemUrl), that override
-			// fully replaces it (the lib prepends it via effectiveSystem). Either way,
-			// the per-response addenda below always apply. System goes through
-			// opts.system (not a chat message) so the lib can compose them.
-			const forked = !!scopedCfg()?.systemUrl
-			let systemPrompt = forked ? "" : computerSystemPrompt()
-			systemPrompt +=
-				(systemPrompt ? "\n\n" : "") +
-				'## Your Tool ID\nIf you build a patchwork tool in this response, use `"' +
+			// The provider-conditional base system prompt ({default, local}) plus
+			// per-response addenda that always apply. Chat reads no config; the worker
+			// picks the base by resolved provider and composes. (Forked/custom system
+			// prompts via cfg.systemUrl are not applied for now — see the config
+			// redesign plan; chat no longer reads systemUrl.) The addenda are appended
+			// to every provider variant so they apply regardless of which is chosen.
+			const base = computerSystemForFrame()
+			const addenda =
+				'\n\n## Your Tool ID\nIf you build a patchwork tool in this response, use `"' +
 				suggestedToolName +
-				'"` as the id for both the datatype and tool plugins, and in supportedDatatypes.'
-			if (isMomputer) {
-				systemPrompt +=
-					'\n\n## Special Mode: Momputer\nThe user addressed you as @momputer. Be warm, nurturing, and motherly in your response. Use gentle encouragement, express care and concern, and be supportive like a loving mom would be. You can use pet names like "sweetie", "honey", "dear", etc. Still be helpful and knowledgeable, but with a cozy maternal energy.'
-			}
+				'"` as the id for both the datatype and tool plugins, and in supportedDatatypes.' +
+				(isMomputer
+					? '\n\n## Special Mode: Momputer\nThe user addressed you as @momputer. Be warm, nurturing, and motherly in your response. Use gentle encouragement, express care and concern, and be supportive like a loving mom would be. You can use pet names like "sweetie", "honey", "dear", etc. Still be helpful and knowledgeable, but with a cozy maternal energy.'
+					: "")
+			const systemPrompt: string | Record<string, string> =
+				typeof base === "string"
+					? base + addenda
+					: Object.fromEntries(
+							Object.entries(base).map(([k, v]) => [k, v + addenda])
+					  )
 			const messages = [...context, {role: "user", content: userMsg.text}]
 
 			// Create streaming message — use `let` so we can reassign
@@ -2532,7 +2530,8 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 					abortController.signal,
 					onStatus,
 					systemPrompt,
-					enabledComputerTools()
+					enabledComputerTools(),
+					noteModelLabel
 				)
 				resetInactivityTimer()
 				if (tokenThrottleTimer) {
@@ -2541,11 +2540,9 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 				}
 				let response = (gen.text || "").replace(/^\[Computer\]\s*/i, "")
 				// Real tool calls: structured from the provider (native function
-				// calling), else parsed from the model's <tool_call> text (local).
-				const calls =
-					gen.toolCalls && gen.toolCalls.length
-						? gen.toolCalls
-						: llmParseToolCalls(response)
+				// calling), or parsed from the model's <tool_call> text HOST-side by
+				// the LLM worker spec. Chat never parses model output itself.
+				const calls = gen.toolCalls ?? []
 				// Strip any tool-call markup from the text we display (local models
 				// emit <tool_call>…</tool_call> inline; that's plumbing, not prose).
 				const visible = response
@@ -2992,10 +2989,8 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 	}
 
 	onCleanup(() => {
-		if (modelPickerEl) {
-			modelPickerEl.remove()
-			modelPickerEl = null
-		}
+		// (No chat-owned model picker to tear down anymore — the picker lives in the
+		// host config tool, opened via patchwork:open-tool.)
 		if (heartbeatInterval) {
 			clearInterval(heartbeatInterval)
 			heartbeatInterval = null
