@@ -6,6 +6,8 @@ export default defineConfig({
   plugins: [],
 
   build: {
+    // top-level await in the cross-origin virtual modules
+    target: "esnext",
     sourcemap: true,
     emptyOutDir: true,
     rollupOptions: {
