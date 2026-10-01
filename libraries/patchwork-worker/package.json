@@ -10,19 +10,19 @@
       "types": "./types/index.d.ts",
       "default": "./index.js"
     },
-    "./connect.js": {
+    "./connect": {
       "types": "./types/connect.d.ts",
       "default": "./connect.js"
     },
-    "./session.js": {
+    "./session": {
       "types": "./types/session.d.ts",
       "default": "./session.js"
     },
-    "./serve.js": {
+    "./serve": {
       "types": "./types/serve.d.ts",
       "default": "./serve.js"
     },
-    "./client.js": {
+    "./client": {
       "types": "./types/client.d.ts",
       "default": "./client.js"
     }
