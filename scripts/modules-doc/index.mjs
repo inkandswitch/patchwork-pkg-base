@@ -28,10 +28,18 @@ const names = readdirSync(packagesDir, {withFileTypes: true})
   .map((entry) => entry.name)
   .sort()
 
+// `--shape`, `--artifact-dir` and the global `--silent` all arrived in pushwork
+// 2. A 1.x on PATH fails every package with `unknown option`, so say so once.
+const version = (await promisify(execFile)("pushwork", ["--version"])).stdout.match(/^pushwork\s+(\S+)/)?.[1]
+if (!version || Number(version.split(".")[0]) < 2) {
+  console.error(`pushwork 2 or newer required, found ${version ?? "no version"} — npm install -g pushwork@latest`)
+  process.exit(1)
+}
+
 async function pushworkInit(name) {
   const dir = join(packagesDir, name)
   rmSync(join(dir, ".pushwork"), {recursive: true, force: true})
-  const flags = ["init", "--shape", "patchwork-folder"]
+  const flags = ["--silent", "init", "--shape", "patchwork-folder"]
   if (existsSync(join(dir, "dist"))) flags.push("--artifact-dir", "dist")
   await promisify(execFile)("pushwork", [...flags, "."], {cwd: dir})
   return JSON.parse(readFileSync(join(dir, ".pushwork", "config.json"), "utf8")).rootUrl
