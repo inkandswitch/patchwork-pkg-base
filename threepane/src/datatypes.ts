@@ -6,7 +6,7 @@ import type { AccountDoc, ThreepaneConfigDoc } from "./types";
  * explicit list on the threepane config doc (no longer registry-driven), so a
  * new account seeds this set; add/remove is a matter of editing the array.
  */
-export const DEFAULT_TRAY_TOOLS: string[] = ["theme-tray"];
+export const DEFAULT_TRAY_TOOLS: string[] = ["theme-tray", "llm-config-tray"];
 
 /**
  * The default doctitle tools for a fresh (or empty) account. Title + spacer are
