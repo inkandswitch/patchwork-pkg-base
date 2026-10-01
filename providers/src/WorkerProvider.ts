@@ -55,8 +55,8 @@
 
 import { getRegistry, type PluginDescription, type PluginRegistry } from "@inkandswitch/patchwork-plugins";
 import { accept, type SubscribeEvent } from "@inkandswitch/patchwork-providers";
-import { CHANNEL_SELECTOR, WORKER_PLUGIN_TYPE } from "@grjte/patchwork-worker/connect.js";
-import { serveWorkerSpec, type WorkerSpec } from "@grjte/patchwork-worker/serve.js";
+import { CHANNEL_SELECTOR, WORKER_PLUGIN_TYPE } from "@grjte/patchwork-worker/connect";
+import { serveWorkerSpec, type WorkerSpec } from "@grjte/patchwork-worker/serve";
 
 /**
  * How long to wait for a registered worker plugin to LOAD before refusing.
