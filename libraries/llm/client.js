@@ -168,10 +168,9 @@ function getConnection() {
 	// all generation through one model and keeps running stale code until every
 	// page closes. A per-page Worker reloads with the page, is isolated, and dies
 	// with it; a page that wants many models running at once gets its own worker
-	// rather than fighting over one. (Trade-off: loses resume-after-refresh, which
-	// relied on the worker outliving the page — `resume()` now just reports
-	// no-active-generation, handled gracefully.)
-	// NOTE: `new URL("./worker.js", import.meta.url)` MUST stay inline inside the
+	// rather than fighting over one. `resume()` therefore always reports
+	// no-active-generation.
+	// `new URL("./worker.js", import.meta.url)` must stay inline inside the
 	// constructor — that's the exact pattern bundlers (vite) statically detect to
 	// emit the worker chunk; hoisting it to a variable silently breaks bundling.
 	const w = new Worker(new URL("./worker.js", import.meta.url), {type: "module"})

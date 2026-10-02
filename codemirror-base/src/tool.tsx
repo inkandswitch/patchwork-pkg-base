@@ -358,12 +358,8 @@ function buildCommentDecorations(
 
 function commentTargetStyle(isEmphasised: boolean): string {
   // Highlighter-over-paper: tint the editor surface (--text-editor-fill) with the
-  // secondary accent and leave the text in the editor's own ink (--text-editor-line,
-  // inherited — we never set `color`). Because the background is anchored to the
-  // paper it can never be darker than the editor surface, so it stays readable and
-  // never a heavy dark block: a light tint on light themes, a dark one on dark
-  // themes, tracking the theme automatically. --text-editor-secondary-text is the
-  // secondary as ink on that surface, so the underline reads in both.
+  // secondary accent and leave the text in the editor's own ink (we never set
+  // `color`), so it stays readable on both light and dark themes.
   //   emphasised -> a stronger tint (the focused target)
   //   plain      -> a faint tint
   const paper = isEmphasised ? "56%" : "82%";

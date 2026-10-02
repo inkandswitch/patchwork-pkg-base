@@ -5,8 +5,7 @@
 // (see lib/syntax-schema.ts) — authors never see the engine.
 //
 // A spec is matched against the RAW message string (which contains its own
-// delimiters, e.g. `*bold*`); formatting is applied at render time. This replaces
-// the old `chat:parser-extension` (regex-on-escaped-HTML) model.
+// delimiters, e.g. `*bold*`); formatting is applied at render time.
 //
 // The base owns only the core bold/italic/code/link; the rest (underline, spoiler,
 // strike, …) come from the chitter bundle. Descriptions carry only `load()` as a
@@ -34,8 +33,7 @@ export interface SyntaxPlugin {
 	load: () => Promise<SyntaxSpec>
 }
 
-// The base's core formatting. `code` and `link` are promoted to core (always on) —
-// they were structural in the old pipeline (format-text.ts).
+// The base's core formatting. `code` and `link` are core (always on).
 export const syntaxPlugins: SyntaxPlugin[] = [
 	{
 		type: "chat:syntax", id: "italic", name: "Italic", tier: "core", kind: "mark",

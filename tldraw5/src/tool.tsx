@@ -524,20 +524,16 @@ function TldrawInner(props: {
     // Handle pasted/dropped files (images, videos) by storing them as
     // UnixFileEntry automerge docs and referencing them via service-worker URLs.
     editor.registerExternalAssetHandler("file", async ({ file, assetId }) => {
-      // Create a stable asset ID if one wasn't provided
       const id = assetId ?? (`asset:${crypto.randomUUID()}` as TLAssetId);
 
-      // Read the file bytes
       const bytes = new Uint8Array(await file.arrayBuffer());
 
-      // Determine extension and name
       const ext = extensionForMimeType(file.type);
       const name =
         file.name && file.name !== "image.png"
           ? file.name
           : `Pasted image on ${new Date().toLocaleDateString()}.${ext}`;
 
-      // Create an automerge doc for the file
       const fileHandle = repo.create<UnixFileEntry>();
       fileHandle.change((doc) => {
         doc.content = bytes;

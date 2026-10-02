@@ -92,10 +92,7 @@ export function CodeMirror<T>(props: CodeMirrorProps<T>) {
   );
 
   // Read-only views are typically pinned to fixed heads, so their positions
-  // don't line up with the live doc; they stay presence-free. The handle is
-  // consulted directly (tools no longer pass `readOnly` for pinned handles —
-  // the automerge extension tracks that internally), with `props.readOnly`
-  // kept as an additional override.
+  // don't line up with the live doc; they stay presence-free.
   const [presenceExtension, createEffectReconfigurePresence] =
     createPresenceExtension(
       () => props.handle as DocHandle<unknown>,

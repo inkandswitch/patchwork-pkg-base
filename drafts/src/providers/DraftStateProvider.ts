@@ -124,8 +124,7 @@ export const DraftStateProvider = (element: HTMLElement) => {
   const checkedOutHandle = checkoutFor(repo, docUrl);
   const draftRouter = createDraftRouter(checkedOutHandle);
 
-  // `draft:baseline` subscribers, keyed by canonical target url. This provider
-  // is the sole answerer (the overlay no longer claims it), serving the
+  // `draft:baseline` subscribers, keyed by canonical target url. Each is served the
   // checkpoint's per-doc `from` (see `currentBaseline`). Re-emitted whenever
   // the checkout doc changes.
   const baselineSubscribers = new Map<
@@ -257,8 +256,7 @@ export const DraftStateProvider = (element: HTMLElement) => {
     }
 
     if (type === BASELINE_SELECTOR) {
-      // Sole answerer for `draft:baseline` (the overlay no longer claims it):
-      // serves the checkpoint's per-doc `from` for `target` (see
+      // Serves the checkpoint's per-doc `from` for `target` (see
       // `currentBaseline`).
       const rawTarget = (event.detail.selector as { url?: unknown }).url;
       if (typeof rawTarget !== "string" || !isValidAutomergeUrl(rawTarget)) {

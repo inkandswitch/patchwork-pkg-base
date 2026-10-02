@@ -12,7 +12,7 @@ import {resolvePlugins, type PluginSelector} from "./registry"
 import {slashPlugins} from "./slash-plugins"
 import type {AutocompleteProvider} from "./autocomplete-plugins"
 
-// The rich item shape chat providers return (unchanged from the old popup).
+// The rich item shape chat providers return.
 export interface AutocompleteItem {
 	display: string // text inserted (":catjam:" | emoji char | "@name" | "/cmd ")
 	label: string
@@ -76,7 +76,6 @@ function getAllEmoticons(
 }
 
 // Emoji/emoticon search (custom emoticons → emoji aliases → full unicode catalog).
-// Ported verbatim from the old AutocompletePopup.
 export function searchEmoji(
 	query: string,
 	myEmoticons: Record<string, AutomergeUrl>,

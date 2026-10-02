@@ -1992,8 +1992,8 @@ function buildPickerInto(host, opts) {
 		}
 	}
 
-	// The status bar (config-doc URL) lives at the very bottom of the modal now,
-	// built once by buildScopedPicker — not per scope editor. See statusBar().
+	// The status bar (config-doc URL) is built once by buildScopedPicker, not
+	// per scope editor. See statusBar().
 	host.append(el("div", {class: "llmp-main"}, [sideNav, content]))
 
 	renderNav()

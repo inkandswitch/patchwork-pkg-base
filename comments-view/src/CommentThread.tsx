@@ -338,14 +338,9 @@ function CommentView(props: {
   );
 }
 
-// A cute.txt editor bound to the comment's `draftContent`. Replaces the plain
-// textarea so drafts get the same rich plain-text (marks, emoji, embeds) that
-// chat and notes use — the default cute.txt schema, no comments-specific
-// plugins. The editor edits the field in place via `am.splice`, so it must
-// already be a string; a freshly-created draft has no `draftContent` yet, so we
-// seed it to "" before mounting. Lives inside the `isDraft()` branch, so Solid
-// unmounts it (and `onCleanup` destroys the editor) the moment the draft is
-// saved or cancelled.
+// A cute.txt editor bound to the comment's `draftContent`. The editor edits the
+// field in place via `am.splice`, so it must already be a string; a fresh draft
+// has no `draftContent` yet, so we seed it to "" before mounting.
 function CuteDraftEditor(props: {
   commentHandle: DocHandle<Comment>;
   repo: Repo;

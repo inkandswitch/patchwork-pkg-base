@@ -19,18 +19,16 @@ function defaultSidebarWidgets(rootFolderUrl?: AutomergeUrl): ToolRef[] {
 /**
  * Lazily create the threepane layout config doc and point `account.tools.threepane`
  * at it, migrating the legacy `account.documentToolbarToolIds` into its
- * `doctitle` lane. The context sidebar is host chrome and still registry-driven
- * (every `patchwork:component` tagged `"context-tool"`); the system tray is now
- * an explicit `tray` list here, seeded with `DEFAULT_TRAY_TOOLS` (and backfilled
- * for configs created before the field existed).
+ * `doctitle` lane. The system tray is an explicit `tray` list here, seeded with
+ * `DEFAULT_TRAY_TOOLS` (and backfilled for configs created before the field
+ * existed).
  *
  * Seeds the sidebar with a default document-list widget (pinned to the account's
  * root folder), so the left pane is never empty.
  *
  * Non-destructive: the old `documentToolbarToolIds` / `accountSidebarToolId`
- * fields are left untouched so older builds keep working and you can switch
- * branches freely during the PR. Run the (separate, opt-in)
- * cleanupLegacyAccountFields script to remove them later.
+ * fields are left untouched so older builds keep working. Run the (separate,
+ * opt-in) cleanupLegacyAccountFields script to remove them later.
  */
 export async function ensureThreepaneConfig(
   accountHandle: DocHandle<AccountDoc>,
@@ -47,8 +45,7 @@ export async function ensureThreepaneConfig(
       if (rootFolderUrl && !doc.sidebar?.widgets?.length) {
         doc.sidebar.widgets = defaultSidebarWidgets(rootFolderUrl);
       }
-      // Backfill the tray for configs created before it moved out of the
-      // registry onto this doc, so existing accounts keep their system tray.
+      // Backfill the tray for configs created before the field existed.
       if (!doc.tray) {
         doc.tray = DEFAULT_TRAY_TOOLS.slice();
       }

@@ -82,8 +82,7 @@
 	--studio-chrome-fill: var(--studio-fill-offset-10);
 	/* the offset ramp mixes chrome toward --studio-chrome-line (the chrome's own
 	   ink), not --studio-line, so borders/hovers stay sensible whether the chrome
-	   is lighter or darker than the content. defaults to --studio-line, so light
-	   themes are unchanged. */
+	   is lighter or darker than the content. defaults to --studio-line. */
 	--studio-chrome-fill-offset-10: color-mix(
 		in oklch,
 		color-mix(in oklch, var(--studio-chrome-fill), var(--studio-chrome-line) 0%),

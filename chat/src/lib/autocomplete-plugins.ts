@@ -37,7 +37,6 @@ export interface AutocompletePlugin {
 }
 
 // @-mention people: names from the live presence roster + the AI ("computer").
-// (Was hardcoded in the old AutocompletePopup; now a first-class provider.)
 const peopleAutocomplete: AutocompletePlugin = {
 	type: "chat:autocomplete",
 	id: "people-mention",

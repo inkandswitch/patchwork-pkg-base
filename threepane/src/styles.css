@@ -357,14 +357,13 @@
   display: block;
   width: 100%;
   height: 100%;
-  /* the sidebar itself no longer clips, so the content does */
+  /* the sidebar itself doesn't clip, so the content does */
   overflow: hidden;
 }
 
-/* Context sidebar (tabbed)
-   Ported from the standalone `context-sidebar` tool (main): lifted tabs with a
-   top accent bar and surface fill on the active tab, a hover surface, and a
-   bottom-border separator between the tab bar and the mounted tool view. */
+/* Context sidebar (tabbed): lifted tabs with a top accent bar and surface fill
+   on the active tab, a hover surface, and a bottom-border separator between the
+   tab bar and the mounted tool view. */
 .context-sidebar {
   flex: 1;
   min-width: 0;
@@ -518,9 +517,7 @@
   margin-bottom: calc(var(--threepane-tray-height) + env(safe-area-inset-bottom, 0px));
 }
 
-/* The inlined account bar: avatar (account picker) + Packages + Settings. Ported
-   from the sideboard `account-bar` tool onto threepane tokens so the frame owns
-   the markup directly. */
+/* The inlined account bar: avatar (account picker) + Packages + Settings. */
 .threepane-account-bar {
   container-type: inline-size;
   display: flex;

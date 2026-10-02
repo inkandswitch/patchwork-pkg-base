@@ -8,8 +8,8 @@ export const plugins = [
 	{
 		// The "Chat" preset: seeds just the computer. Grows via `/plugin load` or by
 		// loading the chitter bundle. `chat` is also the legacy datatype id. The
-		// "everything" preset now lives in the chitter bundle (the `chitter`
-		// datatype); the base tool still RENDERS `chitterchatter`/`chitter` docs via
+		// "everything" preset is the chitter bundle's `chitter` datatype; the base
+		// tool RENDERS `chitterchatter`/`chitter` docs via
 		// `supportedDatatypes`, and chitter registers those datatypes' presets.
 		type: "patchwork:datatype",
 		id: "chat",

@@ -29,16 +29,10 @@ function escapeHtml(str: string): string {
 	return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 }
 
-// Keep-last-good, coalesced, never-regress highlighting.
-//
-// The old design ran two fighting effects: one wrote textContent onto the
-// highlighted element (nuking shiki's spans → highlighting "disappeared"), and a
-// 200ms-debounced one swapped innerHTML wholesale, dropping to plain text in
-// between (→ flicker while streaming). Instead we hold the highlighted HTML in a
-// signal, coalesce re-highlights to one per animation frame, discard stale async
-// results by request-id, and NEVER swap back to plain once we have a highlight.
-// (shiki re-tokenizes the whole snippet per update — fine at chat-snippet size and
-//  now bounded to one call per frame.)
+// Keep-last-good, coalesced, never-regress highlighting: the highlighted HTML is
+// held in a signal, re-highlights are coalesced to one per animation frame, stale
+// async results are discarded by request-id, and it never swaps back to plain
+// text once there is a highlight (which would flicker while streaming).
 //
 // This component stays MOUNTED across streaming updates because MessageBody renders
 // the parsed nodes with <Index> keyed by position — so its keep-last-good state

@@ -1,12 +1,11 @@
 /**
- * @patchwork/llm SharedWorker
+ * @patchwork/llm worker
  *
  * Runs ALL generation (local transformers.js / OpenRouter / Ollama) off the
- * main thread, so a stream survives a page refresh and is shared across tabs
- * keyed by an optional `sessionKey`. Merges chat's SharedWorker with rlm's
- * teaching telemetry: alongside the text we stream the model's next-token
- * distribution ("predictions") and decode stats (TTFT, tokens/sec, the exact
- * sampling settings used) — for local AND OpenRouter.
+ * main thread, keyed by an optional `sessionKey`. Alongside the text it
+ * streams the model's next-token distribution ("predictions") and decode stats
+ * (TTFT, tokens/sec, the exact sampling settings used) — for local AND
+ * OpenRouter.
  *
  * IN:
  *   { type:"generate", id, sessionKey?, provider, messages, config }
@@ -527,8 +526,7 @@ async function loadModel(modelId, dtypeOverride) {
 			break
 		} catch (/** @type {any} */ err) {
 			lastLoadError = err
-			// Keep the actual cause — the device-fallback loop used to discard it,
-			// leaving only "WASM failed" with no way to see what actually broke.
+			// Keep the actual cause, not just "WASM failed".
 			log("loadModel: backend failed", {backend: attempt.label, modelId, message: err?.message || String(err)})
 			console.error(`[llm worker] ${attempt.label} load failed for ${modelId}:`, err)
 			broadcast({

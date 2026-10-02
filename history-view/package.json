@@ -20,7 +20,7 @@
     "@inkandswitch/patchwork-filesystem": "^0.2.9",
     "@inkandswitch/patchwork-plugins": "^1.2.5",
     "@inkandswitch/patchwork-providers-solid": "^0.2.8",
-    "solid-automerge": "^2.0.1",
+    "solid-automerge": "^2.0.2",
     "solid-js": "^1.9.10"
   },
   "devDependencies": {

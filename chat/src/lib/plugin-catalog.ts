@@ -5,8 +5,7 @@
 //     ALWAYS on; full-tier is opt-in, listed explicitly in `doc.plugins`)
 //   - drive the `/plugin` command + panel
 //
-// A tool is no longer "core" vs "full" by identity — the document's `plugins`
-// array is the truth. `expandSelector` maps that array (or an explicit override
+// The document's `plugins` array is the truth. `expandSelector` maps that array (or an explicit override
 // from the embeddable component) onto the concrete set of active plugin ids.
 
 import {mergePlugins, type PluginSelector} from "./registry"
@@ -84,7 +83,7 @@ export function pluginCatalog(): CatalogEntry[] {
 // A document's effective selector. An explicit `plugins` array is honored as-is
 // (including empty → core only). A MISSING array means a legacy doc created before
 // `plugins` existed — default those to "all" so every pre-existing chat keeps all
-// its features (the old chitterchatter default). New docs always have an array.
+// its features. New docs always have an array.
 export function docSelector(doc: {plugins?: string[]} | undefined | null): PluginSelector {
 	return Array.isArray(doc?.plugins) ? (doc!.plugins as string[]) : "all"
 }

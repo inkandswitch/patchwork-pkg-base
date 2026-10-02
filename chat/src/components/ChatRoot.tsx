@@ -676,8 +676,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 		return [...(isContext() ? CONTEXT_TOOLS : COMPUTER_TOOLS), ...customTools()]
 	}
 
-	// Render a structured tool call as the text shown in its card — mirrors the old
-	// fenced-block look so the existing rich-block UI renders unchanged.
+	// Render a structured tool call as the text shown in its rich-block card.
 	function renderCallText(call: any): string {
 		const a = call.args || {}
 		const lines = Object.entries(a).map(
@@ -2573,13 +2572,13 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 					const askCall = calls.find((c: any) => c.name === "ask_user")
 
 					// Process output blocks (patchwork-tool, file, embed, image) — tool
-					// calls are structured now, so parsed.blocks are all output blocks.
+					// calls are structured, so parsed.blocks are all output blocks.
 					const partial = {blocks: parsed.blocks, text: parsed.text}
 					const {text, opts} = await processRichBlocks(partial)
 					if (hasPatchworkTool) madeChanges = true
 
 					// Store rich blocks for UI display: tool-call cards synthesized from
-					// the structured calls (mirroring the old fenced look), plus any
+					// the structured calls, plus any
 					// patchwork-tool output blocks.
 					const displayBlocks = [
 						...calls.map((c: any) => ({

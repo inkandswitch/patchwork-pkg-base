@@ -194,8 +194,8 @@
   overflow-wrap: break-word;
 }
 
-/* The draft editor is a cute.txt (CodeMirror) instance; box it like the old
-   textarea. Its inner padding/font come from the injected cute.txt styles. */
+/* The draft editor is a cute.txt (CodeMirror) instance. Its inner
+   padding/font come from the injected cute.txt styles. */
 .comment-draft-editor {
   height: 6rem;
   min-height: 6rem;

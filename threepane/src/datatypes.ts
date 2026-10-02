@@ -2,9 +2,8 @@ import type { DatatypeImplementation } from "@inkandswitch/patchwork-plugins";
 import type { AccountDoc, ThreepaneConfigDoc } from "./types";
 
 /**
- * The default system-tray tools for a fresh account. The tray is now an
- * explicit list on the threepane config doc (no longer registry-driven), so a
- * new account seeds this set; add/remove is a matter of editing the array.
+ * The default system-tray tools for a fresh account. The tray is an explicit
+ * list on the threepane config doc, so a new account seeds this set.
  */
 export const DEFAULT_TRAY_TOOLS: string[] = ["theme-tray"];
 

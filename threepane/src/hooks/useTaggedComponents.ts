@@ -12,10 +12,8 @@ export type TaggedComponent = {
 
 /**
  * Live, registry-driven list of every `patchwork:component` carrying `tag`
- * (e.g. `"context-tool"` or `"system-tray"`), sorted by name. Replaces the old
- * model of a per-account configured array of ids: a component just declares
- * its tag and shows up everywhere that tag is rendered, with no curation step
- * and nothing to migrate.
+ * (e.g. `"context-tool"` or `"system-tray"`), sorted by name. A component just
+ * declares its tag and shows up everywhere that tag is rendered.
  *
  * Reactive to the registry's `"changed"` event, so a late-registering or
  * hot-reloaded plugin appears without a remount. Safe to call from inside the
