@@ -2,8 +2,8 @@ import {describe, it, expect, afterEach, vi} from "vitest"
 import {existsSync, readFileSync} from "node:fs"
 import {join} from "node:path"
 import {accept} from "@inkandswitch/patchwork-providers"
-import {connectWorker, openSession} from "./connect.js"
-import {serveWorkerSpec} from "./serve.js"
+import {connectWorker, openSession} from "../connect.js"
+import {serveWorkerSpec} from "../serve.js"
 
 // A minimal stand-in for the worker provider: answers worker-channel
 // subscriptions for the kinds it knows, and refuses the ones it doesn't. Uses

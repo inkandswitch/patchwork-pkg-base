@@ -1,5 +1,5 @@
 import {describe, it, expect, vi, afterEach} from "vitest"
-import {serveWorkerSpec} from "./serve.js"
+import {serveWorkerSpec} from "../serve.js"
 
 /**
  * A fake Worker: records posted messages, lets the test push replies back, and
