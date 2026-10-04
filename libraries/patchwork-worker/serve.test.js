@@ -210,6 +210,67 @@ describe("serveWorkerSpec", () => {
 		expect(aborted).toEqual([{sessionKey: "a"}])
 	})
 
+	it("forgets a request whose final reply arrives before handle returns", async () => {
+		const w = fakeWorker()
+		const aborted = []
+		let release
+		const spec = {
+			createWorker: () => w,
+			async handle(frame, io) {
+				io.on(() => true)
+				io.post({id: io.workerId})
+				await new Promise((r) => (release = r))
+				return {sessionKey: frame.id}
+			},
+			abort: (token) => void aborted.push(token),
+		}
+		const conn = drive(serveWorkerSpec(spec, {}))
+		await conn.write({id: "a", op: "generate"})
+		await conn.settle()
+		w.reply({id: w.posted[0].msg.id}) // done, while handle is still pending
+		release()
+		await conn.settle()
+		await conn.write({id: "a", op: "abort"})
+		await conn.settle()
+		expect(aborted).toEqual([])
+	})
+
+	it("does nothing for a request whose handle returns after teardown", async () => {
+		const w = fakeWorker()
+		const aborted = []
+		let release
+		const spec = {
+			createWorker: () => w,
+			async handle(frame, io) {
+				io.on(() => false)
+				await new Promise((r) => (release = r))
+				return {sessionKey: frame.id}
+			},
+			abort: (token) => void aborted.push(token),
+		}
+		const conn = drive(serveWorkerSpec(spec, {}))
+		await conn.write({id: "a", op: "generate"})
+		await conn.write({id: "a", op: "abort"}) // deferred: no token yet
+		await conn.close()
+		release()
+		await conn.settle()
+		expect(aborted).toEqual([])
+	})
+
+	it("treats an open that throws synchronously as state: null", async () => {
+		const spec = {
+			createWorker: () => fakeWorker(),
+			open: () => {
+				throw new Error("no settings")
+			},
+			handle: (frame, io) => void io.emit({type: "ran", state: io.state}),
+		}
+		const conn = drive(serveWorkerSpec(spec, {}))
+		await conn.write({id: "a", op: "go"})
+		await conn.settle()
+		expect(conn.frames).toEqual([{id: "a", type: "ran", state: null}])
+	})
+
 	it("does not track a fire-and-forget request (no io.on), so op:abort ignores it", async () => {
 		const w = fakeWorker()
 		const aborted = []

@@ -289,6 +289,40 @@ describe("openSession", () => {
 		session.close()
 	})
 
+	it("a closed connection's shutdown does not break the one that replaced it", async () => {
+		// close() then an immediate request: the old connection's pump ends after the
+		// new one has opened, and must not uncache it or fail its requests.
+		const kind = "replace-" + Math.random()
+		const workers = []
+		cleanups.push(
+			serveKinds({
+				[kind]: () => {
+					const w = manualWorker()
+					workers.push(w)
+					return w
+				},
+			})
+		)
+		const session = openSession(kind, {element: mountElement()})
+
+		const first = session.request({op: "generate"}, {terminal: TERMINAL})
+		first.promise.catch(() => {})
+		await tick()
+		session.close()
+		const second = session.request({op: "generate"}, {terminal: TERMINAL})
+		await tick()
+		expect(workers).toHaveLength(2)
+		workers[1].push({id: workers[1].written[0].id, type: "result", text: "ok"})
+		await expect(second.promise).resolves.toBe("ok")
+
+		// ...and the session still reuses that connection.
+		const third = session.request({op: "generate"}, {terminal: TERMINAL})
+		await tick()
+		expect(workers).toHaveLength(2)
+		workers[1].push({id: workers[1].written[1].id, type: "result", text: "again"})
+		await expect(third.promise).resolves.toBe("again")
+	})
+
 	it("forwards an abort that fires while the connection is still opening", async () => {
 		const kind = "abort-" + Math.random()
 		let w
