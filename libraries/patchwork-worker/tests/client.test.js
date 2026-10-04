@@ -34,7 +34,7 @@ vi.mock("@inkandswitch/patchwork-plugins", () => ({
 	getRegistry: () => registry,
 }))
 
-const {connectWorkerClient} = await import("./client.js")
+const {connectWorkerClient} = await import("../client.js")
 
 afterEach(() => {
 	registry.reset()
