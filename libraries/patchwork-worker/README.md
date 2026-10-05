@@ -48,11 +48,7 @@ registered under that id. Nothing is imported until a consumer actually connects
 This package is a plain library: it registers no plugins and is consumed as a
 dependency, never installed as a module.
 
-**Current example.** The first service built on this is the LLM: `llm-host`
-registers the `"llm"` worker pair, and `chat` consumes it. Its op vocabulary and
-config handling are its own concern and are documented in
-[`../../llm-host/README.md`](../../llm-host/README.md). Nothing in this package is
-specific to it.
+Concrete service integrations, including the LLM architecture, are outside this library and are documented by their owning packages.
 
 ## Why this exists
 
