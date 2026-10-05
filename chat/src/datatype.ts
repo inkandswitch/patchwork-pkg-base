@@ -1,3 +1,4 @@
+import type {AutomergeUrl} from "@automerge/automerge-repo/slim"
 import type {ChatDoc} from "./types"
 
 // Shared skeleton. `plugins` decides which full-tier features are active.
@@ -22,4 +23,24 @@ export const ChatDatatype = {
 	},
 	getTitle,
 	setTitle,
+	getEmbeddedDocuments,
+}
+
+// The docs a new draft forks along with the chat: split-out messages, their
+// attachments and embeds, and the pinned docs. Not the emoticon and font
+// libraries or the senders' avatars and contacts, which are shared, nor a pin's
+// `copyOf`, which points back at where it came from.
+function getEmbeddedDocuments(doc: ChatDoc): AutomergeUrl[] {
+	const urls: (AutomergeUrl | undefined)[] = []
+	for (const message of doc.messages ?? []) {
+		if ("ref" in message) {
+			urls.push(message.url)
+			continue
+		}
+		urls.push(message.imageUrl, message.voiceUrl, message.gifSelfieUrl)
+		for (const file of message.files ?? []) urls.push(file.url)
+		for (const embed of message.embeds ?? []) urls.push(embed.docUrl)
+	}
+	for (const link of doc.docs ?? []) urls.push(link.url)
+	return urls.filter((url): url is AutomergeUrl => !!url)
 }
