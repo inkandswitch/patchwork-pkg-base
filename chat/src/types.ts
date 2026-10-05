@@ -73,10 +73,10 @@ export interface ChatDoc {
 	emoticons?: Record<string, {url: AutomergeUrl; addedBy: string}>
 	fonts?: Record<string, {url: AutomergeUrl; addedBy: string}>
 	hasComputer?: boolean
-	// Set by `/computer quiet` to make the computer reply only when @mentioned
+	// Set by `/computer shy` to make the computer reply only when @mentioned
 	// or replied to; `/computer nosey` clears it. Unset means it replies to
 	// every message.
-	computerQuiet?: boolean
+	computerShy?: boolean
 }
 
 export interface ChatProfileDoc {

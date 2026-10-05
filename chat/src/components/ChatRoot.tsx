@@ -178,7 +178,7 @@ export function ChatRoot(props: {
 	// Computer/LLM state
 	const [computerActive, setComputerActive] = createSignal(false)
 	// Lives on the doc so every tab (host and watchdogs) agrees on it.
-	const computerAutoMode = () => !(props.handle.doc() as any)?.computerQuiet
+	const computerAutoMode = () => !(props.handle.doc() as any)?.computerShy
 	const [llmStatus, setLlmStatus] = createSignal("")
 	// Human-readable label of the model the computer is currently running, shown
 	// in the computer's username (e.g. "computer (OpenRouter Claude Opus 4)").
@@ -2138,18 +2138,13 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 				delete d.computerHeartbeat
 				delete d.computerOwner
 				delete d.computerModel
-				delete d.computerQuiet
+				delete d.computerShy
 			})
 			sendComputerMessage("computer has left the chat.")
 			return
 		}
-		const quiet =
-			sub === "quiet" || sub === "shy"
-				? true
-				: sub === "nosey" || sub === "auto"
-					? false
-					: null
-		if (quiet !== null) {
+		if (sub === "shy" || sub === "nosey") {
+			const shy = sub === "shy"
 			if (!computerActive()) {
 				sendComputerMessage(
 					"computer is not active. Use /computer invite first."
@@ -2157,11 +2152,11 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 				return
 			}
 			props.handle.change((d: any) => {
-				if (quiet) d.computerQuiet = true
-				else delete d.computerQuiet
+				if (shy) d.computerShy = true
+				else delete d.computerShy
 			})
 			sendComputerMessage(
-				quiet
+				shy
 					? "ok, i'll only respond when @mentioned or replied to."
 					: "ok, i'll respond to every message."
 			)
@@ -2238,7 +2233,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 					"",
 					"• currently running: " + model,
 					"• /model — pick a different model or provider",
-					"• /computer quiet — only respond when @mentioned or replied to; /computer nosey to respond to everything again",
+					"• /computer shy — only respond when @mentioned or replied to; /computer nosey to respond to everything again",
 					"• /computer owner — see who's hosting me; /computer own to take over",
 					"• /computer kick — send me away",
 				].join("\n")
