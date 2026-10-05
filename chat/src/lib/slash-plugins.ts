@@ -44,8 +44,8 @@ export const slashPlugins: SlashPlugin[] = [
 	},
 	{
 		type: "chat:slash", id: "computer", cmd: "/computer", tier: "full",
-		usage: "/computer [invite|kick|nosey|clear|owner|own|pwn]",
-		desc: "Manage the AI assistant: invite, kick, toggle nosey, clear context, see or take over the owner",
+		usage: "/computer [invite|kick|quiet|nosey|clear|owner|own|pwn]",
+		desc: "Manage the AI assistant: invite, kick, quiet (only reply when mentioned) or nosey (reply to everything), clear context, see or take over the owner",
 		sideEffect: "computer",
 	},
 	{

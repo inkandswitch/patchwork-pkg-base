@@ -2143,7 +2143,13 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 			sendComputerMessage("computer has left the chat.")
 			return
 		}
-		if (sub === "nosey" || sub === "auto") {
+		const quiet =
+			sub === "quiet" || sub === "shy"
+				? true
+				: sub === "nosey" || sub === "auto"
+					? false
+					: null
+		if (quiet !== null) {
 			if (!computerActive()) {
 				sendComputerMessage(
 					"computer is not active. Use /computer invite first."
@@ -2151,11 +2157,13 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 				return
 			}
 			props.handle.change((d: any) => {
-				if (d.computerQuiet) delete d.computerQuiet
-				else d.computerQuiet = true
+				if (quiet) d.computerQuiet = true
+				else delete d.computerQuiet
 			})
 			sendComputerMessage(
-				"Auto-respond mode: " + (computerAutoMode() ? "ON" : "OFF")
+				quiet
+					? "ok, i'll only respond when @mentioned or replied to."
+					: "ok, i'll respond to every message."
 			)
 			return
 		}
@@ -2230,7 +2238,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 					"",
 					"• currently running: " + model,
 					"• /model — pick a different model or provider",
-					"• /computer nosey — toggle between responding to everything and only when @mentioned or replied to",
+					"• /computer quiet — only respond when @mentioned or replied to; /computer nosey to respond to everything again",
 					"• /computer owner — see who's hosting me; /computer own to take over",
 					"• /computer kick — send me away",
 				].join("\n")
