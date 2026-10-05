@@ -537,7 +537,9 @@ export default function Item(props: {
         handleDrop(event, target.id, target.position as "above" | "below");
         clearDropTarget();
       }}
-      draggable
+      // a bare `draggable` compiles to draggable="", which means "auto" — and
+      // buttons aren't draggable by default
+      draggable="true"
       data-dnd-item={props.id}
       data-doc-url={props.url}
       data-doc-type={props.type}
