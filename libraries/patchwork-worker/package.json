@@ -14,7 +14,15 @@
       "types": "./types/connect.d.ts",
       "default": "./connect.js"
     },
+    "./connect.js": {
+      "types": "./types/connect.d.ts",
+      "default": "./connect.js"
+    },
     "./session": {
+      "types": "./types/session.d.ts",
+      "default": "./session.js"
+    },
+    "./session.js": {
       "types": "./types/session.d.ts",
       "default": "./session.js"
     },
@@ -22,7 +30,15 @@
       "types": "./types/serve.d.ts",
       "default": "./serve.js"
     },
+    "./serve.js": {
+      "types": "./types/serve.d.ts",
+      "default": "./serve.js"
+    },
     "./client": {
+      "types": "./types/client.d.ts",
+      "default": "./client.js"
+    },
+    "./client.js": {
       "types": "./types/client.d.ts",
       "default": "./client.js"
     }
