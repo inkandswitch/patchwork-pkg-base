@@ -1,146 +1,80 @@
 /**
- * The LLM WorkerSpec — the host-realm glue that turns @chee/patchwork-llm into a
- * `patchwork:worker` that @grjte/patchwork-worker can serve.
+ * The serve half of the LLM protocol: a WorkerSpec that @grjte/patchwork-worker
+ * serves in the host realm, over @chee/patchwork-llm's compute worker.
  *
- * The generic transport (@grjte/patchwork-worker/serve.js) owns the stream pair,
- * the per-connection worker lifetime, id demux, and abort plumbing. This file
- * owns everything LLM-specific: resolving config/secrets from the settings doc,
- * building tool schemas, the op vocabulary (generate / predict / the analytical
- * ops / preload), and the model label. None of that can live in the sandbox —
- * the settings doc is denylisted and the API key must never cross — which is why
- * it lives HERE, in the host-realm package, rather than in the library or in the
- * transport.
- *
- * `makeLLMWorkerSpec(lib)` takes the loaded @chee/patchwork-llm module (so this
- * file has no static dependency on it — llm-host loads the library from its
- * automerge doc at runtime) and returns the spec.
- *
- * Request preparation (prompt resolution, CallConfig, the native-vs-templated
- * tools decision, the builtin detour, the input shape, the worker payload) is
- * the library's `prepareGenerate` / `buildGeneratePayload` — the same code its
- * own same-realm `generate()` runs — so the two paths cannot diverge. What stays
+ * Config and the API key are resolved here from the frame's `scope` and never
+ * leave the host. Request preparation is the library's own `prepareGenerate`, so
+ * this path can't drift from the library's same-realm `generate()`. What's added
  * here is host policy: which overrides a consumer may set, provider-conditional
- * system maps, `toolToggles`, and parsing `<tool_call>` text into `toolCalls` so
- * consumers (src/client.js, the consume half) never parse model output.
+ * system prompts, `toolToggles`, the user's own tools, and turning model output
+ * into `toolCalls` so consumers never parse it.
+ *
+ * Consumers only ever see the tool names they declared. Providers need names
+ * matching [a-zA-Z0-9_-]{1,64}, so names are sanitized on the way in (including
+ * in `tool_calls` the consumer threads back) and mapped back on the way out.
+ *
+ * `lib` is passed in because llm-host loads the library from its automerge doc
+ * at runtime.
  */
 
-/** @param {...any} args */
-function clog(...args) {
-	try {
-		console.log("[llm-host]", ...args)
-	} catch {}
-}
-
 /**
- * Resolve a (possibly provider-conditional) system prompt. `system` may be a
- * plain string (used as-is) or a map like `{default, local, openrouter, …}` —
- * the entry matching the provider wins, falling back to `default`.
+ * `system` is a string, or a map like `{default, local, openrouter}` where the
+ * provider's entry wins.
  * @param {any} system
  * @param {string} provider
  */
-function resolveSystemForProvider(system, provider) {
-	if (system == null) return undefined
-	if (typeof system === "string") return system
-	if (typeof system === "object") return system[provider] ?? system.default ?? undefined
-	return undefined
+function systemFor(system, provider) {
+	if (system == null || typeof system === "string") return system ?? undefined
+	return system[provider] ?? system.default ?? undefined
 }
 
 /**
- * Filter tool descriptors by the config's `toolToggles`. A tool is included
- * unless turned off (`toggles[name] === false`); a `defaultOff` tool is opt-in
- * (included only if `toggles[name] === true`). Matching is by descriptor `name`.
- * @param {any[]} tools
- * @param {Record<string, boolean>} toggles
+ * A tool is offered unless toggled off; a `defaultOff` tool only if toggled on.
+ * @param {any[]|undefined} tools
+ * @param {Record<string, boolean>} [toggles]
  */
-function filterToolsByToggles(tools, toggles) {
-	if (!Array.isArray(tools)) return tools
-	const t = toggles || {}
-	return tools.filter((tool) => {
-		if (tool && tool.defaultOff) return t[tool.name] === true
-		return t[tool.name] !== false
-	})
+function enabledTools(tools, toggles = {}) {
+	if (!Array.isArray(tools)) return []
+	return tools.filter((tool) => (tool.defaultOff ? toggles[tool.name] === true : toggles[tool.name] !== false))
 }
 
-/**
- * Build the LLM WorkerSpec.
- * @param {any} lib  the loaded @chee/patchwork-llm module
- */
+/** @param {any} lib */
 export function makeLLMWorkerSpec(lib) {
-	const {
-		createWorker,
-		ensureConfig,
-		ensureSettingsDoc,
-		settingsDocHandle,
-		callConfig,
-		applyPrompts,
-		effectiveSystem,
-		describeConfig,
-		fetchOpenRouterModels,
-		builtinGenerate,
-		resolveCfgPrompts,
-		prepareGenerate,
-		buildGeneratePayload,
-		parseToolCalls,
-	} = lib
+	const {sanitizeToolName} = lib
 
-	// OpenRouter catalogue cache (host-side): turning a model id into a human name
-	// needs the catalogue. Fetch once and reuse; failure just yields the raw id.
-	/** @type {any[]|null} */
-	let openrouterModelsCache = null
-	async function openrouterModels() {
-		if (openrouterModelsCache) return openrouterModelsCache
-		try {
-			openrouterModelsCache = await fetchOpenRouterModels()
-		} catch {
-			openrouterModelsCache = []
-		}
-		return openrouterModelsCache
-	}
+	// "provider:model" pairs that rejected native tool calling. Their later
+	// requests describe the tools in the system prompt instead.
+	const noNativeTools = new Set()
 
-	/**
-	 * Human-readable label for the resolved config. Consults the OpenRouter
-	 * catalogue for that provider. Never includes secrets.
-	 * @param {any} cfg
-	 */
+	/** @type {Promise<any[]>|null} */
+	let openrouterModels = null
+	/** Human-readable model label; never includes secrets. @param {any} cfg */
 	async function modelLabel(cfg) {
 		try {
-			const openrouter = cfg.provider === "openrouter" ? (await openrouterModels()) || [] : []
-			return describeConfig(cfg, {openrouterModels: openrouter})
+			if (cfg.provider === "openrouter") openrouterModels ??= lib.fetchOpenRouterModels().catch(() => [])
+			return lib.describeConfig(cfg, {openrouterModels: (await openrouterModels) || []})
 		} catch {
 			return "the configured model"
 		}
 	}
 
 	/**
-	 * Resolve the unresolved config for a request frame — the DOM/repo-bound
-	 * preamble. Config is resolved HERE from the frame's `scope`, never from a
-	 * consumer-supplied `frame.config` (which would let a tool pick the provider
-	 * AND supply its own key, defeating host-side resolution).
-	 *
+	 * Config comes from `frame.scope` only. A consumer-supplied `frame.config`
+	 * would let a tool choose the provider and its own key.
 	 * @param {any} frame
-	 * @param {Promise<any>|null} settingsWarm  the connection's in-flight
-	 *   settings-doc resolution (spec.open), awaited before reading config.
+	 * @param {Promise<any>|null} settingsWarm
 	 */
 	async function resolveCfg0(frame, settingsWarm) {
 		if (settingsWarm) await settingsWarm
-		let cfg0 = await ensureConfig(frame.scope)
-		// Self-heal a cold config: `ensureConfig` resolves elementless and on its
-		// retryable paths silently yields DEFAULTS (local model for an OpenRouter
-		// account, or OpenRouter with an empty apiKey → 401). The warm normally
-		// settles this; this retry covers a caller whose warm timed out, and
-		// `ensureSettingsDoc` deliberately doesn't cache its null results.
-		if (!settingsDocHandle()) {
-			await ensureSettingsDoc()
-			cfg0 = await ensureConfig(frame.scope)
-		}
-		return cfg0
+		// ensureConfig quietly falls back to defaults (and an empty API key) when
+		// the settings doc isn't loaded yet, e.g. when the warm timed out.
+		if (!lib.settingsDocHandle()) await lib.ensureSettingsDoc()
+		return lib.ensureConfig(frame.scope)
 	}
 
 	/**
-	 * Only the sampling knobs a consumer legitimately owns are forwarded to
-	 * callConfig. The frame is NOT passed wholesale: callConfig also honours
-	 * provider / apiKey / model / url overrides, so handing it the raw frame would
-	 * let a consumer redirect generation at its own endpoint with its own key.
+	 * callConfig also honours provider / apiKey / model / url overrides, so only
+	 * the sampling knobs a consumer owns are passed through.
 	 * @param {any} frame
 	 */
 	function samplingOverrides(frame) {
@@ -152,95 +86,97 @@ export function makeLLMWorkerSpec(lib) {
 		}
 	}
 
-	/**
-	 * Prepare a `generate` frame with the library's own request preparation,
-	 * after applying host policy: the provider-conditional system map and the
-	 * user's toolToggles. Returns what the library's generate() would have
-	 * computed, plus `hasTools` (whether any tool survived the toggles).
-	 *
-	 * @param {any} frame
-	 * @param {Promise<any>|null} settingsWarm
-	 */
-	async function prepareFrame(frame, settingsWarm) {
-		const cfg0 = await resolveCfg0(frame, settingsWarm)
-		// The provider is fixed by the settings doc: sampling overrides never carry
-		// one and prompt resolution doesn't change it, so cfg0.provider is what
-		// callConfig will report.
-		const tools = filterToolsByToggles(frame.tools, cfg0.toolToggles || {})
-		const prepared = await prepareGenerate(cfg0, {
-			messages: frame.text != null ? frame.text : frame.messages,
-			system: resolveSystemForProvider(frame.system, cfg0.provider),
-			tools,
-			// A continuation is a raw string prompt with no chat messages.
-			continuation: !!frame.continuation && typeof frame.messages === "undefined",
-			overrides: samplingOverrides(frame),
-		})
-		return {...prepared, hasTools: Array.isArray(tools) && tools.length > 0}
-	}
-
-	/**
-	 * Config for the non-generate ops (predict, the analytical ops, preload):
-	 * resolved prompts + the flat CallConfig with sampling overrides only.
-	 * @param {any} frame
-	 * @param {Promise<any>|null} settingsWarm
-	 */
+	/** @param {any} frame @param {Promise<any>|null} settingsWarm */
 	async function resolveForFrame(frame, settingsWarm) {
-		const cfg0 = await resolveCfg0(frame, settingsWarm)
-		const cfg = await resolveCfgPrompts(cfg0)
-		const config = callConfig(cfg, samplingOverrides(frame))
-		return {cfg, config}
+		const cfg = await lib.resolveCfgPrompts(await resolveCfg0(frame, settingsWarm))
+		return {cfg, config: lib.callConfig(cfg, samplingOverrides(frame))}
 	}
 
 	/**
-	 * The `toolCalls` a result frame should carry. Native function-calling
-	 * providers return structured calls; for the rest (local / builtin) the model
-	 * writes `<tool_call>` text, which is parsed HERE so every consumer sees the
-	 * same shape and never parses model output itself. Parsing is gated on the
-	 * request actually offering tools — prose that happens to contain a bare
-	 * `{"name": …}` object is not a tool call. `null` when there are none.
-	 *
-	 * @param {string} text
-	 * @param {any[]|null|undefined} toolCalls  structured calls from the worker
-	 * @param {boolean} hasTools
-	 * @returns {any[]|null}
+	 * The consumer's enabled tools, then (when `frame.userTools`) the user's own
+	 * `llm:tool` docs, tagged `host`. A consumer tool wins a name clash.
+	 * @param {any} frame
+	 * @param {any} cfg0
 	 */
-	function withToolCalls(text, toolCalls, hasTools) {
-		if (Array.isArray(toolCalls) && toolCalls.length) return toolCalls
-		if (!hasTools) return null
-		const parsed = parseToolCalls(text || "")
-		return parsed.length ? parsed : null
+	async function toolsFor(frame, cfg0) {
+		const tools = enabledTools(frame.tools, cfg0.toolToggles).map((t) => ({
+			name: t.name,
+			description: t.description,
+			parameters: t.parameters,
+		}))
+		if (!frame.userTools) return tools
+		const taken = new Set(tools.map((t) => sanitizeToolName(t.name)))
+		for (const t of await lib.resolveTools(cfg0)) {
+			if (taken.has(sanitizeToolName(t.name))) continue
+			taken.add(sanitizeToolName(t.name))
+			tools.push({name: t.name, description: t.description, parameters: t.parameters, host: true})
+		}
+		return tools
+	}
+
+	/** @param {any[]} tools @param {string} name */
+	function findTool(tools, name) {
+		return tools.find((t) => t.name === name) ?? tools.find((t) => sanitizeToolName(t.name) === name)
+	}
+
+	/**
+	 * Sanitize tool names in `tool_calls` the consumer threads back.
+	 * @param {any} messages
+	 */
+	function wireNames(messages) {
+		if (!Array.isArray(messages)) return messages
+		return messages.map((m) =>
+			Array.isArray(m?.tool_calls)
+				? {
+						...m,
+						tool_calls: m.tool_calls.map((/** @type {any} */ c) =>
+							c?.function ? {...c, function: {...c.function, name: sanitizeToolName(c.function.name)}} : c
+						),
+					}
+				: m
+		)
+	}
+
+	/**
+	 * `toolCalls` and `toolMode` for a result. Structured calls come from native
+	 * function calling. Otherwise the text is parsed, keeping only calls to
+	 * offered tools, since prose can contain JSON that merely looks like a call.
+	 * `toolMode` says how to thread the results back: "native", "template" or
+	 * "text".
+	 * @param {any} msg  {text, toolCalls, toolMode} from the worker
+	 * @param {any[]} tools
+	 */
+	function toolCallsFor(msg, tools) {
+		if (!tools.length) return {toolCalls: null, toolMode: msg.toolMode}
+		const structured = Array.isArray(msg.toolCalls) && msg.toolCalls.length > 0
+		const raw = structured ? msg.toolCalls : lib.parseToolCalls(msg.text || "")
+		const calls = []
+		for (const call of raw) {
+			const tool = findTool(tools, call.name)
+			if (!tool && !structured) continue
+			calls.push({...call, name: tool?.name ?? call.name, ...(tool?.host ? {host: true} : {})})
+		}
+		return {
+			toolCalls: calls.length ? calls : null,
+			toolMode: structured ? "native" : msg.toolMode === "template" ? "template" : "text",
+		}
 	}
 
 	return {
-		createWorker,
+		createWorker: lib.createWorker,
 
 		/**
-		 * Warm the settings doc before any frame is handled. Returned as opaque
-		 * state; the transport bounds it with a timeout and passes it to `handle`,
-		 * where `resolveForFrame` awaits it. `ctx.element` reaches the
-		 * `patchwork:tool-storage` provider through the DOM; without it config
-		 * silently falls back to DEFAULTS (the 401 case).
+		 * Warm the settings doc. `ctx.element` reaches the tool-storage provider;
+		 * the transport bounds this with a timeout.
 		 * @param {{element?: HTMLElement}} ctx
 		 */
 		open(ctx) {
-			return ctx.element ? Promise.resolve(ensureSettingsDoc(ctx.element)).catch(() => null) : null
+			return ctx.element ? Promise.resolve(lib.ensureSettingsDoc(ctx.element)).catch(() => null) : null
 		},
 
 		/**
-		 * Turn one consumer frame into worker traffic. Returns an abort token
-		 * (`{sessionKey}`) so `op:"abort"` can cancel the matching worker request.
-		 *
-		 * `io` comes from @grjte/patchwork-worker's serveWorkerSpec:
-		 *   post(msg, transfer?)  send to the worker
-		 *   emit(frame)           enqueue onto this consumer's readable (id-tagged
-		 *                         by the transport; we emit worker-shaped frames)
-		 *   on(fn)                handle worker messages for this workerId; return
-		 *                         true from fn when the request is complete
-		 *   workerId              the transport-minted id to tag worker payloads
-		 *   state                 whatever open() resolved (the settings warm)
-		 *
 		 * @param {any} frame
-		 * @param {any} io
+		 * @param {any} io  @grjte/patchwork-worker's IO: {post, emit, on, workerId, state}
 		 */
 		async handle(frame, io) {
 			const {post, emit, on, workerId, state: settingsWarm} = io
@@ -248,50 +184,97 @@ export function makeLLMWorkerSpec(lib) {
 			const sessionKey = frame.sessionKey || workerId
 
 			if (op === "generate") {
-				const {cfg, config, extraSystem, builtin, input, hasTools} = await prepareFrame(
-					frame,
-					settingsWarm
-				)
-				// Tell the consumer which model is answering (host-computed; no secrets).
+				const cfg0 = await resolveCfg0(frame, settingsWarm)
+				const tools = await toolsFor(frame, cfg0)
+				const system = systemFor(frame.system, cfg0.provider)
+				const base = {
+					messages: frame.text != null ? frame.text : wireNames(frame.messages),
+					// A continuation is a raw string prompt with no chat messages.
+					continuation: !!frame.continuation && frame.messages === undefined,
+					overrides: samplingOverrides(frame),
+				}
+				const withTools = () => lib.prepareGenerate(cfg0, {...base, system, tools})
+				const toolsInPrompt = () =>
+					lib.prepareGenerate(cfg0, {
+						...base,
+						system: [lib.buildToolsSystem(tools), system].filter(Boolean).join("\n\n"),
+					})
+
+				let prepared = await withTools()
+				const {cfg, config} = prepared
+				const modelKey = `${config.provider}:${config.model}`
+				let native = tools.length > 0 && lib.NATIVE_TOOL_PROVIDERS.has(config.provider)
+				if (native && noNativeTools.has(modelKey)) {
+					prepared = await toolsInPrompt()
+					native = false
+				}
+				// If the model rejects native tools, retry once with them in the prompt.
+				const fallback = native ? await toolsInPrompt() : null
+
 				void modelLabel(cfg).then((label) => emit({type: "model", label}))
 
-				// builtin (Chrome Prompt API) runs in-realm, not in the worker.
-				if (builtin) {
+				// builtin (Chrome Prompt API) runs in this realm, not in the worker. It
+				// can't be aborted: the transport only routes op:"abort" to requests
+				// tracked with `on`, which needs a worker message to finish.
+				if (prepared.builtin) {
 					try {
-						const full = await builtinGenerate(input, {
+						const text = await lib.builtinGenerate(prepared.input, {
 							temperature: config.temperature,
 							topK: config.topK,
-							system: effectiveSystem(cfg, extraSystem),
-							onToken: (_d, f) => emit({type: "token", delta: "", text: f}),
-							onStatus: (m) => emit({type: "status", message: m}),
-							signal: undefined,
+							system: lib.effectiveSystem(cfg, prepared.extraSystem),
+							onToken: (/** @type {string} */ _delta, /** @type {string} */ full) =>
+								emit({type: "token", delta: "", text: full}),
+							onStatus: (/** @type {string} */ message) => emit({type: "status", message}),
 						})
-						emit({type: "result", text: full, toolCalls: withToolCalls(full, null, hasTools)})
+						emit({type: "result", text, ...toolCallsFor({text}, tools)})
 					} catch (e) {
-						const err = /** @type {any} */ (e)
-						emit({type: "error", message: err?.message || String(e)})
+						emit({type: "error", message: /** @type {any} */ (e)?.message || String(e)})
 					}
 					return {sessionKey}
 				}
 
+				const send = (/** @type {any} */ p) =>
+					post(lib.buildGeneratePayload(p.config, p.input, {id: workerId, sessionKey}))
+				let streamed = false
+				let fellBack = false
 				on((msg) => {
 					switch (msg.type) {
 						case "token":
+							streamed = true
+							emit(msg)
+							return false
 						case "prediction":
 						case "stats":
 							emit(msg)
 							return false
 						case "result":
-							emit({...msg, toolCalls: withToolCalls(msg.text, msg.toolCalls, hasTools)})
+							if (fellBack) noNativeTools.add(modelKey)
+							emit({...msg, ...toolCallsFor(msg, tools)})
 							return true
 						case "error":
-							clog("generate: worker error", msg.message)
+							if (fallback && !streamed && !fellBack) {
+								fellBack = true
+								send(fallback)
+								return false
+							}
 							emit(msg)
 							return true
 					}
 					return false
 				})
-				post(buildGeneratePayload(config, input, {id: workerId, sessionKey}))
+				send(prepared)
+				return {sessionKey}
+			}
+
+			// Runs one of the user's own tools (a call the result tagged `host`).
+			// Always sandboxed: the caller may itself be a sandboxed tool, and must
+			// not get page access through us.
+			if (op === "run-tool") {
+				const cfg0 = await resolveCfg0(frame, settingsWarm)
+				const tool = findTool(await lib.resolveTools(cfg0), frame.name)
+				if (!tool) throw new Error(`no tool named "${frame.name}"`)
+				const result = await lib.runTool(tool, frame.args, {sandbox: true})
+				emit({type: "tool-result", result})
 				return {sessionKey}
 			}
 
@@ -302,22 +285,26 @@ export function makeLLMWorkerSpec(lib) {
 					emit({type: "predictions", candidates: []})
 					return {sessionKey}
 				}
-				const promptedText = applyPrompts(frame.text, cfg, frame.system)
 				on((msg) => {
-					if (msg.type === "predictions" || msg.type === "error") {
-						emit(msg)
-						return true
-					}
-					return false
+					if (msg.type !== "predictions" && msg.type !== "error") return false
+					emit(msg)
+					return true
 				})
-				post({type: "predict", id: workerId, sessionKey, provider: config.provider, text: promptedText, config})
+				post({
+					type: "predict",
+					id: workerId,
+					sessionKey,
+					provider: config.provider,
+					text: lib.applyPrompts(frame.text, cfg, systemFor(frame.system, config.provider)),
+					config,
+				})
 				return {sessionKey}
 			}
 
-			// Analytical ops: local-only, single terminal result frame.
+			// Local-only analysis ops: op -> [terminal type, optional progress type].
 			/** @type {Record<string, string[]>} */
 			const analytical = {
-				"score-tokens": ["score-progress", "token-scores"],
+				"score-tokens": ["token-scores", "score-progress"],
 				"compute-importance": ["importance-scores"],
 				"compute-attention-weights": ["attention-weights"],
 				"extract-features": ["features"],
@@ -327,22 +314,12 @@ export function makeLLMWorkerSpec(lib) {
 			}
 			if (analytical[op]) {
 				const {config} = await resolveForFrame(frame, settingsWarm)
-				const [progressType, terminalType] = analytical[op]
-				const terminal = terminalType || progressType
+				const [terminal, progress] = analytical[op]
 				on((msg) => {
-					if (msg.type === terminal) {
-						emit(msg)
-						return true
-					}
-					if (progressType && terminalType && msg.type === progressType) {
-						emit(msg)
-						return false
-					}
-					if (msg.type === "error") {
-						emit(msg)
-						return true
-					}
-					return false
+					if (msg.type === progress) emit(msg)
+					if (msg.type !== terminal && msg.type !== "error") return false
+					emit(msg)
+					return true
 				})
 				/** @type {any} */
 				const payload = {type: op, id: workerId, sessionKey, provider: config.provider, config}
@@ -355,23 +332,17 @@ export function makeLLMWorkerSpec(lib) {
 			if (op === "preload") {
 				const {config} = await resolveForFrame(frame, settingsWarm)
 				post({type: "preload", provider: config.provider, config})
-				return {sessionKey}
 			}
-
-			// Unknown op — nothing to do.
 			return {sessionKey}
 		},
 
 		/**
-		 * Cancel one in-flight request. The worker keys `activeGenerations` by
-		 * `sessionKey`, so that is what we post.
+		 * The worker keys in-flight generations by sessionKey.
 		 * @param {{sessionKey: string}} token
-		 * @param {(m:any)=>void} post
+		 * @param {(m: any) => void} post
 		 */
 		abort(token, post) {
-			try {
-				post({type: "abort", sessionKey: token.sessionKey})
-			} catch {}
+			post({type: "abort", sessionKey: token.sessionKey})
 		},
 	}
 }

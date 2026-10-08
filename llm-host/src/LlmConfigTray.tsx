@@ -1,4 +1,4 @@
-import { createSignal, onCleanup, Show } from "solid-js";
+import { createSignal, Show } from "solid-js";
 import { Portal, render } from "solid-js/web";
 // @ts-ignore — plain-JS library, ships no type declarations
 import {
@@ -11,20 +11,17 @@ import {
 } from "@chee/patchwork-llm";
 
 /**
- * The LLM config tray tool — a `patchwork:component` (element) => cleanup.
+ * The system-tray icon and popover for the LLM model/config picker. Host realm
+ * only: it reads and writes the settings doc, which holds the API key.
  *
- * Runs in the HOST realm (it's a system-tray icon). It owns the picker UI over
- * the LLM settings doc. Chat (and anything else) opens it either by clicking the
- * tray icon or by dispatching a `patchwork:open-tool`
- * {detail:{component:"llm-config-tray", scope, toolPrompt, toolTools}} event
- * (relayed across the isolation boundary by the isolation open-tool bridge).
- *
- * The picker is driven through its injectable `source` {read, write} so this tool
- * is the sole owner of settings-doc writes; per-tool/per-doc scope overrides are
- * written via writeScopeOverride, the global default via writeConfig.
+ * Opened by clicking the icon, or by a `patchwork:open-tool` event with
+ * {detail: {component: "llm-config-tray", scope, toolPrompt, toolTools}}, which
+ * isolation relays out of a sandbox. Scoped edits go through writeScopeOverride,
+ * the global default through writeConfig.
  */
 
-/** @typedef {{toolId?: string, docId?: string, toolName?: string, docName?: string}} Scope */
+// A per-tool (and optionally per-doc) config scope. No scope = the global default.
+type Scope = { toolId: string; docId?: string; toolName?: string; docName?: string };
 
 export function LlmConfigTray(element: HTMLElement) {
   const style = document.createElement("style");
@@ -57,7 +54,7 @@ export function LlmConfigTray(element: HTMLElement) {
   // Current scope the picker edits (set when opened via event; icon click uses
   // the global default scope).
   const [open, setOpen] = createSignal(false);
-  const [scope, setScope] = createSignal<Scope>({});
+  const [scope, setScope] = createSignal<Scope | undefined>();
   const [payload, setPayload] = createSignal<any>({});
   const [pos, setPos] = createSignal<{ left: number; top: number } | null>(
     null
@@ -68,10 +65,8 @@ export function LlmConfigTray(element: HTMLElement) {
   let pickerHost: HTMLDivElement | undefined;
   let currentPicker: any = null;
 
-  // Build the picker's source from the current scope: scoped reads/writes when a
-  // toolId is present, else the global default config.
-  function sourceFor(sc: Scope) {
-    if (sc && sc.toolId) {
+  function sourceFor(sc: Scope | undefined) {
+    if (sc) {
       return {
         read: () => {
           try {
@@ -92,12 +87,12 @@ export function LlmConfigTray(element: HTMLElement) {
   async function mountPicker() {
     const sc = scope();
     const p = payload() || {};
-    await ensureConfig(sc && sc.toolId ? sc : undefined, element);
+    await ensureConfig(sc, element);
     if (!pickerHost) return;
     pickerHost.replaceChildren();
     currentPicker = pickerDom({
       source: sourceFor(sc),
-      scope: sc && sc.toolId ? sc : undefined,
+      scope: sc,
       toolName: sc?.toolName || p.toolName,
       toolPrompt: p.toolPrompt,
       toolTools: p.toolTools,
@@ -111,8 +106,8 @@ export function LlmConfigTray(element: HTMLElement) {
     setPos({ left: Math.max(8, r.right - 520), top: Math.max(8, r.top - 8) });
   }
 
-  function openPicker(sc: Scope, p: any) {
-    setScope(sc || {});
+  function openPicker(sc: Partial<Scope> | undefined, p: any) {
+    setScope(sc?.toolId ? (sc as Scope) : undefined);
     setPayload(p || {});
     positionPopover();
     setOpen(true);
@@ -132,7 +127,7 @@ export function LlmConfigTray(element: HTMLElement) {
   const onOpenTool = (e: Event) => {
     const detail = (e as CustomEvent).detail;
     if (!detail || detail.component !== "llm-config-tray") return;
-    openPicker(detail.scope || {}, detail);
+    openPicker(detail.scope, detail);
   };
   document.addEventListener("patchwork:open-tool", onOpenTool as EventListener);
 
@@ -169,7 +164,7 @@ export function LlmConfigTray(element: HTMLElement) {
           onClick={(event) => {
             event.stopPropagation();
             if (open()) closePicker();
-            else openPicker({}, {});
+            else openPicker(undefined, {});
           }}
         >
           <span>🤖</span>
@@ -197,13 +192,8 @@ export function LlmConfigTray(element: HTMLElement) {
     element
   );
 
-  onCleanup(() => {
-    try {
-      currentPicker?.destroy?.();
-    } catch {}
-  });
-
   return () => {
+    closePicker();
     dispose();
     style.remove();
     document.removeEventListener(
