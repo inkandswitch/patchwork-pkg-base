@@ -1,96 +1,93 @@
 /**
- * The LLM consume-half — the mirror of worker-spec.js.
+ * The consume half of the LLM protocol, the mirror of worker-spec.js.
  *
- * worker-spec.js (the SERVE half) turns a consumer's request frames into worker
- * traffic; this file (the CONSUME half) turns a tool's `generate(...)` call into
- * those request frames and reads the event stream back. Together they are the LLM
- * *protocol* layer, sitting above the generic transport (@grjte/patchwork-worker)
- * and below any tool that wants to generate.
+ * Tools don't import this. index.ts registers `makeLLMClient` as the
+ * `patchwork:worker-client` plugin "llm", and a tool calls
+ * `connectWorkerClient("llm", …)` from @grjte/patchwork-worker to get one bound
+ * to a session.
  *
- * How a tool gets it: NOT by import. index.ts registers `makeLLMClient` as the
- * `patchwork:worker-client` plugin with id "llm", paired with the `patchwork:worker`
- * plugin of the same id. A tool calls the transport's
- * `connectWorkerClient("llm", …)`, which resolves this factory from the plugin
- * registry, opens a session for "llm", and returns `makeLLMClient(session)`. So
- * both halves of the protocol ship in this one package and cannot drift, and the
- * tool has no build-time dependency on it.
+ * This is the chunk a sandboxed tool loads, so it must import nothing: never
+ * @chee/patchwork-llm, never ./worker-spec.js.
  *
- * ⚠ Imports NOTHING — and must never import @chee/patchwork-llm or
- * ./worker-spec.js. This chunk is what a sandboxed tool loads (via the plugin's
- * `load()`); the library and the serve half stay host-side.
- *
- * Tool calls: the serve half parses `<tool_call>` text host-side for providers
- * without native function calling, so `result.toolCalls` is populated (or null)
- * for every provider and a consumer never parses model text itself.
- *
- * Frame vocabulary (must stay in step with worker-spec.js):
- *   request:  {id, op:"generate", scope, system, tools, messages|text, sessionKey}
- *   events:   {id, type:"token"|"stats"|"prediction"|"status"|"model"|
- *                       "result"|"error", ...}   result/error terminal.
+ * Frames:
+ *   generate  {op, scope, system, tools, userTools, messages|text, sessionKey}
+ *             -> token | status | model | stats | prediction ... result | error
+ *   run-tool  {op, scope, name, args} -> tool-result | error
  */
 
 /**
+ * @typedef {Object} Tool
+ * @property {string} name
+ * @property {string} [description]
+ * @property {any} [parameters]      JSON Schema for the arguments
+ * @property {boolean} [defaultOff]  only offered once the user turns it on
+ * @property {(args: any) => any} [handler]  generateWithTools runs this; never sent
+ *
+ * @typedef {Object} ToolCall
+ * @property {string} name     as declared in `tools`
+ * @property {any} args
+ * @property {string} [id]
+ * @property {boolean} [host]  one of the user's own tools: run it with `runTool`
+ *
  * @typedef {Object} GenOpts
- * @property {any} [scope]              {toolId, docId} — the host resolves config for this scope
- * @property {string|Record<string,string>} [system]  string | {default, [provider]}
- * @property {any[]} [tools]            tool descriptors {name, description, defaultOff?, parameters?}
+ * @property {any} [scope]  {toolId, docId}; the host resolves config for it
+ * @property {string|Record<string,string>} [system]  a string, or {default, [provider]}
+ * @property {Tool[]} [tools]
+ * @property {boolean} [userTools]  also offer the user's own tools (host-run)
  * @property {string} [sessionKey]
- * @property {HTMLElement} [element]    a node in the mounted <patchwork-view>, for discovery
+ * @property {HTMLElement} [element]  a node in the mounted <patchwork-view>, for discovery
  * @property {AbortSignal} [signal]
- * @property {(delta:string, full:string)=>void} [onToken]
- * @property {(message:string)=>void} [onStatus]
- * @property {(label:string)=>void} [onModel]
+ * @property {(delta: string, full: string, round?: number) => void} [onToken]
+ * @property {(message: string) => void} [onStatus]
+ * @property {(label: string) => void} [onModel]
  *
  * @typedef {Object} GenResult
  * @property {string} text
- * @property {any[]|null} toolCalls
- * @property {string} [toolMode]
+ * @property {ToolCall[]|null} toolCalls
+ * @property {"native"|"template"|"text"} [toolMode]  how to thread results back
  *
- * @typedef {{generate: (messages: any[]|string, opts?: GenOpts) => Promise<GenResult>}} LLMClient
+ * @typedef {GenOpts & {
+ *   maxRounds?: number,
+ *   onToolCall?: (info: {name: string, args: any, result?: any, error?: string}) => void,
+ * }} ToolLoopOpts
  */
 
-/**
- * The `patchwork:worker-client` factory for kind "llm": bind the LLM protocol to
- * an already-open transport session and return the client API.
- *
- * @param {{request: (frame:any, opts:any)=>{promise:Promise<any>}}} session
- * @returns {LLMClient}
- */
+/** @param {{request: (frame: any, opts: any) => {promise: Promise<any>}}} session */
 export function makeLLMClient(session) {
 	/**
-	 * Generate a completion. Streams tokens via opts.onToken; resolves with the
-	 * final text + any structured tool calls. Tool EXECUTION stays in the tool —
-	 * the worker only receives tool descriptors and returns calls to run.
+	 * Generate a completion. Streams tokens via `onToken` and resolves with the
+	 * text and any tool calls. Running the calls is up to the caller; see
+	 * generateWithTools.
 	 * @param {any[]|string} messages
 	 * @param {GenOpts} [opts]
 	 * @returns {Promise<GenResult>}
 	 */
 	function generate(messages, opts = {}) {
-		const payload = typeof messages === "string" ? {text: messages} : {messages}
-
 		const {promise} = session.request(
 			{
 				op: "generate",
 				sessionKey: opts.sessionKey,
 				scope: opts.scope,
 				system: opts.system,
-				tools: opts.tools,
-				...payload,
+				// Handlers can't be structured-cloned across the isolation boundary.
+				tools: opts.tools?.map(({name, description, parameters, defaultOff}) => ({
+					name,
+					description,
+					parameters,
+					defaultOff,
+				})),
+				userTools: opts.userTools,
+				...(typeof messages === "string" ? {text: messages} : {messages}),
 			},
 			{
 				element: opts.element,
 				signal: opts.signal,
 				terminal: {
-					result: (/** @type {any} */ f) => ({
-						text: f.text,
-						toolCalls: f.toolCalls || null,
-						toolMode: f.toolMode,
-					}),
+					result: (/** @type {any} */ f) => ({text: f.text, toolCalls: f.toolCalls || null, toolMode: f.toolMode}),
 					error: (/** @type {any} */ f) => {
 						throw new Error(f.message)
 					},
 				},
-				// prediction / stats frames are ignored by the caller unless it asks.
 				onFrame: (/** @type {any} */ f) => {
 					if (f.type === "token") opts.onToken?.(f.delta, f.text)
 					else if (f.type === "status") opts.onStatus?.(f.message)
@@ -98,9 +95,117 @@ export function makeLLMClient(session) {
 				},
 			}
 		)
-
-		return /** @type {Promise<GenResult>} */ (promise)
+		return promise
 	}
 
-	return {generate}
+	/**
+	 * Run one of the user's own tools (a call tagged `host`). It runs on the
+	 * host, sandboxed.
+	 * @param {ToolCall} call
+	 * @param {Pick<GenOpts, "scope"|"element"|"signal">} [opts]
+	 */
+	function runTool(call, opts = {}) {
+		return session.request(
+			{op: "run-tool", scope: opts.scope, name: call.name, args: call.args},
+			{
+				element: opts.element,
+				signal: opts.signal,
+				terminal: {
+					"tool-result": (/** @type {any} */ f) => f.result,
+					error: (/** @type {any} */ f) => {
+						throw new Error(f.message)
+					},
+				},
+			}
+		).promise
+	}
+
+	/**
+	 * Generate, run the tool calls, feed the results back and generate again,
+	 * until the model stops calling tools or `maxRounds` (default 6) runs out.
+	 * Calls to `tools` run their `handler` here; the user's own tools are offered
+	 * too and run on the host.
+	 * @param {any[]|string} messages
+	 * @param {ToolLoopOpts} [opts]
+	 * @returns {Promise<{text: string, messages: any[]}>}
+	 */
+	async function generateWithTools(messages, opts = {}) {
+		const {maxRounds = 6, onToolCall, onToken, ...genOpts} = opts
+		const tools = opts.tools || []
+		const convo = typeof messages === "string" ? [{role: "user", content: messages}] : [...messages]
+
+		/** @param {ToolCall} call @returns {Promise<string>} */
+		async function run(call) {
+			const {name, args} = call
+			try {
+				let result
+				if (call.host) result = await runTool(call, opts)
+				else {
+					const handler = tools.find((t) => t.name === name)?.handler
+					if (!handler) throw new Error(`no tool named "${name}"`)
+					result = await handler(args || {})
+				}
+				onToolCall?.({name, args, result})
+				return typeof result === "string" ? result : (JSON.stringify(result) ?? "")
+			} catch (e) {
+				const error = /** @type {any} */ (e)?.message || String(e)
+				onToolCall?.({name, args, error})
+				return "Error: " + error
+			}
+		}
+
+		let text = ""
+		for (let round = 0; round < maxRounds; round++) {
+			const res = await generate(convo, {
+				...genOpts,
+				userTools: genOpts.userTools ?? true,
+				onToken: onToken && ((delta, full) => onToken(delta, full, round)),
+			})
+			text = res.text
+			if (!res.toolCalls) break
+			const calls = res.toolCalls.map((call, i) => ({...call, id: call.id || `call_${round}_${i}`}))
+			const results = []
+			for (const call of calls) results.push(await run(call))
+			convo.push(...threadResults(res, calls, results))
+		}
+		return {text, messages: convo}
+	}
+
+	return {generate, generateWithTools, runTool}
+}
+
+/**
+ * The messages that carry one round's tool calls and results back to the
+ * model, in the shape its `toolMode` expects.
+ * @param {GenResult} res
+ * @param {(ToolCall & {id: string})[]} calls
+ * @param {string[]} results
+ */
+function threadResults(res, calls, results) {
+	if (res.toolMode === "native")
+		return [
+			{
+				role: "assistant",
+				content: res.text || null,
+				tool_calls: calls.map((c) => ({
+					id: c.id,
+					type: "function",
+					function: {name: c.name, arguments: JSON.stringify(c.args || {})},
+				})),
+			},
+			...calls.map((c, i) => ({role: "tool", tool_call_id: c.id, content: results[i]})),
+		]
+	if (res.toolMode === "template")
+		return [
+			{
+				role: "assistant",
+				content: "",
+				tool_calls: calls.map((c) => ({type: "function", function: {name: c.name, arguments: c.args || {}}})),
+			},
+			...results.map((content) => ({role: "tool", content})),
+		]
+	return [
+		{role: "assistant", content: res.text},
+		...calls.map((c, i) => ({role: "user", content: `Tool "${c.name}" returned:\n${results[i]}`})),
+	]
 }
