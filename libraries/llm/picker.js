@@ -239,7 +239,7 @@ const CSS = `
  * @property {string[]} [locked]
  * @property {{name?: string, text?: string}} [toolPrompt]
  * @property {any[]} [tools]
- * @property {Array<{name: string, description?: string}>} [toolTools]  host-tool-provided built-in tools
+ * @property {Array<{name: string, description?: string, defaultOff?: boolean}>} [toolTools]  host-tool-provided built-in tools
  * @property {string} [toolName]  label for the host tool's built-in tools
  * @property {() => void} [onRequestClose]
  * @property {{toolId: string, docId?: string, toolName?: string, docName?: string}} [scope]
@@ -1837,16 +1837,17 @@ function buildPickerInto(host, opts) {
 			text: "Runs each tool call's JS in an isolated Worker with no access to this page, your repo, or your account — safer for tool calls added by URL. Off = handlers run on the page with full access (needed for tool calls that read/write documents or the DOM).",
 		})
 
-		// Tools the host tool itself provides (opts.toolTools: [{name, description}]).
-		// Read-only — their handlers live in the tool — but each can be toggled off;
-		// the tool reads cfg.toolToggles[name] to decide what to offer the model.
+		// Tools the host tool itself provides (opts.toolTools: [{name, description,
+		// defaultOff?}]). Read-only — their handlers live in the tool — but each can
+		// be toggled; cfg.toolToggles[name] decides what's offered to the model. A
+		// `defaultOff` tool is off until toggled on.
 		let providedCard = null
 		const provided = (opts && opts.toolTools) || []
 		if (provided.length) {
 			if (!cfg.toolToggles) cfg.toolToggles = {}
-			const rows = provided.map((/** @type {{name: string, description?: string}} */ t) => {
+			const rows = provided.map((/** @type {{name: string, description?: string, defaultOff?: boolean}} */ t) => {
 				const cb = el("input", {type: "checkbox"})
-				cb.checked = cfg.toolToggles[t.name] !== false
+				cb.checked = t.defaultOff ? cfg.toolToggles[t.name] === true : cfg.toolToggles[t.name] !== false
 				cb.addEventListener("change", () => {
 					cfg.toolToggles = {...(cfg.toolToggles || {}), [t.name]: cb.checked}
 				})

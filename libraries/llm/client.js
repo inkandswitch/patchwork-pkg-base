@@ -743,9 +743,12 @@ export async function generateWithTools(messages, opts = {}) {
 		finalText = res.text
 
 		// Native structured tool_calls if the provider returned them; otherwise
-		// parse the model's text (XML <tool_call> / fenced / bare JSON).
+		// parse the model's text (XML <tool_call> / fenced / bare JSON), keeping
+		// only calls to real tools — prose can contain JSON that looks like one.
 		const nativeCalls = res.toolCalls && res.toolCalls.length > 0
-		const calls = /** @type {any[]} */ (nativeCalls ? res.toolCalls : parseToolCalls(res.text))
+		const calls = /** @type {any[]} */ (
+			nativeCalls ? res.toolCalls : parseToolCalls(res.text).filter((call) => findTool(call.name))
+		)
 		if (!calls.length) break
 
 		if (nativeCalls) {
