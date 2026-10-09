@@ -68,8 +68,7 @@ async function ensureChitchat(
 		plugins: defaultPlugins.slice(),
 		"@patchwork": {type: "chat"},
 		// Auto-invite the computer (ChatRoot's onMount claims the host when
-		// hasComputer is set) — but it stays off nosey, so it only replies when
-		// @mentioned or replied to.
+		// hasComputer is set).
 		hasComputer: true,
 	} as any)
 	// Resolve through find so a draft forks the new doc into this draft's clones.

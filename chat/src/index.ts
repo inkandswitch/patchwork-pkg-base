@@ -1,8 +1,9 @@
-import {featureDescriptions} from "./features"
+import {featureDescriptions} from "./feature-descriptions"
 import {syntaxPluginDescriptions} from "./lib/syntax"
 import {slashPluginDescriptions} from "./lib/slash-plugins"
 import {messageActionDescriptions} from "./lib/message-actions"
 import {emojiPackDescriptions} from "./lib/emoji-packs"
+import {skillDescriptions} from "./skills"
 
 export const plugins = [
 	{
@@ -73,4 +74,7 @@ export const plugins = [
 	...slashPluginDescriptions,
 	...messageActionDescriptions,
 	...emojiPackDescriptions,
+	// `llm:skill` instruction packs for the computer. Any bundle can register
+	// more; these are the ones chat ships with.
+	...skillDescriptions,
 ]
