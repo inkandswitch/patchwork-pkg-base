@@ -1,5 +1,6 @@
 import type {PluginSelector} from "./lib/registry"
 import {selectionFeature} from "./features/selection-mention"
+import {featureMetadata} from "./feature-descriptions"
 
 // Features are NOT a hardcoded struct on the component. Each big feature is a
 // `chat:feature` plugin declaration (host-registrable, like the other four types);
@@ -26,25 +27,19 @@ export interface FeaturePlugin {
 	slots?: Record<string, (ctx: any, extra?: any) => any>
 }
 
-// The built-in feature declarations (also the registry fallback). Message send,
-// contact avatars + names, inline `code`/`*bold*`/`_italic_`/fences, image send and
-// patchwork-tool embedding are ALWAYS on (not gated) — they're the chat itself.
-// Replies ride the (core-tier) `reply` message-action, so no flag here.
+// The built-in feature declarations with their slots (also the registry fallback).
+// Message send, contact avatars + names, inline `code`/`*bold*`/`_italic_`/fences,
+// image send and patchwork-tool embedding are ALWAYS on (not gated) — they're the
+// chat itself. Replies ride the (core-tier) `reply` message-action, so no flag here.
 // The base `chat` tool owns only the core features plus the computer. Everything
 // else (reactions, sidebar, voice, gifSelfie, emoticons, call, notifications) is
-// contributed by the `chitter` bundle via the registry.
-export const featurePlugins: FeaturePlugin[] = [
-	{type: "chat:feature", id: "presence", name: "Presence", tier: "core"},
-	{type: "chat:feature", id: "typing", name: "Typing indicator", tier: "core"},
-	{type: "chat:feature", id: "computer", name: "Computer (AI)", tier: "full"},
-	selectionFeature,
-]
+// contributed by the `chitter` bundle via the registry. The metadata lives in
+// feature-descriptions.ts, which index.ts registers.
+const featureSlots: Record<string, FeaturePlugin["slots"]> = {
+	[selectionFeature.id]: selectionFeature.slots,
+}
 
-// Serializable registry descriptions: metadata only, with `slots` deferred behind
-// `async load()` (the same pattern as slash/messageaction/emojipack descriptions).
-// Raw `...featurePlugins` can only be registered while they're pure data; the moment
-// a feature carries `slots`, register the descriptions instead.
-export const featureDescriptions = featurePlugins.map((p) => {
-	const {slots, ...meta} = p
-	return {...meta, async load() { return {slots} }}
-})
+export const featurePlugins: FeaturePlugin[] = featureMetadata.map((meta) => ({
+	...meta,
+	...(featureSlots[meta.id] && {slots: featureSlots[meta.id]}),
+}))

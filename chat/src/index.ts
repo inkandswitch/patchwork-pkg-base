@@ -1,4 +1,4 @@
-import {featureDescriptions} from "./features"
+import {featureDescriptions} from "./feature-descriptions"
 import {syntaxPluginDescriptions} from "./lib/syntax"
 import {slashPluginDescriptions} from "./lib/slash-plugins"
 import {messageActionDescriptions} from "./lib/message-actions"
