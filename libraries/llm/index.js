@@ -85,8 +85,7 @@ import { CrossOriginWorker as Worker } from "./cross-origin-worker.js";
 // `new URL("./worker.js", import.meta.url)` resolves against this module's own
 // URL, so it finds the sibling worker.js wherever the library is served from,
 // and bundlers only emit the worker chunk when they see this exact literal.
-// `Worker` is CrossOriginWorker, since this library is usually served from
-// another origin than the page.
+// `Worker` here is CrossOriginWorker.
 //
 //   import { createWorker } from "@chee/patchwork-llm";
 //   const worker = createWorker();

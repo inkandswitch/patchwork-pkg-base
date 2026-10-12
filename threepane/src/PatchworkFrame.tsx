@@ -126,12 +126,9 @@ export function PatchworkFrame({
     selectedDocProviderElement
   );
 
-  // NOTE: patchwork-worker-provider is deliberately NOT in this gate. It ships
-  // from the same providers package as the three above, but it listens at the
-  // document (see its header), so it needs no mount-order guarantee from us —
-  // and gating would only add a failure mode: `patchwork-view` emits no event
-  // when a component fails to load, so a gate on it once rendered a blank frame
-  // instead of merely losing the LLM.
+  // patchwork-worker-provider isn't waited on. It listens at the document, so
+  // mount order doesn't matter, and patchwork-view sends no event when a
+  // component fails to load, so waiting on it can leave the frame blank.
   const areProvidersReady = createMemo(
     () =>
       isSelectedDocProviderReady() &&
@@ -175,22 +172,10 @@ export function PatchworkFrame({
               ref={setToolStorageProviderElement}
             >
               {/*
-                Worker provider: answers patchwork:worker-channel subscriptions
-                by running a worker (e.g. the LLM worker) in this host realm and
-                transferring its stream pair to the consumer — including across
-                the isolation boundary (relayed by the isolation providers-bridge).
-                Must wrap the document area so both the non-isolated tools'
-                subscribes and the bridge's dispatched subscribe reach it as an
-                ancestor.
-
-                NOT gated on patchwork:mounted, unlike the three providers
-                above. It listens at the document, so it hears requests
-                whenever it happens to mount, and a gate would only add a
-                failure mode (patchwork-view stays silent when a component
-                fails to load; a gate on it once blanked the whole frame). It
-                still wraps the document area because the element it is
-                mounted on is the host-realm context handed to a worker spec's
-                open(ctx).
+                Runs workers (like the LLM's) on the host for
+                patchwork:worker-channel subscriptions, including ones relayed
+                out of isolation. It wraps the document area because this
+                element is the ctx a worker spec's open(ctx) gets.
               */}
               <patchwork-view component="patchwork-worker-provider">
                 <Show when={areProvidersReady()}>

@@ -65,17 +65,10 @@ export function IsolatedDocumentArea(props: IsolatedDocumentAreaProps) {
       // `getAttribute("automerge-allowlist")` and its MutationObserver watches
       // the attribute, so a property assignment would be invisible to it.
       attr:automerge-allowlist={rootUrls().join(",")}
-      // `patchwork:worker-channel` opts in to worker connections: the providers
-      // bridge relays them to the host-realm patchwork-worker-provider (an
-      // ancestor of this element), which runs the worker out here and transfers
-      // its stream pair into the iframe. Opting in covers every registered
-      // worker kind — a tool still only holds the streams for the worker it
-      // connected to, since each subscription carries its own port.
+      // patchwork:worker-channel lets isolated tools use workers, which run out
+      // here under patchwork-worker-provider.
       shared-providers="patchwork:contact,patchwork:selected-doc,patchwork:worker-channel"
-      // Opt in to opening host-realm tools: the isolation open-tool bridge
-      // relays patchwork:open-tool for these component ids so an isolated tool
-      // can open the host's LLM config picker (which owns the settings doc and
-      // API key, and so can only run out here).
+      // Host tools an isolated tool may open with patchwork:open-tool.
       shared-tools="llm-config-tray"
       style={{ display: "contents" }}
     >
