@@ -166,8 +166,7 @@ function getConnection() {
 	// `new URL("./worker.js", import.meta.url)` must stay inline inside the
 	// constructor — that's the exact pattern bundlers (vite) statically detect to
 	// emit the worker chunk; hoisting it to a variable silently breaks bundling.
-	// `Worker` is CrossOriginWorker, since this library is usually served from
-	// another origin than the page.
+	// `Worker` here is CrossOriginWorker.
 	const w = new Worker(new URL("./worker.js", import.meta.url), {type: "module"})
 	w.onmessage = (/** @type {MessageEvent} */ ev) => dispatch(ev.data)
 	connection = {post: (m) => w.postMessage(m)}

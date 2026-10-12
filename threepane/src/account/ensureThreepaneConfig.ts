@@ -50,10 +50,8 @@ export async function ensureThreepaneConfig(
       if (!doc.tray) {
         doc.tray = DEFAULT_TRAY_TOOLS.slice();
       } else {
-        // Add any newly-introduced default tray tools (e.g. llm-config-tray) that
-        // an existing account's saved tray predates — matched by id (slotId handles
-        // the string-vs-tuple + Automerge RawString cases) — while preserving the
-        // user's order and any tools they added/removed.
+        // Append default tray tools the saved tray is missing, like
+        // llm-config-tray. slotId compares across the string and tuple forms.
         const present = new Set(doc.tray.map((s) => slotId(s)));
         for (const id of DEFAULT_TRAY_TOOLS) {
           if (!present.has(id)) doc.tray.push(id);

@@ -19,15 +19,10 @@ import {TypingBar} from "./TypingBar"
 import {InputArea} from "./InputArea"
 import {PluginPanel} from "./PluginPanel"
 import {Lightbox} from "./Lightbox"
-// Chat imports NOTHING from patchwork-llm and has NO build-time dependency on the
-// LLM host package. Generation goes through the generic @grjte/patchwork-worker
-// transport; the LLM client (the protocol layer: frame vocabulary in, {text,
-// toolCalls} out) is resolved at RUNTIME from the plugin registry — whichever
-// package registered a `patchwork:worker-client` plugin with id "llm" (today
-// @grjte/llm-host) supplies a factory `(session) => {generate}`. The host
-// worker-provider resolves config and runs the worker; config lives entirely in
-// the host-side LLM config tray, opened via a patchwork:open-tool event. See
-// libraries/patchwork-worker/README.md ("The paired client plugin").
+// The LLM client is looked up at runtime from whichever package registers a
+// `patchwork:worker-client` plugin with id "llm" (llm-host, for now), so chat
+// has no build-time dependency on it. See "The paired client plugin" in
+// libraries/patchwork-worker/README.md.
 import {connectWorkerClient} from "@grjte/patchwork-worker/client.js"
 import {generateId} from "../lib/helpers"
 import {automergeUrlToServiceWorkerUrl} from "@inkandswitch/patchwork-filesystem"
@@ -49,11 +44,9 @@ interface LLMClient {
 	): Promise<{text: string; toolCalls: any[] | null; toolMode?: string}>
 }
 
-// One client for the whole tool, resolved on first use. The registry lookup is
-// global (no element needed); the session inside it opens on the first request,
-// multiplexes every generation by id, and reconnects on its own. A FAILED
-// resolution is not cached: a tool that asked before the LLM package registered
-// gets another try on the next generation instead of being wedged.
+// One client for the whole tool, made on first use. A failed lookup isn't
+// cached, so if chat asks before llm-host has registered, the next generation
+// tries again.
 let llmClientPromise: Promise<LLMClient> | null = null
 function llmClient(): Promise<LLMClient> {
 	if (!llmClientPromise) {
@@ -132,11 +125,8 @@ export function ChatRoot(props: {
 	// Sidebar state
 	const [sidebarVisible, setSidebarVisible] = createSignal(false)
 
-	// The per-tool / per-doc config scope this chat resolves against. Chat never
-	// reads config itself — it passes this scope to the host on every generation
-	// (the host worker-provider resolves provider/model/apiKey/prompts/toolToggles
-	// from it) and when opening the config picker. `docName` is a display label for
-	// the picker's scope switcher.
+	// What the host looks up LLM config for. `docName` is only a label for the
+	// picker.
 	const llmScope = () => ({
 		toolId: "chitterchatter",
 		docId: props.handle.url,
@@ -144,13 +134,8 @@ export function ChatRoot(props: {
 		docName: (props.handle.doc() as any)?.title || "this chat",
 	})
 
-	// Open the host-side LLM config tool (the @grjte/llm-config tray). Chat can't
-	// render the picker itself (config lives in the host; the settings doc is
-	// denylisted under isolation) — it dispatches a patchwork:open-tool event that
-	// the host tray answers directly, or that the isolation open-tool bridge
-	// relays to the host when chat runs inside the sandbox. Same call either way.
-	// We pass chat's system prompt + tool list (with defaultOff flags) so the host
-	// picker can surface them; opt-in tools render unchecked with no doc write.
+	// Ask the host to open the LLM config tray (relayed by the open-tool bridge
+	// when chat is isolated). Our prompt and tools go along for it to show.
 	function openModelPicker() {
 		props.element.dispatchEvent(
 			new CustomEvent("patchwork:open-tool", {
@@ -190,10 +175,7 @@ export function ChatRoot(props: {
 	// Human-readable label of the model the computer is currently running, shown
 	// in the computer's username (e.g. "computer (OpenRouter Claude Opus 4)").
 	const [modelLabel, setModelLabel] = createSignal("")
-	// The model label now arrives on the generation stream (the host worker emits a
-	// {type:"model", label} frame — chat reads no config to compute it). This is
-	// called from the generate loop's onModel callback: it updates the label and,
-	// if it changed since last time, announces the switch in the chat.
+	// Called with the model label the worker sends with each generation.
 	function noteModelLabel(label: string) {
 		if (!label) return
 		const before = modelLabel()
@@ -214,9 +196,6 @@ export function ChatRoot(props: {
 		const owner = (props.handle.doc() as any)?.computerOwner
 		return "computer" + (owner ? " (" + owner + ")" : "") + modelSuffix()
 	}
-	// The model label is populated from the generation stream (noteModelLabel), so
-	// there's nothing to resolve at rest — the first computer message picks it up
-	// as soon as generation emits the model frame.
 	const [computerAbort, setComputerAbort] =
 		createSignal<AbortController | null>(null)
 	const computerRespondedToIds = new Set<string>()
@@ -527,21 +506,15 @@ You can include \`\`\`file blocks to create and embed files, \`\`\`embed blocks 
 
 Keep responses concise. When you create a tool, explain briefly what it does.`
 
-	// Pick the prompt for the active model: local/in-browser models (small,
-	// limited context) get the compact prompt; capable cloud providers get the
-	// full one with worked examples. The provider is resolved HOST-side, so chat
-	// no longer reads config to choose — it sends BOTH variants as a
-	// provider-conditional map and the worker picks by resolved provider (see
-	// computerSystemForFrame). computerSystemPrompt() returns the full prompt for
-	// display (e.g. in the picker).
+	// The prompt to show in the picker.
 	function computerSystemPrompt(): string {
 		if (isContext()) return CONTEXT_SYSTEM_PROMPT
 		return COMPUTER_SYSTEM_PROMPT_FULL
 	}
 
-	// The provider-conditional system prompt sent on each generation: local models
-	// get the compact prompt, everything else the full one. The worker resolves
-	// the provider and picks the matching entry (falling back to `default`).
+	// Local/in-browser models (small, limited context) get the compact prompt;
+	// cloud providers get the full one with worked examples. Only the host knows
+	// the provider, so both are sent and the worker picks.
 	function computerSystemForFrame(): string | Record<string, string> {
 		if (isContext()) return CONTEXT_SYSTEM_PROMPT
 		return {
@@ -706,13 +679,8 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 		return ["tool: " + call.name, ...lines].join("\n")
 	}
 
-	// Tools to offer this turn: the active mode's full set, each tagged with
-	// `defaultOff` (chat's opt-in policy). Chat does NOT filter by toolToggles —
-	// the host worker applies the generic rule (include unless off; defaultOff
-	// tools included only when explicitly on) using the config it resolves. So the
-	// user's per-tool toggles still take effect, host-side, without chat reading
-	// config. Picker default-off rendering is handled via the same `defaultOff`
-	// flag (no seed-write needed).
+	// The active mode's tools, with opt-in ones marked `defaultOff`. The worker
+	// drops whichever the user's toggles turn off.
 	function enabledComputerTools() {
 		return activeTools().map((t) => ({
 			...t,
@@ -722,17 +690,9 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 		}))
 	}
 
-	// (Former onMount toolToggles seed-write removed: the picker now renders opt-in
-	// tools unchecked via their `defaultOff` flag, and the worker filters by that
-	// flag + the user's toggles — no client-side config read/write needed.)
-
-	// ---- LLM generation (via the host worker over @grjte/patchwork-worker) ----
-	// Provider / model / API key / sampling all live in the LLM settings doc and
-	// are configured through the host-side config tool (`/model` → openModelPicker
-	// dispatches patchwork:open-tool). The host worker-provider resolves config
-	// from `scope` and runs the worker (local transformers.js / OpenRouter /
-	// Ollama), streaming tokens back. Chat reads no config. The client itself
-	// comes from the registry (see llmClient), not from an import.
+	// ---- LLM generation ----
+	// Runs on the host, over @grjte/patchwork-worker. The host resolves provider,
+	// model, key and sampling from `scope`.
 	async function generateLLM(
 		messages: any[],
 		onToken: (text: string) => void,
@@ -745,18 +705,11 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 		const client = await llmClient()
 		const {text, toolCalls} = await client.generate(messages, {
 			sessionKey: props.handle.url,
-			// A node inside the mounted <patchwork-view>, so connectWorker's
-			// discovery dispatches patchwork:worker-channel from here — reaching the
-			// host-realm worker provider (directly, or relayed across isolation).
+			// The worker-channel request is dispatched from here.
 			element: props.element,
-			// The scope the host resolves config from (provider/model/apiKey/prompts/
-			// toolToggles) — chat sends it but reads none of it.
 			scope: llmScope(),
-			// Provider-conditional system prompt ({default, local}); the worker picks
-			// by resolved provider and composes with any user-forked prompt host-side.
 			...(system ? {system} : {}),
-			// All active tools, each tagged defaultOff; the worker filters by the
-			// user's toolToggles. Execution stays in runToolByName.
+			// Calls come back here to be run by runToolByName.
 			...(tools && tools.length ? {tools} : {}),
 			onToken: (_delta: string, full: string) => onToken(full),
 			onStatus: (status: string) => onStatus?.(status),
@@ -766,8 +719,6 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 		return {text, toolCalls: (toolCalls as any) || null}
 	}
 
-	// (describeCurrentModel removed — the model label is computed HOST-side and
-	// arrives on the generation stream via noteModelLabel; chat reads no config.)
 
 	// ---- Rich block parsing ----
 	function parseRichBlocks(response: string) {
@@ -2112,9 +2063,6 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 		}
 		setComputerActive(true)
 		claimComputerHost()
-		// The model label arrives on the first generation stream (noteModelLabel);
-		// we don't resolve it at join time (chat reads no config). The join message
-		// points people at /model to see/change which model is running.
 		sendComputerMessage(
 			[
 				"hello! i'm computer, a computer program. mention @computer or reply to my messages and i'll respond.",
@@ -2447,12 +2395,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 				.includes("@momputer")
 			// Generate a tool name for this response — the LLM uses it if it builds a tool
 			const suggestedToolName = randomToolName()
-			// The provider-conditional base system prompt ({default, local}) plus
-			// per-response addenda that always apply. Chat reads no config; the worker
-			// picks the base by resolved provider and composes. (Forked/custom system
-			// prompts via cfg.systemUrl are not applied for now — see the config
-			// redesign plan; chat no longer reads systemUrl.) The addenda are appended
-			// to every provider variant so they apply regardless of which is chosen.
+			// The addenda go on every variant of the base prompt.
 			const base = computerSystemForFrame()
 			const addenda =
 				'\n\n## Your Tool ID\nIf you build a patchwork tool in this response, use `"' +
@@ -2539,8 +2482,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 				}
 				let response = (gen.text || "").replace(/^\[Computer\]\s*/i, "")
 				// Real tool calls: structured from the provider (native function
-				// calling), or parsed from the model's <tool_call> text HOST-side by
-				// the LLM worker spec. Chat never parses model output itself.
+				// calling), or parsed from <tool_call> text by the worker.
 				const calls = gen.toolCalls ?? []
 				// Strip any tool-call markup from the text we display (local models
 				// emit <tool_call>…</tool_call> inline; that's plumbing, not prose).
@@ -2988,8 +2930,6 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 	}
 
 	onCleanup(() => {
-		// (No chat-owned model picker to tear down anymore — the picker lives in the
-		// host config tool, opened via patchwork:open-tool.)
 		if (heartbeatInterval) {
 			clearInterval(heartbeatInterval)
 			heartbeatInterval = null
