@@ -79,10 +79,14 @@ export {
   builtinGenerate,
 } from "./builtin.js";
 
+import { CrossOriginWorker as Worker } from "./cross-origin-worker.js";
+
 // Construct this library's compute worker. This has to live in the library:
 // `new URL("./worker.js", import.meta.url)` resolves against this module's own
 // URL, so it finds the sibling worker.js wherever the library is served from,
 // and bundlers only emit the worker chunk when they see this exact literal.
+// `Worker` is CrossOriginWorker, since this library is usually served from
+// another origin than the page.
 //
 //   import { createWorker } from "@chee/patchwork-llm";
 //   const worker = createWorker();

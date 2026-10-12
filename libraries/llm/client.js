@@ -15,6 +15,7 @@ import {readConfig, ensureConfig, callConfig, applyPrompts, effectiveSystem} fro
 import {builtinGenerate} from "./builtin.js"
 import {resolveTools, buildToolsSystem, parseToolCalls, runTool, resolveCfgPrompts, sanitizeToolName} from "./tools.js"
 import {prepareGenerate, buildGeneratePayload, NATIVE_TOOL_PROVIDERS, TEMPLATE_TOOL_PROVIDERS} from "./request.js"
+import {CrossOriginWorker as Worker} from "./cross-origin-worker.js"
 
 /**
  * Per-call options. A superset of every option any exported function accepts;
@@ -165,6 +166,8 @@ function getConnection() {
 	// `new URL("./worker.js", import.meta.url)` must stay inline inside the
 	// constructor — that's the exact pattern bundlers (vite) statically detect to
 	// emit the worker chunk; hoisting it to a variable silently breaks bundling.
+	// `Worker` is CrossOriginWorker, since this library is usually served from
+	// another origin than the page.
 	const w = new Worker(new URL("./worker.js", import.meta.url), {type: "module"})
 	w.onmessage = (/** @type {MessageEvent} */ ev) => dispatch(ev.data)
 	connection = {post: (m) => w.postMessage(m)}

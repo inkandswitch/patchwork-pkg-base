@@ -25,6 +25,7 @@
     "index.js",
     "config.js",
     "client.js",
+    "cross-origin-worker.js",
     "request.js",
     "worker.js",
     "picker.js",
