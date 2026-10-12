@@ -51,20 +51,10 @@ export const plugins: Plugin<any>[] = [
     type: "patchwork:tool",
     id: "threepane",
     tags: ["frame-tool"],
-    name: "Threepane (🤠 wild west)",
+    name: "Threepane",
     icon: "Window",
     supportedDatatypes: ["account"],
     load: loadFrame,
-  },
-  {
-    type: "patchwork:tool",
-    id: "threepane-wild-west",
-    tags: ["frame-tool"],
-    name: "Threepane (🤠 wild west)",
-    icon: "Window",
-    supportedDatatypes: ["account"],
-    load: loadFrame,
-    unlisted: true
   },
   {
     type: "patchwork:tool",
@@ -74,6 +64,7 @@ export const plugins: Plugin<any>[] = [
     icon: "Window",
     supportedDatatypes: ["account"],
     load: () => loadFrame(true),
+    unlisted: true,
   },
   {
     // The isolated document-area root mounted inside the iframe by `threepane-isolation`.
@@ -88,6 +79,7 @@ export const plugins: Plugin<any>[] = [
       await yieldToMacrotask();
       return mountIsolationRoot;
     },
+    
   },
   {
     // Back-compat alias: accounts whose frameToolId still points at the old id
