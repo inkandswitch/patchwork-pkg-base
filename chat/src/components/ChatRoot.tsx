@@ -2656,7 +2656,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 				setLlmStatus(status.replace(/think(ing)?/gi, "computing"))
 			}
 
-			const MAX_TOOL_ROUNDS = 5
+			const MAX_TOOL_ROUNDS = 25
 			let madeChanges = false
 			let completedResponse = false
 			for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
