@@ -30,6 +30,8 @@
     "@inkandswitch/patchwork-elements": "^6.0.2",
     "@inkandswitch/patchwork-filesystem": "^0.2.9",
     "cute.txt": "^0.0.6",
+    "dompurify": "^3.4.16",
+    "marked": "^18.1.0",
     "solid-automerge": "^2.0.1",
     "solid-js": "^1.9.11"
   },
@@ -37,6 +39,7 @@
     "@chee/patchwork-bundles": "^0.2.0",
     "@inkandswitch/patchwork-bootloader": "^0.7.2",
     "happy-dom": "^15.11.7",
+    "jsdom": "^30.1.2",
     "typescript": "^5.8.3",
     "vite": "^5.4.19",
     "vite-plugin-css-injected-by-js": "^3.5.2",

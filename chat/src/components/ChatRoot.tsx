@@ -412,7 +412,8 @@ Derive fill/line/fonts from \`--editor-*\`; accents from \`--studio-*\`. Never h
 - Navigate: \`openDocument(element, url, toolId)\` from patchwork-elements.
 - Rich output: \`\`\`file blocks create+embed files; \`\`\`embed blocks embed existing docs.
 
-Keep responses concise. When you build a tool, briefly say what it does.`
+Keep responses concise. When you build a tool, briefly say what it does.
+Your replies render as GitHub-flavoured Markdown: use **bold**, lists, headings, tables and fenced code with a language where they help.`
 
 	// The FULL prompt — detailed, with worked code examples — for capable cloud
 	// models (OpenRouter / Ollama). Same intro + tool-calling section as the
@@ -524,7 +525,8 @@ When you update files in a tool folder (e.g. updating JS source via edit_doc or 
 ## Rich Messages
 You can include \`\`\`file blocks to create and embed files, \`\`\`embed blocks for existing docs.
 
-Keep responses concise. When you create a tool, explain briefly what it does.`
+Keep responses concise. When you create a tool, explain briefly what it does.
+Your replies render as GitHub-flavoured Markdown: use **bold**, lists, headings, tables and fenced code with a language where they help.`
 
 	// Pick the prompt for the active model: local/in-browser models (small,
 	// limited context) get the compact prompt; capable cloud providers get the
@@ -663,7 +665,8 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 - For text, reach for replace_text first, find_text second, raw automerge_op splices last. Edit the smallest correct span; don't overwrite whole fields.
 - Never change \`@patchwork.type\`. Don't invent fields the tool won't understand — match the document's existing shape.
 - To ASK the user something, use ask_user (or just reply in plain text with no tool call). Tool results are never the user's answer.
-- Keep replies concise. After editing, say briefly what you changed.`
+- Keep replies concise. After editing, say briefly what you changed.
+- Your replies render as GitHub-flavoured Markdown: use **bold**, lists, headings, tables and fenced code with a language where they help.`
 
 	// Default-OFF tools in context mode: DOM inspection + arbitrary JS eval are
 	// powerful/unsandboxed, so they're opt-in (enable per-doc in the picker).
