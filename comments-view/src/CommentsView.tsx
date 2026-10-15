@@ -162,10 +162,16 @@ export function CommentsView(props: { element: HTMLElement }) {
     return new Set(overlappingThreads().filter((u) => u !== p));
   });
 
+  // The thread card under the pointer, which highlights its targets in place
+  // of the primary thread's while hovered.
+  const [hoveredThread, setHoveredThread] = createSignal<
+    AutomergeUrl | undefined
+  >();
+
   createEffect(() => {
     const handle = focusHandle();
     if (!handle) return;
-    const p = primaryThreadUrl();
+    const p = hoveredThread() ?? primaryThreadUrl();
     const urls = p ? (threadTargetUrlMap().get(p) ?? []) : [];
     const desired: Record<AutomergeUrl, true> = {};
     for (const u of urls) desired[u] = true;
@@ -252,6 +258,10 @@ export function CommentsView(props: { element: HTMLElement }) {
             <div
               class="comments-thread"
               onClick={(e) => onClickThreadCard(e, threadUrl)}
+              onMouseEnter={() => setHoveredThread(threadUrl)}
+              onMouseLeave={() =>
+                setHoveredThread((u) => (u === threadUrl ? undefined : u))
+              }
             >
               <patchwork-view
                 doc-url={threadUrl}
@@ -410,10 +420,14 @@ function targetIsVisible(handle: DocHandle<unknown>): boolean {
   return start !== end;
 }
 
+// A selected text range overlaps a ranged target; a selected sub-doc (such as
+// a notebook cell) matches a target at or inside it.
 function threadOverlapsSelection(
   targets: DocHandle<unknown>[],
   selection: DocHandle<unknown>[]
 ): boolean {
-  return targets.some((t) => selection.some((s) => s.overlaps(t)));
+  return targets.some((t) =>
+    selection.some((s) => s.overlaps(t) || s.url === t.url || s.contains(t))
+  );
 }
 
