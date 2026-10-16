@@ -21,6 +21,8 @@ import {
   isValidAutomergeUrl,
 } from "@automerge/automerge-repo/slim";
 import * as Automerge from "@automerge/automerge/slim";
+// For the `<patchwork-view>` JSX typings.
+import type {} from "@inkandswitch/patchwork-elements";
 import {
   subscribe,
   subscribeDoc,
@@ -45,6 +47,8 @@ import {
   sameHeads,
 } from "./change-group-cache";
 import { ensureMainDraft } from "./draft-docs";
+import { forkReachable, loadLineage, type Lineage } from "./draft-forking";
+import { collectDraftMembers } from "./draft-membership";
 
 // Seed for the read-only `draft:list` subscription until the provider answers.
 // `main.url` is a placeholder; the Main card displays the host doc url instead.
@@ -385,17 +389,12 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
   });
 
   // Fork the current selection as a new child draft. `atVersion` picks the
-  // fork point (the two menu items): true clones every member doc at the
-  // heads it had as of the scrubbed version, false forks at the latest
-  // heads. The new draft is parented to the selection — merging it later
-  // lands back here, not on main. Pre-populating `DraftDoc.clones` means the
-  // overlay's lazy `resolveClone` reuses these entries instead of forking
-  // the originals at current heads (which matters when forking off a draft:
-  // the clones must branch off the draft's clones). Forking main live needs
-  // no eager clones — main's members are the originals, so the lazy path is
-  // exactly right. Members with no changes at or before a pinned version
-  // (created later) are left out; the version's docs don't reference them
-  // yet, so they are normally never resolved beneath the draft.
+  // fork point (the two menu items): true clones every member at the heads it
+  // had as of the scrubbed version, false forks at the latest heads. The new
+  // draft is parented to the selection — merging it later lands back here,
+  // not on main. Every doc reachable from the host doc, as the selection sees
+  // it, is forked up front and recorded in `DraftDoc.clones`: off a draft,
+  // each clone branches off the draft's clone, not the original.
   const onForkSelection = async (atVersion: boolean) => {
     if (isFolder()) return;
     const docHandle = hostDocHandle();
@@ -407,48 +406,11 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     }
 
     const parentUrl = selected(); // null = main
-    const members = membersFor(parentUrl);
+    const lineage = await loadLineage(repo, parentUrl);
     const head = atVersion ? (scrubber()?.head ?? null) : null;
-
-    const clones: Record<AutomergeUrl, CloneEntry> = {};
-    if (head) {
-      // Reuse the scrub machinery to resolve per-doc heads at this version
-      // (only the `to`s are read, so no diff baseline).
-      const checkpoint = await computeCheckpoint(repo, members, head, "none");
-      for (const member of members) {
-        const to = checkpoint[member.url]?.to;
-        if (!to) continue;
-        let handle: DocHandle<unknown> | null = null;
-        try {
-          // Clone the doc the timeline read its changes from (the draft's
-          // clone when forking off a draft), pinned to the version's heads.
-          // Keyed by the original url so baselines and merge-back resolve.
-          handle = await repo.find<unknown>(member.cloneUrl ?? member.url);
-          const clone = cloneAtVersion(repo, handle, to);
-          clones[member.url] = { cloneUrl: clone.url, clonedAt: to };
-        } catch (err) {
-          reportForkFailure(
-            handle ? collectForkDiagnostic(handle, member, to) : null,
-            err
-          );
-        }
-      }
-    } else if (parentUrl) {
-      // Forking a draft at its latest heads: branch each member off the
-      // draft's clone (not the original, which lacks the draft's changes).
-      for (const member of members) {
-        try {
-          const source = await repo.find<unknown>(
-            member.cloneUrl ?? member.url
-          );
-          const clonedAt = source.heads();
-          const clone = repo.clone(source);
-          clones[member.url] = { cloneUrl: clone.url, clonedAt };
-        } catch (err) {
-          console.warn("[drafts] failed to fork member:", member, err);
-        }
-      }
-    }
+    const clones = head
+      ? await forkAtVersion(repo, docHandle.url, lineage, head)
+      : await forkReachable(repo, [docHandle.url], lineage);
 
     const mainDraft = await ensureMainDraft(repo, docHandle);
     const parentHandle = parentUrl
@@ -779,6 +741,82 @@ async function findMergeTarget(
     }
   }
   return null;
+}
+
+// --- Forking at a version ------------------------------------------------------
+
+// Fork every doc reachable from `hostUrl` as it was at the version `head`
+// points at. The walk reads each doc at those heads, so it follows the links
+// the version had; docs with no history by then didn't exist yet and are left
+// out.
+async function forkAtVersion(
+  repo: Repo,
+  hostUrl: AutomergeUrl,
+  lineage: Lineage,
+  head: ChangeRef
+): Promise<Record<AutomergeUrl, CloneEntry>> {
+  const pins = new Map<
+    AutomergeUrl,
+    { handle: DocHandle<unknown>; to: UrlHeads }
+  >();
+  const members = await collectDraftMembers([hostUrl], async (url) => {
+    const handle = await repo.find<unknown>(lineage.source(url));
+    const doc = handle.doc() as Automerge.Doc<unknown> | undefined;
+    if (!doc) return undefined;
+    const to = headsAtVersion(doc, url, lineage.forkPoint(url), head);
+    if (!to) return undefined;
+    pins.set(url, { handle, to });
+    return Automerge.view(doc, decodeHeads(to));
+  });
+
+  const clones: Record<AutomergeUrl, CloneEntry> = {};
+  for (const url of members) {
+    const { handle, to } = pins.get(url)!;
+    try {
+      const clone = cloneAtVersion(repo, handle, to);
+      clones[url] = { cloneUrl: clone.url, clonedAt: to };
+    } catch (err) {
+      const member: DraftMemberDoc = {
+        url,
+        cloneUrl: lineage.source(url),
+        clonedAt: lineage.forkPoint(url),
+      };
+      reportForkFailure(collectForkDiagnostic(handle, member, to), err);
+    }
+  }
+  return clones;
+}
+
+// The heads `url` had at the version `head` points at, reading its history
+// since its fork point: exactly the head change for the doc that owns it,
+// otherwise its newest change at or before the head's time, otherwise the
+// fork point itself. Null when it has no history by then.
+function headsAtVersion(
+  doc: Automerge.Doc<unknown>,
+  url: AutomergeUrl,
+  forkPoint: UrlHeads | null,
+  head: ChangeRef
+): UrlHeads | null {
+  if (url === head.docUrl) return encodeHeads([head.hash]);
+  const since = forkPoint ? decodeHeads(forkPoint) : [];
+  const metas = Automerge.getChangesMetaSince(doc, since);
+  const newest = newestChangeAtOrBefore(metas, head.time);
+  if (newest) return encodeHeads([newest.hash]);
+  return forkPoint && forkPoint.length > 0 ? forkPoint : null;
+}
+
+// The newest change at or before `time` (the later one on ties), if any.
+function newestChangeAtOrBefore<M extends { time: number }>(
+  metas: M[],
+  time: number
+): M | undefined {
+  let newest: M | undefined;
+  for (const meta of metas) {
+    if (meta.time <= time && (!newest || meta.time >= newest.time)) {
+      newest = meta;
+    }
+  }
+  return newest;
 }
 
 // --- Cloning a member at a version -------------------------------------------
@@ -2495,16 +2533,9 @@ async function computeCheckpoint(
         // window (robust against a mismatched fork point).
         to = encodeHeads([head.hash]);
       } else {
-        let pinnedIndex = -1;
-        let bestTime = -Infinity;
-        metas.forEach((m, i) => {
-          if (m.time <= head.time && m.time >= bestTime) {
-            bestTime = m.time;
-            pinnedIndex = i;
-          }
-        });
-        if (pinnedIndex < 0) continue;
-        to = encodeHeads([metas[pinnedIndex].hash]);
+        const pinned = newestChangeAtOrBefore(metas, head.time);
+        if (!pinned) continue;
+        to = encodeHeads([pinned.hash]);
       }
 
       if (base === "none") {

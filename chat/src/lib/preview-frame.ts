@@ -6,8 +6,8 @@
 // runtime with no draft overlay, so it resolves the originals and shows Main's
 // source. To preview drafted source we self-bootstrap the iframe: fetch the
 // host page, wrap its `#root` view in the draft overlay provider pointed at the
-// active draft, and inject the routing hash. The iframe then forks the tool
-// folder + source into the same draft clones the chat is editing.
+// active draft, and inject the routing hash. The iframe then resolves the tool
+// folder + source to the same draft clones the chat is editing.
 
 const OVERLAY_PROVIDER_SELECTOR =
 	'patchwork-view[component="patchwork-draft-overlay-provider"]'
