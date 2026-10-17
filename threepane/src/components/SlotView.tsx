@@ -11,6 +11,16 @@ import type { ToolSlot } from "../types";
 export const slotId = (slot: ToolSlot): string =>
   Array.isArray(slot) ? String(slot[0]) : String(slot);
 
+export function uniqueSlots(slots: ToolSlot[]): ToolSlot[] {
+  const seen = new Set<string>();
+  return slots.filter((slot) => {
+    const id = slotId(slot);
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+}
+
 /**
  * Render one configured tool-lane slot (doctitle / sidebar).
  *
