@@ -40,7 +40,7 @@ export function LlmConfigTray(element: HTMLElement) {
 			background: var(--studio-chrome-offset-10, var(--studio-fill-offset-10, #f2f2f2));
 		}
 		.llm-config-tray-popover {
-			position: fixed; z-index: 2147483000;
+			position: fixed; z-index: 2147483000; box-sizing: border-box;
 			max-width: min(92vw, 520px); max-height: 80vh; overflow: auto;
 			background: var(--studio-fill, white); color: var(--studio-line, black);
 			border: 1px solid var(--studio-fill-offset-20, #d4d4d4);
@@ -56,9 +56,12 @@ export function LlmConfigTray(element: HTMLElement) {
   const [open, setOpen] = createSignal(false);
   const [scope, setScope] = createSignal<Scope | undefined>();
   const [payload, setPayload] = createSignal<any>({});
-  const [pos, setPos] = createSignal<{ left: number; top: number } | null>(
-    null
-  );
+  const [pos, setPos] = createSignal<{
+    left: number;
+    top: number;
+    maxHeight: number;
+    above: boolean;
+  } | null>(null);
 
   let buttonEl!: HTMLButtonElement;
   let popoverEl: HTMLDivElement | undefined;
@@ -102,8 +105,15 @@ export function LlmConfigTray(element: HTMLElement) {
 
   function positionPopover() {
     const r = buttonEl.getBoundingClientRect();
-    // Prefer opening above the tray (tray sits at the bottom), aligned right.
-    setPos({ left: Math.max(8, r.right - 520), top: Math.max(8, r.top - 8) });
+    const aboveSpace = Math.max(0, r.top - 16);
+    const belowSpace = Math.max(0, window.innerHeight - r.bottom - 16);
+    const above = aboveSpace >= Math.min(window.innerHeight * 0.8, belowSpace);
+    setPos({
+      left: Math.max(8, r.right - Math.min(520, window.innerWidth * 0.92)),
+      top: above ? r.top - 8 : r.bottom + 8,
+      maxHeight: Math.min(window.innerHeight * 0.8, above ? aboveSpace : belowSpace),
+      above,
+    });
   }
 
   function openPicker(sc: Partial<Scope> | undefined, p: any) {
@@ -178,7 +188,8 @@ export function LlmConfigTray(element: HTMLElement) {
               style={{
                 left: `${pos()?.left ?? 0}px`,
                 top: `${pos()?.top ?? 0}px`,
-                transform: "translateY(-100%)",
+                "max-height": `${pos()?.maxHeight ?? 0}px`,
+                transform: pos()?.above ? "translateY(-100%)" : "none",
                 visibility: pos() ? "visible" : "hidden",
               }}
               onClick={(event) => event.stopPropagation()}

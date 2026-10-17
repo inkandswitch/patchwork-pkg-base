@@ -1,6 +1,6 @@
 import { For, Show, type Accessor } from "solid-js";
 import type { ToolSlot } from "../types";
-import { SlotView, slotId } from "./SlotView";
+import { SlotView, slotId, uniqueSlots } from "./SlotView";
 
 /**
  * A horizontal row of the system-tray tools configured in the threepane config
@@ -13,7 +13,7 @@ export function Tray(props: { slots: Accessor<ToolSlot[]> }) {
   return (
     <Show when={props.slots().length}>
       <div class="frame-tray">
-        <For each={props.slots()}>
+        <For each={uniqueSlots(props.slots())}>
           {(slot) => (
             <div class="frame-tray__item" data-tray-id={slotId(slot)}>
               <SlotView slot={slot} />

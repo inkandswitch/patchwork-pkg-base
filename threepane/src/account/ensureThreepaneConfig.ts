@@ -3,7 +3,7 @@ import { createDocOfDatatype2 } from "@inkandswitch/patchwork-plugins";
 import type { AccountDoc, ThreepaneConfigDoc, ToolRef, ToolSlot } from "../types";
 import { DEFAULT_DOCTITLE_TOOLS, DEFAULT_TRAY_TOOLS } from "../datatypes";
 import { loadDatatypeWhenReady } from "./loadDatatypeWhenReady";
-import { slotId } from "../components/SlotView";
+import { slotId, uniqueSlots } from "../components/SlotView";
 
 // Title + spacer are intrinsic to the frame's top bar, never configured tools.
 const INTRINSIC_DOCTITLE_TOOLS = new Set(["document-title", "spacer"]);
@@ -52,9 +52,14 @@ export async function ensureThreepaneConfig(
       } else {
         // Append default tray tools the saved tray is missing, like
         // llm-config-tray. slotId compares across the string and tuple forms.
+        const unique = uniqueSlots(doc.tray);
+        if (unique.length !== doc.tray.length) doc.tray = unique;
         const present = new Set(doc.tray.map((s) => slotId(s)));
         for (const id of DEFAULT_TRAY_TOOLS) {
-          if (!present.has(id)) doc.tray.push(id);
+          if (!present.has(id)) {
+            doc.tray.push(id);
+            present.add(id);
+          }
         }
       }
       // An account whose doctitle lane ended up empty (nothing to migrate from
