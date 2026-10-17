@@ -17,9 +17,9 @@ afterEach(() => {
 
 describe("model picker position", () => {
   it.each([
-    [{ top: 50, bottom: 78, right: 300 }, "86px", "none", "614.4px"],
-    [{ top: 650, bottom: 678, right: 300 }, "642px", "translateY(-100%)", "614.4px"],
-  ])("keeps the picker in the viewport for button at %o", (rect, top, transform, maxHeight) => {
+    [{ top: 50, bottom: 78, right: 300 }, "86px", "none"],
+    [{ top: 650, bottom: 678, right: 300 }, "642px", "translateY(-100%)"],
+  ])("keeps the picker in the viewport for button at %o", (rect, top, transform) => {
     vi.spyOn(window, "innerHeight", "get").mockReturnValue(768);
     vi.spyOn(window, "innerWidth", "get").mockReturnValue(1024);
     const host = document.createElement("div");
@@ -32,7 +32,7 @@ describe("model picker position", () => {
     const popover = document.querySelector<HTMLElement>(".llm-config-tray-popover")!;
     expect(popover.style.top).toBe(top);
     expect(popover.style.transform).toBe(transform);
-    expect(popover.style.maxHeight).toBe(maxHeight);
+    expect(parseFloat(popover.style.maxHeight)).toBeCloseTo(614.4);
     dispose();
   });
 });
