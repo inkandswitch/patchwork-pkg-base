@@ -93,22 +93,15 @@ export function CommentsView(props: { element: HTMLElement }) {
 
   const threadTargetHandleMap = useResolvedHandleMap(threadTargetUrlMap, repo);
 
-  // A thread is only worth showing if at least one of its targets still
-  // resolves to a real, non-empty span. Targets that resolve to an empty
-  // string (a collapsed range) or an undefined value (an anchor that no
-  // longer resolves) are excluded — see `targetIsVisible`.
+  // A thread is worth showing unless every one of its targets is a text range
+  // that has collapsed to an empty string — see `targetIsVisible`.
   const threadsWithVisibleTarget = useThreadsWithVisibleTarget(
     threadTargetUrlMap,
     repo
   );
 
-  const renderableThreadUrls = createMemo<AutomergeUrl[]>(() =>
-    threadUrls().filter((url) => threadsWithVisibleTarget().has(url))
-  );
-
   // Document-level threads target the whole document (a bare url, no `/` path
-  // or `#` heads), so they have no resolvable range and never pass the
-  // visible-target filter. They should always be listed regardless.
+  // or `#` heads).
   const docLevelThreadUrls = createMemo<Set<AutomergeUrl>>(() => {
     const map = threadTargetUrlMap();
     const set = new Set<AutomergeUrl>();
@@ -123,13 +116,17 @@ export function CommentsView(props: { element: HTMLElement }) {
     return set;
   });
 
-  // What the panel actually renders: ranged threads whose target is still
-  // visible, plus all document-level threads.
-  const displayedThreadUrls = createMemo<AutomergeUrl[]>(() =>
+  // Threads that can overlap the editor's selection. Document-level threads
+  // are left out: they cover the whole doc, so they'd match every selection.
+  const renderableThreadUrls = createMemo<AutomergeUrl[]>(() =>
     threadUrls().filter(
       (url) =>
-        threadsWithVisibleTarget().has(url) || docLevelThreadUrls().has(url)
+        threadsWithVisibleTarget().has(url) && !docLevelThreadUrls().has(url)
     )
+  );
+
+  const displayedThreadUrls = createMemo<AutomergeUrl[]>(() =>
+    threadUrls().filter((url) => threadsWithVisibleTarget().has(url))
   );
 
   const overlappingThreads = createMemo<AutomergeUrl[]>(() =>
@@ -165,10 +162,16 @@ export function CommentsView(props: { element: HTMLElement }) {
     return new Set(overlappingThreads().filter((u) => u !== p));
   });
 
+  // The thread card under the pointer, which highlights its targets in place
+  // of the primary thread's while hovered.
+  const [hoveredThread, setHoveredThread] = createSignal<
+    AutomergeUrl | undefined
+  >();
+
   createEffect(() => {
     const handle = focusHandle();
     if (!handle) return;
-    const p = primaryThreadUrl();
+    const p = hoveredThread() ?? primaryThreadUrl();
     const urls = p ? (threadTargetUrlMap().get(p) ?? []) : [];
     const desired: Record<AutomergeUrl, true> = {};
     for (const u of urls) desired[u] = true;
@@ -255,6 +258,10 @@ export function CommentsView(props: { element: HTMLElement }) {
             <div
               class="comments-thread"
               onClick={(e) => onClickThreadCard(e, threadUrl)}
+              onMouseEnter={() => setHoveredThread(threadUrl)}
+              onMouseLeave={() =>
+                setHoveredThread((u) => (u === threadUrl ? undefined : u))
+              }
             >
               <patchwork-view
                 doc-url={threadUrl}
@@ -403,22 +410,24 @@ function flatHandles(
   return out;
 }
 
-// A target "points to" a real value only when its anchored range still
-// resolves (`rangePositions` is defined) and spans at least one character
-// (`start !== end`). A missing range is an undefined value (the anchor no
-// longer resolves); an empty range is an empty string (the commented text was
-// deleted). Mirrors `buildCommentDecorations` in the codemirror tool.
+// A target is hidden only when it is a text range that has collapsed to an
+// empty string (the commented text was deleted). Every other target — a whole
+// document, a sub-doc path such as a notebook cell — stays listed.
 function targetIsVisible(handle: DocHandle<unknown>): boolean {
   const positions = handle.rangePositions();
-  if (!positions) return false;
+  if (!positions) return true;
   const [start, end] = positions;
   return start !== end;
 }
 
+// A selected text range overlaps a ranged target; a selected sub-doc (such as
+// a notebook cell) matches a target at or inside it.
 function threadOverlapsSelection(
   targets: DocHandle<unknown>[],
   selection: DocHandle<unknown>[]
 ): boolean {
-  return targets.some((t) => selection.some((s) => s.overlaps(t)));
+  return targets.some((t) =>
+    selection.some((s) => s.overlaps(t) || s.url === t.url || s.contains(t))
+  );
 }
 
