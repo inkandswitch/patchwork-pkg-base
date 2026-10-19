@@ -393,6 +393,7 @@ function downloadBlob(blob, name) {
 }
 
 function prepareForJson(v) {
+  if (isImmutableString(v)) return String(v)
   if (v instanceof Uint8Array) return Array.from(v)
   if (Array.isArray(v)) return v.map(prepareForJson)
   if (v !== null && typeof v === "object") {
@@ -403,8 +404,9 @@ function prepareForJson(v) {
   return v
 }
 
+// An ImmutableString is an object too, but it's a string with no history.
 function isCollection(v) {
-  return v !== null && typeof v === "object" && !(v instanceof Uint8Array)
+  return v !== null && typeof v === "object" && !(v instanceof Uint8Array) && !isImmutableString(v)
 }
 
 // ── tree flattening ──────────────────────────────────────────────────────────
@@ -520,6 +522,7 @@ let ICONS = {
 
 function valueColor(v) {
   if (v === null) return "var(--re-null)"
+  if (isImmutableString(v)) return "var(--re-string)"
   switch (typeof v) {
     case "string": return "var(--re-string)"
     case "number": return "var(--re-number)"
@@ -535,7 +538,7 @@ function autoSize(el) {
 
 function valueText(v) {
   if (v === null) return "null"
-  if (typeof v === "string") return JSON.stringify(v)
+  if (typeof v === "string" || isImmutableString(v)) return JSON.stringify(String(v))
   return String(v)
 }
 
@@ -888,6 +891,11 @@ function RawEditorApp(props) {
       let wrapRect = wrapperEl.getBoundingClientRect()
       setEditing({pk: row.id, path: row.path, value: row.value, mode: "text",
         anchorRect: {top: valRect.top - wrapRect.top, left: valRect.left - wrapRect.left}})
+    } else if (isImmutableString(row.value)) {
+      // Edited as the string it is, and written back as an ImmutableString:
+      // it has no text to splice into.
+      setEditing({pk: row.id, path: row.path, value: String(row.value), mode: "value",
+        original: cloneValue(row.value)})
     } else {
       setEditing({pk: row.id, path: row.path, value: row.value, mode: "value"})
     }
@@ -896,7 +904,10 @@ function RawEditorApp(props) {
   function confirmEdit(newValue) {
     let ed = editing()
     if (!ed || ed.mode !== "value") return
-    pushUndo({type: "edit", path: ed.path, oldValue: ed.value, newValue})
+    if (ed.original && typeof newValue === "string") {
+      newValue = new Automerge.ImmutableString(newValue)
+    }
+    pushUndo({type: "edit", path: ed.path, oldValue: ed.original ?? ed.value, newValue})
     handle.change(d => applyAtPath(d, ed.path, newValue))
     setEditing(null)
   }
@@ -1046,7 +1057,8 @@ function RawEditorApp(props) {
     let kind = createMemo(() => {
       let v = row().value
       if (v instanceof Uint8Array) return "u8"
-      if (typeof v === "string" && isValidAutomergeUrl(v)) return "url"
+      let s = isImmutableString(v) ? String(v) : v
+      if (typeof s === "string" && isValidAutomergeUrl(s)) return "url"
       return "plain"
     })
     let canEdit = createMemo(() => !coll() && kind() !== "u8")
@@ -1100,7 +1112,7 @@ function RawEditorApp(props) {
             return html`<${Uint8Inspector} bytes=${() => row().value} />`
           }
           if (kind() === "url") {
-            return html`<span class="re-automerge-url" onClick=${() => openAmUrl(row().value)}>${() => row().value}</span>`
+            return html`<span class="re-automerge-url" onClick=${() => openAmUrl(String(row().value))}>${() => String(row().value)}</span>`
           }
           return html`<span class="re-value" style=${() => `color:${valueColor(row().value)}`}
             on:dblclick=${(e) => startEdit(row(), e.currentTarget)}>${() => valueText(row().value)}</span>`
