@@ -225,9 +225,8 @@ describe("PackagesUrlMapper external (statically-hosted) mapping", () => {
 });
 
 describe("smuggling rejection (allowlist replaces the raw-automerge scan)", () => {
-  // The security spec once enforced by `containsAutomergeUrl` is now enforced by
-  // `classify` blocking anything that isn't platform/registry. A raw automerge
-  // document ID smuggled into a host-origin request must NOT be served.
+  // `classify` blocks anything that isn't platform/registry, so a raw automerge
+  // document ID smuggled into a host-origin request must not be served.
   it("blocks a raw automerge document ID in a host-origin path", () => {
     expect(classify(`${HOST}/${encodeURIComponent(AM_A)}/index.js`)).toBe(
       "blocked"
@@ -316,6 +315,18 @@ describe("dependency round-trip (rewrite → runtime-encode → resolve)", () =>
     expect(resolved).toBe(
       `${encodeURIComponent(`${AM_B}#${HEADS}`)}/dist/index.js`
     );
+  });
+
+  it("rewrites a consumer served under a heads-pinned marker", () => {
+    const mapper = new PackagesUrlMapper();
+    mapper.encodeSegment(`${AM_B}#${HEADS}`, "@chee/patchwork-llm");
+    mapper.markPackageHasDeps(mapper.markerNameFor("@patchwork/chat-llm"));
+
+    const source = `const dep = getImportableUrlFromAutomergeUrl("${AM_B}#${HEADS}")`;
+    const consumerReq = `${HOST}/registry--@patchwork--chat-llm%23${HEADS}/dist/index.js`;
+    const rewritten = rewriteServedSource(source, consumerReq, mapper);
+    expect(rewritten).toContain(`registry--@chee--patchwork-llm%23${HEADS}`);
+    expect(rewritten).not.toContain(AM_B);
   });
 
   it("skips the rewrite for a package not recorded as having automerge deps", () => {
@@ -501,11 +512,9 @@ describe("PackagesUrlMapper.resolvePackage (one package.json read per package)",
   });
 
   it("external directory importUrl: resolves the entry from package.json", async () => {
-    // The tools-bundle manifest now points at a package *directory*
-    // (`.../tools/threepane/`), not its entry file. resolvePackage must fetch the
-    // package.json and resolve the entry itself, so the resulting marker carries
-    // the real subpath (`dist/index.js`) — not an empty subpath that imports the
-    // 404ing directory. This is the threepane-isolation regression.
+    // A manifest importUrl can be a package *directory* (`.../tools/threepane/`).
+    // resolvePackage must fetch package.json and resolve the entry, so the marker
+    // carries the real subpath (`dist/index.js`), not an empty one.
     stubFetchReturning({ name: "threepane", exports: "./dist/index.js" });
     const mapper = new PackagesUrlMapper();
     const resolved = await mapper.resolvePackage(

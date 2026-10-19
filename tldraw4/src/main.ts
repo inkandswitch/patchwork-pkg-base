@@ -20,8 +20,7 @@ export const plugins = [
     id: "tldraw4",
     name: "tldraw4",
     icon: "PenLine",
-    // New canvases are tldraw5 now; this datatype stays registered so existing
-    // documents still open, but is no longer offered for new ones.
+    // Registered so existing documents still open; new canvases are tldraw5.
     unlisted: true,
     async load() {
       return (await import("./datatype.ts")).datatype;

@@ -37,7 +37,7 @@ export function HistoryRecorder(props: PatchworkToolProps<any>) {
   // Resolves (and, on first use, creates) this tool's private storage doc.
   // The provider only guarantees an empty doc exists — the shape below
   // (`entries`, `title`, `@patchwork`) is seeded by us the first time it's
-  // used, the same as the old `getOrCreateAccountHistoryDoc` did.
+  // used.
   const [historyDoc, historyHandle] = subscribeDoc<HistoryDoc>(
     props.element,
     { type: "patchwork:tool-storage", toolId: TOOL_STORAGE_ID }

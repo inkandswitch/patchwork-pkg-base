@@ -21,8 +21,7 @@ Swap out your editor: use the "Open with..." to switch to the Raw editor. It's a
 
 Don't like what you did to a document? You can use the Drafts tool in the right-hand sidebar to go back in time and make a draft at an earlier point.
 
-Want to invite an LLM to be a guest? Try typing ` /
-  model` in the Watercooler sidebar and you should be able to either install a local model or paste in an OpenRouter key to chat with anything they offer. Their changes will show up in the document's history, just like yours.
+Want to invite an LLM to be a guest? Try typing \`/model\` in the Watercooler sidebar and you should be able to either install a local model or paste in an OpenRouter key to chat with anything they offer. Their changes will show up in the document's history, just like yours.
 
 ## Let's make some new tools
 

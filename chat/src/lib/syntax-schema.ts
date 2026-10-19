@@ -30,7 +30,6 @@ const THINK = /<think>([\s\S]*?)(?:<\/think>|$)/
 const EMOTICON = /:([a-zA-Z0-9_+-]+):/
 
 // `:name:` → custom-emoticon image, else emoji shortcode, else literal `:name:`.
-// Mirrors format-text.ts:formatInlineHtml's cascade, as safe DOM.
 function emoticonSpec(emoticonBlobUrls: Accessor<Record<string, string>>) {
 	return {
 		pattern: EMOTICON,

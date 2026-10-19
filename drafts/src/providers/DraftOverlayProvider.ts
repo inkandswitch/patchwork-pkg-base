@@ -42,7 +42,7 @@ const CHECKED_OUT_SELECTOR = "draft:checked-out";
 // `checkedOut`) also re-answer every live subscription, so pins update by
 // swapping backings in place — no remount. The fork point lives in
 // `DraftDoc.clones[url].clonedAt`; the draft-state provider reads it to serve
-// `draft:baseline` (this provider no longer answers that).
+// `draft:baseline`.
 //
 // A `url` attribute, when present, seeds the initial selection. That is how
 // the chat preview iframe (see chat's `preview-frame.ts`) pins a

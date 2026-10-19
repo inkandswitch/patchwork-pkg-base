@@ -17,7 +17,7 @@ const OVERLAY_PROVIDER_SELECTOR =
  * Main. Read straight off the overlay provider the frame mounts as an ancestor
  * of the tool — no extra dependency or subscription needed. The provider
  * mirrors its live selection onto `draft-url` (it follows the draft list
- * itself and no longer remounts per draft); `url` remains as the seed
+ * itself); `url` is the seed
  * attribute for self-bootstrapped frames. Returns "" if the host has no
  * drafts overlay (drafts plugin absent) so callers fall back to the plain
  * preview path.
@@ -36,7 +36,7 @@ function docIdFromUrl(url: string): string {
 	return url.replace(/^automerge:/, "")
 }
 
-/** The plain (Main) preview URL — unchanged from the original behaviour. */
+/** The plain (Main) preview URL. */
 export function buildPreviewSrc(dl: {
 	url: string
 	name?: string

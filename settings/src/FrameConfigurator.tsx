@@ -252,14 +252,10 @@ function ToolbarStrip(props: {
   const [dropIndex, setDropIndex] = createSignal<number | null>(null);
   let lastDropIndex: number | null = null;
 
-  // The configured ids, verbatim. We deliberately do NOT filter these down to
-  // ids whose plugin is currently registered: the configurator's plugin host
-  // loads tools asynchronously, so early after mount `allOptions` is a partial
-  // set. Rebuilding the array from a registered-only subset on every mutation
-  // would silently drop not-yet-loaded tools — that was the "adding one tool
-  // wipes the rest / only one tool sticks" bug. Every edit rebuilds from the
-  // full list, so an unknown/still-loading id survives (shown by its raw id
-  // until its plugin registers).
+  // The configured ids, unfiltered: plugins load asynchronously, so early after
+  // mount `allOptions` is partial, and rebuilding from a registered-only subset
+  // would silently drop not-yet-loaded tools. An unknown id is shown by its raw
+  // id until its plugin registers.
   const values = createMemo(() => props.values ?? []);
   const currentIds = createMemo(() => new Set(values()));
   const available = createMemo(() =>

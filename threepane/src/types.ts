@@ -10,7 +10,7 @@ import { AutomergeUrl } from "@automerge/automerge-repo/slim";
  */
 export type AccountDoc = {
   frameToolId: string;
-  /** @deprecated no longer defaulted; the left pane is now sidebar.widgets */
+  /** @deprecated superseded by the threepane config doc's sidebar.widgets */
   accountSidebarToolId?: string;
   /** @deprecated seeds migration into the threepane config doc's doctitle.tools */
   documentToolbarToolIds?: string[];

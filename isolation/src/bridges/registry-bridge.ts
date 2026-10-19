@@ -507,13 +507,20 @@ function rewriteAutomergeDepsInSource(
 }
 
 /**
- * Extract the `registry--<name>` marker name (decoded first path segment) from a
- * request URL, or null if it has none. Identifies the package that owns a served
- * module.
+ * Extract the `registry--<name>` marker name (decoded first path segment, heads
+ * stripped) from a request URL, or null if it has none. Identifies the package
+ * that owns a served module.
+ *
+ * A heads-pinned request arrives as `registry--@scope--name%23<heads>`, but
+ * `markPackageHasDeps` records the bare name, so without stripping
+ * `packageNeedsRewrite` misses and the iframe allowlist blocks the tool's
+ * automerge deps.
  */
 function markerNameFromUrl(url: string): string | null {
   const { first } = splitFirstSegment(url);
-  return first.startsWith(REGISTRY_MARKER_PREFIX) ? first : null;
+  if (!first.startsWith(REGISTRY_MARKER_PREFIX)) return null;
+  const { pkg } = splitMarkerHeads(first.slice(REGISTRY_MARKER_PREFIX.length));
+  return `${REGISTRY_MARKER_PREFIX}${pkg}`;
 }
 
 // ---------------------------------------------------------------------------

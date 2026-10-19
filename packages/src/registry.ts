@@ -92,7 +92,7 @@ export function readRegistrySnapshot(): RegistryEntry[] {
 // `registry.remove(id)`. We reach it by structural feature-detection so this
 // tool keeps building against the older types while still deactivating on hosts
 // that support it — on an older host it's a no-op (the doc edit still lands; the
-// plugin just lingers until reload, exactly as before).
+// plugin just lingers until reload).
 interface RemovableRegistry {
   remove?: (id: string) => boolean;
   all: () => any[];

@@ -28,10 +28,9 @@ export const plugins: Plugin<any>[] = [
       return CommentThreadDatatype;
     },
   },
-  // Renders one comment thread from its subdocument url. It's mounted
-  // explicitly by `CommentsView` via `<patchwork-view>`, but now also
-  // declares support for the `comment-thread` datatype so it's the tool
-  // detected when a thread subdocument is opened on its own.
+  // Renders one comment thread from its subdocument url. Mounted explicitly
+  // by `CommentsView` via `<patchwork-view>`, and also the tool for a thread
+  // subdocument opened on its own.
   {
     type: "patchwork:tool",
     id: "comment-thread",

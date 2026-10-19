@@ -26,6 +26,7 @@
 
 import { isValidAutomergeUrl } from "@automerge/automerge-repo/slim";
 import { log } from "../log.js";
+import { resolveGatedAttribute } from "./gating.js";
 
 /**
  * Provider subscription types that have been analyzed for security
@@ -48,7 +49,34 @@ export const ALLOWED_PROVIDERS = [
   // identity, so it is safe to relay into the iframe; lets isolated tools
   // (e.g. the titlebar theme tool) mirror the host's active theme.
   "patchwork:current-theme",
+  // A worker connection. The worker runs on the host and only its
+  // `{readable, writable}` pair is transferred in, so its config and secrets
+  // stay out here. This allows every worker kind, but each subscription has its
+  // own port, so a tool only gets the streams for the worker it asked for.
+  "patchwork:worker-channel",
 ];
+
+/**
+ * The streams, ports and buffers at the top level of a relayed value, for
+ * `postMessage`'s transfer list. A worker's stream pair can't be cloned, so
+ * without this the relay throws DataCloneError. It doesn't recurse, so nothing
+ * nested that the sender still holds gets detached.
+ */
+export function transferablesIn(value: unknown): Transferable[] {
+  if (!value || typeof value !== "object") return [];
+  const out: Transferable[] = [];
+  for (const candidate of Object.values(value as Record<string, unknown>)) {
+    if (
+      candidate instanceof ReadableStream ||
+      candidate instanceof WritableStream ||
+      candidate instanceof MessagePort ||
+      candidate instanceof ArrayBuffer
+    ) {
+      out.push(candidate as Transferable);
+    }
+  }
+  return out;
+}
 
 /**
  * Resolve the set of provider types to bridge for one isolation instance: the
@@ -58,22 +86,7 @@ export const ALLOWED_PROVIDERS = [
  * analysis before being added. No providers are bridged unless opted in.
  */
 export function resolveBridgedProviders(element: HTMLElement): string[] {
-  const requested = (element.getAttribute("shared-providers") ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const bridged: string[] = [];
-  for (const provider of requested) {
-    if (ALLOWED_PROVIDERS.includes(provider)) {
-      bridged.push(provider);
-    } else {
-      console.warn(
-        `[patchwork-isolation] shared-providers: "${provider}" is not in ALLOWED_PROVIDERS. ` +
-          `New provider types need independent security analysis before being added.`
-      );
-    }
-  }
-  return bridged;
+  return resolveGatedAttribute(element, "shared-providers", ALLOWED_PROVIDERS);
 }
 
 interface ActiveSubscription {
@@ -195,11 +208,14 @@ export function startHostProvidersBridge(
             ? await valueFilter(selector.type, e.data.value)
             : e.data.value;
           if (value === undefined) return;
-          rpcPort.postMessage({
-            type: "providers-bridge-change",
-            id,
-            value,
-          });
+          rpcPort.postMessage(
+            {
+              type: "providers-bridge-change",
+              id,
+              value,
+            },
+            transferablesIn(value)
+          );
         }
       });
       hostPort.start();

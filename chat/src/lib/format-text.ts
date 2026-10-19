@@ -1,7 +1,6 @@
-// Message text is rendered through the cute.txt engine now (see MessageBody +
-// lib/syntax-schema.ts). The old segment/innerHTML pipeline
-// (parseTextSegments/formatInlineHtml) is gone; only the emoji-only sizing test
-// remains, since it operates on the raw string, not the render tree.
+// Message text is rendered through the cute.txt engine (see MessageBody +
+// lib/syntax-schema.ts). This is just the emoji-only sizing test, which operates
+// on the raw string, not the render tree.
 
 export function isEmojiOnly(text: string): boolean {
 	const stripped = text

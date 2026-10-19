@@ -19,7 +19,7 @@ const ThemeCtx = createContext<ThemeContextValue>()
  * `color-scheme` and the `--studio-*` design tokens; chat.css maps those onto
  * the `--bg-*` / `--text-*` / `--accent*` names the rest of the styles use.
  *
- * This provider no longer computes any colours — it only derives `isLightBg`
+ * This provider computes no colours — it only derives `isLightBg`
  * from the *rendered* background so the bits that still need to know (syntax
  * highlighting, named-colour resolution) pick the right light/dark variant. It
  * re-evaluates when the host swaps themes at runtime.

@@ -65,7 +65,11 @@ export function IsolatedDocumentArea(props: IsolatedDocumentAreaProps) {
       // `getAttribute("automerge-allowlist")` and its MutationObserver watches
       // the attribute, so a property assignment would be invisible to it.
       attr:automerge-allowlist={rootUrls().join(",")}
-      shared-providers="patchwork:contact,patchwork:selected-doc"
+      // patchwork:worker-channel lets isolated tools use workers, which run out
+      // here under patchwork-worker-provider.
+      shared-providers="patchwork:contact,patchwork:selected-doc,patchwork:worker-channel"
+      // Host tools an isolated tool may open with patchwork:open-tool.
+      shared-tools="llm-config-tray"
       style={{ display: "contents" }}
     >
       {/* Opaque props payload. The isolation component observes this

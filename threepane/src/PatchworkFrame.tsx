@@ -126,6 +126,9 @@ export function PatchworkFrame({
     selectedDocProviderElement
   );
 
+  // patchwork-worker-provider isn't waited on. It listens at the document, so
+  // mount order doesn't matter, and patchwork-view sends no event when a
+  // component fails to load, so waiting on it can leave the frame blank.
   const areProvidersReady = createMemo(
     () =>
       isSelectedDocProviderReady() &&
@@ -168,13 +171,21 @@ export function PatchworkFrame({
               doc-url={accountDocUrl}
               ref={setToolStorageProviderElement}
             >
-              <Show when={areProvidersReady()}>
-                <PatchworkFrameInner
-                  handle={handle}
-                  repo={repo}
-                  isolation={props.isolation}
-                />
-              </Show>
+              {/*
+                Runs workers (like the LLM's) on the host for
+                patchwork:worker-channel subscriptions, including ones relayed
+                out of isolation. It wraps the document area because this
+                element is the ctx a worker spec's open(ctx) gets.
+              */}
+              <patchwork-view component="patchwork-worker-provider">
+                <Show when={areProvidersReady()}>
+                  <PatchworkFrameInner
+                    handle={handle}
+                    repo={repo}
+                    isolation={props.isolation}
+                  />
+                </Show>
+              </patchwork-view>
             </patchwork-view>
           </patchwork-view>
         </patchwork-view>
@@ -242,16 +253,10 @@ function PatchworkFrameInner(props: {
     return threepaneConfigHandle()?.doc();
   });
 
-  // Derived layout lanes, read from the threepane config doc. The migration
-  // seeds it from the legacy account fields (dropping the intrinsic title +
-  // spacer); older builds read those fields directly, so branch-flipping stays
-  // safe without a fallback here.
-  // doctitle keeps its full slots (a [toolId, docId] tuple or a bare
-  // component-id string); SlotView decides how to render each. The context
-  // sidebar is host chrome and still registry-driven (every
-  // `patchwork:component` tagged `"context-tool"`), but the system tray is
-  // configured here — `tray` is its explicit ordered list of tools, rendered by
-  // the one stable host-owned instance below.
+  // Derived layout lanes, read from the threepane config doc. Slots are a
+  // [toolId, docId] tuple or a bare component-id string; SlotView decides how
+  // to render each. `tray` is the system tray's explicit ordered list of tools,
+  // rendered by the one stable host-owned instance below.
   const doctitleSlots = () => threepaneConfig()?.doctitle?.tools;
   const sidebarWidgets = (): ToolSlot[] =>
     threepaneConfig()?.sidebar?.widgets ?? [];

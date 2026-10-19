@@ -338,14 +338,9 @@ function CommentView(props: {
   );
 }
 
-// A cute.txt editor bound to the comment's `draftContent`. Replaces the plain
-// textarea so drafts get the same rich plain-text (marks, emoji, embeds) that
-// chat and notes use — the default cute.txt schema, no comments-specific
-// plugins. The editor edits the field in place via `am.splice`, so it must
-// already be a string; a freshly-created draft has no `draftContent` yet, so we
-// seed it to "" before mounting. Lives inside the `isDraft()` branch, so Solid
-// unmounts it (and `onCleanup` destroys the editor) the moment the draft is
-// saved or cancelled.
+// A cute.txt editor bound to the comment's `draftContent`. The editor edits the
+// field in place via `am.splice`, so it must already be a string; a fresh draft
+// has no `draftContent` yet, so we seed it to "" before mounting.
 function CuteDraftEditor(props: {
   commentHandle: DocHandle<Comment>;
   repo: Repo;
@@ -397,12 +392,15 @@ function CuteDraftEditor(props: {
 
 // Reactively track a single attribute on `element`, seeded from its current
 // value and updated via a `MutationObserver`. Used to receive the host's
-// per-thread selection state as a `data-*` attribute.
+// per-thread selection state as a `data-*` attribute. The host sets it on the
+// `<patchwork-view>`, but the tool is handed the content element that view
+// renders into, so it's read from the view.
 function createElementAttribute(
-  element: HTMLElement,
+  toolElement: HTMLElement,
   name: string,
   fallback: string
 ): () => string {
+  const element = toolElement.closest("patchwork-view") ?? toolElement;
   const read = () => element.getAttribute(name) ?? fallback;
   const [value, setValue] = createSignal(read());
   onMount(() => {

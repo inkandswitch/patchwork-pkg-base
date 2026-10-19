@@ -21,9 +21,9 @@ import {
 } from "solid-js";
 
 /**
- * The document title, rendered intrinsically by the frame (ported from the
- * standalone `document-title` tool): resolves the doc's datatype and asks it for
- * a title. Kept in the frame so the top bar owns its placement and sizing.
+ * The document title, rendered intrinsically by the frame: resolves the doc's
+ * datatype and asks it for a title. Kept in the frame so the top bar owns its
+ * placement and sizing.
  *
  * Editable: clicking the title swaps in an input. Saving calls the datatype's
  * `setTitle` and also stamps the new title onto the doc's `@patchwork.title`

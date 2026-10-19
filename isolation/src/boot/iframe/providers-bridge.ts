@@ -31,8 +31,11 @@ export interface ProvidersBridge {
  */
 export function createProvidersBridge(
   rpcPort: MessagePort,
-  log: IframeLog
+  log: IframeLog,
+  bridgedTypes: string[] = []
 ): ProvidersBridge {
+  // Selector types the host will bridge for this instance.
+  const bridged = new Set(bridgedTypes);
   // Consumer ports for subscriptions currently forwarded to the host, keyed by
   // the id we assigned when forwarding.
   const bridgedSubscriptions = new Map<number, MessagePort>();
@@ -47,14 +50,41 @@ export function createProvidersBridge(
       log("providers-bridge: received change for id:", msg.id, "value:", msg.value);
       const port = bridgedSubscriptions.get(msg.id);
       if (port) {
-        port.postMessage({ type: "change", value: msg.value });
+        // Streams can't be cloned, so they have to be transferred again on this
+        // hop. A copy of `transferablesIn` in ../../bridges/providers-bridge.ts,
+        // because this function is serialized into the srcdoc and can't import.
+        const transfer: Transferable[] = [];
+        const value = msg.value;
+        if (value && typeof value === "object") {
+          for (const candidate of Object.values(
+            value as Record<string, unknown>
+          )) {
+            if (
+              candidate instanceof ReadableStream ||
+              candidate instanceof WritableStream ||
+              candidate instanceof MessagePort ||
+              candidate instanceof ArrayBuffer
+            ) {
+              transfer.push(candidate as Transferable);
+            }
+          }
+        }
+        port.postMessage({ type: "change", value }, transfer);
       }
       return true;
     }
     if (msg.type === "providers-bridge-rejected") {
-      // Host rejected this subscription type — clean up.
+      // Only reachable if the iframe and host disagree about what's bridged,
+      // since install() doesn't claim anything else. Nothing upstream listens
+      // for "unavailable" yet (patchwork-providers has no way to refuse a
+      // subscription), so the consumer still waits.
       log("providers-bridge: rejected by host for id:", msg.id);
+      const port = bridgedSubscriptions.get(msg.id);
       bridgedSubscriptions.delete(msg.id);
+      if (port) {
+        port.postMessage({ type: "unavailable", reason: "rejected" });
+        port.close();
+      }
       return true;
     }
 
@@ -69,6 +99,12 @@ export function createProvidersBridge(
     document.addEventListener("patchwork:subscribe", ((event: CustomEvent) => {
       const detail = event.detail;
       if (!detail?.selector?.type || !detail?.port) return;
+
+      // Leave anything the host won't bridge for a provider in here.
+      if (!bridged.has(detail.selector.type)) {
+        log("providers-bridge: not bridged, leaving unclaimed:", detail.selector.type);
+        return;
+      }
 
       log("providers-bridge: captured unclaimed subscription:", detail.selector.type, detail.selector);
 

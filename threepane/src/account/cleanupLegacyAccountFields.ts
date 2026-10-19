@@ -20,9 +20,8 @@ export function cleanupLegacyAccountFields(
     return { removed: [] };
   }
 
-  // `contextToolIds` is no longer part of `AccountDoc` (the context sidebar is
-  // registry-driven now), but older docs may still carry it — kept in this
-  // list by name, not by `keyof AccountDoc`, so it still gets cleaned up.
+  // `contextToolIds` isn't part of `AccountDoc`, but older docs may still
+  // carry it.
   const legacyFields: (keyof AccountDoc | "contextToolIds")[] = [
     "accountSidebarToolId",
     "contextToolIds",

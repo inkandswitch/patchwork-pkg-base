@@ -91,10 +91,8 @@ export async function executeDrop(
   // 3. Move only when the drag started inside *this same* <patchwork-view> and
   // the dragged docs are actually in this tree. A drag from another view, or an
   // external / bare-url drop (neither sets the origin view), is added to the
-  // target folder as a link instead. Identity is the view element itself — not
-  // the tool id, which is null for the fallback-mounted sideboard and was what
-  // made the old check send every in-view drag down this add-link path,
-  // duplicating instead of moving.
+  // target folder as a link instead. Identity is the view element itself, not
+  // the tool id, which is null for the fallback-mounted sideboard.
   if (!sameOriginView || locations.sourceItems.length === 0) {
     log(
       "Cross-view/external drop, adding links. sameOriginView:",

@@ -111,7 +111,7 @@ export async function createLLMTool(repo, {name = "New tool", description = DEFA
 		"@patchwork": {type: "llm:tool"},
 		name,
 		description,
-		tool: file.url, // the handler file (was `handlerUrl`)
+		tool: file.url, // the handler file
 	})
 }
 

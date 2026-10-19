@@ -14,7 +14,7 @@
  * the single source of truth for its entry point.
  *
  * We still resolve the entry point here, but only to validate the build and to
- * know which files to copy; the resolved path no longer leaks into the URL.
+ * know which files to copy.
  *
  * Tools may also ship an `example.js` next to their package.json: a plain ES
  * module whose default export creates example document(s) for a fresh account

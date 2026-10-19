@@ -71,7 +71,7 @@ function MenuItems(props: {
   // Remove from the context menu. When this item is part of a multi-selection
   // (cmd-click or cmd-drag marquee), remove the whole selection — with a
   // confirmation prompt, since removing several at once is easy to fat-finger.
-  // A lone item removes without a prompt, matching the old behaviour.
+  // A lone item removes without a prompt.
   async function handleRemove() {
     if (!multi()) {
       t.remove();

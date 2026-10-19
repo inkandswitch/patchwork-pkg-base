@@ -228,19 +228,15 @@ function DraftDocumentArea(props: {
   selectedContextToolId: Accessor<string | undefined>;
   setSelectedContextToolId: (id: string) => void;
 }) {
-  // Registry-driven: whether the context sidebar exists at all (any tabs) — no
-  // longer depends on any per-account config, just on whether anything is
-  // currently tagged `context-tool`. The system tray is separate host chrome in
-  // the left sidebar (see `PatchworkFrame`) and no longer gates this column.
+  // The context sidebar exists only if something is tagged `context-tool`.
   const contextItems = useTaggedComponents("context-tool");
   const hasContext = () => contextItems().length > 0;
 
-  // Remount key for the main view: just the selected doc. Checkpoint pins no
-  // longer ride on this url — the overlay provider streams them on the
-  // descriptors' *backing* urls and `OverlayRepo` swaps handle backings in
-  // place, so scrubbing history must not (and does not) change this key.
-  // Stamping heads here would also override the streamed pin: in
-  // `OverlayRepo`, heads on the presented url win over the backing's.
+  // Remount key for the main view: just the selected doc. Checkpoint pins are
+  // streamed by the overlay provider on the descriptors' *backing* urls and
+  // `OverlayRepo` swaps handle backings in place, so scrubbing history must not
+  // change this key. Stamping heads here would also override the streamed pin:
+  // in `OverlayRepo`, heads on the presented url win over the backing's.
   const mainViewKey = createMemo<string | undefined>(() =>
     props.selectedDocUrl()
   );

@@ -88,7 +88,11 @@
   flex-direction: column;
   gap: 0.5rem;
   cursor: pointer;
-  transition: box-shadow 0.15s ease;
+  border-radius: 6px;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .comments-thread-card--primary {
@@ -105,6 +109,41 @@
 
 .comments-thread-card--inactive {
   box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+
+/* In the sidebar, where threads sit side by side, the selected one needs to
+   stand out from the rest: an accent border and ring, faintly tinted. A thread
+   embedded on its own defaults to primary, so this is scoped to the panel. */
+.comments-panel .comments-thread-card--primary {
+  border-color: var(--comments-accent);
+  background: color-mix(in srgb, var(--comments-accent) 6%, var(--comments-bg));
+  box-shadow:
+    0 0 0 1px var(--comments-accent),
+    0 6px 14px -4px rgb(0 0 0 / 0.15);
+}
+
+/* Threads that also overlap the selection: a softer accent border. */
+.comments-panel .comments-thread-card--secondary {
+  border-color: color-mix(
+    in srgb,
+    var(--comments-accent) 50%,
+    var(--comments-border)
+  );
+  box-shadow: 0 2px 4px -2px rgb(0 0 0 / 0.1);
+}
+
+.comments-panel .comments-thread-card--inactive {
+  box-shadow: none;
+}
+
+/* Hovering a thread highlights its target, so hint that it's live. */
+.comments-panel .comments-thread:hover .comments-thread-card--inactive {
+  border-color: color-mix(
+    in srgb,
+    var(--comments-accent) 40%,
+    var(--comments-border)
+  );
+  background: var(--comments-hover-bg);
 }
 
 /* Resolved threads are hidden in the sidebar but shown when embedded. Keep
@@ -194,8 +233,8 @@
   overflow-wrap: break-word;
 }
 
-/* The draft editor is a cute.txt (CodeMirror) instance; box it like the old
-   textarea. Its inner padding/font come from the injected cute.txt styles. */
+/* The draft editor is a cute.txt (CodeMirror) instance. Its inner
+   padding/font come from the injected cute.txt styles. */
 .comment-draft-editor {
   height: 6rem;
   min-height: 6rem;

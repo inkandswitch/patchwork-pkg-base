@@ -23,8 +23,7 @@ type ContextSidebarProps = {
 /**
  * The document context sidebar: a full-height column with its own tab header
  * (the tabs that select the active tool, plus a collapse button), and the
- * active context tool's content. The system tray is separate host chrome in the
- * left sidebar (owned by `PatchworkFrame`) — it no longer lives here.
+ * active context tool's content.
  *
  * The tab list is every `patchwork:component` tagged `"context-tool"` —
  * registry-driven, not configured — so it's always rendered as a bare

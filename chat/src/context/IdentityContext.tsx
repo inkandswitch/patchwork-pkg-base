@@ -88,7 +88,7 @@ export const IdentityProvider: ParentComponent = (props) => {
 			if (cd.color) setMyColor(cd.color)
 
 			// Resolve the chat profile doc. Prefer the contact's own chatProfileUrl
-			// so identity no longer depends on the account doc; fall back to the
+			// so identity doesn't depend on the account doc; fall back to the
 			// account doc's, migrating the old contact.chat field if present.
 			let profileHandle: DocHandle<ChatProfileDoc>
 			if (cd.chatProfileUrl) {

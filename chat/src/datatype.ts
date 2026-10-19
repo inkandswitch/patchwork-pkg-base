@@ -14,8 +14,8 @@ const setTitle = (doc: ChatDoc, title: string) => {
 }
 
 // `chat` — the base preset: just the computer. A plain chat that grows itself via
-// `/plugin load` (or by loading the `chitter` bundle). The "everything" preset now
-// lives in the chitter bundle as the `chitter` datatype.
+// `/plugin load` (or by loading the `chitter` bundle). The "everything" preset is
+// the chitter bundle's `chitter` datatype.
 export const ChatDatatype = {
 	init(doc: ChatDoc) {
 		base(doc, "chat " + new Date().toLocaleString(), ["computer", "model"])

@@ -13,7 +13,9 @@
 
 import {readConfig, ensureConfig, callConfig, applyPrompts, effectiveSystem} from "./config.js"
 import {builtinGenerate} from "./builtin.js"
-import {resolveTools, toToolSchemas, buildToolsSystem, parseToolCalls, runTool, resolveCfgPrompts, sanitizeToolName} from "./tools.js"
+import {resolveTools, buildToolsSystem, parseToolCalls, runTool, resolveCfgPrompts, sanitizeToolName} from "./tools.js"
+import {prepareGenerate, buildGeneratePayload, NATIVE_TOOL_PROVIDERS, TEMPLATE_TOOL_PROVIDERS} from "./request.js"
+import {CrossOriginWorker as Worker} from "./cross-origin-worker.js"
 
 /**
  * Per-call options. A superset of every option any exported function accepts;
@@ -66,16 +68,7 @@ import {resolveTools, toToolSchemas, buildToolsSystem, parseToolCalls, runTool, 
 
 /** @typedef {{post: (m:any)=>void}} Connection */
 
-/** CallConfig plus the extra mutable fields the client tacks on per-call.
- * @typedef {import("./config.js").CallConfig & {tools?:any, toolSystem?:string, continuation?:boolean}} CallConfigExt */
-
-/** @typedef {{type:string, id:string, sessionKey:string, provider:import("./config.js").ProviderId, config:import("./config.js").CallConfig, text?:string, messages?:any}} GeneratePayload */
-
-// Providers with real function-calling APIs (the worker passes tool schemas and
-// parses structured tool_calls). Everything else (local transformers, Chrome
-// built-in) uses the <tool_call> XML prompt convention, parsed from the text.
-const NATIVE_TOOL_PROVIDERS = new Set(["openrouter", "ollama", "webllm"])
-const TEMPLATE_TOOL_PROVIDERS = new Set(["local"])
+/** @typedef {import("./request.js").CallConfigExt} CallConfigExt */
 
 /** @type {Connection|null} */
 let connection = null
@@ -168,12 +161,12 @@ function getConnection() {
 	// all generation through one model and keeps running stale code until every
 	// page closes. A per-page Worker reloads with the page, is isolated, and dies
 	// with it; a page that wants many models running at once gets its own worker
-	// rather than fighting over one. (Trade-off: loses resume-after-refresh, which
-	// relied on the worker outliving the page — `resume()` now just reports
-	// no-active-generation, handled gracefully.)
-	// NOTE: `new URL("./worker.js", import.meta.url)` MUST stay inline inside the
+	// rather than fighting over one. `resume()` therefore always reports
+	// no-active-generation.
+	// `new URL("./worker.js", import.meta.url)` must stay inline inside the
 	// constructor — that's the exact pattern bundlers (vite) statically detect to
 	// emit the worker chunk; hoisting it to a variable silently breaks bundling.
+	// `Worker` here is CrossOriginWorker.
 	const w = new Worker(new URL("./worker.js", import.meta.url), {type: "module"})
 	w.onmessage = (/** @type {MessageEvent} */ ev) => dispatch(ev.data)
 	connection = {post: (m) => w.postMessage(m)}
@@ -197,34 +190,21 @@ function getConnection() {
  */
 export async function generate(messages, opts = {}) {
 	const cfg0 = opts.config ?? (await ensureConfig(opts.scope))
-	// Resolve the selected system/pre prompt docs → their text. repo.find is
-	// cached, so this is cheap after first load.
-	const cfg = await resolveCfgPrompts(cfg0)
-	/** @type {CallConfigExt} */
-	const config = callConfig(/** @type {any} */ (cfg), /** @type {any} */ (opts))
-
-	// Tools: native providers get JSON schemas on `config.tools`; the rest get the
-	// <tool_call> XML convention prepended to the system prompt (parsed from text).
-	const hasTools = Array.isArray(opts.tools) && opts.tools.length > 0
-	const native = hasTools && NATIVE_TOOL_PROVIDERS.has(config.provider)
-	const templated = hasTools && TEMPLATE_TOOL_PROVIDERS.has(config.provider)
-	if (native || templated) config.tools = toToolSchemas(opts.tools)
-	if (templated) config.toolSystem = buildToolsSystem(opts.tools)
-	const extraSystem =
-		hasTools && !native && !templated
-			? [buildToolsSystem(opts.tools), opts.system].filter(Boolean).join("\n\n")
-			: opts.system
+	// Prompt resolution, CallConfig, the tools decision, the builtin detour and
+	// the chat-vs-continuation input shape all live in request.js, shared with
+	// host-side worker specs. The whole opts is passed as overrides: a same-realm
+	// caller legitimately owns provider/model/apiKey overrides.
+	const {cfg, config, extraSystem, builtin, input} = await prepareGenerate(cfg0, {
+		messages,
+		system: opts.system,
+		tools: opts.tools,
+		continuation: opts.continuation,
+		overrides: opts,
+	})
 
 	// Built-in (Chrome Prompt API) runs on the main thread, not the worker.
-	if (config.provider === "builtin") {
-		const pre = cfg.resolved?.pre || ""
-		const text =
-			typeof messages === "string"
-				? pre
-					? pre + "\n\n" + messages
-					: messages
-				: messages
-		return builtinGenerate(text, {
+	if (builtin) {
+		return builtinGenerate(input, {
 			temperature: config.temperature,
 			topK: config.topK,
 			system: effectiveSystem(/** @type {any} */ (cfg), extraSystem),
@@ -234,19 +214,6 @@ export async function generate(messages, opts = {}) {
 		}).then((t) => ({text: t, toolCalls: null, stats: null}))
 	}
 
-	// A string input is CHAT by default — wrapped as a user turn, so instruct/chat
-	// models respond normally and the system prompt applies. It's a raw
-	// CONTINUATION only when opts.continuation is set: raw-fed for
-	// local/webllm/ollama, and CONTINUE_SYS-framed for chat-only OpenRouter (see
-	// the worker). Loom passes continuation:true; other callers get plain chat.
-	const asContinuation = !!opts.continuation && typeof messages === "string"
-	const prepared = asContinuation
-		? messages
-		: typeof messages === "string"
-			? [{role: "user", content: messages}]
-			: messages
-	// Prepend the configured system + pre-prompt (and any tool-supplied system).
-	const input = applyPrompts(prepared, /** @type {any} */ (cfg), extraSystem)
 	const conn = getConnection()
 	const id = nextId()
 	const sessionKey = opts.sessionKey || id
@@ -297,11 +264,7 @@ export async function generate(messages, opts = {}) {
 			opts.signal.addEventListener("abort", onAbort)
 		}
 		// A string is a raw continuation prompt; an array is chat messages.
-		/** @type {GeneratePayload} */
-		const payload = {type: "generate", id, sessionKey, provider: config.provider, config}
-		if (typeof input === "string") payload.text = input
-		else payload.messages = input
-		conn.post(payload)
+		conn.post(buildGeneratePayload(config, input, {id, sessionKey}))
 	})
 }
 
@@ -782,9 +745,12 @@ export async function generateWithTools(messages, opts = {}) {
 		finalText = res.text
 
 		// Native structured tool_calls if the provider returned them; otherwise
-		// parse the model's text (XML <tool_call> / fenced / bare JSON).
+		// parse the model's text (XML <tool_call> / fenced / bare JSON), keeping
+		// only calls to real tools — prose can contain JSON that looks like one.
 		const nativeCalls = res.toolCalls && res.toolCalls.length > 0
-		const calls = /** @type {any[]} */ (nativeCalls ? res.toolCalls : parseToolCalls(res.text))
+		const calls = /** @type {any[]} */ (
+			nativeCalls ? res.toolCalls : parseToolCalls(res.text).filter((call) => findTool(call.name))
+		)
 		if (!calls.length) break
 
 		if (nativeCalls) {

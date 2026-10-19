@@ -16,7 +16,7 @@ import {
 import { useEffect, useRef } from "react";
 import { getSupportedToolsForType } from "@inkandswitch/patchwork-plugins";
 import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
-import { useDocument } from "@automerge/react";
+import { useDocument } from "@automerge/automerge-repo-react-hooks";
 import { automergeUrlToServiceWorkerUrl } from "@inkandswitch/patchwork-filesystem";
 
 // A tldraw shape embedding another Patchwork document via the shared "embed"

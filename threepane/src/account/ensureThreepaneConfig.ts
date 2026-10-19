@@ -3,6 +3,7 @@ import { createDocOfDatatype2 } from "@inkandswitch/patchwork-plugins";
 import type { AccountDoc, ThreepaneConfigDoc, ToolRef, ToolSlot } from "../types";
 import { DEFAULT_DOCTITLE_TOOLS, DEFAULT_TRAY_TOOLS } from "../datatypes";
 import { loadDatatypeWhenReady } from "./loadDatatypeWhenReady";
+import { slotId, uniqueSlots } from "../components/SlotView";
 
 // Title + spacer are intrinsic to the frame's top bar, never configured tools.
 const INTRINSIC_DOCTITLE_TOOLS = new Set(["document-title", "spacer"]);
@@ -19,18 +20,16 @@ function defaultSidebarWidgets(rootFolderUrl?: AutomergeUrl): ToolRef[] {
 /**
  * Lazily create the threepane layout config doc and point `account.tools.threepane`
  * at it, migrating the legacy `account.documentToolbarToolIds` into its
- * `doctitle` lane. The context sidebar is host chrome and still registry-driven
- * (every `patchwork:component` tagged `"context-tool"`); the system tray is now
- * an explicit `tray` list here, seeded with `DEFAULT_TRAY_TOOLS` (and backfilled
- * for configs created before the field existed).
+ * `doctitle` lane. The system tray is an explicit `tray` list here, seeded with
+ * `DEFAULT_TRAY_TOOLS` (and backfilled for configs created before the field
+ * existed).
  *
  * Seeds the sidebar with a default document-list widget (pinned to the account's
  * root folder), so the left pane is never empty.
  *
  * Non-destructive: the old `documentToolbarToolIds` / `accountSidebarToolId`
- * fields are left untouched so older builds keep working and you can switch
- * branches freely during the PR. Run the (separate, opt-in)
- * cleanupLegacyAccountFields script to remove them later.
+ * fields are left untouched so older builds keep working. Run the (separate,
+ * opt-in) cleanupLegacyAccountFields script to remove them later.
  */
 export async function ensureThreepaneConfig(
   accountHandle: DocHandle<AccountDoc>,
@@ -47,10 +46,21 @@ export async function ensureThreepaneConfig(
       if (rootFolderUrl && !doc.sidebar?.widgets?.length) {
         doc.sidebar.widgets = defaultSidebarWidgets(rootFolderUrl);
       }
-      // Backfill the tray for configs created before it moved out of the
-      // registry onto this doc, so existing accounts keep their system tray.
+      // Backfill the tray for configs created before the field existed.
       if (!doc.tray) {
         doc.tray = DEFAULT_TRAY_TOOLS.slice();
+      } else {
+        // Append default tray tools the saved tray is missing, like
+        // llm-config-tray. slotId compares across the string and tuple forms.
+        const unique = uniqueSlots(doc.tray);
+        if (unique.length !== doc.tray.length) doc.tray = unique;
+        const present = new Set(doc.tray.map((s) => slotId(s)));
+        for (const id of DEFAULT_TRAY_TOOLS) {
+          if (!present.has(id)) {
+            doc.tray.push(id);
+            present.add(id);
+          }
+        }
       }
       // An account whose doctitle lane ended up empty (nothing to migrate from
       // the legacy field) gets the defaults rather than a bare top bar.

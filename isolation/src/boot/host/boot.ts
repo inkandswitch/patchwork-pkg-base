@@ -48,6 +48,8 @@ import {
   startHostProvidersBridge,
   resolveBridgedProviders,
   makeBridgedValueFilter,
+  startHostOpenToolBridge,
+  resolveSharedTools,
 } from "../../bridges/index.js";
 import { generateIframeSrcdoc } from "./srcdoc.js";
 import { log } from "../../log.js";
@@ -147,6 +149,9 @@ export function bootIsolation(host: HTMLElement): IsolationHandle {
     // (see providers-bridge).
     const bridgedProviders = resolveBridgedProviders(host);
 
+    // shared-tools ∩ ALLOWED_OPEN_TOOLS (see open-tool-bridge).
+    const sharedTools = resolveSharedTools(host);
+
     // The bridge filters URLs in bridged values against the allowlist; the
     // silent-vs-prompt policy per provider type lives in the bridge.
     const bridgedValueFilter = makeBridgedValueFilter({
@@ -186,6 +191,8 @@ export function bootIsolation(host: HTMLElement): IsolationHandle {
         bridgedProviders,
         bridgedValueFilter
       ),
+      // Lets an isolated tool open a host tool, like the LLM config tray.
+      startHostOpenToolBridge(hostRpcPort, host, sharedTools),
       watchRegistries(hostRpcPort, mapper)
     );
 
@@ -193,6 +200,7 @@ export function bootIsolation(host: HTMLElement): IsolationHandle {
     createIframe(rpcChannel.port2, intermediary.iframePort, mapper, assets, {
       rootComponentId,
       importMap,
+      bridgedProviders,
     });
   }
 
@@ -204,6 +212,7 @@ export function bootIsolation(host: HTMLElement): IsolationHandle {
     config: {
       rootComponentId: string;
       importMap: ReturnType<typeof getResolvedImportMap>;
+      bridgedProviders: string[];
     }
   ) {
     const el = document.createElement("iframe");
@@ -239,6 +248,9 @@ export function bootIsolation(host: HTMLElement): IsolationHandle {
           // initial boot rather than lost, since a pre-port push no-ops.
           rootComponentData: readRootComponentData(host),
           registryEntries,
+          // The iframe only claims these, so other selectors can still reach a
+          // provider inside the iframe.
+          bridgedProviders: config.bridgedProviders,
           esmsSource: assets.esmsSource,
           hostStyles: assets.hostStyles,
           importMap: config.importMap,

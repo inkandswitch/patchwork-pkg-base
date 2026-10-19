@@ -17,9 +17,8 @@ type SelectedView = {
  *
  * Selection is driven by `patchwork:open-document` events bubbling up from
  * descendant views (the sidebar, links inside the main view, etc). Opening a
- * document replaces the selection with that single url; the ordered list is
- * kept for parity with the old `$selectedDocUrls` observable, where `[0]` is
- * the primary selection.
+ * document replaces the selection with that single url; `[0]` is the primary
+ * selection.
  *
  * Selection is transient UI state, so it lives only in memory here — it is
  * never written to an Automerge doc (and therefore never synced to peers).

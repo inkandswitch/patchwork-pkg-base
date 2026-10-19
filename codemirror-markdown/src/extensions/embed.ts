@@ -124,8 +124,7 @@ function getEmbedLinks(view: EditorView) {
   return Decoration.set(widgets, true);
 }
 
-// MIME types we accept document drags from. Mirrors the sideboard's convention
-// (duplicated on purpose — see the DnD notes; a shared package is a later step).
+// MIME types we accept document drags from. Mirrors the sideboard's convention.
 const PATCHWORK_DND = "text/x-patchwork-dnd";
 const PATCHWORK_URLS = "text/x-patchwork-urls";
 
@@ -148,9 +147,6 @@ function urlToDocId(raw: string): DocumentId | null {
  * Read dragged documents out of a drop event, in order of format preference.
  * Only an *explicit* `toolId` on a structured item pins the tool; otherwise we
  * embed tool-less and let the view fall back to the datatype's default tool.
- * (The previous code mis-read `item.type` — a datatype — as a tool id, so any
- * source whose datatype != tool id produced a broken embed, and sources that
- * set only urls were dropped entirely.)
  */
 function extractDocRefs(dt: DataTransfer): DocRef[] {
   const refs: DocRef[] = [];

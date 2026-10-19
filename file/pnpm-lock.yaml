@@ -99,8 +99,8 @@ importers:
         specifier: ^6.0.0
         version: 6.0.2
       solid-automerge:
-        specifier: ^2.0.1
-        version: 2.0.1(@automerge/automerge-repo@2.5.0)(solid-js@1.9.11)
+        specifier: ^2.0.2
+        version: 2.0.2(@automerge/automerge-repo@2.5.0)(solid-js@1.9.11)
       solid-js:
         specifier: ^1.9.11
         version: 1.9.11
@@ -1137,8 +1137,8 @@ packages:
   siginfo@2.0.0:
     resolution: {integrity: sha512-ybx0WO1/8bSBLEWXZvEd7gMW3Sn3JFlW3TvX1nREbDLRNQNaeNN8WK0meBwPdAaOI7TtRRRJn/Es1zhrrCHu7g==}
 
-  solid-automerge@2.0.1:
-    resolution: {integrity: sha512-GhYw6/KGYH5q2a44UMnGOFdJ91YW8TGa4S5UFFRw/IC2Q6B0lfLGizUNitqYu39zt1citmILxqFrGhHThqNlOQ==}
+  solid-automerge@2.0.2:
+    resolution: {integrity: sha512-Qzt+Iat809OvnS6LSIJC6jM2+LlxeVEjpDX/L5ObZFijDDmE8QcFc+QGVrcNkZVYVWVh2lqZOGU79n8YW6au9w==}
     peerDependencies:
       '@automerge/automerge-repo': ^2.6.0-subduction.34
       solid-js: ^1.9.13
@@ -2485,7 +2485,7 @@ snapshots:
 
   siginfo@2.0.0: {}
 
-  solid-automerge@2.0.1(@automerge/automerge-repo@2.5.0)(solid-js@1.9.11):
+  solid-automerge@2.0.2(@automerge/automerge-repo@2.5.0)(solid-js@1.9.11):
     dependencies:
       '@automerge/automerge-repo': 2.5.0
       '@solid-primitives/utils': 6.4.1(solid-js@1.9.11)
