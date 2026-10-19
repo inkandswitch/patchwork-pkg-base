@@ -8,6 +8,15 @@ import {featurePlugins} from "../features"
 import {createLoadedPlugins} from "../lib/slots"
 import {expandSelector, docSelector} from "../lib/plugin-catalog"
 import type {PluginSelector} from "../lib/registry"
+import {
+	listSkills,
+	resolveActiveSkills,
+	activateSkill,
+	skillsPromptSection,
+	skillToolSchemas,
+	runSkillTool,
+	type ActiveSkill,
+} from "../lib/llm-skills"
 import {ChatProvider, useChat} from "../context/ChatContext"
 import {IdentityProvider, useIdentity} from "../context/IdentityContext"
 import {ThemeProvider} from "../context/ThemeContext"
@@ -170,7 +179,8 @@ export function ChatRoot(props: {
 
 	// Computer/LLM state
 	const [computerActive, setComputerActive] = createSignal(false)
-	const [computerAutoMode, setComputerAutoMode] = createSignal(false)
+	// Lives on the doc so every tab (host and watchdogs) agrees on it.
+	const computerAutoMode = () => !(props.handle.doc() as any)?.computerShy
 	const [llmStatus, setLlmStatus] = createSignal("")
 	// Human-readable label of the model the computer is currently running, shown
 	// in the computer's username (e.g. "computer (OpenRouter Claude Opus 4)").
@@ -353,6 +363,7 @@ arg: value
 - edit_tool {toolId|url, code} — replace a tool's source and reload
 - inspect_iframe {url} — a pinned tool's DOM + console errors
 - eval_in_iframe {url, code} — run JS in a pinned tool, get the result
+- load_skill {id} — activate an installed skill (see the Skills index) and get its instructions
 
 Rules: ALWAYS read_doc before edit_doc/splice_doc, and re-read the returned value after (peers may have changed it). NEVER change a doc's \`@patchwork.type\`, or a tool's datatype/tool \`id\`/\`supportedDatatypes\` (breaks existing docs). To ask the user something, reply in plain text with NO tool call — tool results are not user answers.
 
@@ -393,7 +404,8 @@ Derive fill/line/fonts from \`--editor-*\`; accents from \`--studio-*\`. Never h
 - Navigate: \`openDocument(element, url, toolId)\` from patchwork-elements.
 - Rich output: \`\`\`file blocks create+embed files; \`\`\`embed blocks embed existing docs.
 
-Keep responses concise. When you build a tool, briefly say what it does.`
+Keep responses concise. When you build a tool, briefly say what it does.
+Your replies render as GitHub-flavoured Markdown: use **bold**, lists, headings, tables and fenced code with a language where they help.`
 
 	// The FULL prompt — detailed, with worked code examples — for capable cloud
 	// models (OpenRouter / Ollama). Same intro + tool-calling section as the
@@ -421,6 +433,7 @@ arg: value
 - edit_tool {toolId|url, code} — replace a tool's source and reload
 - inspect_iframe {url} — a pinned tool's DOM + console errors
 - eval_in_iframe {url, code} — run JS in a pinned tool, get the result
+- load_skill {id} — activate an installed skill (see the Skills index) and get its instructions
 
 Rules: ALWAYS read_doc before edit_doc/splice_doc, and re-read the returned value after (peers may have changed it). NEVER change a doc's \`@patchwork.type\`, or a tool's datatype/tool \`id\`/\`supportedDatatypes\` (breaks existing docs). To ask the user something, reply in plain text with NO tool call — tool results are not user answers.
 
@@ -504,7 +517,8 @@ When you update files in a tool folder (e.g. updating JS source via edit_doc or 
 ## Rich Messages
 You can include \`\`\`file blocks to create and embed files, \`\`\`embed blocks for existing docs.
 
-Keep responses concise. When you create a tool, explain briefly what it does.`
+Keep responses concise. When you create a tool, explain briefly what it does.
+Your replies render as GitHub-flavoured Markdown: use **bold**, lists, headings, tables and fenced code with a language where they help.`
 
 	// The prompt to show in the picker.
 	function computerSystemPrompt(): string {
@@ -567,6 +581,21 @@ Keep responses concise. When you create a tool, explain briefly what it does.`
 			required: ["name", "description", "code"],
 		},
 	}
+	// Mid-run skill activation: the skills index in the system prompt lists
+	// installed-but-inactive skills; this lets the model pull one in itself
+	// instead of stalling to ask the user for `/plugin load`.
+	const LOAD_SKILL_TOOL = {
+		name: "load_skill",
+		description:
+			"Activate an installed skill by id for THIS run (ids are in the Skills index of your instructions). Returns the skill's full instructions; any extra tools it contributes become available on your next step. Use it BEFORE working on a document type whose skill is not active — never guess a skill-covered document's schema.",
+		parameters: {
+			type: "object",
+			properties: {
+				id: {type: "string", description: "skill id from the Skills index"},
+			},
+			required: ["id"],
+		},
+	}
 	const COMPUTER_TOOLS: {name: string; description: string; parameters: any}[] = [
 		{name: "read_doc", description: "Read an Automerge document's full contents.", parameters: {type: "object", properties: {url: {type: "string", description: "automerge: URL"}}, required: ["url"]}},
 		{name: "edit_doc", description: "Set a field on a document (string fields diff collaboratively). Returns the field's new value.", parameters: {type: "object", properties: {url: {type: "string"}, field: {type: "string"}, value: {description: "new value (JSON)"}}, required: ["url", "field", "value"]}},
@@ -612,6 +641,7 @@ Every turn, a [Context] block gives you the focused document: its \`url\`, its c
     • heads — OPTIONAL. The heads array from read_doc. When given, the edit is applied as a back-dated change (changeAt) relative to that version. Omit for a normal "edit current state" change.
     • url — OPTIONAL. Edit a different document than the focused one.
   Returns the affected container's new value so you can verify.
+- load_skill {id} — activate an installed skill by id (see the Skills index in these instructions) and get its full instructions back. Use it BEFORE working on a document type whose skill is installed but not active.
 - ask_user {question, options?} — ask the user something and PAUSE. Posts your question (with optional clickable choices) and ends your turn; their reply comes back as a new message. Use this instead of guessing when you need a decision or missing detail.
 - inspect_dom {selector?} — (usually disabled) return the live DOM HTML of the running tool/page, optionally narrowed to a CSS selector. Use to see how the focused doc is actually rendered.
 - eval_js {code} — (usually disabled) evaluate JavaScript in the page and return the result. Powerful and unsandboxed; only when explicitly needed.
@@ -629,7 +659,8 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 - For text, reach for replace_text first, find_text second, raw automerge_op splices last. Edit the smallest correct span; don't overwrite whole fields.
 - Never change \`@patchwork.type\`. Don't invent fields the tool won't understand — match the document's existing shape.
 - To ASK the user something, use ask_user (or just reply in plain text with no tool call). Tool results are never the user's answer.
-- Keep replies concise. After editing, say briefly what you changed.`
+- Keep replies concise. After editing, say briefly what you changed.
+- Your replies render as GitHub-flavoured Markdown: use **bold**, lists, headings, tables and fenced code with a language where they help.`
 
 	// Default-OFF tools in context mode: DOM inspection + arbitrary JS eval are
 	// powerful/unsandboxed, so they're opt-in (enable per-doc in the picker).
@@ -665,9 +696,21 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 			}))
 	}
 
-	// The tool set for whichever mode we're in, plus any self-defined tools.
+	// The llm:skill packs active for the current computer response. Drives the
+	// "## Skills" prompt section, extra skill tools, and their dispatch.
+	const [skillsForRun, setSkillsForRun] = createSignal<ActiveSkill[]>([])
+
+	// The tool set for whichever mode we're in, plus any self-defined tools,
+	// plus tools contributed by the run's active skills (built-ins win on a
+	// name conflict).
 	function activeTools() {
-		return [...(isContext() ? CONTEXT_TOOLS : COMPUTER_TOOLS), ...customTools()]
+		const base = [
+			...(isContext() ? CONTEXT_TOOLS : COMPUTER_TOOLS),
+			LOAD_SKILL_TOOL,
+			...customTools(),
+		]
+		const taken = new Set(base.map((t) => t.name))
+		return [...base, ...skillToolSchemas(skillsForRun(), taken)]
 	}
 
 	// Render a structured tool call as the text shown in its rich-block card.
@@ -1053,6 +1096,53 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 		return out
 	}
 
+	// Activate a skill mid-run (the load_skill tool): its instructions come back
+	// as the tool result, and its extra tools join activeTools() for the next
+	// round via skillsForRun. The system prompt already sent still lists the
+	// skill as inactive — the instructions arriving as tool output supersede it.
+	async function activateSkillForRun(id: string): Promise<string> {
+		if (!id) return "Error: load_skill needs a skill id — see the Skills index in your instructions."
+		if (skillsForRun().some((s) => s.id === id)) {
+			return `Skill "${id}" is already active; its instructions are in your system prompt.`
+		}
+		const skill = await activateSkill(id)
+		if (!skill) {
+			const known = listSkills().map((s) => s.id).join(", ")
+			return `Error: no installed skill "${id}". Installed: ${known || "none"}.`
+		}
+		setSkillsForRun([...skillsForRun(), skill])
+		const tools = (skill.module.tools ?? []).map((t) => t.name)
+		return (
+			`Skill "${id}" is now active for this run` +
+			(tools.length ? ` (extra tools usable from your next step: ${tools.join(", ")})` : "") +
+			`. Its instructions:\n\n${skill.module.instructions.trim()}`
+		)
+	}
+
+	// read_doc auto-activation: reading a document whose datatype matches an
+	// installed-but-inactive skill pulls that skill in and delivers its
+	// instructions inline with the read result, so the model gets the domain
+	// knowledge exactly when it first looks at such a document.
+	async function autoActivateSkillsFor(doc: any): Promise<string> {
+		const docType = doc?.["@patchwork"]?.type
+		if (typeof docType !== "string" || !docType) return ""
+		const notes: string[] = []
+		for (const desc of listSkills()) {
+			if (!Array.isArray(desc.datatypes) || !desc.datatypes.includes(docType)) continue
+			if (skillsForRun().some((s) => s.id === desc.id)) continue
+			const skill = await activateSkill(desc.id)
+			if (!skill) continue
+			setSkillsForRun([...skillsForRun(), skill])
+			const tools = (skill.module.tools ?? []).map((t) => t.name)
+			notes.push(
+				`[Skill "${desc.id}" auto-activated: this document's type (${docType}) matches it` +
+					(tools.length ? `; extra tools usable from your next step: ${tools.join(", ")}` : "") +
+					`. Follow its instructions:]\n\n${skill.module.instructions.trim()}`
+			)
+		}
+		return notes.length ? "\n\n" + notes.join("\n\n") : ""
+	}
+
 	// Execute one tool call by name with structured args (from the lib's native
 	// tool_calls or parsed <tool_call> JSON). Args may already be typed (objects/
 	// numbers) or strings, so each branch is tolerant of both. Returns a result
@@ -1063,11 +1153,14 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 		// In context mode, doc-editing tools default to the focused document.
 		const focusedUrl = () => props.targetDocUrl?.()
 		try {
-			if (toolName === "read_doc") {
+			if (toolName === "load_skill") {
+				return await activateSkillForRun(String(args.id || "").trim())
+			} else if (toolName === "read_doc") {
 				const url = args.url || (isContext() ? focusedUrl() : undefined)
 				if (!url) return "Error: no url and no focused document."
 				const h = await repo.find(url)
 				const doc = h.doc()
+				const skillNotes = await autoActivateSkillsFor(doc)
 				if (isContext()) {
 					// Context mode also returns heads so a follow-up automerge_op can
 					// back-date its change (changeAt). handle.heads() is the UrlHeads
@@ -1076,9 +1169,9 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 					try {
 						heads = h.heads()
 					} catch {}
-					return JSON.stringify({url: h.url, heads, doc}, null, 2)
+					return JSON.stringify({url: h.url, heads, doc}, null, 2) + skillNotes
 				}
-				return JSON.stringify(doc, null, 2) || "null"
+				return (JSON.stringify(doc, null, 2) || "null") + skillNotes
 			} else if (toolName === "automerge_op") {
 				const url = args.url || focusedUrl()
 				if (!url) return "Error: no url and no focused document."
@@ -1558,6 +1651,17 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 					"`. It becomes available on your NEXT run (not this turn)."
 				)
 			}
+			// A tool contributed by one of the run's active llm:skills — dispatch
+			// to the skill's own runTool.
+			const skillResult = await runSkillTool(skillsForRun(), toolName, args, {
+				repo,
+				handle: props.handle,
+				element: props.element,
+				focusedUrl: focusedUrl(),
+				applyAutomerge,
+			})
+			if (skillResult !== null) return skillResult
+
 			// A tool the computer defined for itself via define_tool — run its JS.
 			const custom = (
 				(props.handle.doc() as any)?.computerCustomTools || []
@@ -1967,7 +2071,6 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 				return
 			}
 			setComputerActive(false)
-			setComputerAutoMode(false)
 			if (heartbeatInterval) {
 				clearInterval(heartbeatInterval)
 				heartbeatInterval = null
@@ -1983,20 +2086,27 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 				delete d.computerHeartbeat
 				delete d.computerOwner
 				delete d.computerModel
+				delete d.computerShy
 			})
 			sendComputerMessage("computer has left the chat.")
 			return
 		}
-		if (sub === "nosey" || sub === "auto") {
+		if (sub === "shy" || sub === "nosey") {
+			const shy = sub === "shy"
 			if (!computerActive()) {
 				sendComputerMessage(
 					"computer is not active. Use /computer invite first."
 				)
 				return
 			}
-			setComputerAutoMode(!computerAutoMode())
+			props.handle.change((d: any) => {
+				if (shy) d.computerShy = true
+				else delete d.computerShy
+			})
 			sendComputerMessage(
-				"Auto-respond mode: " + (computerAutoMode() ? "ON" : "OFF")
+				shy
+					? "ok, i'll only respond when @mentioned or replied to."
+					: "ok, i'll respond to every message."
 			)
 			return
 		}
@@ -2065,10 +2175,10 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 		claimComputerHost()
 		sendComputerMessage(
 			[
-				"hello! i'm computer, a computer program. mention @computer or reply to my messages and i'll respond.",
+				"hello! i'm computer, a computer program. i'll respond to every message.",
 				"",
 				"• /model — pick the model or provider (opens the config panel)",
-				"• /computer nosey — make me respond to everything",
+				"• /computer shy — only respond when @mentioned or replied to; /computer nosey to respond to everything again",
 				"• /computer owner — see who's hosting me; /computer own to take over",
 				"• /computer kick — send me away",
 			].join("\n")
@@ -2361,6 +2471,31 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 		return results
 	}
 
+	// Which llm:skill packs apply to a run: skills whose datatypes match the
+	// focused document, skills enabled on the chat by id, and @momputer forcing
+	// its persona skill. Resolved before the prompt is built so their
+	// instructions and tools are in place for every round.
+	async function skillsForMessage(isMomputer: boolean): Promise<ActiveSkill[]> {
+		try {
+			let focusedType: string | undefined
+			const turl = props.targetDocUrl?.()
+			if (turl) {
+				try {
+					const repo = (props.element as any).repo
+					focusedType = ((await repo.find(turl)).doc() as any)?.["@patchwork"]?.type
+				} catch {}
+			}
+			return await resolveActiveSkills({
+				focusedType,
+				enabledIds: activeFeatures(),
+				forcedIds: isMomputer ? ["momputer"] : undefined,
+			})
+		} catch (e) {
+			console.warn("[Computer] skill resolution failed:", e)
+			return []
+		}
+	}
+
 	async function respondToUser(userMsg: any) {
 		const repo = (props.element as any).repo
 		if (!repo || computerResponding) return
@@ -2388,22 +2523,25 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 		let tokenThrottleTimer: any = null
 
 		try {
-			const context = await assembleContext()
-			resetInactivityTimer()
 			const isMomputer = (userMsg.text || "")
 				.toLowerCase()
 				.includes("@momputer")
+			setSkillsForRun(await skillsForMessage(isMomputer))
+
+			const context = await assembleContext()
+			resetInactivityTimer()
 			// Generate a tool name for this response — the LLM uses it if it builds a tool
 			const suggestedToolName = randomToolName()
 			// The addenda go on every variant of the base prompt.
 			const base = computerSystemForFrame()
+			const skillsSection = skillsPromptSection(skillsForRun(), listSkills())
 			const addenda =
 				'\n\n## Your Tool ID\nIf you build a patchwork tool in this response, use `"' +
 				suggestedToolName +
 				'"` as the id for both the datatype and tool plugins, and in supportedDatatypes.' +
-				(isMomputer
-					? '\n\n## Special Mode: Momputer\nThe user addressed you as @momputer. Be warm, nurturing, and motherly in your response. Use gentle encouragement, express care and concern, and be supportive like a loving mom would be. You can use pet names like "sweetie", "honey", "dear", etc. Still be helpful and knowledgeable, but with a cozy maternal energy.'
-					: "")
+				// Active skills' full instructions plus a one-line index of the
+				// inactive ones. (The momputer persona rides this too.)
+				(skillsSection ? "\n\n" + skillsSection : "")
 			const systemPrompt: string | Record<string, string> =
 				typeof base === "string"
 					? base + addenda
@@ -2462,7 +2600,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 				setLlmStatus(status.replace(/think(ing)?/gi, "computing"))
 			}
 
-			const MAX_TOOL_ROUNDS = 5
+			const MAX_TOOL_ROUNDS = 25
 			let madeChanges = false
 			let completedResponse = false
 			for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {

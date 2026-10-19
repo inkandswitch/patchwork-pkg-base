@@ -7,6 +7,7 @@ import {highlightCode} from "../lib/highlighter"
 import {ensureFontLoaded} from "../lib/blob-cache"
 import {resolveNamedColor} from "../lib/named-colors"
 import {generateId} from "../lib/helpers"
+import {markdownChunks} from "../lib/markdown"
 import {useChat} from "../context/ChatContext"
 import {useIdentity} from "../context/IdentityContext"
 import {usePresence} from "../context/PresenceContext"
@@ -112,6 +113,58 @@ function MessageNodes(props: {nodes: any[]}) {
 	return <Index each={props.nodes}>{(node) => <TopNode node={node} />}</Index>
 }
 
+const THINK = /<think>([\s\S]*?)(?:<\/think>|$)/g
+
+// The computer's replies render as markdown, with <think> sections pulled out
+// first (when the schema allows them) so they keep their collapsible block.
+function ComputerText(props: {text: string; allowThink: boolean}) {
+	const parts = createMemo(() => (props.allowThink ? splitThink(props.text) : [{think: false, text: props.text}]))
+	return (
+		<Index each={parts()}>
+			{(part) => (
+				<Show when={part().think} fallback={<MarkdownText text={part().text} />}>
+					<ThinkBlock content={part().text} />
+				</Show>
+			)}
+		</Index>
+	)
+}
+
+function MarkdownText(props: {text: string}) {
+	const chunks = createMemo(() => markdownChunks(props.text))
+	return (
+		<Index each={chunks()}>
+			{(chunk) => {
+				const code = () => {
+					const c = chunk()
+					return c.kind === "code" ? c : undefined
+				}
+				const html = () => {
+					const c = chunk()
+					return c.kind === "html" ? c.html : ""
+				}
+				return (
+					<Show when={code()} fallback={<div innerHTML={html()} />}>
+						{(code) => <CodeBlock lang={code().lang} code={code().code} />}
+					</Show>
+				)
+			}}
+		</Index>
+	)
+}
+
+function splitThink(text: string): {think: boolean; text: string}[] {
+	const parts: {think: boolean; text: string}[] = []
+	let last = 0
+	for (const m of text.matchAll(THINK)) {
+		if (m.index > last) parts.push({think: false, text: text.slice(last, m.index)})
+		parts.push({think: true, text: m[1].trim()})
+		last = m.index + m[0].length
+	}
+	if (last < text.length) parts.push({think: false, text: text.slice(last)})
+	return parts
+}
+
 export function MessageBody(props: {
 	msg: ChatMessage
 	schema: CuteSchema
@@ -132,8 +185,15 @@ export function MessageBody(props: {
 	})
 
 	const segments = createMemo(() =>
-		props.msg.text ? parseMarkup(props.msg.text, props.schema) : []
+		props.msg.text && !props.msg.isComputer ? parseMarkup(props.msg.text, props.schema) : []
 	)
+
+	const body = () =>
+		props.msg.isComputer ? (
+			<ComputerText text={props.msg.text || ""} allowThink={!!props.schema.blocks.think} />
+		) : (
+			<MessageNodes nodes={segments()} />
+		)
 
 	const emojiOnly = createMemo(() =>
 		props.msg.text ? isEmojiOnly(props.msg.text) : false
@@ -153,6 +213,7 @@ export function MessageBody(props: {
 					classList={{
 						"emoji-only": emojiOnly(),
 						streaming: props.msg.streaming,
+						markdown: !!props.msg.isComputer,
 					}}
 					style={{
 						...(props.msg.font ? {"font-family": props.msg.font} : {}),
@@ -161,10 +222,10 @@ export function MessageBody(props: {
 					on:click={onSpoilerClick}
 				>
 					<Show when={props.msg.marquee}>
-						<marquee><MessageNodes nodes={segments()} /></marquee>
+						<marquee>{body()}</marquee>
 					</Show>
 					<Show when={!props.msg.marquee}>
-						<MessageNodes nodes={segments()} />
+						{body()}
 					</Show>
 				</div>
 			</Show>
