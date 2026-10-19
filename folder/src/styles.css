@@ -64,6 +64,39 @@
   border-bottom: 1px solid var(--folder-view-border);
 }
 
+/* Composition: where we are inside a pushwork directory doc, in place of the
+   create-new control (pushwork owns those entries). */
+.folder-view .folder-view-crumbs:not([hidden]) {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--studio-space-2xs, 0.25rem);
+  min-width: 0;
+  font-size: 0.85rem;
+}
+
+.folder-view .folder-view-crumb {
+  font: inherit;
+  color: var(--folder-view-fg);
+  background: none;
+  border: none;
+  padding: var(--studio-space-2xs, 0.25rem);
+  border-radius: var(--studio-radius-sm, 4px);
+}
+
+.folder-view button.folder-view-crumb {
+  color: var(--folder-view-accent-text);
+  cursor: pointer;
+}
+
+.folder-view button.folder-view-crumb:hover {
+  background: var(--folder-view-hover);
+}
+
+.folder-view .folder-view-crumb-sep {
+  color: var(--folder-view-muted);
+}
+
 /* Composition: the create-new control — a button anchoring a type-picker. */
 .folder-view .folder-create {
   position: relative;
@@ -220,7 +253,11 @@
 }
 
 .folder-view .folder-entry-open {
+  font: inherit;
   font-size: 0.8rem;
+  background: none;
+  border: none;
+  cursor: pointer;
   color: var(--folder-view-accent-text);
   text-decoration: none;
   padding: var(--studio-space-2xs, 0.25rem) var(--studio-space-sm, 0.5rem);

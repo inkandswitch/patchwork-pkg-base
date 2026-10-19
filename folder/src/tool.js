@@ -7,6 +7,12 @@ import {
   getRegistry,
   createDocOfDatatype2,
 } from "@inkandswitch/patchwork-plugins";
+import {
+  asString,
+  directoryLinks,
+  folderLinks,
+  isDirectoryDoc,
+} from "./links.js";
 import styles from "./styles.css";
 
 // MIME types we can extract document drags from, in order of preference.
@@ -103,19 +109,36 @@ function entryHref(docLink) {
   return `#doc=${parseAutomergeUrl(docLink.url).documentId}&type=${docLink.type}`;
 }
 
+// A link is keyed by its doc, or, for a pushwork subdirectory with no doc of
+// its own, by its path.
+function entryKey(docLink) {
+  return docLink.url ?? `path:${docLink.path}`;
+}
+
 function renderLoading() {
   return el("div", { className: "folder-view-loading" }, "Loading…");
 }
 
-function buildEntry(docLink) {
+// `enter(path)` opens a pushwork subdirectory in place.
+function buildEntry(docLink, enter) {
   const isFolder = docLink.type === "folder";
   const nameEl = el("span", { className: "folder-entry-name" }, docLink.name);
   const typeEl = el("span", { className: "folder-entry-type" }, docLink.type);
-  const openEl = el(
-    "a",
-    { className: "folder-entry-open", href: entryHref(docLink) },
-    "Open"
-  );
+  const openEl = docLink.url
+    ? el(
+        "a",
+        { className: "folder-entry-open", href: entryHref(docLink) },
+        "Open"
+      )
+    : el(
+        "button",
+        {
+          className: "folder-entry-open",
+          type: "button",
+          onClick: () => enter(docLink.path),
+        },
+        "Open"
+      );
 
   // The nested view names the doc without heads; resolution (the drafts
   // `repo:handle-descriptor` answer) pins it to the active checkpoint when one
@@ -166,6 +189,7 @@ function updateEntry(entry, docLink) {
   if (entry.node.getAttribute("data-type") !== docLink.type) {
     entry.node.setAttribute("data-type", docLink.type);
   }
+  if (!docLink.url) return;
   const href = entryHref(docLink);
   if (entry.openEl.getAttribute("href") !== href) {
     entry.openEl.setAttribute("href", href);
@@ -296,8 +320,18 @@ export const FolderTool = (handle, element) => {
   const styleEl = el("style");
   styleEl.textContent = styles;
 
+  // Where we are inside a pushwork directory doc, which keeps its whole tree
+  // in one doc. "" is the top.
+  let path = "";
+
+  function enter(next) {
+    path = next;
+    render();
+  }
+
   const countEl = el("span", { className: "folder-view-count" });
   const listEl = el("div", { className: "folder-view-list" });
+  const crumbsEl = el("nav", { className: "folder-view-crumbs", hidden: "" });
   const createNew = buildCreateNew(handle, element);
   const shell = el(
     "div",
@@ -306,10 +340,37 @@ export const FolderTool = (handle, element) => {
       "div",
       { className: "folder-view-header" },
       createNew.node,
+      crumbsEl,
       countEl
     ),
     listEl
   );
+
+  function renderCrumbs(title) {
+    const parts = path ? path.split("/") : [];
+    const crumbs = [{ name: title, path: "" }].concat(
+      parts.map((name, i) => ({ name, path: parts.slice(0, i + 1).join("/") }))
+    );
+    crumbsEl.replaceChildren(
+      ...crumbs.flatMap((crumb, i) => {
+        const last = i === crumbs.length - 1;
+        const node = last
+          ? el("span", { className: "folder-view-crumb" }, crumb.name)
+          : el(
+              "button",
+              {
+                className: "folder-view-crumb",
+                type: "button",
+                onClick: () => enter(crumb.path),
+              },
+              crumb.name
+            );
+        return i === 0
+          ? [node]
+          : [el("span", { className: "folder-view-crumb-sep" }, "/"), node];
+      })
+    );
+  }
 
   element.append(styleEl);
 
@@ -326,9 +387,9 @@ export const FolderTool = (handle, element) => {
 
   function addDroppedDocs(event) {
     const folder = handle.doc();
-    if (!folder) return;
+    if (!folder || isDirectoryDoc(folder)) return;
 
-    const existing = new Set(folder.docs.map((docLink) => docLink.url));
+    const existing = new Set(folderLinks(folder).map((docLink) => docLink.url));
     const selfUrl = handle.url;
 
     const links = [];
@@ -346,19 +407,25 @@ export const FolderTool = (handle, element) => {
     if (links.length === 0) return;
 
     handle.change((doc) => {
+      if (!Array.isArray(doc.docs)) doc.docs = [];
       doc.docs.push(...links);
     });
   }
 
+  // pushwork owns a directory doc's entries, so it's read-only here.
+  function acceptsDrops(event) {
+    return hasDocumentDrag(event.dataTransfer) && !isDirectoryDoc(handle.doc());
+  }
+
   shell.addEventListener("dragenter", (event) => {
-    if (!hasDocumentDrag(event.dataTransfer)) return;
+    if (!acceptsDrops(event)) return;
     event.preventDefault();
     dragDepth++;
     shell.setAttribute("data-drop-active", "");
   });
 
   shell.addEventListener("dragover", (event) => {
-    if (!hasDocumentDrag(event.dataTransfer)) return;
+    if (!acceptsDrops(event)) return;
     event.preventDefault();
     // "link": dropping here adds a new DocLink to the same automerge url — the
     // doc isn't moved or cloned. Requires the source's effectAllowed to permit
@@ -367,13 +434,13 @@ export const FolderTool = (handle, element) => {
   });
 
   shell.addEventListener("dragleave", (event) => {
-    if (!hasDocumentDrag(event.dataTransfer)) return;
+    if (!acceptsDrops(event)) return;
     dragDepth--;
     if (dragDepth <= 0) endDrag();
   });
 
   shell.addEventListener("drop", (event) => {
-    if (!hasDocumentDrag(event.dataTransfer)) return;
+    if (!acceptsDrops(event)) return;
     event.preventDefault();
     endDrag();
     addDroppedDocs(event);
@@ -398,11 +465,26 @@ export const FolderTool = (handle, element) => {
     }
 
     show(shell);
-    countEl.textContent = `${folder.docs.length} ${
-      folder.docs.length === 1 ? "document" : "documents"
+
+    const directory = isDirectoryDoc(folder);
+    let links;
+    if (directory) {
+      links = directoryLinks(folder, path);
+      renderCrumbs(
+        asString(folder["@patchwork"].title) || "Directory"
+      );
+    } else {
+      path = "";
+      links = folderLinks(folder);
+    }
+    createNew.node.hidden = directory;
+    crumbsEl.hidden = !directory;
+
+    countEl.textContent = `${links.length} ${
+      links.length === 1 ? "document" : "documents"
     }`;
 
-    if (folder.docs.length === 0) {
+    if (links.length === 0) {
       entries.clear();
       listEl.replaceChildren(
         el("div", { className: "folder-view-empty" }, "This folder is empty")
@@ -412,24 +494,25 @@ export const FolderTool = (handle, element) => {
 
     const seen = new Set();
     const ordered = [];
-    for (const docLink of folder.docs) {
-      seen.add(docLink.url);
+    for (const docLink of links) {
+      const key = entryKey(docLink);
+      seen.add(key);
       const isFolder = docLink.type === "folder";
-      let entry = entries.get(docLink.url);
+      let entry = entries.get(key);
       // Rebuild only if folder/non-folder shape flipped — that's the one
       // case where the body structure differs.
       if (!entry || entry.isFolder !== isFolder) {
-        entry = buildEntry(docLink);
-        entries.set(docLink.url, entry);
+        entry = buildEntry(docLink, enter);
+        entries.set(key, entry);
       } else {
         updateEntry(entry, docLink);
       }
       ordered.push(entry.node);
     }
 
-    for (const url of [...entries.keys()]) {
-      if (seen.has(url)) continue;
-      entries.delete(url);
+    for (const key of [...entries.keys()]) {
+      if (seen.has(key)) continue;
+      entries.delete(key);
     }
 
     listEl.replaceChildren(...ordered);
