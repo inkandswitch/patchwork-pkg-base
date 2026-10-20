@@ -58,6 +58,16 @@ export const plugins: Plugin<any>[] = [
   },
   {
     type: "patchwork:tool",
+    id: "threepane-wild-west",
+    tags: ["frame-tool"],
+    name: "Threepane",
+    icon: "Window",
+    supportedDatatypes: ["account"],
+    load: loadFrame,
+    unlisted: true,
+  },
+  {
+    type: "patchwork:tool",
     id: "threepane-isolation",
     tags: ["frame-tool"],
     name: "Threepane (isolate)",
