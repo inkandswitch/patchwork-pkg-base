@@ -1014,3 +1014,59 @@
   cursor: not-allowed;
   box-shadow: none;
 }
+
+/* ---- memory ---- */
+
+.pw-memory__intro {
+  padding: 1rem 1rem 0;
+  max-width: 44rem;
+  font-size: 0.8125rem;
+  color: var(--pw-packages-muted);
+}
+.pw-memory__intro p {
+  margin: 0 0 0.5rem;
+}
+.pw-memory__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.75rem 0 0.25rem;
+}
+.pw-memory__hint {
+  font-size: 0.75rem;
+  color: var(--pw-packages-faint);
+}
+.pw-memory__row {
+  cursor: pointer;
+}
+.pw-memory__num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pw-memory__row[data-heavy] .pw-memory__biggest,
+.pw-memory__docs tr[data-heavy] .pw-memory__num:first-of-type {
+  color: var(--pw-packages-danger);
+  font-weight: 600;
+}
+.pw-memory__path {
+  font-family: var(--pw-packages-family-code);
+  font-size: 0.75rem;
+  word-break: break-all;
+}
+.pw-memory__where .pw-memory__content {
+  display: block;
+}
+.pw-memory__content,
+.pw-memory__status,
+.pw-memory__unavailable {
+  font-size: 0.75rem;
+  color: var(--pw-packages-faint);
+}
+.pw-memory__docs > td {
+  padding: 0 0 0.5rem 1.5rem;
+  background: var(--pw-packages-raise);
+}
+.pw-memory__actions .pw-packages__tab {
+  white-space: nowrap;
+}
