@@ -495,8 +495,8 @@
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  padding-top: 0.65rem;
-  border-top: 1px solid var(--pw-packages-border);
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid var(--pw-packages-border);
 }
 
 /* show-more toggle, valid inside the plugin/registry <ul>s */
