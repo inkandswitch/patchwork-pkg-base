@@ -4,6 +4,7 @@ import {
   createSignal,
   For,
   Show,
+  on,
   onCleanup,
   type JSX,
 } from "solid-js";
@@ -44,14 +45,24 @@ import {
   type PkgMeta,
   type PluginLite,
 } from "./pkg-meta.ts";
+import {
+  CantMeasure,
+  HEAVY_CHANGE_OPS,
+  describeContent,
+  formatCount,
+  heaviest,
+  measurePackage,
+  type PackageMemory,
+} from "./package-memory.ts";
 
-type View = "packages" | "registries" | "table";
+type View = "packages" | "registries" | "table" | "memory";
 
 // A registry *is* a plugin type, so the by-registry view reads as "by type".
 const VIEW_LABEL: Record<View, string> = {
   packages: "By package",
   registries: "By type",
   table: "Table",
+  memory: "Memory",
 };
 
 interface PackagePreview {
@@ -462,6 +473,104 @@ export function Packages(props: {
     }
   };
 
+  // --- memory: what each package's documents take to load ---------------------
+  // "loaded": what the automerge worker has loaded of each package, measured
+  // as it loaded it, which costs nothing to ask. "everything": every document,
+  // which the worker has to load (and maybe fetch) to measure.
+  type MemoryScope = "loaded" | "everything";
+  type Measurement =
+    | { status: "queued" | "measuring" }
+    | { status: "done"; result: PackageMemory }
+    | { status: "failed"; error: string };
+  const [memoryScope, setMemoryScope] = createSignal<MemoryScope>("loaded");
+  const [measurements, setMeasurements] = createSignal<
+    Record<MemoryScope, Record<string, Measurement>>
+  >({ loaded: {}, everything: {} });
+  const [cantMeasure, setCantMeasure] = createSignal<string | null>(null);
+  const [measuring, setMeasuring] = createSignal<MemoryScope | null>(null);
+  let stopMeasuring = false;
+  onCleanup(() => (stopMeasuring = true));
+  const measure = (scope: MemoryScope, key: string, m: Measurement) =>
+    setMeasurements((all) => ({ ...all, [scope]: { ...all[scope], [key]: m } }));
+
+  // The automerge packages being shown, at the heads they're loaded at.
+  const measurable = createMemo(() =>
+    packageGroups().flatMap((group) => {
+      const key = moduleKey(group.importUrl);
+      if (!key || !isAutomergeUrl(group.importUrl)) return [];
+      const url =
+        pinnedModuleUrl(group.importUrl, headsFor(group.importUrl)) ??
+        bareModuleUrl(group.importUrl);
+      return [{ key, url, group }];
+    })
+  );
+
+  // One at a time: a walk loads each package's documents to measure them.
+  const measureAll = async (scope: MemoryScope) => {
+    const walk = scope === "everything";
+    const todo = measurable().filter(
+      ({ key }) => !walk || measurements().everything[key]?.status !== "done"
+    );
+    setMeasuring(scope);
+    setCantMeasure(null);
+    for (const { key } of todo) measure(scope, key, { status: "queued" });
+    try {
+      for (const { key, url } of todo) {
+        if (stopMeasuring) return;
+        measure(scope, key, { status: "measuring" });
+        try {
+          const result = await measurePackage(url, { walk });
+          measure(scope, key, { status: "done", result });
+        } catch (e) {
+          if (e instanceof CantMeasure) {
+            setCantMeasure(e.message);
+            setMeasurements((all) => ({ ...all, [scope]: {} }));
+            return;
+          }
+          measure(scope, key, {
+            status: "failed",
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
+      }
+    } finally {
+      setMeasuring(null);
+    }
+  };
+
+  // Asking what's loaded is free, so do it whenever it's opened.
+  createEffect(
+    on([view, memoryScope], ([v, scope]) => {
+      if (v === "memory" && scope === "loaded" && !measuring()) {
+        void measureAll("loaded");
+      }
+    })
+  );
+
+  // Heaviest first: the biggest single change is what sets the peak.
+  const memoryRows = createMemo(() => {
+    const all = measurements()[memoryScope()];
+    const rows = measurable().map(({ key, group }) => {
+      const m = all[key];
+      const documents = m?.status === "done" ? m.result.documents : [];
+      return {
+        key,
+        group,
+        measurement: m,
+        documents,
+        worst: heaviest(documents),
+        ops: documents.reduce((n, d) => n + d.ops, 0),
+        unavailable: documents.filter((d) => d.error).length,
+      };
+    });
+    return rows.sort(
+      (a, b) =>
+        (b.worst?.largestChange ?? -1) - (a.worst?.largestChange ?? -1) ||
+        a.group.name.localeCompare(b.group.name)
+    );
+  });
+  const [expanded, setExpanded] = createSignal<string | null>(null);
+
   // --- click-to-copy ---------------------------------------------------------
   const [copied, setCopied] = createSignal<string | null>(null);
   let copyTimer: ReturnType<typeof setTimeout> | undefined;
@@ -758,7 +867,7 @@ export function Packages(props: {
 
         <div class="pw-packages__tabbar">
           <div class="pw-packages__tabs" role="tablist">
-            <For each={["packages", "registries", "table"] as View[]}>
+            <For each={["packages", "registries", "table", "memory"] as View[]}>
               {(v) => (
                 <button
                   class="pw-packages__tab"
@@ -1095,6 +1204,216 @@ export function Packages(props: {
             </table>
           </div>
         </Show>
+      </Show>
+
+      {/* ---- MEMORY ---- */}
+      <Show when={view() === "memory"}>
+        <div class="pw-memory">
+          <div class="pw-memory__intro">
+            <p>
+              What each package's documents take to load. The site's automerge
+              worker loads a package's documents to serve its files, so it does
+              the measuring.
+            </p>
+            <p>
+              The memory a load takes grows faster than its ops: much faster
+              for one big change than for the same ops spread over many. Text
+              written as a plain string is an op per character, all in the
+              change that wrote it; a 585k-character file in one change took
+              ~300&nbsp;MB to load. As an <code>ImmutableString</code> or bytes
+              it takes almost nothing.
+            </p>
+            <div class="pw-memory__actions">
+              <div class="pw-packages__tabs" role="tablist">
+                <For each={["loaded", "everything"] as MemoryScope[]}>
+                  {(scope) => (
+                    <button
+                      class="pw-packages__tab"
+                      data-active={memoryScope() === scope ? "" : undefined}
+                      onClick={() => setMemoryScope(scope)}
+                    >
+                      {scope === "loaded" ? "Loaded" : "Every document"}
+                    </button>
+                  )}
+                </For>
+              </div>
+              <Show
+                when={memoryScope() === "everything"}
+                fallback={
+                  <span class="pw-memory__hint">
+                    What the worker has loaded to serve each package's files
+                    since it started, measured as it loaded it.
+                  </span>
+                }
+              >
+                <button
+                  class="pw-actions__btn"
+                  disabled={!!measuring() || measurable().length === 0}
+                  onClick={() => void measureAll("everything")}
+                >
+                  {measuring() === "everything" ? "Measuring…" : "Measure"}
+                </button>
+                <span class="pw-memory__hint">
+                  Loads every document in each package, READMEs and lockfiles
+                  included, fetching any not stored here yet. It's slow, and
+                  measuring a document with one huge change costs the worker
+                  as much memory as loading it does.
+                </span>
+              </Show>
+            </div>
+            <Show when={cantMeasure()}>
+              <div class="pw-package-notice" role="alert">
+                {cantMeasure()}
+              </div>
+            </Show>
+          </div>
+          <Show
+            when={measurable().length > 0}
+            fallback={
+              <div class="pw-packages__empty">
+                No automerge packages to measure here; the rest are served by
+                the site.
+              </div>
+            }
+          >
+            <div class="pw-table-wrap">
+              <table class="pw-table pw-memory__table">
+                <thead>
+                  <tr>
+                    <th class="pw-table__th pw-table__th--plain">Package</th>
+                    <th class="pw-table__th pw-table__th--plain">Origin</th>
+                    <th class="pw-table__th pw-table__th--plain pw-memory__num">
+                      Biggest change
+                    </th>
+                    <th class="pw-table__th pw-table__th--plain">In</th>
+                    <th class="pw-table__th pw-table__th--plain pw-memory__num">
+                      Ops
+                    </th>
+                    <th class="pw-table__th pw-table__th--plain pw-memory__num">
+                      Documents
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <For each={memoryRows()}>
+                    {(row) => (
+                      <>
+                        <tr
+                          class="pw-table__row pw-memory__row"
+                          data-origin={row.group.origin}
+                          data-heavy={
+                            (row.worst?.largestChange ?? 0) >= HEAVY_CHANGE_OPS
+                              ? ""
+                              : undefined
+                          }
+                          onClick={() =>
+                            setExpanded((k) => (k === row.key ? null : row.key))
+                          }
+                        >
+                          <td class="pw-table__name">{row.group.name}</td>
+                          <td>
+                            <OriginBadge origin={row.group.origin} />
+                          </td>
+                          <Show
+                            when={row.measurement?.status === "done"}
+                            fallback={
+                              <td class="pw-memory__status" colspan={4}>
+                                {row.measurement?.status === "failed"
+                                  ? (row.measurement as { error: string }).error
+                                  : (row.measurement?.status ?? "")}
+                              </td>
+                            }
+                          >
+                            <td class="pw-memory__num pw-memory__biggest">
+                              {formatCount(row.worst?.largestChange ?? 0)}
+                            </td>
+                            <td class="pw-memory__where">
+                              <Show when={row.worst}>
+                                <span class="pw-memory__path">
+                                  {row.worst!.path || "(root)"}
+                                </span>
+                                <Show when={describeContent(row.worst!.content)}>
+                                  <span class="pw-memory__content">
+                                    {describeContent(row.worst!.content)}
+                                  </span>
+                                </Show>
+                              </Show>
+                            </td>
+                            <td class="pw-memory__num">{formatCount(row.ops)}</td>
+                            <td class="pw-memory__num">
+                              {row.documents.length}
+                              <Show when={row.unavailable > 0}>
+                                <span
+                                  class="pw-memory__unavailable"
+                                  title="Couldn't be found, so not counted"
+                                >
+                                  {" "}
+                                  ({row.unavailable} missing)
+                                </span>
+                              </Show>
+                            </td>
+                          </Show>
+                        </tr>
+                        <Show
+                          when={
+                            expanded() === row.key && row.documents.length > 0
+                          }
+                        >
+                          <tr class="pw-memory__docs">
+                            <td colspan={6}>
+                              <table class="pw-table">
+                                <tbody>
+                                  <For
+                                    each={[...row.documents].sort(
+                                      (a, b) => b.largestChange - a.largestChange
+                                    )}
+                                  >
+                                    {(d) => (
+                                      <tr
+                                        class="pw-table__row"
+                                        data-heavy={
+                                          d.largestChange >= HEAVY_CHANGE_OPS
+                                            ? ""
+                                            : undefined
+                                        }
+                                      >
+                                        <td class="pw-memory__path">
+                                          {d.path || "(root)"}
+                                        </td>
+                                        <td class="pw-memory__num">
+                                          {formatCount(d.largestChange)}
+                                        </td>
+                                        <td class="pw-memory__num">
+                                          {formatCount(d.ops)} ops in{" "}
+                                          {formatCount(d.changes)} change
+                                          {d.changes === 1 ? "" : "s"}
+                                        </td>
+                                        <td class="pw-memory__content">
+                                          {d.error ?? describeContent(d.content)}
+                                        </td>
+                                        <td>
+                                          <Copyable
+                                            value={d.url}
+                                            class="pw-table__id"
+                                            title="Document URL — click to copy"
+                                          />
+                                        </td>
+                                      </tr>
+                                    )}
+                                  </For>
+                                </tbody>
+                              </table>
+                            </td>
+                          </tr>
+                        </Show>
+                      </>
+                    )}
+                  </For>
+                </tbody>
+              </table>
+            </div>
+          </Show>
+        </div>
       </Show>
 
       {/* ---- INSTALL MODAL ---- */}
