@@ -1,14 +1,12 @@
 import { createSignal, Show } from "solid-js";
 import { Portal, render } from "solid-js/web";
+
+// @chee/patchwork-llm is an automerge: package, so importing it means fetching
+// a doc through the service worker. The tray mounts on every boot, so it only
+// loads the library when the picker opens: a static import made the button
+// wait on that fetch, and on webkit closing a tab mid-fetch wedged the worker.
 // @ts-ignore — plain-JS library, ships no type declarations
-import {
-  dom as pickerDom,
-  ensureConfig,
-  readScopedConfig,
-  readConfig,
-  writeScopeOverride,
-  writeConfig,
-} from "@chee/patchwork-llm";
+const loadLlm = () => import("@chee/patchwork-llm");
 
 /**
  * The system-tray icon and popover for the LLM model/config picker. Host realm
@@ -68,7 +66,10 @@ export function LlmConfigTray(element: HTMLElement) {
   let pickerHost: HTMLDivElement | undefined;
   let currentPicker: any = null;
 
-  function sourceFor(sc: Scope | undefined) {
+  function sourceFor(
+    sc: Scope | undefined,
+    { readScopedConfig, readConfig, writeScopeOverride, writeConfig }: any
+  ) {
     if (sc) {
       return {
         read: () => {
@@ -90,11 +91,12 @@ export function LlmConfigTray(element: HTMLElement) {
   async function mountPicker() {
     const sc = scope();
     const p = payload() || {};
-    await ensureConfig(sc, element);
+    const llm = await loadLlm();
+    await llm.ensureConfig(sc, element);
     if (!pickerHost) return;
     pickerHost.replaceChildren();
-    currentPicker = pickerDom({
-      source: sourceFor(sc),
+    currentPicker = llm.dom({
+      source: sourceFor(sc, llm),
       scope: sc,
       toolName: sc?.toolName || p.toolName,
       toolPrompt: p.toolPrompt,
