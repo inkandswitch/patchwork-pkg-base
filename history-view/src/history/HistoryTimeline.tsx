@@ -1,5 +1,5 @@
 import type { AutomergeUrl, Repo } from "@automerge/automerge-repo/slim";
-import { Show } from "solid-js";
+import { Show, createSignal, onCleanup } from "solid-js";
 import { render } from "solid-js/web";
 import { subscribe } from "@inkandswitch/patchwork-providers-solid";
 import type { ToolElement } from "@inkandswitch/patchwork-plugins";
@@ -23,7 +23,19 @@ export function HistoryTimeline(props: PatchworkToolProps) {
     { type: "patchwork:selected-doc" },
     []
   );
-  const primaryUrl = () => selectedDocUrls()[0] as AutomergeUrl | undefined;
+  // Someone can point us at a particular doc and moment instead of the
+  // selection: `doc-url="automerge:…"` and `heads="hash,hash"` on the element.
+  const read = () => ({
+    url: props.element.getAttribute("doc-url") || undefined,
+    heads: props.element.getAttribute("heads")?.split(",").filter(Boolean),
+  });
+  const [asked, setAsked] = createSignal(read());
+  const watcher = new MutationObserver(() => setAsked(read()));
+  watcher.observe(props.element, { attributes: true, attributeFilter: ["doc-url", "heads"] });
+  onCleanup(() => watcher.disconnect());
+
+  const primaryUrl = () =>
+    (asked().url ?? selectedDocUrls()[0]) as AutomergeUrl | undefined;
 
   return (
     <div class="history-panel">
@@ -32,6 +44,7 @@ export function HistoryTimeline(props: PatchworkToolProps) {
           <DocHistoryView
             url={url}
             repo={props.repo}
+            focusHeads={() => asked().heads}
           />
         )}
       </Show>

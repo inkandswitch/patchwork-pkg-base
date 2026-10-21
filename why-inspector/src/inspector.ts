@@ -23,6 +23,7 @@ import {
   watchMounts,
   type ViewInfo,
 } from "./inspect.ts";
+import { getRegistry } from "@inkandswitch/patchwork-plugins";
 import { packageName } from "./package-name.ts";
 import { styles } from "./styles.ts";
 
@@ -126,6 +127,47 @@ export function mountWhyInspector(
   let frame = 0;
   let stopHeads: (() => void) | null = null;
   let lastPointer = { x: 0, y: 0 };
+  /** history-view, opened from the card at a moment in time */
+  let historyView: HTMLElement | null = null;
+
+  function closeHistory() {
+    historyView?.remove();
+    historyView = null;
+  }
+
+  /**
+   * Show the doc's history in the card, focused on `heads`. history-view lives
+   * in the document (not our shadow root) so its own styles reach it; a <slot>
+   * in the card puts it in the right place.
+   */
+  function openHistory(url: string, heads: readonly string[]): boolean {
+    closeHistory();
+    let installed = false;
+    try {
+      installed = !!getRegistry<any>("patchwork:component").get("history-view");
+    } catch {
+      installed = false;
+    }
+    if (!installed) return false;
+    const view = document.createElement("patchwork-view");
+    for (const [k, v] of Object.entries({
+      component: "history-view",
+      "doc-url": url,
+      heads: heads.join(","),
+      slot: "history",
+      class: "why-history",
+    })) view.setAttribute(k, v);
+    Object.assign(view.style, {
+      display: "block",
+      height: "320px",
+      overflow: "auto",
+      marginTop: "8px",
+      pointerEvents: "auto",
+    });
+    layer.append(view);
+    historyView = view;
+    return true;
+  }
 
   function setMode(next: Mode) {
     mode = next;
@@ -138,6 +180,7 @@ export function mountWhyInspector(
       outline.hidden = true;
       stopHeads?.();
       stopHeads = null;
+      closeHistory();
       hideLayer();
       cancelAnimationFrame(frame);
       frame = 0;
@@ -240,6 +283,7 @@ export function mountWhyInspector(
   function renderCard() {
     stopHeads?.();
     stopHeads = null;
+    closeHistory();
     const info = chain[selected];
 
     const again = h("button", { type: "button", class: "text-button" }, "point again");
@@ -280,7 +324,8 @@ export function mountWhyInspector(
     card.replaceChildren(
       h("header", {}, h("strong", {}, "what is this?"), again, close),
       chips,
-      info ? facts(info) : h("p", {}, "nothing picked")
+      info ? facts(info) : h("p", {}, "nothing picked"),
+      h("slot", { name: "history" })
     );
   }
 
@@ -398,6 +443,27 @@ export function mountWhyInspector(
       }
     };
     update(false);
+
+    // "show in history": history-view at the heads as they are right now. It
+    // stays at that moment even if the doc moves on; the heads above keep ticking.
+    const history = h("button", { type: "button", class: "text-button" }, "show in history");
+    const historyNote = h("span", { class: "warn" });
+    history.addEventListener("click", () => {
+      if (historyView) {
+        closeHistory();
+        history.textContent = "show in history";
+        return;
+      }
+      const heads = handle.heads() ?? [];
+      if (openHistory(url, heads)) {
+        history.textContent = `hide history (at ${shortHeads(heads.slice(0, 1))})`;
+        historyNote.textContent = "";
+      } else {
+        historyNote.textContent = " History isn't installed, so I can't show it.";
+      }
+    });
+    headsEl.parentElement?.append(h("br"), history, historyNote);
+
     const onChange = () => update(true);
     handle.on("change", onChange);
     stopHeads = () => handle.off("change", onChange);

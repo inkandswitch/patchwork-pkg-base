@@ -120,3 +120,24 @@ export function isItemSelected(
 ): boolean {
   return selectedItems.some((s) => s.id === item.id);
 }
+
+/**
+ * The history item a set of heads belongs to: the item (or per-author sub-item)
+ * whose newest change is one of the heads. Items are newest-first, so the first
+ * match is the most recent. With several heads (concurrent edits) any one of
+ * them will do. Returns null when no item ends at those heads.
+ */
+export function findItemForHeads(
+  items: HistoryItem[],
+  heads: readonly string[]
+): HistoryItem | null {
+  if (!heads.length) return null;
+  const wanted = new Set(heads);
+  for (const item of items) {
+    if (wanted.has(item.latestHash)) return item;
+    for (const sub of item.subItems ?? []) {
+      if (wanted.has(sub.latestHash)) return item;
+    }
+  }
+  return null;
+}
