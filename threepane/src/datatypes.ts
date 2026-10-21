@@ -19,6 +19,20 @@ export const DEFAULT_DOCTITLE_TOOLS: string[] = [
   "theme-titlebar",
 ];
 
+/**
+ * The sidebar's default widget: a document list pinned to the account's root
+ * folder. A late-bound tool id, so it renders nothing if sideboard isn't
+ * installed.
+ */
+export const DOCUMENT_LIST_TOOL = "chee/document-list";
+
+/**
+ * The threepane config doc's schema version. Defaults are only filled in when a
+ * doc is created or migrated up to this version, never on later mounts, so a
+ * default someone removed stays removed.
+ */
+export const THREEPANE_CONFIG_VERSION = 1;
+
 /** Default scalar configuration for a fresh account. */
 export const AccountDatatype: DatatypeImplementation<AccountDoc> = {
   init(doc) {
@@ -40,6 +54,7 @@ export const ThreepaneConfigDatatype: DatatypeImplementation<ThreepaneConfigDoc>
       doc.sidebar = { widgets: [] };
       doc.doctitle = { tools: DEFAULT_DOCTITLE_TOOLS.slice() };
       doc.tray = DEFAULT_TRAY_TOOLS.slice();
+      doc.version = THREEPANE_CONFIG_VERSION;
     },
     getTitle: () => "Threepane Config",
   };

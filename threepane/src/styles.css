@@ -674,125 +674,6 @@
   height: auto;
 }
 
-/* Debug Registry Toast */
-.debug-registry-toast {
-  position: fixed;
-  bottom: var(--threepane-space-md);
-  right: var(--threepane-space-md);
-  z-index: 9999;
-  max-width: 360px;
-  font-family: var(--threepane-family-code);
-  font-size: 0.75rem;
-  background: oklch(0.15 0.01 270);
-  border: 1px solid oklch(0.35 0.03 270);
-  border-radius: var(--threepane-radius-md);
-  box-shadow:
-    0 8px 32px oklch(0 0 0 / 0.4),
-    0 0 0 1px oklch(1 0 0 / 0.05) inset;
-  overflow: hidden;
-  backdrop-filter: blur(12px);
-}
-
-.debug-registry-toast__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--threepane-space-sm) var(--threepane-space);
-  background: oklch(0.2 0.02 270);
-  border-bottom: 1px solid oklch(0.3 0.02 270);
-}
-
-.debug-registry-toast__title {
-  color: oklch(0.85 0.1 270);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-
-.debug-registry-toast__clear {
-  background: none;
-  border: none;
-  color: oklch(0.6 0.05 270);
-  cursor: pointer;
-  padding: var(--threepane-space-2xs) var(--threepane-space-sm);
-  border-radius: var(--threepane-radius-sm);
-  transition: all 0.15s ease;
-}
-
-.debug-registry-toast__clear:hover {
-  background: oklch(0.25 0.02 270);
-  color: oklch(0.9 0.05 0);
-}
-
-.debug-registry-toast__list {
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.debug-registry-toast__item {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--threepane-space-sm);
-  padding: var(--threepane-space-sm) var(--threepane-space);
-  border-left: 3px solid transparent;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  animation: toast-slide-in 0.2s ease-out;
-}
-
-.debug-registry-toast__item:hover {
-  background: oklch(0.2 0.01 270);
-}
-
-.debug-registry-toast__item:not(:last-child) {
-  border-bottom: 1px solid oklch(0.25 0.01 270);
-}
-
-.debug-registry-toast__icon {
-  font-size: 0.875rem;
-  line-height: 1;
-  flex-shrink: 0;
-}
-
-.debug-registry-toast__content {
-  display: flex;
-  flex-direction: column;
-  gap: var(--threepane-space-3xs);
-  min-width: 0;
-}
-
-.debug-registry-toast__event-type {
-  color: oklch(0.7 0.15 150);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-size: 0.625rem;
-}
-
-.debug-registry-toast__plugin-type {
-  color: oklch(0.6 0.1 60);
-  font-size: 0.6875rem;
-}
-
-.debug-registry-toast__plugin-id {
-  color: oklch(0.9 0.02 270);
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-}
-@keyframes toast-slide-in {
-  from {
-    opacity: 0;
-    transform: translateX(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-
 /* Isolation-mode chrome popover.
    In isolation the main document area is a sandboxed iframe, so host-realm tools
    opened from the account bar (account picker / Packages / Settings) are floated
@@ -878,16 +759,6 @@
   }
 }
 
-/* Custom colors for event types */
-:root,
-:host,
-[theme] {
-  --debug-toast-registered: var(--studio-secondary-text, color-mix(in oklch, var(--studio-secondary, #33ccf8), var(--studio-line, black) 20%));
-  --debug-toast-loaded: color-mix(in oklch, var(--studio-added, #35f7ca), var(--studio-line, black) 10%);
-  --debug-toast-removed: var(--studio-danger-text, color-mix(in oklch, var(--studio-danger, #ff6a90), var(--studio-line, black) 20%));
-  --debug-toast-changed: var(--studio-warning-text, color-mix(in oklch, var(--studio-warning, #f8c43b), var(--studio-line, black) 10%));
-}
-
 .frame {
 .sidebar-toggle {
   position: relative;
@@ -910,12 +781,13 @@
   transition: background-color var(--studio-transition, 0.15s ease);
   /* invisible hit target straddling the divider. The toggle sits on opposite
      edges of the two sidebars (right edge of the left pane, left edge of the
-     right pane), so the asymmetric grab margin is mirrored per side to stay
-     centred over the divider line. */
+     right pane). The grab area reaches 6px past the line on both sides, so it
+     works the same on either edge without per-side rules. */
   &::before {
     content: "";
     position: absolute;
     inset-block: 0;
+    inset-inline: -6px;
   }
   &::after {
     content: "";

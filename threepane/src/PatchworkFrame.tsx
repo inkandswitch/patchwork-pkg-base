@@ -11,8 +11,6 @@ import {
   useSidebarState,
   useSidebarResize,
   useMainDocMounted,
-  useDebugRegistryToast,
-  DebugRegistryToast,
   SIDEBAR_KEYS,
   COLLAPSE_CONTEXT_SIDEBAR_EVENT,
   getStoredNumber,
@@ -40,6 +38,7 @@ import type { ToolImplementation } from "@inkandswitch/patchwork-plugins";
 import { ensureThreepaneConfig } from "./account/ensureThreepaneConfig";
 import { seedExampleDocuments } from "./account/seedExampleDocuments";
 import { ensureFrameStyles } from "./ensureFrameStyles";
+import { useHandleDoc } from "./hooks/useHandleDoc";
 
 type SelectedView = {
   url: AutomergeUrl;
@@ -48,12 +47,6 @@ type SelectedView = {
 
 type SidebarResize = ReturnType<typeof useSidebarResize>;
 type SidebarState = ReturnType<typeof useSidebarState>;
-
-const MIN_SIDEBAR_WIDTH = 180;
-const MAX_SIDEBAR_WIDTH = 720;
-// Drag a sidebar narrower than this and it snaps closed (Things-3 style).
-const AUTO_CLOSE_WIDTH = 120;
-const DRAG_THRESHOLD = 3;
 
 // Keep this tiny hook local to the frame chunk. Importing it from the shared
 // hooks chunk has produced an undefined binding in Safari before the frame can
@@ -199,9 +192,6 @@ function PatchworkFrameInner(props: {
   repo: Repo;
   isolation?: boolean;
 }) {
-  // Track doc changes via a version counter so accountDoc() recomputes
-  // on every change. We avoid useDocument/autoproduce because its store
-  // proxying conflicts with Automerge array splice operations.
   const accountDocHandle = useDocHandle<AccountDoc>(() => props.handle.url, {
     repo: props.repo,
   });
@@ -217,41 +207,17 @@ function PatchworkFrameInner(props: {
     console.error("frame: account bootstrap failed", err);
   });
 
-  const [docVersion, setDocVersion] = createSignal(0);
-  createEffect(() => {
-    const h = accountDocHandle();
-    if (!h) return;
-    const onChange = () => setDocVersion((v) => v + 1);
-    h.on("change", onChange);
-    onCleanup(() => h.off("change", onChange));
-  });
-
-  const accountDoc = createMemo(() => {
-    docVersion();
-    return accountDocHandle()?.doc();
-  });
+  const accountDoc = useHandleDoc(accountDocHandle);
   const accountDocUrl = props.handle.url;
 
   // The threepane layout config doc (sidebar widgets / context tabs / doctitle
-  // tools). Read via handle + version counter (same reason as accountDoc: store
-  // proxying conflicts with Automerge splice).
+  // tools).
   const threepaneUrl = () => accountDoc()?.tools?.["threepane"];
   const threepaneConfigHandle = useDocHandle<ThreepaneConfigDoc>(
     () => threepaneUrl(),
     { repo: props.repo }
   );
-  const [threepaneVersion, setThreepaneVersion] = createSignal(0);
-  createEffect(() => {
-    const h = threepaneConfigHandle();
-    if (!h) return;
-    const onChange = () => setThreepaneVersion((v) => v + 1);
-    h.on("change", onChange);
-    onCleanup(() => h.off("change", onChange));
-  });
-  const threepaneConfig = createMemo(() => {
-    threepaneVersion();
-    return threepaneConfigHandle()?.doc();
-  });
+  const threepaneConfig = useHandleDoc(threepaneConfigHandle);
 
   // Derived layout lanes, read from the threepane config doc. Slots are a
   // [toolId, docId] tuple or a bare component-id string; SlotView decides how
@@ -264,24 +230,11 @@ function PatchworkFrameInner(props: {
   const rootFolderUrl = () => accountDoc()?.rootFolderUrl;
 
   const sidebarState = useSidebarState();
-  const sidebarResize = useSidebarResize({
-    setLeftSidebarWidth: sidebarState.setLeftSidebarWidth,
-    setRightSidebarWidth: sidebarState.setRightSidebarWidth,
-    setIsSidebarCollapsed: sidebarState.setIsSidebarCollapsed,
-    setIsRightSidebarCollapsed: sidebarState.setIsRightSidebarCollapsed,
-    isLeftCollapsed: sidebarState.isSidebarCollapsed,
-    isRightCollapsed: sidebarState.isRightSidebarCollapsed,
-    minWidth: MIN_SIDEBAR_WIDTH,
-    maxWidth: MAX_SIDEBAR_WIDTH,
-    autoCloseWidth: AUTO_CLOSE_WIDTH,
-    dragThreshold: DRAG_THRESHOLD,
+  const sidebarResize = useSidebarResize("left", {
+    isCollapsed: sidebarState.isSidebarCollapsed,
+    setCollapsed: sidebarState.setIsSidebarCollapsed,
+    setWidth: sidebarState.setLeftSidebarWidth,
   });
-
-  const {
-    events: debugEvents,
-    dismissEvent,
-    clearAll,
-  } = useDebugRegistryToast();
 
   let element!: HTMLDivElement;
   const [selectedView, setSelectedView] = createSignal<SelectedView | null>(
@@ -345,12 +298,6 @@ function PatchworkFrameInner(props: {
 
   return (
     <div ref={element} style={{ display: "contents" }}>
-      <DebugRegistryToast
-        events={debugEvents()}
-        onDismiss={dismissEvent}
-        onClearAll={clearAll}
-      />
-
       {/*
         FrameLayout (the left sidebar + its toggle) is rendered ONCE, outside
         the doc-selection Show. Selecting the first document only swaps the main
@@ -497,7 +444,7 @@ function FramePopover(props: { view: SelectedView; onClose: () => void }) {
 // column (`children`). Rendered once and kept mounted across the no-doc → doc
 // transition; only its `children` (the main column) swap. The right context
 // sidebar/tray are host chrome rendered by `PatchworkFrameInner`.
-function FrameLayout(props: {
+export function FrameLayout(props: {
   accountDocUrl: AutomergeUrl;
   sidebarState: SidebarState;
   sidebarResize: SidebarResize;
@@ -527,43 +474,42 @@ function FrameLayout(props: {
   // running.
   const hasTray = () => props.traySlots().length > 0;
 
-  // Under isolation, intercept `patchwork:open-document` events fired by the
-  // account bar (account picker / Packages / Settings) at the footer, before
-  // they bubble to the selected-doc provider. Left to propagate they'd select a
-  // view for the isolated main frame — the sandboxed iframe — where these
-  // host-realm chrome tools can't run. We stop them here and hand them to the
-  // host-side popover instead. Off-isolation the events pass straight through.
-  let footerEl: HTMLDivElement | undefined;
-  onMount(() => {
-    if (!props.isolation || !footerEl) return;
-    const el = footerEl;
-    const onOpen = (event: OpenDocumentEvent) => {
-      const { url, toolId } = event.detail;
-      if (!url) return;
-      event.stopPropagation();
-      props.onInterceptOpen?.({ url, toolId: toolId ?? null });
-    };
-    el.addEventListener("patchwork:open-document", onOpen);
-    onCleanup(() => el.removeEventListener("patchwork:open-document", onOpen));
-  });
-
-  // Narrow-viewport UX: when the left sidebar covers most of the frame (>75% of
-  // the viewport width — i.e. it's acting as a full-screen overlay rather than a
-  // side rail), opening a document from it collapses both sidebars so the
-  // document takes over. Under isolation the footer intercept above stops
-  // account-bar events before they reach this listener, so only genuine document
-  // opens (from the sidebar widgets) collapse.
+  // One `patchwork:open-document` listener on the sidebar content, for two jobs:
   //
-  // `.threepane-sidebar` is unmounted while the sidebar is collapsed and rebuilt
-  // on every re-expand (see `Sidebar`), so we (re)bind inside an effect keyed on
-  // the collapse state rather than once at mount — otherwise the first collapse
+  // 1. Isolation only: events from the account bar (account picker / Packages /
+  //    Settings) are stopped here and handed to the host-side popover. Left to
+  //    propagate they'd select a view for the isolated main frame — the
+  //    sandboxed iframe — where these host-realm chrome tools can't run.
+  //    Off-isolation they pass straight through to the selected-doc provider.
+  //
+  // 2. Narrow viewports: when the left sidebar covers most of the frame (>75%
+  //    of the viewport width — acting as a full-screen overlay rather than a
+  //    side rail), opening a document from it collapses both sidebars so the
+  //    document takes over. Account-bar events intercepted in (1) don't.
+  //
+  // The sidebar content (account bar included) is unmounted while collapsed and
+  // rebuilt on every re-expand (see `Sidebar`), so this effect rebinds on the
+  // collapse state rather than once at mount — otherwise the first collapse
   // destroys the element the listener was on and it never fires again.
   let sidebarContentEl: HTMLDivElement | undefined;
+  let footerEl: HTMLDivElement | undefined;
   createEffect(() => {
-    if (props.sidebarState.isSidebarCollapsed()) return;
+    if (isCollapsed()) return;
     const el = sidebarContentEl;
     if (!el) return;
-    const onOpen = () => {
+    const footer = footerEl;
+    const onOpen = (event: OpenDocumentEvent) => {
+      const { url, toolId } = event.detail;
+      if (
+        props.isolation &&
+        url &&
+        footer &&
+        event.composedPath().includes(footer)
+      ) {
+        event.stopPropagation();
+        props.onInterceptOpen?.({ url, toolId: toolId ?? null });
+        return;
+      }
       if (el.getBoundingClientRect().width <= window.innerWidth * 0.75) return;
       props.sidebarState.setIsSidebarCollapsed(true);
       window.dispatchEvent(new CustomEvent(COLLAPSE_CONTEXT_SIDEBAR_EVENT));
@@ -571,6 +517,7 @@ function FrameLayout(props: {
     el.addEventListener("patchwork:open-document", onOpen);
     onCleanup(() => el.removeEventListener("patchwork:open-document", onOpen));
   });
+
   return (
     <>
       {/*

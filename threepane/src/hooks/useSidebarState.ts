@@ -42,58 +42,33 @@ export function getStoredBoolean(key: string): boolean {
 }
 
 /**
- * Manages sidebar collapse and width state with localStorage persistence
+ * The host-owned LEFT sidebar's collapse and width state, persisted to
+ * localStorage. The right (context) sidebar's state is owned by
+ * `DocumentAreaRoot`, so it survives inside the isolation boundary.
  */
 export function useSidebarState() {
-  // Sidebar collapse state with localStorage persistence
   const [isSidebarCollapsed, setIsSidebarCollapsed] = createSignal(
     getStoredBoolean(SIDEBAR_KEYS.leftCollapsed)
   );
-  const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = createSignal(
-    getStoredBoolean(SIDEBAR_KEYS.rightCollapsed)
-  );
-
-  // Resizable sidebar width state with localStorage persistence
   const [leftSidebarWidth, setLeftSidebarWidth] = createSignal(
     getStoredNumber(SIDEBAR_KEYS.leftWidth, DEFAULT_SIDEBAR_WIDTH)
   );
-  const [rightSidebarWidth, setRightSidebarWidth] = createSignal(
-    getStoredNumber(SIDEBAR_KEYS.rightWidth, DEFAULT_SIDEBAR_WIDTH)
-  );
 
-  // Persist each sidebar state to localStorage independently
   createEffect(
     on(isSidebarCollapsed, (value) => {
       localStorage.setItem(SIDEBAR_KEYS.leftCollapsed, String(value));
     })
   );
-
-  createEffect(
-    on(isRightSidebarCollapsed, (value) => {
-      localStorage.setItem(SIDEBAR_KEYS.rightCollapsed, String(value));
-    })
-  );
-
   createEffect(
     on(leftSidebarWidth, (value) => {
       localStorage.setItem(SIDEBAR_KEYS.leftWidth, String(value));
     })
   );
 
-  createEffect(
-    on(rightSidebarWidth, (value) => {
-      localStorage.setItem(SIDEBAR_KEYS.rightWidth, String(value));
-    })
-  );
-
   return {
     isSidebarCollapsed,
     setIsSidebarCollapsed,
-    isRightSidebarCollapsed,
-    setIsRightSidebarCollapsed,
     leftSidebarWidth,
     setLeftSidebarWidth,
-    rightSidebarWidth,
-    setRightSidebarWidth,
   };
 }

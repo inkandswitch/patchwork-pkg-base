@@ -33,9 +33,6 @@ export type AccountDoc = {
   exampleDocsSeededAt?: number;
 };
 
-/** @deprecated use AccountDoc */
-export type TinyPatchworkConfigDoc = AccountDoc;
-
 /**
  * A configured tool slot: which tool, and which document it renders against.
  * The docid is a real pin — every lane renders the tuple's tool against the
@@ -62,4 +59,9 @@ export type ThreepaneConfigDoc = {
   doctitle: { tools: ToolSlot[] };
   /** The system-tray tools, docked at the frame's bottom-left, in order. */
   tray: ToolSlot[];
+  /**
+   * Schema version (see THREEPANE_CONFIG_VERSION). Missing on docs made before
+   * versioning; those get their defaults backfilled once, then this is set.
+   */
+  version?: number;
 };

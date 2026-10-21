@@ -39,12 +39,6 @@ import { FrameTopBar } from "./FrameTopBar";
 import { ContextSidebar } from "./ContextSidebar";
 import { MainDocumentView } from "./MainDocumentView";
 
-const MIN_SIDEBAR_WIDTH = 180;
-const MAX_SIDEBAR_WIDTH = 720;
-// Drag a sidebar narrower than this and it snaps closed (Things-3 style).
-const AUTO_CLOSE_WIDTH = 120;
-const DRAG_THRESHOLD = 3;
-
 /**
  * The reactive inputs the document area needs, shared by both the local caller
  * (`PatchworkFrame` → `DocumentAreaRoot`) and the isolated caller
@@ -113,24 +107,10 @@ export function DocumentAreaRoot(props: DocumentAreaRootProps) {
     )
   );
 
-  // Right-sidebar-only resize. There is no left sidebar in this subtree, so the
-  // "left" branch of the hook is never exercised — `handleMouseDown` /
-  // `handleToggleClick` are only ever called with side="right" by the context
-  // sidebar. The left signals below exist purely to satisfy the hook's typed
-  // params; left-collapsed is read from the host prop.
-  const [, setUnusedLeftWidth] = createSignal(0);
-  const [, setUnusedLeftCollapsed] = createSignal(false);
-  const sidebarResize = useSidebarResize({
-    setLeftSidebarWidth: setUnusedLeftWidth,
-    setRightSidebarWidth,
-    setIsSidebarCollapsed: setUnusedLeftCollapsed,
-    setIsRightSidebarCollapsed,
-    isLeftCollapsed: () => props.isLeftCollapsed(),
-    isRightCollapsed: isRightSidebarCollapsed,
-    minWidth: MIN_SIDEBAR_WIDTH,
-    maxWidth: MAX_SIDEBAR_WIDTH,
-    autoCloseWidth: AUTO_CLOSE_WIDTH,
-    dragThreshold: DRAG_THRESHOLD,
+  const sidebarResize = useSidebarResize("right", {
+    isCollapsed: isRightSidebarCollapsed,
+    setCollapsed: setIsRightSidebarCollapsed,
+    setWidth: setRightSidebarWidth,
   });
 
   // The host collapses the left sidebar directly, but the right-sidebar collapse
@@ -223,8 +203,8 @@ function DraftDocumentArea(props: {
     value: boolean | ((prev: boolean) => boolean)
   ) => void;
   rightSidebarWidth: Accessor<number>;
-  handleMouseDown: (side: "left" | "right", e: MouseEvent) => void;
-  handleToggleClick: (side: "left" | "right", e: MouseEvent) => void;
+  handleMouseDown: (e: MouseEvent) => void;
+  handleToggleClick: (e: MouseEvent) => void;
   selectedContextToolId: Accessor<string | undefined>;
   setSelectedContextToolId: (id: string) => void;
 }) {

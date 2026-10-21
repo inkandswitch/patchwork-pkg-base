@@ -13,8 +13,8 @@ type ContextSidebarProps = {
   setSelectedToolId: (id: string) => void;
   isCollapsed: Accessor<boolean>;
   width: Accessor<number>;
-  onMouseDown: (side: "left" | "right", e: MouseEvent) => void;
-  onToggleClick: (side: "left" | "right", e: MouseEvent) => void;
+  onMouseDown: (e: MouseEvent) => void;
+  onToggleClick: (e: MouseEvent) => void;
   canExpand?: Accessor<boolean>;
   /** Collapse the sidebar, from its own tab-header button. */
   onCollapse: () => void;
