@@ -15,6 +15,10 @@ jobs:
   preview:
     if: github.event.action != 'closed'
     runs-on: ubuntu-latest
+    # A newer push makes this run's wait pointless; let it go.
+    concurrency:
+      group: patchwork-preview-${{ github.event.number }}
+      cancel-in-progress: true
     permissions:
       contents: read
       pull-requests: write
@@ -64,12 +68,40 @@ jobs:
           cache: pnpm
           cache-dependency-path: shell/pnpm-lock.yaml
 
-      - name: resolve package list url
+      # Netlify builds this PR's tools bundle on its own, and that usually
+      # finishes after this job starts. Wait for the deploy built from exactly
+      # this head commit, then use its permalink (https://<deploy id>--<site>…),
+      # which never moves. The `deploy-preview-N` alias moves with every push,
+      # so it could still be serving the previous commit's packages.
+      - name: wait for this commit's tools bundle
         id: bundle
+        env:
+          SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          site=$(curl -sf -H "Authorization: Bearer $NETLIFY_AUTH_TOKEN" \
-            "https://api.netlify.com/api/v1/sites/$NETLIFY_SITE_ID" | jq -r .name)
-          echo "url=https://deploy-preview-${{ github.event.number }}--$site.netlify.app/modules.json" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          api() { curl -sf -H "Authorization: Bearer $NETLIFY_AUTH_TOKEN" "$@"; }
+          site=$(api "https://api.netlify.com/api/v1/sites/$NETLIFY_SITE_ID" | jq -r .name)
+          for attempt in $(seq 1 100); do
+            deploy=$(api "https://api.netlify.com/api/v1/sites/$NETLIFY_SITE_ID/deploys?per_page=50" |
+              jq -c --arg sha "$SHA" \
+                '[.[] | select(.commit_ref == $sha and .context == "deploy-preview")] | first // empty') ||
+              deploy=""  # a blip from the API: just ask again next time round
+            state="not started"
+            [ -n "$deploy" ] && state=$(echo "$deploy" | jq -r '.state')
+            echo "attempt $attempt: tools bundle for ${SHA:0:7} is $state"
+            if [ "$state" = "ready" ]; then
+              id=$(echo "$deploy" | jq -r .id)
+              echo "url=https://$id--$site.netlify.app/modules.json" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if [ "$state" = "error" ]; then
+              echo "::error::Netlify's build of the tools bundle for ${SHA:0:7} failed: $(echo "$deploy" | jq -r '.error_message // "no message"')"
+              exit 1
+            fi
+            sleep 15
+          done
+          echo "::error::gave up waiting 25 minutes for Netlify to build the tools bundle for ${SHA:0:7}"
+          exit 1
 
       - run: pnpm install --frozen-lockfile
 
@@ -77,6 +109,23 @@ jobs:
         env:
           PATCHWORK_SYSTEM_PACKAGE_LIST_URL: ${{ steps.bundle.outputs.url }}
         run: pnpm build
+
+      # The shell's dist carries its own modules.json, copied from the published
+      # patchwork-pkg-base. The shell doesn't load it (it uses the URL above),
+      # but anyone checking /modules.json on the preview would see the published
+      # packages, not this PR's. Replace it with this PR's list, every entry made
+      # absolute so it points at this PR's packages and not the shell's copies.
+      - name: make the preview's modules.json this PR's
+        env:
+          PACKAGE_LIST_URL: ${{ steps.bundle.outputs.url }}
+        run: |
+          set -euo pipefail
+          base="${PACKAGE_LIST_URL%modules.json}"
+          curl -sfL "$PACKAGE_LIST_URL" |
+            jq --arg base "$base" \
+              '.modules |= map(if test("^[a-z][a-z0-9+.-]*:") then . else $base + ltrimstr("./") end)' \
+            > dist/modules.json
+          jq . dist/modules.json
 
       - name: free the alias
         run: ../base/.github/scripts/netlify-purge-alias.sh
