@@ -9,10 +9,11 @@
 //   • bare specifier  → nothing to fetch; the specifier is the name.
 //
 // Everything is best-effort: any failure falls back to a readable label derived
-// from the URL, and results are cached so we fetch each importUrl at most once.
+// from the URL. Nothing is cached here: the packages view asks once per
+// importUrl per mount.
 
 import { getImportableUrlFromAutomergeUrl } from "@inkandswitch/patchwork-filesystem";
-import { isAutomergeUrl } from "./origin.ts";
+import { isAutomergeUrl, isHttpUrl } from "./origin.ts";
 
 export interface PkgMeta {
   name?: string;
@@ -64,6 +65,11 @@ function dirSegments(url: URL): string[] {
   return parts;
 }
 
+/** Is the last segment a build-output dir (dist/, build/, …)? */
+function endsInBuildDir(parts: string[]): boolean {
+  return parts.length > 0 && BUILD_DIRS.has(parts[parts.length - 1].toLowerCase());
+}
+
 /** A lightweight plugin description read from a package.json `plugins` array. */
 export interface PluginLite {
   id?: string;
@@ -111,14 +117,14 @@ export async function resolvePackageJson(
     return fetchJson(pkgUrl);
   }
 
-  if (/^https?:/i.test(importUrl)) {
+  if (isHttpUrl(importUrl)) {
     try {
       const u = new URL(importUrl);
       // Try package.json beside the entry file, then walk up past build-output
       // dirs (dist/, build/, …) to the tool root, where package.json usually is.
       const dirs = dirSegments(u);
       const candidates: string[] = [dirs.join("/")];
-      while (dirs.length && BUILD_DIRS.has(dirs[dirs.length - 1].toLowerCase())) {
+      while (endsInBuildDir(dirs)) {
         dirs.pop();
         candidates.push(dirs.join("/"));
       }
@@ -160,15 +166,13 @@ export function packageDisplayName(
   if (meta?.name) return meta.name;
   if (!importUrl) return "(unknown source)";
   if (isAutomergeUrl(importUrl)) return shortenAutomerge(importUrl);
-  if (/^https?:/i.test(importUrl)) {
+  if (isHttpUrl(importUrl)) {
     try {
       const u = new URL(importUrl);
       // Drop the entry file, then walk up past build-output dirs (dist/, …) so
       // `.../comments-view/dist/index.js` reads as "comments-view", not "dist".
       const parts = dirSegments(u);
-      while (parts.length && BUILD_DIRS.has(parts[parts.length - 1].toLowerCase())) {
-        parts.pop();
-      }
+      while (endsInBuildDir(parts)) parts.pop();
       return parts[parts.length - 1] || u.hostname;
     } catch {
       return importUrl;

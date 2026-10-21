@@ -27,8 +27,6 @@ export interface RegistryEntry {
   importUrl?: string;
   supportedDatatypes?: string | string[];
   unlisted?: boolean;
-  /** Whether the plugin's implementation has been load()ed yet. */
-  loaded: boolean;
 }
 
 // Minimal structural aliases for the tool contract — kept here so the entry
@@ -74,7 +72,6 @@ export function readRegistrySnapshot(): RegistryEntry[] {
         importUrl: typeof p.importUrl === "string" ? p.importUrl : undefined,
         supportedDatatypes: p.supportedDatatypes,
         unlisted: p.unlisted === true ? true : undefined,
-        loaded: "module" in p,
       });
     }
   }
@@ -87,12 +84,10 @@ export function readRegistrySnapshot(): RegistryEntry[] {
 // plugins it already registered linger in memory until reload. To make removal
 // take effect now, we also pull them from the registries here.
 //
-// The host's live @inkandswitch/patchwork-plugins may be newer than the version
-// we type-check against (0.0.5, which has no removal API): it gained
-// `registry.remove(id)`. We reach it by structural feature-detection so this
-// tool keeps building against the older types while still deactivating on hosts
-// that support it — on an older host it's a no-op (the doc edit still lands; the
-// plugin just lingers until reload).
+// `registry.remove(id)` is in the types we build against, but the host's live
+// @inkandswitch/patchwork-plugins may be older than that. We feature-detect it,
+// so on an older host this is a no-op: the doc edit still lands and the plugin
+// lingers until reload.
 interface RemovableRegistry {
   remove?: (id: string) => boolean;
   all: () => any[];

@@ -23,6 +23,31 @@ export function isAutomergeUrl(url: string | undefined): url is string {
   return typeof url === "string" && url.startsWith("automerge:");
 }
 
+/** An http: or https: URL (by scheme only — it may still fail to parse). */
+export function isHttpUrl(url: string | undefined): url is string {
+  return typeof url === "string" && /^https?:/i.test(url);
+}
+
+/**
+ * Could this be installed as a package? An automerge URL with a plausible
+ * documentId, or an http(s) URL that parses.
+ */
+export function isInstallableUrl(url: string): boolean {
+  if (isAutomergeUrl(url)) {
+    const id = documentIdOf(url);
+    return !!id && id.length >= 16;
+  }
+  if (isHttpUrl(url)) {
+    try {
+      new URL(url);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
 /** The documentId portion of an automerge URL, ignoring any @heads / ?query. */
 export function documentIdOf(url: string | undefined): string | undefined {
   if (!isAutomergeUrl(url)) return undefined;

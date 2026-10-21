@@ -8,7 +8,7 @@
 // dev/visualizer tool reading the running state, guarded so a missing global
 // (isolated realm, tests) degrades to "no system sources" rather than throwing.
 
-import { moduleKey } from "./origin.ts";
+import { moduleKey, moduleKeySet } from "./origin.ts";
 
 interface ModuleSettingsLike {
   modules?: string[];
@@ -61,12 +61,12 @@ export function readSettingsSources(): SettingsSource[] {
       }
     }
     if (!modules) modules = mw.staticManifests?.[name]?.modules;
-    const moduleKeys = new Set<string>();
-    for (const m of modules ?? []) {
-      const key = moduleKey(m);
-      if (key) moduleKeys.add(key);
-    }
-    out.push({ name, url, key: moduleKey(url) ?? url, moduleKeys });
+    out.push({
+      name,
+      url,
+      key: moduleKey(url) ?? url,
+      moduleKeys: moduleKeySet(modules),
+    });
   }
   return out;
 }
@@ -76,9 +76,12 @@ export function readSettingsSources(): SettingsSource[] {
  * viewing — i.e. the system/default bundle(s). Excluding the viewed doc by its
  * key keeps "installed" (your doc) and "core" (the system doc) disjoint.
  */
-export function systemModuleKeys(viewedKey: string | undefined): Set<string> {
+export function systemModuleKeys(
+  sources: SettingsSource[],
+  viewedKey: string | undefined
+): Set<string> {
   const keys = new Set<string>();
-  for (const source of readSettingsSources()) {
+  for (const source of sources) {
     if (viewedKey && source.key === viewedKey) continue;
     for (const key of source.moduleKeys) keys.add(key);
   }
