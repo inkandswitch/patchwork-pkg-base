@@ -75,7 +75,7 @@ export function HistoryList(props: HistoryListProps) {
                     isItemSelected(item, props.selectedItems);
 
                   return (
-                    <div class={isLast() ? "last-timeline-item" : ""}>
+                    <div class={isLast() ? "last-timeline-item" : ""} data-latest-hash={item.latestHash}>
                       <HistoryItem
                         item={item}
                         isSelected={isSelected()}
