@@ -55,3 +55,10 @@ export interface MenuTarget {
 export const [menuTarget, setMenuTarget] = createSignal<MenuTarget | null>(
   null
 );
+
+// Why the last drop didn't (fully) happen, shown in the panel of the view it
+// was dropped on (`element`) until it times out. See dnd/drop-into.ts.
+export const [dropError, setDropError] = createSignal<{
+  element: object;
+  message: string;
+} | null>(null);

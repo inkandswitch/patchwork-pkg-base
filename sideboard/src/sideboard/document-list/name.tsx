@@ -16,9 +16,17 @@ export function ItemName(props: {
   // so maybe chill?
 
   const [next, setNext] = createSignal(props.name);
-  function blur() {
-    props.rename(next() ?? "");
+  // set once the edit has been saved or cancelled, so the blur that follows
+  // (the input going away) doesn't save it again
+  let done = false;
+  function finish(save: boolean, input?: HTMLInputElement) {
+    if (done) return;
+    done = true;
+    if (save) props.rename(next() ?? "");
+    // hand focus back to the row, or it falls out of the tree entirely
+    const row = input?.closest<HTMLElement>('[role="treeitem"]');
     if (isBeingRenamed(props.id)) setRenaming("");
+    row?.focus();
   }
 
   return (
@@ -28,11 +36,12 @@ export function ItemName(props: {
           style="display: contents"
           onsubmit={(event) => {
             event.preventDefault();
-            blur();
+            finish(true, event.currentTarget.querySelector("input")!);
           }}
         >
           <input
             ref={(el) => {
+              done = false;
               setNext(props.name);
               setTimeout(() => {
                 // todo lol be less hacky
@@ -41,13 +50,16 @@ export function ItemName(props: {
               }, 80);
             }}
             autofocus
-            onblur={blur}
+            onblur={() => finish(true)}
             onkeydown={(event) => {
+              // escape (or emacs's C-g) gives up on the edit
               if (
                 event.key == "Escape" ||
                 (event.key == "g" && event.ctrlKey)
               ) {
-                blur();
+                event.preventDefault();
+                event.stopPropagation();
+                finish(false, event.currentTarget);
               }
             }}
             class="document-list-item__name"

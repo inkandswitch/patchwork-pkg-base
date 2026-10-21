@@ -14,42 +14,78 @@ export function isNewDocDrag(event: DragEvent) {
   return event.dataTransfer?.types.includes(NEW_DOC_DND_TYPE) ?? false;
 }
 
-export type DropPosition = "above" | "below" | "inside" | null;
+/**
+ * Where a drop will land. It's the one answer both the drop line (while
+ * dragging) and the drop itself use, so the picture can't disagree with the
+ * result: `folderUrl` + `index` is the insertion point, and `id` + `position`
+ * say what to draw.
+ *
+ * - above/below: a line on the row whose `data-dnd-item` is `id`
+ * - inside: the folder whose `data-dnd-container` is `id` lights up
+ * - end: a line after the last row of the list whose container is `id`
+ */
+export type DropSpot = {
+  id: string;
+  position: "above" | "below" | "inside" | "end";
+  folderUrl: AutomergeUrl;
+  index: number;
+};
+
+/** The spot for a row: above/below go into its parent, inside into itself. */
+export function rowSpot(
+  row: { id: string; url: AutomergeUrl; parentUrl: AutomergeUrl; index: number },
+  position: "above" | "below" | "inside"
+): DropSpot {
+  if (position === "inside") {
+    return { id: row.id, position, folderUrl: row.url, index: 0 };
+  }
+  return {
+    id: row.id,
+    position,
+    folderUrl: row.parentUrl,
+    index: position === "above" ? row.index : row.index + 1,
+  };
+}
+
+/** The spot after the last row of a folder's list. */
+export function endSpot(folderUrl: AutomergeUrl, length: number): DropSpot {
+  return { id: folderUrl, position: "end", folderUrl, index: length };
+}
 
 // Drop target is a plain variable — not a SolidJS signal.
 // Visual state is updated via direct DOM manipulation to avoid
 // O(n) reactive updates across all items on every dragover.
-let currentDropTarget: { id: string; position: DropPosition } | null = null;
+let currentDropTarget: DropSpot | null = null;
 
 export function getDropTarget() {
   return currentDropTarget;
 }
 
+// Every mounted copy of a row shares its id (the same folder can be open in
+// two places, or in two panels), and they all stand for the same docref, so
+// every copy gets the mark — not just whichever one comes first in the DOM.
+function marked(attribute: string, id: string) {
+  return document.querySelectorAll(`[${attribute}="${CSS.escape(id)}"]`);
+}
+
 function updateDropTargetDOM(
-  oldTarget: { id: string; position: DropPosition } | null,
-  newTarget: { id: string; position: DropPosition } | null
+  oldTarget: DropSpot | null,
+  newTarget: DropSpot | null
 ) {
   if (oldTarget) {
-    const item = document.querySelector(
-      `[data-dnd-item="${CSS.escape(oldTarget.id)}"]`
-    );
-    if (item) item.removeAttribute("data-dnd-droplist-state");
-    const container = document.querySelector(
-      `[data-dnd-container="${CSS.escape(oldTarget.id)}"]`
-    );
-    if (container) container.removeAttribute("data-drop-state");
+    for (const item of marked("data-dnd-item", oldTarget.id))
+      item.removeAttribute("data-dnd-droplist-state");
+    for (const container of marked("data-dnd-container", oldTarget.id))
+      container.removeAttribute("data-drop-state");
   }
   if (newTarget) {
-    const item = document.querySelector(
-      `[data-dnd-item="${CSS.escape(newTarget.id)}"]`
-    );
-    if (item)
-      item.setAttribute("data-dnd-droplist-state", newTarget.position ?? "");
-    if (newTarget.position === "inside") {
-      const container = document.querySelector(
-        `[data-dnd-container="${CSS.escape(newTarget.id)}"]`
-      );
-      if (container) container.setAttribute("data-drop-state", "inside");
+    if (newTarget.position === "inside" || newTarget.position === "end") {
+      for (const container of marked("data-dnd-container", newTarget.id))
+        container.setAttribute("data-drop-state", newTarget.position);
+    }
+    if (newTarget.position !== "end") {
+      for (const item of marked("data-dnd-item", newTarget.id))
+        item.setAttribute("data-dnd-droplist-state", newTarget.position);
     }
   }
 }
@@ -85,8 +121,7 @@ export type SideboardDragAndDropItem = {
 export const dragstack = new Map<string, SideboardDragAndDropItem>();
 
 function setDragChecked(id: string, checked: boolean) {
-  const el = document.querySelector(`[data-dnd-item="${CSS.escape(id)}"]`);
-  if (el) {
+  for (const el of marked("data-dnd-item", id)) {
     if (checked) {
       el.setAttribute("aria-checked", "true");
     } else {
@@ -114,8 +149,8 @@ export function clearDragstack() {
 
 export function setDragSourceItems(ids: string[]) {
   for (const id of ids) {
-    const el = document.querySelector(`[data-dnd-item="${CSS.escape(id)}"]`);
-    if (el) el.setAttribute("data-dnd-dragging", "");
+    for (const el of marked("data-dnd-item", id))
+      el.setAttribute("data-dnd-dragging", "");
   }
 }
 
@@ -136,9 +171,7 @@ export function clearDropTarget() {
   currentDropTarget = null;
 }
 
-export function setDropTarget(
-  target: { id: string; position: DropPosition } | null
-) {
+export function setDropTarget(target: DropSpot | null) {
   // Only update if actually changed
   const current = currentDropTarget;
   if (!current && !target) return;
@@ -146,7 +179,9 @@ export function setDropTarget(
     current &&
     target &&
     current.id === target.id &&
-    current.position === target.position
+    current.position === target.position &&
+    current.folderUrl === target.folderUrl &&
+    current.index === target.index
   ) {
     return;
   }

@@ -10,7 +10,6 @@ import type {
   PatchworkViewElement,
 } from "@inkandswitch/patchwork-elements";
 import type { FolderDoc } from "@inkandswitch/patchwork-filesystem";
-import { handleFilesDrop } from "./file-drop.ts";
 import {
   createEffect,
   createSignal,
@@ -21,7 +20,6 @@ import {
 import {
   filterMatches,
   setRenaming,
-  setPendingNewDoc,
   autoExpandedFolders,
 } from "../state.ts";
 import { DocumentList } from "./document-list.tsx";
@@ -36,16 +34,13 @@ import type {
 } from "@inkandswitch/patchwork-plugins";
 import { Chevron } from "../icons.tsx";
 import {
-  getDropTarget,
   setDropTarget,
   clearDropTarget,
   copyMode,
-  isNewDocDrag,
-  isSameDragOriginView,
+  rowSpot,
 } from "../dnd/dnd.ts";
-import { executeDrop } from "../dnd/operations.ts";
-import { getDndPayload } from "../dnd/payload.ts";
-import { log } from "../dnd/debug.ts";
+import { dropInto } from "../dnd/drop-into.ts";
+import { createHoverTimer } from "../lib/hover-timer.ts";
 
 export default function Folder(props: {
   url: AutomergeUrl;
@@ -97,33 +92,22 @@ export default function Folder(props: {
     if (autoExpandedFolders().has(props.url)) setExpanded(true);
   });
 
-  // Auto-expand/collapse folders during drag hover.
-  // 1s: toggle. 2s: commit (don't revert on leave). Requires re-entry after commit.
-  // Auto-expand/collapse folders during drag hover.
-  // After 1s hovering over this folder's header: toggle and commit.
-  // Requires re-entry to trigger again.
-  let dragToggleTimer: ReturnType<typeof setTimeout> | null = null;
-  let dragAutoCommitted = false;
+  // Hold a drag over this folder's row for a second and it opens, so you can
+  // drop inside it. It only ever opens: closing a folder you're aiming into
+  // would take the target away. Re-arms when the drag leaves.
+  const dragOpen = createHoverTimer(1000, () => setExpanded(true));
+  onCleanup(dragOpen.stop);
 
-  function startDragAutoToggle() {
-    if (dragToggleTimer || dragAutoCommitted) return;
-
-    dragToggleTimer = setTimeout(() => {
-      setExpanded((v) => !v);
-      dragAutoCommitted = true;
-      dragToggleTimer = null;
-    }, 1000);
-  }
-
-  function stopDragAutoToggle() {
-    if (dragToggleTimer) { clearTimeout(dragToggleTimer); dragToggleTimer = null; }
-    dragAutoCommitted = false;
-  }
-
-  onCleanup(stopDragAutoToggle);
-
+  // Rename shows in two places: the folder's own title (what the row shows)
+  // and the parent's docref name (what the filter matches), so change both.
   function rename(name: string) {
     handle()?.change((doc) => updateText(doc, ["title"], name));
+    const index = props.itemIndex;
+    props.parentFolderHandle?.change((parent) => {
+      if (index != null && parent.docs[index]?.url === props.url) {
+        updateText(parent, ["docs", index, "name"], name);
+      }
+    });
   }
 
   async function createInside(datatype: Plugin<DatatypeDescription>) {
@@ -141,113 +125,56 @@ export default function Folder(props: {
     setRenaming(h.url + "/" + newIndex);
   }
 
-  async function handleDropIntoFolder(event: DragEvent) {
-    log("Folder drop handler called for:", props.url);
-
-    // Handle file drops from OS - insert at the front of this folder.
-    if (event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
-      await handleFilesDrop(
-        event.dataTransfer.files,
-        handle()!,
-        props.repo,
-        "inside",
-        0
-      );
-      return;
-    }
-
-    const payload = getDndPayload(event);
-    if (!payload) {
-      log("No dnd data in drop event. types:", event.dataTransfer?.types);
-      return;
-    }
-
-    const { source, items } = payload;
-    log("Drop data:", { source, items, folderUrl: props.url });
-
-    executeDrop(
-      {
-        draggedIds: items.map((i: any) => i.id),
-        draggedUrls: items.map((i: any) => i.url),
-        draggedItems: items,
-        targetId: props.url,
-        position: "inside",
-        sourceToolId: source,
-        copyMode: copyMode(),
-      },
-      props.repo,
-      props.rootFolderHandle,
-      isSameDragOriginView(props.element)
-    );
-  }
-
   return (
     <div
       class="document-list-folder"
-      role="group"
+      role="none"
       data-depth={depth()}
       style={folderDepthStyle()}
-      aria-expanded={expanded()}
       data-dnd-container={props.url}
       ondragover={(event: DragEvent) => {
         event.preventDefault();
         event.stopPropagation();
+        event.dataTransfer!.dropEffect = copyMode() ? "copy" : "move";
 
-        // Update drop effect based on copy mode
-        const effect = copyMode() ? "copy" : "move";
-        event.dataTransfer!.dropEffect = effect;
-
-        // Only set "inside" if we're not directly over an item element
-        // (If we're over an item, it will set its own above/below/inside position)
-        const target = event.target as Element;
-        const isOverItem = target.closest(".document-list-item");
-
-        if (!isOverItem) {
-          // Dropping into folder empty space
-          setDropTarget({ id: props.url, position: "inside" });
+        // Over a row, the row has already said where the drop goes (for this
+        // folder's own row that's "inside" in its middle). Anywhere else in
+        // the folder, the drop goes at the top of it.
+        const overRow = (event.target as Element).closest(".document-list-item");
+        if (!overRow) {
+          setDropTarget(
+            rowSpot(
+              {
+                id: props.url,
+                url: props.url,
+                parentUrl: props.parentFolderHandle?.url ?? props.url,
+                index: props.itemIndex ?? 0,
+              },
+              "inside"
+            )
+          );
         }
-
-        // Auto-toggle: only when hovering over THIS folder's header
-        const overItem = (event.target as Element).closest(".document-list-item");
-        if (overItem?.getAttribute("data-dnd-item") === props.url) {
-          startDragAutoToggle();
+        if (overRow?.getAttribute("data-dnd-item") === props.url && !expanded()) {
+          dragOpen.start();
         }
       }}
       ondragleave={(event: DragEvent) => {
         const related = event.relatedTarget as Element;
         if (!related || !(event.currentTarget as Element).contains(related)) {
-          stopDragAutoToggle();
+          dragOpen.stop();
           clearDropTarget();
         }
       }}
       ondrop={(event: DragEvent) => {
-        stopDragAutoToggle();
-        log("Folder ondrop event fired", props.url);
         event.preventDefault();
         event.stopPropagation();
-
-        // Check the drop position - only handle "inside" drops
-        // (The item handles its own "above" and "below" drops)
-        const target = getDropTarget();
-
-        if (target?.position === "inside") {
-          // New-doc drag: open a pending placeholder at the top of this folder
-          // instead of moving a document into it. Expand the folder so the
-          // placeholder is visible.
-          if (isNewDocDrag(event)) {
-            const h = handle();
-            if (h) {
-              setExpanded(true);
-              setPendingNewDoc({
-                containerUrl: h.url,
-                index: 0,
-              });
-            }
-          } else {
-            handleDropIntoFolder(event);
-          }
-        }
-        clearDropTarget();
+        dragOpen.stop();
+        dropInto(event, {
+          repo: props.repo,
+          rootFolderHandle: props.rootFolderHandle,
+          element: props.element,
+          expand: () => setExpanded(true),
+        });
       }}
     >
       <Item
@@ -268,6 +195,7 @@ export default function Folder(props: {
         itemIndex={props.itemIndex}
         isExpanded={expanded()}
         onToggleExpand={() => setExpanded((yn) => !yn)}
+        expand={() => setExpanded(true)}
         createInside={createInside}
         openWith={(toolId) => {
           props.open({
@@ -278,12 +206,11 @@ export default function Folder(props: {
           });
         }}
       >
-        <button
-          aria-label={
-            (expanded() ? "collapse" : "expand") +
-            " " +
-            (folder()?.title ?? props.name)
-          }
+        {/* not a button: it sits inside the row, and the row is what you
+            focus. the row's aria-expanded and Left/Right do its job for
+            keyboards and screen readers. */}
+        <span
+          aria-hidden="true"
           class="document-list-folder__toggle"
           on:click={(event: MouseEvent) => {
             event.stopImmediatePropagation();
@@ -293,7 +220,7 @@ export default function Folder(props: {
           <Show when={expanded()} fallback={<Chevron />}>
             <Chevron style={{ rotate: "90deg" }} />
           </Show>
-        </button>
+        </span>
         <ItemName
           name={folder()?.title ?? props.name}
           id={props.url}
@@ -302,6 +229,7 @@ export default function Folder(props: {
       </Item>
 
       <div
+        role="group"
         class="document-list-folder__contents"
         classList={{ "document-list-folder__contents--hidden": !expanded() && !props.filter }}
         data-depth={depth()}
