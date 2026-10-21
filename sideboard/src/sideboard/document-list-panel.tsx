@@ -20,8 +20,7 @@ import {
   setAutoExpandedFolders,
 } from "./state.ts";
 import {
-  collectExpandedFolders,
-  expandedFoldersFromIndex,
+  foldersToReveal,
   isMounted,
   watchFolder,
 } from "./document-list/auto-expand.ts";
@@ -91,10 +90,9 @@ export function DocumentListPanel(props: {
   // to auto-expand itself; expansion cascades down as each level mounts, so
   // even a deeply nested selection gets revealed.
   //
-  // Cheapest answer first: a selection whose rows are already mounted is
-  // already revealed (usually it was just clicked). Otherwise trace it up the
-  // parent index of folders we've loaded. Only if that can't reach the root do
-  // we walk the whole tree, which indexes as it goes so next time is free.
+  // A selection whose rows are already mounted is already revealed (usually it
+  // was just clicked), so there's nothing to do. Otherwise foldersToReveal
+  // traces it up the parent index, walking the tree only for what that misses.
   //
   // Gated on folderReady: the walk recursively finds folder docs across the
   // tree, so kicking it off before the root has loaded would flood the repo and
@@ -107,21 +105,9 @@ export function DocumentListPanel(props: {
       return;
     }
     if (selected.every((url) => isMounted(props.element, url))) return;
-    const indexed = expandedFoldersFromIndex(props.folderUrl, selected);
-    if (indexed) {
-      setAutoExpandedFolders(indexed);
-      return;
-    }
     let cancelled = false;
-    const result = new Set<AutomergeUrl>();
-    collectExpandedFolders(
-      props.repo,
-      props.folderUrl,
-      new Set(selected),
-      result,
-      new Set()
-    ).then(() => {
-      if (!cancelled) setAutoExpandedFolders(result);
+    foldersToReveal(props.repo, props.folderUrl, selected).then((folders) => {
+      if (!cancelled) setAutoExpandedFolders(folders);
     });
     onCleanup(() => {
       cancelled = true;

@@ -30,7 +30,7 @@ export const [renaming, setRenaming] = createSignal("");
 // selected document. A folder reads this to auto-expand itself so the selected
 // doc is revealed, even when it sits in a deeply nested (and otherwise
 // unmounted) subtree. Computed by the panel whenever the selection changes; see
-// collectExpandedFolders in document-list/auto-expand.ts.
+// foldersToReveal in document-list/auto-expand.ts.
 export const [autoExpandedFolders, setAutoExpandedFolders] = createSignal<
   Set<AutomergeUrl>
 >(new Set());

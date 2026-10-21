@@ -53,26 +53,33 @@ function indexFolder(folderUrl: AutomergeUrl, docs: DocLink[] | undefined) {
   children.set(folderUrl, next);
 }
 
+// Selected urls that a complete walk from a root didn't find, keyed by root.
+// Every folder that walk saw is now watched, so this stays true until one of
+// them changes — then it's dropped wholesale and the next reveal looks again.
+const missing = new Map<AutomergeUrl, Set<AutomergeUrl>>();
+
 /** Add a folder to the parent index and keep it current. Idempotent. */
 export function watchFolder(handle: DocHandle<FolderDoc>) {
   if (watched.has(handle)) return;
   watched.add(handle);
   indexFolder(handle.url, handle.doc()?.docs);
-  handle.on("change", () => indexFolder(handle.url, handle.doc()?.docs));
+  handle.on("change", () => {
+    indexFolder(handle.url, handle.doc()?.docs);
+    missing.clear();
+  });
 }
 
 /**
- * Answer the same question as collectExpandedFolders from the parent index:
- * walk up from each selected doc and collect every folder on a path that
- * reaches `rootUrl` (including the root itself). Returns null if any selected
- * doc can't be traced to the root with what's indexed so far — the caller
- * then falls back to the full walk, which indexes everything it loads.
+ * Walk up the parent index from each selected doc and collect every folder on
+ * a path that reaches `rootUrl` (including the root itself). `unreached` is the
+ * selected docs that can't be traced to the root with what's indexed so far.
  */
 export function expandedFoldersFromIndex(
   rootUrl: AutomergeUrl,
   selected: Iterable<AutomergeUrl>
-): Set<AutomergeUrl> | null {
-  const result = new Set<AutomergeUrl>();
+): { folders: Set<AutomergeUrl>; unreached: AutomergeUrl[] } {
+  const folders = new Set<AutomergeUrl>();
+  const unreached: AutomergeUrl[] = [];
   // url → whether it reaches the root. Seeded false on entry so a cycle
   // terminates instead of recursing forever.
   const reaches = new Map<AutomergeUrl, boolean>([[rootUrl, true]]);
@@ -84,7 +91,7 @@ export function expandedFoldersFromIndex(
     let found = false;
     for (const parent of parents.get(url) ?? []) {
       if (up(parent)) {
-        result.add(parent);
+        folders.add(parent);
         found = true;
       }
     }
@@ -93,57 +100,77 @@ export function expandedFoldersFromIndex(
   }
 
   for (const url of selected) {
-    if (url !== rootUrl && !up(url)) return null;
+    if (url !== rootUrl && !up(url)) unreached.push(url);
   }
-  return result;
+  return { folders, unreached };
 }
 
 /**
- * Walk the folder tree from `folderUrl` and collect the URLs of every folder
- * that has a selected document somewhere in its subtree — i.e. the set of
- * folders that must be expanded for the selection to be visible.
+ * Load folders down from `rootUrl` (one cached `repo.find` each), adding each
+ * to the parent index, until every url in `wanted` has been seen in some
+ * folder's docrefs. Leaf docs are never loaded. Each folder is visited once,
+ * however many parents link to it, and a cycle just hits an already-seen
+ * folder.
  *
- * This reads folder docs directly (one cached `repo.find` each) rather than
- * relying on mounted components, so it finds the full ancestor chain even for a
- * deeply nested selection whose folders aren't mounted yet. Leaf docs are never
- * loaded — selection is matched against the urls already present in each
- * folder's docrefs.
- *
- * Returns whether `folderUrl`'s subtree contains a selection; ancestors are
- * accumulated into `result`. `visited` is branched per path so a folder that
- * legitimately appears under two parents is handled, while true cycles stop.
+ * Returns whether the answer is trustworthy: everything was found, or the
+ * whole tree was walked without a folder failing to load.
  */
-export async function collectExpandedFolders(
+async function indexUntilFound(
   repo: Repo,
-  folderUrl: AutomergeUrl,
-  selected: Set<AutomergeUrl>,
-  result: Set<AutomergeUrl>,
-  visited: Set<AutomergeUrl>
+  rootUrl: AutomergeUrl,
+  wanted: Set<AutomergeUrl>
 ): Promise<boolean> {
-  if (visited.has(folderUrl)) return false;
-  const nextVisited = new Set(visited);
-  nextVisited.add(folderUrl);
+  const remaining = new Set(wanted);
+  const seen = new Set<AutomergeUrl>();
+  let failed = false;
 
-  let doc: FolderDoc | undefined;
-  try {
-    const handle = await repo.find<FolderDoc>(folderUrl);
-    watchFolder(handle);
-    doc = handle.doc();
-  } catch {
-    return false;
+  async function visit(url: AutomergeUrl): Promise<void> {
+    if (!remaining.size || seen.has(url)) return;
+    seen.add(url);
+    let docs: DocLink[];
+    try {
+      const handle = await repo.find<FolderDoc>(url);
+      watchFolder(handle);
+      docs = handle.doc()?.docs ?? [];
+    } catch {
+      failed = true;
+      return;
+    }
+    for (const link of docs) remaining.delete(link.url);
+    await Promise.all(
+      docs.filter((link) => link.type === "folder").map((link) => visit(link.url))
+    );
   }
-  if (!doc?.docs) return false;
 
-  let contains = doc.docs.some((child) => selected.has(child.url));
-  const subfolders = await Promise.all(
-    doc.docs
-      .filter((child) => child.type === "folder")
-      .map((child) =>
-        collectExpandedFolders(repo, child.url, selected, result, nextVisited)
-      )
-  );
-  if (subfolders.some(Boolean)) contains = true;
+  await visit(rootUrl);
+  return !remaining.size || !failed;
+}
 
-  if (contains) result.add(folderUrl);
-  return contains;
+/**
+ * The set of folders under `rootUrl` that must be expanded for the selected
+ * docs to be visible.
+ *
+ * Answered from the parent index when it can be. Otherwise walks the tree just
+ * far enough to find what's missing, indexing as it goes, so the next reveal
+ * of anything it passed is free. A selection that isn't under the root at all
+ * costs one full walk, then nothing until the tree changes.
+ */
+export async function foldersToReveal(
+  repo: Repo,
+  rootUrl: AutomergeUrl,
+  selected: AutomergeUrl[]
+): Promise<Set<AutomergeUrl>> {
+  const indexed = expandedFoldersFromIndex(rootUrl, selected);
+  const known = missing.get(rootUrl);
+  const search = indexed.unreached.filter((url) => !known?.has(url));
+  if (!search.length) return indexed.folders;
+
+  const complete = await indexUntilFound(repo, rootUrl, new Set(search));
+  const { folders, unreached } = expandedFoldersFromIndex(rootUrl, selected);
+  if (complete && unreached.length) {
+    const set = missing.get(rootUrl) ?? new Set();
+    for (const url of unreached) set.add(url);
+    missing.set(rootUrl, set);
+  }
+  return folders;
 }
