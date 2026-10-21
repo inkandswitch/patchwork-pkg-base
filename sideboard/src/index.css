@@ -256,11 +256,27 @@ button {
   }
 }
 
-.document-list__doclist--drag-over {
-  background: color-mix(in oklch, var(--document-list-primary), transparent 95%);
-  box-shadow:
-    0 0 0 2px var(--document-list-primary) inset,
-    0 1px 2px rgba(0, 20, 50, 0.05);
+/* a drag past the last row: the line goes after it (see endSpot in dnd.ts) */
+.document-list__doclist[data-drop-state="end"]::after {
+  content: "";
+  flex: none;
+  height: 2px;
+  margin-inline: var(--doclist-padding-x);
+  background: var(--document-list-line);
+}
+
+/* why a drop didn't happen. sticks to the bottom of the list so it's seen
+   wherever the list is scrolled to. */
+.document-list__error {
+  position: sticky;
+  bottom: 0.5rem;
+  margin: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--document-list-radius);
+  background: var(--document-list-widget-fill);
+  color: var(--document-list-danger);
+  box-shadow: 0 0 0 1px currentColor inset, 0 2px 8px rgba(0, 0, 0, 0.1);
+  font-size: 0.875rem;
 }
 
 .document-list-item {
@@ -328,6 +344,38 @@ button {
   }
   &[data-dnd-droplist-state="below"]::before {
     bottom: -1px;
+  }
+  /* the rows a drop just put here (see flashLanded in drop-into.ts) */
+  &[data-dnd-landed] {
+    animation: doclist-landed 600ms ease-out both;
+  }
+}
+
+@keyframes doclist-landed {
+  0% {
+    background: transparent;
+  }
+  30% {
+    background: color-mix(in oklch, var(--document-list-primary), transparent 30%);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+/* no pulse: it's lit when it lands, then fades */
+@keyframes doclist-landed-still {
+  from {
+    background: color-mix(in oklch, var(--document-list-primary), transparent 40%);
+  }
+  to {
+    background: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .document-list-item[data-dnd-landed] {
+    animation: doclist-landed-still 600ms linear both;
   }
 }
 
@@ -419,6 +467,9 @@ button {
 }
 
 .document-list-folder__toggle {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
   margin-left: -0.75ch;
   padding-inline: 0.25ch;
   &:hover {
