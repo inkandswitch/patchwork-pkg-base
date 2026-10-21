@@ -16,8 +16,8 @@ import {
 import { render } from "solid-js/web";
 
 import {
-  setPendingNewDoc,
   setAutoExpandedFolders,
+  dropError,
 } from "./state.ts";
 import {
   foldersToReveal,
@@ -30,11 +30,17 @@ import { SearchIcon } from "./icons.tsx";
 import { DocumentList } from "./document-list/document-list.tsx";
 import { LoadingRows } from "./document-list/loading-row.tsx";
 import { subscribe } from "@inkandswitch/patchwork-providers-solid";
-import { handleFilesDrop } from "./document-list/file-drop.ts";
-import { copyMode, isNewDocDrag, isSameDragOriginView } from "./dnd/dnd.ts";
-import { executeDrop } from "./dnd/operations.ts";
-import { getDndPayload, hasDocumentDrag } from "./dnd/payload.ts";
+import {
+  clearDropTarget,
+  copyMode,
+  endSpot,
+  isNewDocDrag,
+  setDropTarget,
+} from "./dnd/dnd.ts";
+import { dropInto } from "./dnd/drop-into.ts";
+import { hasDocumentDrag } from "./dnd/payload.ts";
 import { createMarquee } from "./document-list/marquee.ts";
+import { createTreeNav } from "./document-list/tree-nav.ts";
 import { menuTarget } from "./state.ts";
 
 const ItemMenu = lazy(() =>
@@ -118,8 +124,6 @@ export function DocumentListPanel(props: {
     props.element.dispatchEvent(createOpenEvent(detail));
   }
 
-  const [isDraggingFile, setIsDraggingFile] = createSignal(false);
-
   // cmd/ctrl-drag rubber-band multi-select over the list. Attached in the
   // capture phase because an item's own mousedown handler stops propagation for
   // cmd-clicks, which would otherwise swallow a band that starts on a row.
@@ -132,6 +136,8 @@ export function DocumentListPanel(props: {
     navEl = el;
     el.addEventListener("mousedown", marquee.onMouseDown, true);
     onCleanup(() => el.removeEventListener("mousedown", marquee.onMouseDown, true));
+    // and the keyboard: one tab stop, arrows, Home/End, Left to the parent
+    onCleanup(createTreeNav(el));
   };
 
   return (
@@ -139,84 +145,37 @@ export function DocumentListPanel(props: {
       <nav
         ref={attachMarquee}
         class="document-list__doclist document-list-widget"
-        classList={{
-          "document-list__doclist--drag-over": isDraggingFile(),
-        }}
         role="tree"
         aria-multiselectable="true"
+        data-dnd-container={props.folderUrl}
+        // Rows and folders say where a drop over them goes and stop the event,
+        // so a dragover that gets here is past the last row (or over the
+        // toolbar): the drop goes at the end of the list, and the line says so.
         onDragOver={(event: DragEvent) => {
-          // File drops from OS
-          if (event.dataTransfer?.types.includes("Files")) {
-            event.preventDefault();
-            event.dataTransfer.dropEffect = "copy";
-            setIsDraggingFile(true);
+          const files = event.dataTransfer?.types.includes("Files");
+          if (!files && !hasDocumentDrag(event.dataTransfer) && !isNewDocDrag(event)) {
             return;
           }
-          // Item drags (dropping into the list's empty space appends to root)
-          // and new-doc drags both append to the root list.
-          if (hasDocumentDrag(event.dataTransfer) || isNewDocDrag(event)) {
-            event.preventDefault();
-            event.dataTransfer!.dropEffect = copyMode() ? "copy" : "move";
-          }
+          event.preventDefault();
+          event.dataTransfer!.dropEffect = files ? "copy" : copyMode() ? "copy" : "move";
+          const h = folderHandle.latest;
+          if (h) setDropTarget(endSpot(h.url, h.doc()?.docs?.length ?? 0));
         }}
         onDragLeave={(event: DragEvent) => {
           const related = event.relatedTarget as Element;
           if (!related || !(event.currentTarget as Element).contains(related)) {
-            setIsDraggingFile(false);
+            clearDropTarget();
           }
         }}
         onDrop={(event: DragEvent) => {
           event.preventDefault();
-          setIsDraggingFile(false);
-
-          // New-doc drag onto the list's empty space: append a placeholder at
-          // the end of the root list.
-          if (isNewDocDrag(event)) {
-            const h = folderHandle();
-            if (h) {
-              const len = h.doc()?.docs?.length ?? 0;
-              setPendingNewDoc({ containerUrl: h.url, index: len });
-            }
-            return;
-          }
-
-          const files = event.dataTransfer?.files;
-          if (files && files.length > 0 && folderHandle()) {
-            const folderDoc = folderHandle()!.doc();
-            const insertIndex = folderDoc?.docs?.length || 0;
-            handleFilesDrop(
-              files,
-              folderHandle()!,
-              props.repo,
-              "inside",
-              insertIndex
-            );
-            return;
-          }
-
-          const payload = getDndPayload(event);
-          if (!payload || !folderHandle()) return;
-
-          const { source, items } = payload;
-          const rootUrl = folderHandle()!.url;
-          const docsLength = folderHandle()!.doc()?.docs?.length ?? 0;
-
-          executeDrop(
-            {
-              draggedIds: items.map((i: { id: string }) => i.id),
-              draggedUrls: items.map((i: { url: AutomergeUrl }) => i.url),
-              draggedItems: items,
-              // Append after the last root item; "inside" root if empty
-              targetId:
-                docsLength > 0 ? `${rootUrl}/${docsLength - 1}` : rootUrl,
-              position: docsLength > 0 ? "below" : "inside",
-              sourceToolId: source,
-              copyMode: copyMode(),
-            },
-            props.repo,
-            folderHandle.latest!,
-            isSameDragOriginView(props.element)
-          );
+          const h = folderHandle.latest;
+          if (!h) return;
+          dropInto(event, {
+            repo: props.repo,
+            rootFolderHandle: h,
+            element: props.element,
+          });
         }}
       >
         <div class="document-list__toolbar">
@@ -261,6 +220,11 @@ export function DocumentListPanel(props: {
               element={props.element}
             />
           </Show>
+        </Show>
+        <Show when={dropError()?.element === props.element}>
+          <p class="document-list__error" role="alert">
+            {dropError()!.message}
+          </p>
         </Show>
       </nav>
     </aside>
