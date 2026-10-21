@@ -34,6 +34,7 @@ import {
   pendingNewDoc,
   setPendingNewDoc,
 } from "../state.ts";
+import { markMounted } from "./auto-expand.ts";
 import Folder from "./folder.tsx";
 import Item from "./item.tsx";
 import { ItemName } from "./name.tsx";
@@ -128,6 +129,7 @@ export function DocumentList(props: DocumentListProps) {
             !props.filter.length || filterMatches(props.filter, doc.name);
           const remove = () => removeItem(index());
           const relid = () => props.handle.url + "/" + index();
+          onCleanup(markMounted(props.element, doc.url));
           const rename = (name: string) => {
             props.handle.change((doc) => {
               updateText(doc, ["docs", index(), "name"], name);

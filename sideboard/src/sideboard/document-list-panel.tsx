@@ -19,7 +19,12 @@ import {
   setPendingNewDoc,
   setAutoExpandedFolders,
 } from "./state.ts";
-import { collectExpandedFolders } from "./document-list/auto-expand.ts";
+import {
+  collectExpandedFolders,
+  expandedFoldersFromIndex,
+  isMounted,
+  watchFolder,
+} from "./document-list/auto-expand.ts";
 import CreateNew from "./create-new.tsx";
 import { createOpenEvent } from "./events.ts";
 import { SearchIcon } from "./icons.tsx";
@@ -63,6 +68,10 @@ export function DocumentListPanel(props: {
   const folderReady = () =>
     folderHandle.state === "ready" || folderHandle.state === "refreshing";
 
+  createEffect(() => {
+    if (folderHandle.latest) watchFolder(folderHandle.latest);
+  });
+
   const selectedDocUrls = subscribe<AutomergeUrl[]>(
     props.element,
     { type: "patchwork:selected-doc" },
@@ -77,10 +86,15 @@ export function DocumentListPanel(props: {
     (url: AutomergeUrl, set) => set.has(url)
   );
 
-  // Whenever the selection changes, walk the folder tree to find which folders
-  // need to be open for the selected docs to be visible, and publish that set.
-  // Each Folder reads it to auto-expand itself; expansion cascades down as each
-  // level mounts, so even a deeply nested selection gets revealed.
+  // Whenever the selection changes, work out which folders need to be open for
+  // the selected docs to be visible, and publish that set. Each Folder reads it
+  // to auto-expand itself; expansion cascades down as each level mounts, so
+  // even a deeply nested selection gets revealed.
+  //
+  // Cheapest answer first: a selection whose rows are already mounted is
+  // already revealed (usually it was just clicked). Otherwise trace it up the
+  // parent index of folders we've loaded. Only if that can't reach the root do
+  // we walk the whole tree, which indexes as it goes so next time is free.
   //
   // Gated on folderReady: the walk recursively finds folder docs across the
   // tree, so kicking it off before the root has loaded would flood the repo and
@@ -90,6 +104,12 @@ export function DocumentListPanel(props: {
     const selected = selectedDocUrls();
     if (!selected.length) {
       setAutoExpandedFolders(new Set());
+      return;
+    }
+    if (selected.every((url) => isMounted(props.element, url))) return;
+    const indexed = expandedFoldersFromIndex(props.folderUrl, selected);
+    if (indexed) {
+      setAutoExpandedFolders(indexed);
       return;
     }
     let cancelled = false;

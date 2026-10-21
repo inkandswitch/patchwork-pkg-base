@@ -25,6 +25,7 @@ import {
   autoExpandedFolders,
 } from "../state.ts";
 import { DocumentList } from "./document-list.tsx";
+import { watchFolder } from "./auto-expand.ts";
 import Item from "./item.tsx";
 import { ItemName } from "./name.tsx";
 import { LoadingRow } from "./loading-row.tsx";
@@ -65,6 +66,9 @@ export default function Folder(props: {
   const [expanded, setExpanded] = createSignal(false);
 
   const [folder, handle] = useDocument<FolderDoc>(() => props.url, props);
+  createEffect(() => {
+    if (handle.latest) watchFolder(handle.latest);
+  });
 
   // Create a new Set with the current folder URL to prevent circular references
   const nextVisitedFolders = new Set(props.visitedFolders ?? []);
