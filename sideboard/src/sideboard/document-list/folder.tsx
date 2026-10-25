@@ -65,6 +65,18 @@ export default function Folder(props: {
     if (handle.latest) watchFolder(handle.latest);
   });
 
+  // On sign-in, sync delivers a folder's docs in slow lumps, and each new
+  // subfolder would start its own find as it lands. Hold off mounting this
+  // folder's children until its docs have stopped changing for a moment.
+  const SETTLE_MS = 100;
+  const [settled, setSettled] = createSignal(false);
+  createEffect(() => {
+    folder()?.docs?.map((link) => link.url);
+    setSettled(false);
+    const timer = setTimeout(() => setSettled(true), SETTLE_MS);
+    onCleanup(() => clearTimeout(timer));
+  });
+
   // Create a new Set with the current folder URL to prevent circular references
   const nextVisitedFolders = new Set(props.visitedFolders ?? []);
   nextVisitedFolders.add(props.url);
@@ -240,7 +252,7 @@ export default function Folder(props: {
             find() its entire subtree on mount, loading the whole tree at once
             and making the folder appear to suspend on its descendants rather
             than just its own handle. */}
-        <Show when={expanded() || !!props.filter}>
+        <Show when={(expanded() || !!props.filter) && settled()}>
           <Suspense fallback={<LoadingRow depth={depth() + 1} />}>
             <DocumentList
               docs={folder()?.docs}

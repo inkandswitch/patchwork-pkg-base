@@ -6,6 +6,11 @@ import type { ToolImplementation } from "@inkandswitch/patchwork-plugins";
 import { RangeSet, type Extension, type Range } from "@codemirror/state";
 import { Decoration } from "@codemirror/view";
 import { commentUI } from "./lib/extensions/commentUI.ts";
+import {
+  buildPatchDecorations,
+  readPatchHighlights,
+  type PatchHighlights,
+} from "./lib/extensions/patchHighlights.ts";
 
 /** Automerge */
 import type { PatchworkToolProps } from "./types.ts";
@@ -25,7 +30,13 @@ import {
 } from "@inkandswitch/patchwork-providers-solid";
 
 /** Styles */
-import { createMemo, createResource, Show } from "solid-js";
+import {
+  createMemo,
+  createResource,
+  createSignal,
+  onCleanup,
+  Show,
+} from "solid-js";
 import {
   createCommentForRange,
   type Comment,
@@ -73,6 +84,35 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
   const contactUrl = subscribe<AutomergeUrl>(props.element, {
     type: "patchwork:contact",
   });
+
+  // What laid patches change, washed in each patch's colour, while the
+  // patches panel's Highlight is on. Re-read on every change to the doc,
+  // since that's when the patched runs move.
+  const patchLook = subscribe<PatchHighlights>(
+    props.element,
+    { type: "patchwork:patch-highlights" },
+    { on: false, patches: {} }
+  );
+  const [docTick, setDocTick] = createSignal(0);
+  // After the change, not during it: the editor's own typing raises this
+  // from inside a CodeMirror update, which mustn't dispatch another.
+  let bumping = false;
+  const bumpDoc = () => {
+    if (bumping) return;
+    bumping = true;
+    queueMicrotask(() => {
+      bumping = false;
+      setDocTick((n) => n + 1);
+    });
+  };
+  props.handle.on("change", bumpDoc);
+  onCleanup(() => props.handle.off("change", bumpDoc));
+  const patchDecorations = () => {
+    docTick();
+    const look = patchLook();
+    if (!look.on) return [];
+    return buildPatchDecorations(readPatchHighlights(props.handle, PATH), look);
+  };
 
   const [commentTargets] = createResource(
     commentEntries,
@@ -132,7 +172,10 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
     const targetRefs = commentTargets();
     const emphasisRefs = emphasisTargets();
     return RangeSet.of<Decoration>(
-      buildCommentDecorations(targetRefs, emphasisRefs),
+      [
+        ...buildCommentDecorations(targetRefs, emphasisRefs),
+        ...patchDecorations(),
+      ],
       true // sort ranges
     );
   };
