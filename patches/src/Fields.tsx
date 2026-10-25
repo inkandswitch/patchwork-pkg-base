@@ -2,6 +2,7 @@ import { createSignal, For, Show } from "solid-js";
 
 import {
   colourOf,
+  decides,
   isObject,
   isPrefix,
   nameOf,
@@ -259,7 +260,7 @@ export function coverage(entries: () => Entry[]): Coverage {
     const inside: Entry[] = [];
     for (const e of entries()) {
       for (const p of e.handle.doc()?.patches ?? []) {
-        if (isPrefix(p.path, path)) {
+        if (decides(p, path)) {
           // Front first, so the first laid one is the one that shows.
           if (!at || (!at.laid && e.laid)) at = e;
         } else if (isPrefix(path, p.path) && !inside.includes(e)) {

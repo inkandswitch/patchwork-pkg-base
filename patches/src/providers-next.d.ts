@@ -39,7 +39,8 @@ declare module "@inkandswitch/patchwork-providers" {
     };
     at?: UrlHeads;
   };
-  export type PatchEntry = PathPatch | TextPatch | MarkPatch;
+  export type RunPatch = { path: Prop[]; values: unknown[]; at?: UrlHeads };
+  export type PatchEntry = PathPatch | TextPatch | MarkPatch | RunPatch;
   export type PatchDoc = {
     "@patchwork": { type: "patch" };
     on: AutomergeUrl;
@@ -132,6 +133,7 @@ declare module "@inkandswitch/patchwork-providers" {
   export function isTextPatch(entry: PatchEntry): entry is TextPatch;
   export function isMarkPatch(entry: PatchEntry): entry is MarkPatch;
   export function isPathPatch(entry: PatchEntry): entry is PathPatch;
+  export function isRunPatch(entry: PatchEntry): entry is RunPatch;
   export function landPatch<T>(
     target: DocHandle<T>,
     layer: DocHandle<PatchDoc>

@@ -26,6 +26,19 @@ export const plugins: Plugin<any>[] = [
         renderPatchesPanel(element);
     },
   },
+  // A vector layer editor for patternwitch: each layer is a patch on the
+  // drawing, its shapes drawn into the patch as pixels.
+  {
+    type: "patchwork:tool",
+    id: "pwp",
+    name: "pwp",
+    icon: "PenTool",
+    supportedDatatypes: ["patternwitch"],
+    async load() {
+      const { renderPwp } = await import("./tools/pwp/main");
+      return renderPwp;
+    },
+  },
   {
     type: "patchwork:datatype",
     id: "patch",

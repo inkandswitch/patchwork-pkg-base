@@ -13,6 +13,7 @@ import type { AutomergeUrl, DocHandle } from "@automerge/automerge-repo/slim";
 import {
   fromAutomergePatches,
   isPathPatch,
+  isRunPatch,
   isTextPatch,
   landPatch,
   readEntry,
@@ -28,6 +29,7 @@ import {
   KIND_LABEL,
   kindOf,
   nameOf,
+  putOf,
   show,
   toOps,
   type Entry,
@@ -297,7 +299,9 @@ export function PatchCard(props: CardProps) {
                     onValue={(v) =>
                       change((ps) => {
                         const e = ps[i];
-                        if (e && isPathPatch(e)) e.value = v;
+                        if (e && isRunPatch(e)) {
+                          if (Array.isArray(v)) e.values = v;
+                        } else if (e && isPathPatch(e)) e.value = v;
                       })
                     }
                     onInsert={(text) =>
@@ -375,7 +379,7 @@ function EntryRow(props: {
 }) {
   const kind = () => kindOf(props.entry);
   const r = () => props.reading;
-  const value = () => (props.entry as { value?: unknown }).value;
+  const value = () => putOf(props.entry);
   const insert = () =>
     isTextPatch(props.entry) ? String(props.entry.text.insert) : "";
   const markName = () =>
@@ -391,7 +395,10 @@ function EntryRow(props: {
             {kind() === "mark" || kind() === "unmark" ? ` ${markName()}` : ""}
           </span>
         </Show>
-        <Path path={props.entry.path} />
+        <Path
+          path={props.entry.path}
+          span={isRunPatch(props.entry) ? props.entry.values.length : undefined}
+        />
         <Show when={r()?.stale}>
           <span class="patches-changed">changed under it</span>
         </Show>
@@ -426,7 +433,7 @@ function EntryRow(props: {
       </div>
 
       <Switch>
-        <Match when={kind() === "put"}>
+        <Match when={kind() === "put" || kind() === "run"}>
           <div class="patches-stackvalue">
             <ValueEditor value={value()} onSave={props.onValue} />
             <Show when={differs()}>
@@ -524,7 +531,7 @@ function StaleTable(props: { entry: PatchEntry; reading: EntryReading }) {
       ? props.entry.text.insert
       : "mark" in props.entry
         ? props.reading.now
-        : (props.entry as { value?: unknown }).value;
+        : putOf(props.entry);
   return (
     <table class="patches-diff">
       <thead>
@@ -582,11 +589,15 @@ function InlineText(props: {
   );
 }
 
-export function Path(props: { path: readonly (string | number)[] }) {
+export function Path(props: { path: readonly (string | number)[]; span?: number }) {
   const head = () => formatPath(props.path.slice(0, -1));
   const last = () => {
     const k = props.path[props.path.length - 1];
     if (k === undefined) return "";
+    // A run: the items it puts, first to last.
+    if (typeof k === "number" && props.span && props.span > 1) {
+      return `[${k}–${k + props.span - 1}]`;
+    }
     return typeof k === "number" ? `[${k}]` : props.path.length > 1 ? `.${k}` : k;
   };
   return (
@@ -774,8 +785,8 @@ function Slip(props: {
         <code>{formatPath(props.entry.path)}</code>
       </div>
       <Switch>
-        <Match when={kind() === "put"}>
-          <code>{show((props.entry as { value?: unknown }).value)}</code>
+        <Match when={kind() === "put" || kind() === "run"}>
+          <code>{show(putOf(props.entry))}</code>
         </Match>
         <Match when={kind() === "text" || kind() === "insert"}>
           <span>

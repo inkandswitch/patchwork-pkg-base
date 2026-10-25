@@ -1,6 +1,7 @@
 import type { DocHandle } from "@automerge/automerge-repo/slim";
 import {
   isMarkPatch,
+  isRunPatch,
   isTextPatch,
   readEntry,
   type AutomergeOp,
@@ -138,6 +139,12 @@ export function toOps<T>(
           ? { action: "unmark", path, name, start: r.start, end: r.end }
           : { action: "mark", path, marks: [{ name, value, start: r.start, end: r.end }] }
       );
+    } else if (isRunPatch(entry)) {
+      const start = path[path.length - 1];
+      if (typeof start !== "number") continue;
+      entry.values.forEach((value, i) =>
+        values.push({ action: "put", path: [...path.slice(0, -1), start + i], value })
+      );
     } else if ("value" in entry) {
       values.push({ action: "put", path, value: entry.value });
     } else {
@@ -173,9 +180,10 @@ export function formatOps(ops: readonly AutomergeOp[]): string {
   return `[\n${ops.map((op) => `  ${JSON.stringify(op)}`).join(",\n")}\n]`;
 }
 
-export type Kind = "put" | "remove" | "text" | "insert" | "mark" | "unmark";
+export type Kind = "put" | "run" | "remove" | "text" | "insert" | "mark" | "unmark";
 
 export function kindOf(entry: PatchEntry): Kind {
+  if (isRunPatch(entry)) return "run";
   if (isTextPatch(entry)) return entry.text.to ? "text" : "insert";
   if (isMarkPatch(entry)) return entry.mark.value === null ? "unmark" : "mark";
   return "value" in entry ? "put" : "remove";
@@ -183,9 +191,29 @@ export function kindOf(entry: PatchEntry): Kind {
 
 export const KIND_LABEL: Record<Kind, string> = {
   put: "put",
+  run: "put",
   remove: "hide",
   text: "replace",
   insert: "insert",
   mark: "mark",
   unmark: "unmark",
 };
+
+/**
+ * Whether an entry decides what's at `path` (or above it). A run decides each
+ * item it puts, not just the one its path names.
+ */
+export function decides(entry: PatchEntry, path: readonly (string | number)[]): boolean {
+  if (!isRunPatch(entry)) return isPrefix(entry.path, path);
+  const start = entry.path[entry.path.length - 1];
+  const parent = entry.path.slice(0, -1);
+  if (typeof start !== "number" || path.length <= parent.length) return false;
+  if (!isPrefix(parent, path)) return false;
+  const k = path[parent.length];
+  return typeof k === "number" && k >= start && k < start + entry.values.length;
+}
+
+/** What a put or a run puts: the value, or the run's values. */
+export function putOf(entry: PatchEntry): unknown {
+  return isRunPatch(entry) ? entry.values : (entry as { value?: unknown }).value;
+}
