@@ -534,13 +534,15 @@ function TldrawInner(props: {
           ? file.name
           : `Pasted image on ${new Date().toLocaleDateString()}.${ext}`;
 
-      const fileHandle = repo.create<UnixFileEntry>();
-      fileHandle.change((doc) => {
-        doc.content = bytes;
-        doc.extension = ext;
-        doc.mimeType = file.type;
-        doc.name = name;
-      });
+      // `create2`, not `create`: only `create2` runs the repo's `idFactory`,
+      // which is how keyhive learns about the doc. Without it the file never
+      // reaches the sync server and peers see a broken image.
+      const fileHandle = await repo.create2<UnixFileEntry>({
+        content: bytes,
+        extension: ext,
+        mimeType: file.type,
+        name,
+      } as UnixFileEntry);
 
       // Build the asset using tldraw's helper to get dimensions etc.
       const asset = await getAssetInfo(editor, file, id);
