@@ -8,7 +8,7 @@ import {
 	rectangularSelection,
 	keymap,
 } from "@codemirror/view"
-import {EditorState, Compartment} from "@codemirror/state"
+import {EditorState, Compartment, type Extension} from "@codemirror/state"
 import {
 	indentUnit,
 	bracketMatching,
@@ -83,7 +83,41 @@ const tsLspPath = (extension?: string): string | undefined => {
 	return TS_LSP_PATHS[ext.toLowerCase()]
 }
 
-export function TextFileEditor(props: {doc: FileDoc; handle: any}) {
+// The event a tool embedding this one (in a <patchwork-view tool-id="file">)
+// listens for to add its own CodeMirror extensions. It's dispatched once, just
+// before the editor is created, and bubbles out of the patchwork-view; a
+// listener pushes onto `detail.extensions`. Extensions have to come from the
+// shared @codemirror/* modules in the import map, like this editor's.
+export const CODEMIRROR_EXTENSIONS_EVENT = "file:codemirror-extensions"
+
+export type CodemirrorExtensionsDetail = {
+	handle: any
+	doc: FileDoc
+	extensions: Extension[]
+}
+
+function collectExtensions(
+	element: HTMLElement | undefined,
+	handle: any,
+	doc: FileDoc,
+): Extension[] {
+	if (!element) return []
+	const detail: CodemirrorExtensionsDetail = {handle, doc, extensions: []}
+	element.dispatchEvent(
+		new CustomEvent(CODEMIRROR_EXTENSIONS_EVENT, {
+			detail,
+			bubbles: true,
+			composed: true,
+		}),
+	)
+	return detail.extensions
+}
+
+export function TextFileEditor(props: {
+	doc: FileDoc
+	handle: any
+	element?: HTMLElement
+}) {
 	let container!: HTMLDivElement
 
 	const languageExtension = getLanguageExtension(
@@ -135,6 +169,8 @@ export function TextFileEditor(props: {doc: FileDoc; handle: any}) {
 			tsCompartment.of([]),
 			...codemirrorTheme,
 			automergeSyncPlugin({handle: props.handle, path: ["content"]}),
+			// last, so they can override anything above
+			collectExtensions(props.element, props.handle, props.doc),
 		],
 	})
 

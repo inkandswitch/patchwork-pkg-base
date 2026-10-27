@@ -49,6 +49,23 @@ Build and sync to Patchwork:
 pnpm push
 ```
 
+## Adding CodeMirror extensions from outside
+
+A tool that shows a text file with `<patchwork-view tool-id="file">` can add
+its own CodeMirror extensions to the editor. Just before the editor is
+created, the file tool dispatches a bubbling `file:codemirror-extensions`
+event from inside the patchwork-view; push extensions onto
+`event.detail.extensions` (it also carries `handle` and `doc`):
+
+```js
+host.addEventListener("file:codemirror-extensions", (event) => {
+	event.detail.extensions.push(myExtension)
+})
+```
+
+The extensions must be built with the shared `@codemirror/*` modules from the
+import map (the same ones the editor uses), not a bundled copy.
+
 ## Project Structure
 
 ```
