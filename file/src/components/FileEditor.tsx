@@ -78,7 +78,11 @@ export function FileEditor(props: {
 							// @ts-expect-error typescript doesn't know we've narrowed, because it is a function
 							doc()!.content.length > LONG_TEXT_FILE_LENGTH_THRESHOLD)
 					}>
-					<LongTextFileViewer doc={doc()!} />
+					<LongTextFileViewer
+						doc={doc()!}
+						handle={props.handle as any}
+						element={props.element}
+					/>
 				</Match>
 			</Switch>
 		</Show>

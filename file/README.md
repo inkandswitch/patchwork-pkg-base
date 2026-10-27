@@ -55,7 +55,8 @@ A tool that shows a text file with `<patchwork-view tool-id="file">` can add
 its own CodeMirror extensions to the editor. Just before the editor is
 created, the file tool dispatches a bubbling `file:codemirror-extensions`
 event from inside the patchwork-view; push extensions onto
-`event.detail.extensions` (it also carries `handle` and `doc`):
+`event.detail.extensions`. It also carries `handle`, `doc`, and `readOnly`
+(true for the read-only viewer used for ImmutableString and very long files):
 
 ```js
 host.addEventListener("file:codemirror-extensions", (event) => {

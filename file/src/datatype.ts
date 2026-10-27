@@ -11,8 +11,27 @@ export function isTextFileDoc(doc: FileDoc): doc is TextFileDoc {
 	return typeof doc.content === "string"
 }
 
+// An ImmutableString that's been through structuredClone (as solid-automerge's
+// document projection does) loses its symbol marker and its prototype and
+// comes out as a plain {val: "..."}, so that counts as one too.
+const isClonedImmutableString = (content: unknown): content is {val: string} =>
+	typeof content === "object" &&
+	content !== null &&
+	!(content instanceof Uint8Array) &&
+	typeof (content as {val?: unknown}).val === "string"
+
 export const isImmutableStringFileDoc = (doc: FileDoc): boolean => {
-	return isImmutableString(doc.content)
+	return isImmutableString(doc.content) || isClonedImmutableString(doc.content)
+}
+
+// The text of a text file, whichever way it's stored (a string, an
+// ImmutableString, or a cloned one).
+export const fileText = (doc: FileDoc | undefined): string => {
+	const content = doc?.content as unknown
+	if (typeof content === "string") return content
+	if (isClonedImmutableString(content)) return content.val
+	if (isImmutableString(content)) return content.toString()
+	return ""
 }
 
 // Get file contents as string or Uint8Array

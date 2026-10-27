@@ -1,4 +1,5 @@
 import {onCleanup} from "solid-js"
+import type {DocHandle} from "@automerge/automerge-repo/slim"
 import {
 	EditorView,
 	lineNumbers,
@@ -14,15 +15,24 @@ import {defaultKeymap} from "@codemirror/commands"
 import codemirrorTheme from "../codemirror-theme"
 import {getLanguageExtension} from "../languages"
 import type {FileDoc} from "../types"
+import {fileText} from "../datatype"
+import {collectExtensions} from "./codemirror-extensions"
 
-export function LongTextFileViewer(props: {doc: FileDoc}) {
+// Read-only text: ImmutableString files, and text too long to edit live. It
+// follows the file as it changes (an ImmutableString is replaced whole, so the
+// view is too).
+export function LongTextFileViewer(props: {
+	doc: FileDoc
+	handle?: DocHandle<FileDoc>
+	element?: HTMLElement
+}) {
 	const languageExtension = getLanguageExtension(
 		props.doc.extension,
 		props.doc.mimeType,
 	)
 
 	const view = new EditorView({
-		doc: props.doc.content?.toString() || "",
+		doc: fileText(props.handle?.doc() ?? props.doc),
 		extensions: [
 			EditorState.readOnly.of(true),
 			EditorView.editable.of(false),
@@ -38,10 +48,20 @@ export function LongTextFileViewer(props: {doc: FileDoc}) {
 			keymap.of([...searchKeymap, ...foldKeymap, ...defaultKeymap]),
 			languageExtension,
 			...codemirrorTheme,
+			// last, so they can override anything above
+			collectExtensions(props.element, props.handle, props.doc, true),
 		],
 	})
 
+	const follow = () => {
+		const text = fileText(props.handle?.doc())
+		if (text === view.state.doc.toString()) return
+		view.dispatch({changes: {from: 0, to: view.state.doc.length, insert: text}})
+	}
+	props.handle?.on("change", follow)
+
 	onCleanup(() => {
+		props.handle?.off("change", follow)
 		view.destroy()
 	})
 
