@@ -71,6 +71,9 @@ importers:
       '@codemirror/lint':
         specifier: ^6.9.7
         version: 6.9.7
+      '@codemirror/lsp-client':
+        specifier: ^6.3.0
+        version: 6.3.0
       '@codemirror/search':
         specifier: ^6.6.0
         version: 6.6.0
@@ -89,12 +92,6 @@ importers:
       '@lezer/highlight':
         specifier: ^1.2.3
         version: 1.2.3
-      '@typescript/vfs':
-        specifier: ^1.6.4
-        version: 1.6.4(typescript@5.9.3)
-      '@valtown/codemirror-ts':
-        specifier: ^2.3.1
-        version: 2.3.1(@codemirror/autocomplete@6.20.3)(@codemirror/lint@6.9.7)(@codemirror/state@6.6.0)(@codemirror/view@6.40.0)
       codemirror:
         specifier: ^6.0.0
         version: 6.0.2
@@ -104,6 +101,9 @@ importers:
       solid-js:
         specifier: ^1.9.11
         version: 1.9.11
+      tsgo-wasm:
+        specifier: 7.0.2
+        version: 7.0.2
     devDependencies:
       '@inkandswitch/patchwork-bootloader':
         specifier: ^0.7.2
@@ -364,6 +364,9 @@ packages:
 
   '@codemirror/lint@6.9.7':
     resolution: {integrity: sha512-28/+iWLYxKxsvGYhSYL7zaCZqLz5+FFFDq9tVsvGv9kv8RY4fFAchJ5WX9M3YrrRlTIsECjsXPqeNgnSmNP2dg==}
+
+  '@codemirror/lsp-client@6.3.0':
+    resolution: {integrity: sha512-ZWtzuML77TnI2cXQrdLXb+HfJIldWPAeLZKRqct/Hq4RJUazg8Y0c9VqKyWDUsr1Y9TRefQKBWZ3B/eyVt1/Nw==}
 
   '@codemirror/search@6.6.0':
     resolution: {integrity: sha512-koFuNXcDvyyotWcgOnZGmY7LZqEOXZaaxD/j6n18TCLx2/9HieZJ5H6hs1g8FiRxBD0DNfs0nXn17g872RmYdw==}
@@ -818,19 +821,6 @@ packages:
   '@types/serviceworker@0.0.153':
     resolution: {integrity: sha512-/cg6dFEkNchJLyRCGo4Gb8mF200qr3xskM5dCPgbtK0OzXxcFcXa6BEBdyG7JksRsTrvCR+V6aFPncoOYAwYhQ==}
 
-  '@typescript/vfs@1.6.4':
-    resolution: {integrity: sha512-PJFXFS4ZJKiJ9Qiuix6Dz/OwEIqHD7Dme1UwZhTK11vR+5dqW2ACbdndWQexBzCx+CPuMe5WBYQWCsFyGlQLlQ==}
-    peerDependencies:
-      typescript: '*'
-
-  '@valtown/codemirror-ts@2.3.1':
-    resolution: {integrity: sha512-v5XiI4WA+bUy0XDgkrqZksqBWgIUeyLZuC94Px/rhXBph8ASmVXaimlGDtt0vH/9t8aDdIZYdr59r9H3oKMFOg==}
-    peerDependencies:
-      '@codemirror/autocomplete': ^6
-      '@codemirror/lint': ^6
-      '@codemirror/state': ^6
-      '@codemirror/view': ^6
-
   '@vitest/expect@3.2.7':
     resolution: {integrity: sha512-E8eBXaKibuvH2pSZErOjdVb5vF4PbKYcrnluBTYxEk1l/VhhwZg1kZQsdtjq+CsF5CFydf2Rdkz7jDHKSisi3w==}
 
@@ -1061,6 +1051,11 @@ packages:
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
 
+  marked@15.0.12:
+    resolution: {integrity: sha512-8dD6FusOQSrpv9Z1rdNMdlSgQOIP880DHqnohobOmYLElGEqAL/JvxvuxZO16r4HtjTlfPRDC1hbvxC9dPN2nA==}
+    engines: {node: '>= 18'}
+    hasBin: true
+
   merge-anything@5.1.7:
     resolution: {integrity: sha512-eRtbOb1N5iyH0tkQDAoQ4Ipsp/5qSR79Dzrz8hEPxRX10RWWR/iQXdoKmBSRCThY1Fh5EhISDtpSc93fpxUniQ==}
     engines: {node: '>=12.13'}
@@ -1196,6 +1191,10 @@ packages:
     resolution: {integrity: sha512-azl+t0z7pw/z958Gy9svOTuzqIk6xq+NSheJzn5MMWtWTFywIacg2wUlzKFGtt3cthx0r2SxMK0yzJOR0IES7Q==}
     engines: {node: '>=14.0.0'}
 
+  tsgo-wasm@7.0.2:
+    resolution: {integrity: sha512-wiu1mK6759F1r5T7w8mGduvjvS8sEIycMdWPxCOThQuOs73zK0Uwzxu0WZRvnR6iOMt+7/j8iGdXzNMZkl5ocA==}
+    hasBin: true
+
   typescript@5.9.3:
     resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
     engines: {node: '>=14.17'}
@@ -1299,6 +1298,16 @@ packages:
         optional: true
       jsdom:
         optional: true
+
+  vscode-jsonrpc@10.0.0:
+    resolution: {integrity: sha512-USSfxg0vDIpTQqlQBGxF3mBARyoS8cU7LHLpbYNh6dOJt32dlskxPWB0Irrh5TllTmyf7oNLAvqDqzklbwwnpA==}
+    engines: {node: '>=14.17.0'}
+
+  vscode-languageserver-protocol@3.18.5:
+    resolution: {integrity: sha512-FW4fBMzZ99N8xeob4py0l050wgCoRgTpEq5Xcsb9lM1bc29UKGR/wSV+4knaqFxssFHajy7OzNiKP/m3U1ZEuA==}
+
+  vscode-languageserver-types@3.18.5:
+    resolution: {integrity: sha512-kPd6+JQNz3HMJvjKlqUxERSlZHAntl/aGpsk7ImwIh0ewDKDcjgAEyVSYciPiOJD3ftbK9IrfiqUeTZLSbCizw==}
 
   w3c-keyname@2.2.8:
     resolution: {integrity: sha512-dpojBhNsCNN7T82Tm7k26A6G9ML3NkhDsnw9n/eoxSRlVBB4CEtIQ/KTCLI2Fwf3ataSXRhYFkQi3SlnFwPvPQ==}
@@ -1587,7 +1596,7 @@ snapshots:
 
   '@codemirror/commands@6.11.1':
     dependencies:
-      '@codemirror/language': 6.12.2
+      '@codemirror/language': 6.12.4
       '@codemirror/state': 6.7.1
       '@codemirror/view': 6.43.8
       '@lezer/common': 1.5.1
@@ -1726,6 +1735,17 @@ snapshots:
       '@codemirror/state': 6.6.0
       '@codemirror/view': 6.43.8
       crelt: 1.0.6
+
+  '@codemirror/lsp-client@6.3.0':
+    dependencies:
+      '@codemirror/autocomplete': 6.20.3
+      '@codemirror/language': 6.12.4
+      '@codemirror/lint': 6.9.7
+      '@codemirror/state': 6.7.1
+      '@codemirror/view': 6.43.8
+      '@lezer/highlight': 1.2.3
+      marked: 15.0.12
+      vscode-languageserver-protocol: 3.18.5
 
   '@codemirror/search@6.6.0':
     dependencies:
@@ -2133,20 +2153,6 @@ snapshots:
 
   '@types/serviceworker@0.0.153': {}
 
-  '@typescript/vfs@1.6.4(typescript@5.9.3)':
-    dependencies:
-      debug: 4.4.3
-      typescript: 5.9.3
-    transitivePeerDependencies:
-      - supports-color
-
-  '@valtown/codemirror-ts@2.3.1(@codemirror/autocomplete@6.20.3)(@codemirror/lint@6.9.7)(@codemirror/state@6.6.0)(@codemirror/view@6.40.0)':
-    dependencies:
-      '@codemirror/autocomplete': 6.20.3
-      '@codemirror/lint': 6.9.7
-      '@codemirror/state': 6.6.0
-      '@codemirror/view': 6.40.0
-
   '@vitest/expect@3.2.7':
     dependencies:
       '@types/chai': 5.2.3
@@ -2403,6 +2409,8 @@ snapshots:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.5.5
 
+  marked@15.0.12: {}
+
   merge-anything@5.1.7:
     dependencies:
       is-what: 4.1.16
@@ -2544,6 +2552,8 @@ snapshots:
 
   tinyspy@4.0.4: {}
 
+  tsgo-wasm@7.0.2: {}
+
   typescript@5.9.3: {}
 
   undici-types@6.21.0: {}
@@ -2641,6 +2651,15 @@ snapshots:
       - sugarss
       - supports-color
       - terser
+
+  vscode-jsonrpc@10.0.0: {}
+
+  vscode-languageserver-protocol@3.18.5:
+    dependencies:
+      vscode-jsonrpc: 10.0.0
+      vscode-languageserver-types: 3.18.5
+
+  vscode-languageserver-types@3.18.5: {}
 
   w3c-keyname@2.2.8: {}
 

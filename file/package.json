@@ -46,17 +46,17 @@
     "@codemirror/lang-yaml": "^6.1.2",
     "@codemirror/language": "^6.12.2",
     "@codemirror/lint": "^6.9.7",
+    "@codemirror/lsp-client": "^6.3.0",
     "@codemirror/search": "^6.6.0",
     "@codemirror/state": "^6.6.0",
     "@codemirror/view": "^6.40.0",
     "@inkandswitch/patchwork-elements": "^6.0.2",
     "@inkandswitch/patchwork-filesystem": "^0.2.9",
     "@lezer/highlight": "^1.2.3",
-    "@typescript/vfs": "^1.6.4",
-    "@valtown/codemirror-ts": "^2.3.1",
     "codemirror": "^6.0.0",
     "solid-automerge": "^2.0.2",
-    "solid-js": "^1.9.11"
+    "solid-js": "^1.9.11",
+    "tsgo-wasm": "7.0.2"
   },
   "devDependencies": {
     "@inkandswitch/patchwork-bootloader": "^0.7.2",
