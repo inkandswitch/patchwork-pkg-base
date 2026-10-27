@@ -9,11 +9,17 @@ import {
 
 let client: LSPClient | undefined
 
+// tsgo.wasm is written out next to this module by the build (vite.config.ts).
+// it's named through a variable so vite doesn't try to bundle it (it rewrites
+// new URL() with a literal or template literal)
+const WASM = "tsgo.wasm"
+
 export function typescriptLanguageServer(): LSPClient {
 	if (client) return client
 	const worker = new Worker(new URL("./tsgo-worker.ts", import.meta.url), {
 		type: "module",
 	})
+	worker.postMessage({wasm: new URL(WASM, import.meta.url).href})
 	const handlers = new Set<(message: string) => void>()
 	worker.onmessage = (event) => {
 		if (typeof event.data?.lsp === "string") {
