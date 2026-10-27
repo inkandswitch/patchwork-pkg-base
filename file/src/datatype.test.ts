@@ -1,5 +1,6 @@
 import {describe, expect, it} from "vitest"
 import {ImmutableString} from "@automerge/automerge"
+import {createStore} from "solid-js/store"
 import {fileText, isImmutableStringFileDoc} from "./datatype"
 import {isTextFile} from "./components/TextFileEditor"
 import type {FileDoc} from "./types"
@@ -16,6 +17,15 @@ describe("ImmutableString files", () => {
 			expect(isTextFile(file(content))).toBe(true)
 			expect(fileText(file(content))).toBe("knit + f1 1")
 		}
+	})
+
+	it("are recognised inside solid-automerge's projection of the doc", () => {
+		// the projection keeps a solid store of the doc; once the file's content
+		// is written as an ImmutableString, the store holds a proxy of {val}
+		const [projection, set] = createStore({content: "" as unknown})
+		set("content", structuredClone(new ImmutableString("in 3")))
+		expect(isImmutableStringFileDoc(file(projection.content))).toBe(true)
+		expect(fileText(file(projection.content))).toBe("in 3")
 	})
 
 	it("doesn't take plain strings or bytes for one", () => {
