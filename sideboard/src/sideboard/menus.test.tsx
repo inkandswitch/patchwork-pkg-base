@@ -431,6 +431,15 @@ describe("ItemMenu", () => {
     expect(target.remove).toHaveBeenCalled();
   });
 
+  it("closes after Remove even when the row is gone by then", async () => {
+    mountMenu();
+    setMenuTarget({ ...target, remove: () => row.remove() });
+    await waitFor(menu);
+    click(item("Remove"));
+    await waitFor(() => menuTarget() === null);
+    await waitFor(() => !menu());
+  });
+
   it("Open with... lists the listed tools for the type and opens with the picked one", async () => {
     mountMenu();
     setMenuTarget(target);
