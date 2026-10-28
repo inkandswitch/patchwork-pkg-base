@@ -14,6 +14,11 @@ import { useFilteredDatatypes } from "./lib/solid-plugins";
 import { Menu, MenuItem, type Anchor } from "./popmenu.tsx";
 import { createNew } from "./create-new.tsx";
 
+// a broken plugin may register without a name; show its id rather than
+// letting it take the whole menu down
+const label = (d: Plugin<DatatypeDescription>) =>
+  typeof d.name === "string" ? d.name : String(d.id);
+
 /**
  * The contents of the create-new dropdown: a filter input (also accepts a pasted
  * automerge url) and the list of datatypes. Rendered inside a <DropdownMenu> so
@@ -32,9 +37,9 @@ function DatatypeMenuContent(props: {
   const filteredDatatypes = () => {
     const q = query().toLowerCase();
     const matching = q
-      ? datatypes.filter((d) => d.name.toLowerCase().includes(q))
+      ? datatypes.filter((d) => label(d).toLowerCase().includes(q))
       : datatypes;
-    return [...matching].sort((a, b) => a.name.localeCompare(b.name));
+    return [...matching].sort((a, b) => label(a).localeCompare(label(b)));
   };
 
   // total number of selectable items (url item + datatypes)
@@ -121,7 +126,7 @@ function DatatypeMenuContent(props: {
             onSelect={() => props.onPickDatatype(datatype)}
             onPointerMove={() => setHighlightIndex(i() + (isUrl() ? 1 : 0))}
           >
-            {datatype.name}
+            {label(datatype)}
           </MenuItem>
         )}
       </For>

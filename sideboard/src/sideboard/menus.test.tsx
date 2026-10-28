@@ -211,6 +211,31 @@ describe("CreateNew", () => {
     expect(filterInput()).toBeTruthy();
   });
 
+  it("lists a datatype with no name by its id instead of breaking", async () => {
+    const importUrl = "test://menus-nameless";
+    registerPlugins(
+      [
+        {
+          type: "patchwork:datatype",
+          id: "nameless",
+          name: undefined,
+          icon: "?",
+          load: async () => ({ init() {}, getTitle: () => "" }),
+        },
+      ] as any,
+      importUrl
+    );
+    await getRegistry("patchwork:datatype").load("nameless");
+    try {
+      mount(() => <CreateNew {...props()} />);
+      container.querySelector<HTMLElement>(".create-new-button")!.click();
+      await waitFor(menu);
+      expect(itemTexts()).toEqual(["Markdown", "nameless", "Zed"]);
+    } finally {
+      unregisterPlugins(importUrl);
+    }
+  });
+
   it("filters datatypes as you type", async () => {
     mount(() => <CreateNew {...props()} />);
     container.querySelector<HTMLElement>(".create-new-button")!.click();
