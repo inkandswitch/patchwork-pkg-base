@@ -8,12 +8,18 @@ const SELECTED_VIEW_SELECTOR = "patchwork:selected-view";
 type SelectedView = {
   url: AutomergeUrl;
   toolId: string | null;
+  /**
+   * The live path it was opened at (`<acctHash>/Projects/foo`, each segment
+   * still encoded), when whoever opened it said; a tool gets it as
+   * `<patchwork-view path>`.
+   */
+  path?: string;
 };
 
 /**
  * Broadcasts the set of currently-selected document urls to any
  * `patchwork:selected-doc` subscriber, and the primary selected view
- * (`{ url, toolId }`) to any `patchwork:selected-view` subscriber.
+ * (`{ url, toolId, path? }`) to any `patchwork:selected-view` subscriber.
  *
  * Selection is driven by `patchwork:open-document` events bubbling up from
  * descendant views (the sidebar, links inside the main view, etc). Opening a
@@ -37,7 +43,8 @@ export const SelectedDocProvider = (element: HTMLElement) => {
   const updateSelectedView = (next: SelectedView) => {
     if (
       selectedView?.url === next.url &&
-      selectedView?.toolId === next.toolId
+      selectedView?.toolId === next.toolId &&
+      selectedView?.path === next.path
     ) {
       return;
     }
@@ -53,9 +60,11 @@ export const SelectedDocProvider = (element: HTMLElement) => {
   const onOpenDocument = (event: OpenDocumentEvent) => {
     const url = event.detail.url;
     if (!url) return;
+    const path = (event.detail as { path?: string }).path;
     updateSelectedView({
       url,
       toolId: event.detail.toolId ?? null,
+      ...(path ? { path } : {}),
     });
   };
 
@@ -100,12 +109,17 @@ export const SelectedDocProvider = (element: HTMLElement) => {
 };
 
 const selectedViewFromLocation = (): SelectedView | null => {
-  const params = new URLSearchParams(window.location.hash.slice(1));
+  const hash = window.location.hash.slice(1);
+  const params = new URLSearchParams(hash);
   const doc = params.get("doc");
   if (!doc) return null;
   const url = doc.startsWith("automerge:") ? doc : `automerge:${doc}`;
+  // Read raw: its segments are encoded, and URLSearchParams would decode an
+  // encoded slash in a name into a real one.
+  const path = /(?:^|&)path=([^&]*)/.exec(hash)?.[1];
   return {
     url: url as AutomergeUrl,
     toolId: params.get("tool"),
+    ...(path ? { path } : {}),
   };
 };

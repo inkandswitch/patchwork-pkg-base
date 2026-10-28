@@ -1,4 +1,4 @@
-import { createEffect, onCleanup, type JSX } from "solid-js";
+import { createEffect, onCleanup, Show, type JSX } from "solid-js";
 import type {
   DatatypeDescription,
   Plugin,
@@ -32,6 +32,7 @@ import { startDrag } from "../dnd/drag-start.ts";
 import { createDragOut } from "../dnd/drag-out.ts";
 import { createHoverTimer } from "../lib/hover-timer.ts";
 import { revealSelectedRow } from "./reveal.ts";
+import { packageTooltip, usePackageStatus } from "../package-status.ts";
 
 // Spring-loading: while a drag is in progress, hovering it over a document
 // row for a moment opens that document in the main view *without ending the
@@ -66,6 +67,8 @@ export default function Item(props: {
 }) {
   let row: HTMLDivElement | undefined;
   const isFolder = () => props.type === "folder";
+  // When this row's document is a package: whether it loaded.
+  const packageStatus = usePackageStatus(() => props.url);
   const parentUrl = () =>
     (props.parentFolderHandle ?? props.rootFolderHandle).url;
 
@@ -290,6 +293,16 @@ export default function Item(props: {
       }}
     >
       {props.children}
+      <Show when={packageStatus()}>
+        {(status) => (
+          <span
+            class="document-list-item__package"
+            data-package-state={status().state}
+            title={packageTooltip(status())}
+            aria-label={packageTooltip(status())}
+          />
+        )}
+      </Show>
     </div>
   );
 }

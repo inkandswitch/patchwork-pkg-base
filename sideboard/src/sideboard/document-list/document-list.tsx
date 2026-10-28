@@ -5,10 +5,7 @@ import {
   type DocHandle,
   type Repo,
 } from "@automerge/automerge-repo/slim";
-import type {
-  OpenDocumentEventDetail,
-  PatchworkViewElement,
-} from "@inkandswitch/patchwork-elements";
+import type { PatchworkViewElement } from "@inkandswitch/patchwork-elements";
 import type {
   DocLink,
   FolderDoc,
@@ -39,6 +36,7 @@ import Folder from "./folder.tsx";
 import Item from "./item.tsx";
 import { ItemName } from "./name.tsx";
 import { LoadingRow } from "./loading-row.tsx";
+import type { LivePathOf, OpenDetail } from "../live-path.ts";
 
 const NewDocPlaceholder = lazy(() =>
   import("../create-new-menu.tsx").then((m) => ({
@@ -51,13 +49,17 @@ export interface DocumentListProps {
   docs?: DocLink[];
   depth: number;
   repo: Repo;
-  open(detail: OpenDocumentEventDetail): void;
+  open(detail: OpenDetail): void;
   isSelected(url: AutomergeUrl): boolean;
   visitedFolders?: Set<AutomergeUrl>;
   element: PatchworkViewElement;
   rootFolderHandle: DocHandle<FolderDoc>;
   filter: string;
   clearFilter(): void;
+  /** The names walked from the panel's folder to this one, for live paths. */
+  names?: string[];
+  /** The live path of a row, from its names; absent outside the account's root. */
+  livePathOf?: LivePathOf;
 }
 
 // Rows mounted per frame-budget slice while a big folder streams in.
@@ -66,6 +68,9 @@ const FRAME_BUDGET_MS = 8;
 
 export function DocumentList(props: DocumentListProps) {
   const visitedFolders = props.visitedFolders ?? new Set<AutomergeUrl>();
+  // Where a row here was opened from, so the router can say so in `&path=`.
+  const pathTo = (name: string) =>
+    props.livePathOf?.([...(props.names ?? []), String(name)]);
 
   // Mount a long list incrementally: the first chunk paints right away, and
   // each animation frame mounts as many more chunks as fit in its budget, so a
@@ -106,7 +111,7 @@ export function DocumentList(props: DocumentListProps) {
     const index = target.index;
     setPendingNewDoc(null);
     props.handle.change((folder) => folder.docs.splice(index, 0, docLink));
-    props.open(docLink);
+    props.open({ ...docLink, path: pathTo(docLink.name) });
     setRenaming(props.handle.url + "/" + index);
   };
 
@@ -260,6 +265,8 @@ export function DocumentList(props: DocumentListProps) {
                       rootFolderHandle={props.rootFolderHandle}
                       filter={props.filter}
                       clearFilter={props.clearFilter}
+                      names={props.names}
+                      livePathOf={props.livePathOf}
                     />
                   </Show>
                 </Match>
@@ -284,6 +291,7 @@ export function DocumentList(props: DocumentListProps) {
                         toolId,
                         title: doc.name,
                         type: doc.type,
+                        path: pathTo(doc.name),
                       })
                     }
                   >

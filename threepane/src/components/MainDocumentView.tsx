@@ -6,6 +6,8 @@ interface MainDocumentViewProps {
   viewKey: Accessor<string | undefined>;
   selectedDocUrl: Accessor<AutomergeUrl | undefined>;
   toolId: Accessor<string | undefined>;
+  /** The live path the document was opened at, for the tool; not part of its key. */
+  path?: Accessor<string | undefined>;
   // Stable container ref so callers can observe the view's bubbling
   // `patchwork:mounted` / `patchwork:no-tool` events (see useMainDocMounted).
   ref?: (el: HTMLDivElement) => void;
@@ -18,6 +20,7 @@ export function MainDocumentView({
   viewKey,
   selectedDocUrl,
   toolId,
+  path,
   ref,
 }: MainDocumentViewProps) {
   return (
@@ -25,7 +28,11 @@ export function MainDocumentView({
       <Show when={viewKey()} keyed>
         {(key) => {
           return (
-            <patchwork-view doc-url={selectedDocUrl()!} tool-id={toolId()} />
+            <patchwork-view
+              doc-url={selectedDocUrl()!}
+              tool-id={toolId()}
+              attr:path={path?.()}
+            />
           );
         }}
       </Show>

@@ -761,3 +761,21 @@ button {
   width: 100%;
   height: 100%;
 }
+
+/* A package's status, beside its row: loading, loaded, or failed. */
+.document-list-item__package {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-inline: 0.25rem 0.5rem;
+  border-radius: 50%;
+  background: var(--package-loading, #b8b8b8);
+}
+
+.document-list-item__package[data-package-state="loaded"] {
+  background: var(--package-loaded, #3fa45b);
+}
+
+.document-list-item__package[data-package-state="failed"] {
+  background: var(--package-failed, #d0453b);
+}

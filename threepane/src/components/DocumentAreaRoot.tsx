@@ -49,6 +49,8 @@ import { MainDocumentView } from "./MainDocumentView";
 export interface DocumentAreaInputs {
   selectedDocUrl: Accessor<AutomergeUrl | undefined>;
   selectedToolId: Accessor<string | undefined>;
+  /** The live path the selected doc was opened at, if it was opened at one. */
+  selectedPath?: Accessor<string | undefined>;
   doctitleSlots: Accessor<ToolSlot[] | undefined>;
   /** The host-side left sidebar's collapsed state, for top-bar layout only. */
   isLeftCollapsed: Accessor<boolean>;
@@ -161,6 +163,7 @@ export function DocumentAreaRoot(props: DocumentAreaRootProps) {
                 setMainDocElement={props.setMainDocElement}
                 selectedDocUrl={props.selectedDocUrl}
                 selectedToolId={props.selectedToolId}
+                selectedPath={props.selectedPath}
                 doctitleSlots={props.doctitleSlots}
                 isLeftCollapsed={props.isLeftCollapsed}
                 isRightSidebarCollapsed={isRightSidebarCollapsed}
@@ -196,6 +199,7 @@ function DraftDocumentArea(props: {
   setMainDocElement?: (el: HTMLElement) => void;
   selectedDocUrl: Accessor<AutomergeUrl | undefined>;
   selectedToolId: Accessor<string | undefined>;
+  selectedPath?: Accessor<string | undefined>;
   doctitleSlots: Accessor<ToolSlot[] | undefined>;
   isLeftCollapsed: Accessor<boolean>;
   isRightSidebarCollapsed: Accessor<boolean>;
@@ -281,6 +285,7 @@ function DraftDocumentArea(props: {
                     viewKey={mainViewKey}
                     selectedDocUrl={props.selectedDocUrl}
                     toolId={props.selectedToolId}
+                    path={props.selectedPath}
                     // Always pass a function ref. Passing `ref={undefined}`
                     // (the isolated path, where no host ref is threaded)
                     // makes Solid's component-ref codegen fall back to

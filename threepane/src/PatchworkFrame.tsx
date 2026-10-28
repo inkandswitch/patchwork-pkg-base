@@ -39,10 +39,13 @@ import { ensureThreepaneConfig } from "./account/ensureThreepaneConfig";
 import { seedExampleDocuments } from "./account/seedExampleDocuments";
 import { ensureFrameStyles } from "./ensureFrameStyles";
 import { useHandleDoc } from "./hooks/useHandleDoc";
+import { packagesLinkUrl } from "./account/packagesLink";
 
 type SelectedView = {
   url: AutomergeUrl;
   toolId: string | null;
+  /** The live path it was opened at, when the opener said. */
+  path?: string;
 };
 
 type SidebarResize = ReturnType<typeof useSidebarResize>;
@@ -263,6 +266,7 @@ function PatchworkFrameInner(props: {
 
   const selectedDocUrl = () => selectedView()?.url;
   const selectedToolId = () => selectedView()?.toolId ?? undefined;
+  const selectedPath = () => selectedView()?.path;
 
   // Right-sidebar seeds, read from host localStorage. The host owns this read
   // and hands the values to whichever document-area path renders — the local
@@ -314,7 +318,7 @@ function PatchworkFrameInner(props: {
         rootFolderUrl={rootFolderUrl}
         widgetsReady={widgetsReady}
         contactUrl={() => accountDoc()?.contactUrl}
-        moduleSettingsUrl={() => accountDoc()?.moduleSettingsUrl}
+        moduleSettingsUrl={() => packagesLinkUrl(accountDoc())}
         isolation={props.isolation}
         onInterceptOpen={setPopoverView}
       >
@@ -348,6 +352,7 @@ function PatchworkFrameInner(props: {
                 setMainDocElement={setMainDocElement}
                 selectedDocUrl={selectedDocUrl}
                 selectedToolId={selectedToolId}
+                selectedPath={selectedPath}
                 doctitleSlots={doctitleSlots}
                 isLeftCollapsed={sidebarState.isSidebarCollapsed}
                 initialRightWidth={initialRightWidth}
