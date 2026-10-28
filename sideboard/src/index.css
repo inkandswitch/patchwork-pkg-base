@@ -703,6 +703,23 @@ button {
   padding-bottom: 0;
 }
 
+/* A section under the root folder's list (the account's packages): as tall as
+   its contents, up to a share of the sidebar, then it scrolls. */
+.sideboard > .document-list--section {
+  flex: 0 1 auto;
+  max-height: 40%;
+}
+
+.document-list__heading {
+  margin: 0;
+  padding: 0 var(--doclist-padding-x, 0.75rem);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
 /* The account bar: avatar (account picker), packages, settings. Usable as its
    own tool or pinned to the bottom of the combined sideboard. */
 .account-bar {

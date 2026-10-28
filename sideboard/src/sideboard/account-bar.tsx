@@ -6,6 +6,7 @@ import type { OpenDocumentEventDetail, PatchworkViewElement } from "@inkandswitc
 
 import type { PatchworkToolProps, SideboardAccountDoc } from "../types.ts";
 import { createOpenEvent } from "./events.ts";
+import { packagesFolders } from "./packages.ts";
 
 /**
  * The account bar: the contact avatar (opens the account picker), Packages
@@ -34,7 +35,8 @@ export function AccountBar(props: PatchworkToolProps<SideboardAccountDoc>) {
         </button>
       </Show>
 
-      <Show when={doc.moduleSettingsUrl}>
+      {/* With /packages bound, the sidebar lists packages itself. */}
+      <Show when={doc.moduleSettingsUrl && !packagesFolders(doc).length}>
         <button
           type="button"
           class="account-bar__button"

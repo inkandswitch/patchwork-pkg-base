@@ -1,5 +1,5 @@
 import { makeDocumentProjection } from "solid-automerge";
-import { Show } from "solid-js";
+import { For, Show } from "solid-js";
 import { render } from "solid-js/web";
 import type { DocHandle, Repo } from "@automerge/automerge-repo/slim";
 import type { PatchworkViewElement } from "@inkandswitch/patchwork-elements";
@@ -8,10 +8,12 @@ import type { PatchworkToolProps, SideboardAccountDoc } from "../types.ts";
 import { DocumentListPanel } from "./document-list-panel.tsx";
 import { LoadingRows } from "./document-list/loading-row.tsx";
 import { AccountBar } from "./account-bar.tsx";
+import { packagesFolders } from "./packages.ts";
 
 /**
  * The combined sideboard: the document-list panel for the account's root folder,
- * with the account bar pinned below it. Reads the account document.
+ * a Packages section for each folder bound at `/packages` (installing is adding
+ * a link there), and the account bar pinned below. Reads the account document.
  */
 export function Sideboard(props: PatchworkToolProps<SideboardAccountDoc>) {
   const doc = makeDocumentProjection(props.handle);
@@ -34,6 +36,17 @@ export function Sideboard(props: PatchworkToolProps<SideboardAccountDoc>) {
           element={props.element}
         />
       </Show>
+      <For each={packagesFolders(doc)}>
+        {(folderUrl) => (
+          <DocumentListPanel
+            folderUrl={folderUrl}
+            repo={props.repo}
+            element={props.element}
+            heading="Packages"
+            toolbar={false}
+          />
+        )}
+      </For>
       <AccountBar
         handle={props.handle}
         repo={props.repo}

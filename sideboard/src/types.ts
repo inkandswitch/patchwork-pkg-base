@@ -12,4 +12,9 @@ export type SideboardAccountDoc = {
   rootFolderUrl?: AutomergeUrl;
   contactUrl?: AutomergeUrl;
   moduleSettingsUrl?: AutomergeUrl;
+  /**
+   * The account's mount table: `/packages` is package management, a union of
+   * folders whose links are the installed packages.
+   */
+  namespace?: { [mountPoint: string]: Array<{ url: AutomergeUrl }> };
 };

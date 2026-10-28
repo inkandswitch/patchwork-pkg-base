@@ -52,12 +52,15 @@ const ItemMenu = lazy(() =>
 /**
  * The document-list panel: a sticky toolbar (new-doc button + filter) over a
  * scrolling, recursive list of the folder's documents and subfolders. Renders a
- * single folder, given its url.
+ * single folder, given its url. With a `heading` it's a section of the sidebar
+ * (the account's packages, say), and `toolbar={false}` leaves the toolbar out.
  */
 export function DocumentListPanel(props: {
   folderUrl: AutomergeUrl;
   repo: Repo;
   element: PatchworkViewElement;
+  heading?: string;
+  toolbar?: boolean;
 }) {
   const [folder, folderHandle] = useDocument<FolderDoc>(() => props.folderUrl, {
     repo: props.repo,
@@ -141,7 +144,11 @@ export function DocumentListPanel(props: {
   };
 
   return (
-    <aside class="document-list">
+    <aside
+      class="document-list"
+      classList={{ "document-list--section": !!props.heading }}
+      aria-label={props.heading}
+    >
       <nav
         ref={attachMarquee}
         class="document-list__doclist document-list-widget"
@@ -178,6 +185,10 @@ export function DocumentListPanel(props: {
           });
         }}
       >
+        <Show when={props.heading}>
+          <h2 class="document-list__heading">{props.heading}</h2>
+        </Show>
+        <Show when={props.toolbar !== false}>
         <div class="document-list__toolbar">
           <CreateNew
             square
@@ -198,6 +209,7 @@ export function DocumentListPanel(props: {
             />
           </div>
         </div>
+        </Show>
         <Show when={folderReady()} fallback={<LoadingRows depth={0} />}>
           <Suspense fallback={<LoadingRows depth={0} />}>
             <DocumentList
@@ -213,7 +225,9 @@ export function DocumentListPanel(props: {
               clearFilter={() => setFilter("")}
             />
           </Suspense>
-          <Show when={menuTarget()}>
+          {/* One shared menu target for the whole sidebar: only the panel the
+              row is in shows it, so it acts on that panel's folder. */}
+          <Show when={menuTarget() && navEl?.contains(menuTarget()!.element)}>
             <ItemMenu
               repo={props.repo}
               rootFolderHandle={folderHandle.latest!}
