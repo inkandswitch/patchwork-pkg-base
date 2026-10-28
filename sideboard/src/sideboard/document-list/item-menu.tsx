@@ -30,11 +30,12 @@ export function ItemMenu(props: {
     return t && props.element.contains(t.element) ? t : null;
   };
 
-  function close() {
-    const t = target();
-    if (!t) return;
-    setMenuTarget(null);
-    t.element.focus({ preventScroll: true });
+  // Close the target this menu was opened for, not target(): by now the row
+  // may have been removed (that's what Remove does), so it's no longer inside
+  // props.element and target() would say there's nothing to close.
+  function close(t: MenuTarget) {
+    if (menuTarget() === t) setMenuTarget(null);
+    if (t.element.isConnected) t.element.focus({ preventScroll: true });
   }
 
   return (
@@ -43,7 +44,7 @@ export function ItemMenu(props: {
         <Menu
           anchor={{ x: t.x, y: t.y }}
           placement="right-start"
-          onClose={close}
+          onClose={() => close(t)}
         >
           <MenuItems
             target={t}
