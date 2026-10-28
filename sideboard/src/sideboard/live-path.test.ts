@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
-import { idhash, livePathsFor } from "./live-path.ts";
+import { livePathsFor } from "./live-path.ts";
 
 const ROOT = "automerge:3tmVsDzywTYecevUsD21YABfXKon" as AutomergeUrl;
 const OTHER = "automerge:4MCbKQoMiEnGXchaHRH3e7kxWXVs" as AutomergeUrl;
@@ -9,20 +9,25 @@ const account = {
   doc: () => ({ rootFolderUrl: ROOT }),
 };
 
-describe("idhash", () => {
-  it("matches patchwork-filesystem's", async () => {
-    expect(await idhash("2j9knpCseyhnK8izDmLpGP5WMdZQ")).toBe("vjRneszhMkDwr5tb");
-  });
-});
+/** patchwork-filesystem's path grammar, as the host provides it. */
+const grammar = {
+  idhash: vi.fn(async (id: string) => `hash(${id})`),
+  livePath: vi.fn((acct: string, names: string[]) => [acct, ...names].join("/")),
+};
 
 describe("livePathsFor", () => {
-  it("gives the account root's rows their live path, each name encoded", async () => {
-    const livePathOf = await livePathsFor(account, ROOT);
-    expect(livePathOf?.(["Projects", "a/b c"])).toBe("vjRneszhMkDwr5tb/Projects/a%2Fb%20c");
+  it("builds the account root's paths with the host's grammar", async () => {
+    const livePathOf = await livePathsFor(account, ROOT, grammar);
+    expect(livePathOf?.(["Projects", "foo"])).toBe("hash(2j9knpCseyhnK8izDmLpGP5WMdZQ)/Projects/foo");
+    expect(grammar.livePath).toHaveBeenCalledWith("hash(2j9knpCseyhnK8izDmLpGP5WMdZQ)", ["Projects", "foo"]);
   });
 
   it("gives any other folder no paths", async () => {
-    expect(await livePathsFor(account, OTHER)).toBeUndefined();
-    expect(await livePathsFor(undefined, ROOT)).toBeUndefined();
+    expect(await livePathsFor(account, OTHER, grammar)).toBeUndefined();
+    expect(await livePathsFor(undefined, ROOT, grammar)).toBeUndefined();
+  });
+
+  it("gives no paths on a system without them", async () => {
+    expect(await livePathsFor(account, ROOT, {})).toBeUndefined();
   });
 });
