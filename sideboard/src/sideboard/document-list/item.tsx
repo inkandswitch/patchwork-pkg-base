@@ -64,6 +64,8 @@ export default function Item(props: {
   /** when set (i.e. this item is a folder), enables a "Create" submenu that
    * makes a new doc of the picked datatype inside this folder */
   createInside?(datatype: Plugin<DatatypeDescription>): void;
+  /** Not an entry in a folder: open it or drag it out, but no rename, remove or drops. */
+  readOnly?: boolean;
 }) {
   let row: HTMLDivElement | undefined;
   const isFolder = () => props.type === "folder";
@@ -116,6 +118,7 @@ export default function Item(props: {
       startRenaming: props.startRenaming,
       remove: props.remove,
       createInside: props.createInside,
+      readOnly: props.readOnly,
     });
   }
 
@@ -177,6 +180,8 @@ export default function Item(props: {
         setDragging(false);
       }}
       ondragover={(event: DragEvent) => {
+        // Not a folder entry: nowhere to put a drop. Let it pass to the list.
+        if (props.readOnly) return;
         event.preventDefault();
         event.dataTransfer!.dropEffect = copyMode() ? "copy" : "move";
 
@@ -214,6 +219,7 @@ export default function Item(props: {
         }
       }}
       ondrop={(event: DragEvent) => {
+        if (props.readOnly) return;
         // Rows handle every drop on them themselves, "inside" a folder too:
         // relying on it bubbling to the folder wrapper is fragile.
         event.preventDefault();

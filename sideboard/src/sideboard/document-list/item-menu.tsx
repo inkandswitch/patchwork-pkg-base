@@ -135,10 +135,12 @@ function MenuItems(props: {
           </SubMenu>
         </Show>
       </SubMenu>
-      <MenuItem onSelect={() => t.startRenaming()}>Rename</MenuItem>
-      <MenuItem onSelect={handleRemove}>
-        {multi() ? `Remove ${dragstack.size} items` : "Remove"}
-      </MenuItem>
+      <Show when={!t.readOnly}>
+        <MenuItem onSelect={() => t.startRenaming()}>Rename</MenuItem>
+        <MenuItem onSelect={handleRemove}>
+          {multi() ? `Remove ${dragstack.size} items` : "Remove"}
+        </MenuItem>
+      </Show>
     </>
   );
 }

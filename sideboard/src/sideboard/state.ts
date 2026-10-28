@@ -50,6 +50,11 @@ export interface MenuTarget {
   startRenaming(): void;
   remove(): void;
   createInside?(datatype: Plugin<DatatypeDescription>): void;
+  /**
+   * A row that isn't an entry in a folder (a file in a directory doc, a branch
+   * of a branches doc): it can be opened and copied, not renamed or removed.
+   */
+  readOnly?: boolean;
 }
 
 export const [menuTarget, setMenuTarget] = createSignal<MenuTarget | null>(

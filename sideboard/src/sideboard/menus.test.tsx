@@ -404,6 +404,13 @@ describe("ItemMenu", () => {
     expect(itemTexts()).toEqual(["Copy", "Rename", "Remove"]);
   });
 
+  it("omits Rename and Remove for a read-only row (a child of a directory or branches doc)", async () => {
+    mountMenu();
+    setMenuTarget({ ...target, type: "zed", createInside: undefined, readOnly: true });
+    await waitFor(menu);
+    expect(itemTexts()).toEqual(["Copy"]);
+  });
+
   it("ignores targets outside its panel", async () => {
     mountMenu();
     const elsewhere = document.createElement("div");

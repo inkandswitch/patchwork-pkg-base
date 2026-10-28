@@ -37,6 +37,8 @@ import Item from "./item.tsx";
 import { ItemName } from "./name.tsx";
 import { LoadingRow } from "./loading-row.tsx";
 import type { LivePathOf, OpenDetail } from "../live-path.ts";
+import { canExpand } from "../container.ts";
+import { ContainerItem } from "./container-item.tsx";
 
 const NewDocPlaceholder = lazy(() =>
   import("../create-new-menu.tsx").then((m) => ({
@@ -269,6 +271,28 @@ export function DocumentList(props: DocumentListProps) {
                       livePathOf={props.livePathOf}
                     />
                   </Show>
+                </Match>
+                <Match when={doc.type != "folder" && canExpand(doc.type)}>
+                  <ContainerItem
+                    url={doc.url}
+                    name={doc.name}
+                    type={doc.type}
+                    id={relid()}
+                    depth={props.depth}
+                    names={props.names ?? []}
+                    parentFolderHandle={props.handle}
+                    itemIndex={index()}
+                    startRenaming={() => setRenaming(relid())}
+                    remove={remove}
+                    repo={props.repo}
+                    element={props.element}
+                    rootFolderHandle={props.rootFolderHandle}
+                    open={props.open}
+                    isSelected={props.isSelected}
+                    livePathOf={props.livePathOf}
+                  >
+                    <ItemName name={doc.name} id={relid()} rename={rename} />
+                  </ContainerItem>
                 </Match>
                 <Match when={doc.type != "folder"}>
                   <Item
