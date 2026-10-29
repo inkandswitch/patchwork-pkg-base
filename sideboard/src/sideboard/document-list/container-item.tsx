@@ -8,10 +8,20 @@ import type { AutomergeUrl, DocHandle, Repo } from "@automerge/automerge-repo/sl
 import type { PatchworkViewElement } from "@inkandswitch/patchwork-elements";
 import type { FolderDoc } from "@inkandswitch/patchwork-filesystem";
 import { useDocument } from "solid-automerge";
-import { createResource, createSignal, For, Match, Show, Switch, type JSX } from "solid-js";
+import {
+  createMemo,
+  createResource,
+  createSignal,
+  For,
+  Match,
+  Show,
+  Switch,
+  type JSX,
+} from "solid-js";
 import {
   containerChildren,
   providerOf,
+  stableChildren,
   useExpandable,
   useProviderVersion,
   valueAt,
@@ -132,7 +142,9 @@ function ContainerChildren(
     () => (doc() ? `${typeOf(doc()) ?? ""}\u0000${version()}` : undefined),
     () => providerOf(doc())
   );
-  const children = () => containerChildren(doc(), provider.latest);
+  // Rows keep their identity across edits, so open ones stay open.
+  const stable = stableChildren();
+  const children = createMemo(() => stable(containerChildren(doc(), provider.latest)));
   const expandable = useExpandable();
 
   /** Run one of the provider's edits on this container, at its current doc. */

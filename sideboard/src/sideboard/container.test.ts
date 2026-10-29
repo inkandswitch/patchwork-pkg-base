@@ -5,6 +5,7 @@ import {
   canExpand,
   containerChildren,
   providerOf,
+  stableChildren,
   useExpandable,
   type HostPaths,
   type Provider,
@@ -132,5 +133,18 @@ describe("containerChildren", () => {
       },
     };
     expect(containerChildren(BOARD, broken)).toEqual([]);
+  });
+});
+
+describe("stableChildren", () => {
+  it("hands back the same object for a child that didn't change, so its row stays mounted", () => {
+    const stable = stableChildren();
+    const first = stable(containerChildren(BOARD, board));
+    const again = stable(containerChildren({ ...BOARD, edited: true }, board));
+    expect(again[0]).toBe(first[0]);
+    expect(again[1]).toBe(first[1]);
+    const renamed = stable([{ name: "other", url: A }, ...again.slice(1)]);
+    expect(renamed[0]).not.toBe(first[0]);
+    expect(renamed[1]).toBe(first[1]);
   });
 });

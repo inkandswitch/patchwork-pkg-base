@@ -135,3 +135,23 @@ export function containerChildren(
         : []
   );
 }
+
+/**
+ * The same object for a child that hasn't changed, list after list, so a
+ * `<For>` keeps its row (and anything open under it) mounted across edits to
+ * the container.
+ */
+export function stableChildren(): (children: ContainerChild[]) => ContainerChild[] {
+  let previous = new Map<string, ContainerChild>();
+  return (children) => {
+    const next = new Map<string, ContainerChild>();
+    const out = children.map((child) => {
+      const key = JSON.stringify(child);
+      const kept = previous.get(key) ?? next.get(key) ?? child;
+      next.set(key, kept);
+      return kept;
+    });
+    previous = next;
+    return out;
+  };
+}
