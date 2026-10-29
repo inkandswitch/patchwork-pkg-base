@@ -486,6 +486,11 @@ button {
   }
 }
 
+/* A package's container that takes drops, with nothing in it yet: room to drop on. */
+.document-list-folder__contents[data-provider-drop]:empty {
+  min-height: 1.5em;
+}
+
 .document-list-folder__contents--hidden {
   display: none;
 }
