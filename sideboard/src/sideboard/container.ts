@@ -63,16 +63,22 @@ export function canExpand(type: string, host: HostPaths = hostPaths): boolean {
   return !!host.pathProviderFor && !!host.pathProviderTypes?.().has(type);
 }
 
-/**
- * {@link canExpand}, following path-provider plugins as they register, so a
- * row of a package's type opens up once its package has loaded.
- */
-export function useExpandable(host: HostPaths = hostPaths): (type: string) => boolean {
+/** A signal that changes whenever path-provider plugins are registered or removed. */
+export function useProviderVersion(host: HostPaths = hostPaths): () => number {
   const [version, setVersion] = createSignal(0);
   const off = host.getRegistry?.("patchwork:path-provider").on?.("changed", () =>
     setVersion((n) => n + 1)
   );
   if (typeof off === "function") onCleanup(off);
+  return version;
+}
+
+/**
+ * {@link canExpand}, following path-provider plugins as they register, so a
+ * row of a package's type opens up once its package has loaded.
+ */
+export function useExpandable(host: HostPaths = hostPaths): (type: string) => boolean {
+  const version = useProviderVersion(host);
   return (type) => {
     version();
     return canExpand(type, host);
@@ -102,9 +108,6 @@ export function valueAt(doc: unknown, segments: Segment[]): unknown {
   }
   return at;
 }
-
-/** Whether `url` names part of a document (`automerge:<id>/<path>`), not a whole one. */
-export const isSubUrl = (url: string) => url.split("#")[0].includes("/");
 
 export type ContainerChild =
   | { name: string; url: AutomergeUrl }

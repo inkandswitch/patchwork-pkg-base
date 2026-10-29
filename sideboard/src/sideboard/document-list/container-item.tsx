@@ -11,9 +11,9 @@ import { useDocument } from "solid-automerge";
 import { createResource, createSignal, For, Match, Show, Switch, type JSX } from "solid-js";
 import {
   containerChildren,
-  isSubUrl,
   providerOf,
   useExpandable,
+  useProviderVersion,
   valueAt,
   type ContainerChild,
   type Provider,
@@ -21,6 +21,7 @@ import {
 import { isNewDocDrag } from "../dnd/dnd.ts";
 import { getDndPayload, hasDocumentDrag } from "../dnd/payload.ts";
 import { Chevron } from "../icons.tsx";
+import { isSubUrl } from "../sub-url.ts";
 import type { LivePathOf, OpenDetail } from "../live-path.ts";
 import { setRenaming } from "../state.ts";
 import Item from "./item.tsx";
@@ -124,9 +125,11 @@ function ContainerChildren(
   props: Shared & { url: AutomergeUrl; names: string[]; depth: number }
 ) {
   const [doc] = useDocument<object>(() => props.url, { repo: props.repo });
-  // Providers go by type; re-asked only when the type changes, not on every edit.
+  // Providers go by type; re-asked when the type changes or a plugin is
+  // registered, removed or reloaded, not on every edit.
+  const version = useProviderVersion();
   const [provider] = createResource(
-    () => (doc() ? (typeOf(doc()) ?? "") : undefined),
+    () => (doc() ? `${typeOf(doc()) ?? ""}\u0000${version()}` : undefined),
     () => providerOf(doc())
   );
   const children = () => containerChildren(doc(), provider.latest);
@@ -160,22 +163,33 @@ function ContainerChildren(
   // documents are folder things, so they pass on by.
   const accepts = (event: DragEvent) =>
     !!provider.latest?.add && hasDocumentDrag(event.dataTransfer) && !isNewDocDrag(event);
+  // A drop on a container inside another's children that doesn't take it
+  // goes nowhere, rather than on to the container around it.
+  const nested = (event: DragEvent) =>
+    !!(event.currentTarget as HTMLElement).parentElement?.closest("[data-container-children]");
 
   return (
     <div
       role="group"
       class="document-list-folder__contents"
       data-depth={props.depth - 1}
+      data-container-children=""
       data-provider-drop={provider.latest?.add ? "" : undefined}
       style={{ "--depth": props.depth }}
       ondragover={(event: DragEvent) => {
-        if (!accepts(event)) return;
+        if (!accepts(event)) {
+          if (nested(event)) event.stopPropagation();
+          return;
+        }
         event.preventDefault();
         event.stopPropagation();
         event.dataTransfer!.dropEffect = "copy";
       }}
       ondrop={(event: DragEvent) => {
-        if (!accepts(event)) return;
+        if (!accepts(event)) {
+          if (nested(event)) event.stopPropagation();
+          return;
+        }
         event.preventDefault();
         event.stopPropagation();
         for (const item of getDndPayload(event)?.items ?? []) {
@@ -231,10 +245,15 @@ function ChildRow(
   const [subUrl] = createResource(
     () => segments(),
     async (sub) => {
-      const handle = (await props.repo.find<unknown>(props.url)) as DocHandle<unknown> & {
-        sub?(...segments: (string | number)[]): { url: AutomergeUrl };
-      };
-      return handle.sub?.(...sub).url;
+      // An errored resource throws where it's read, so a failure is just no url.
+      try {
+        const handle = (await props.repo.find<unknown>(props.url)) as DocHandle<unknown> & {
+          sub?(...segments: (string | number)[]): { url: AutomergeUrl };
+        };
+        return handle.sub?.(...sub).url;
+      } catch {
+        return undefined;
+      }
     }
   );
   const url = () => link() ?? subUrl();

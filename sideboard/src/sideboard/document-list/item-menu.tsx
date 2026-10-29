@@ -13,6 +13,7 @@ import {
 } from "../lib/solid-plugins";
 import { dragstack, clearDragstack } from "../dnd/dnd.ts";
 import { removeItemsByUrl } from "../dnd/operations.ts";
+import { isSubUrl } from "../sub-url.ts";
 import { menuTarget, setMenuTarget, type MenuTarget } from "../state.ts";
 
 /**
@@ -67,8 +68,11 @@ function MenuItems(props: {
   const datatypes = useFilteredDatatypes((item) => !item.unlisted);
   // A selection is a set of folder entries; a provider's child removes only itself.
   const multi = () => !t.readOnly && dragstack.has(t.id) && dragstack.size > 1;
+  // A sub-document keeps its path (`automerge:<id>/<path>`), or the link opens the whole doc.
   const patchworkUrl = () =>
-    `${location.protocol}//${location.host}/#doc=${parseAutomergeUrl(t.url).documentId}`;
+    `${location.protocol}//${location.host}/#doc=${
+      isSubUrl(t.url) ? t.url.split("#")[0] : parseAutomergeUrl(t.url).documentId
+    }`;
 
   // Remove from the context menu. When this item is part of a multi-selection
   // (cmd-click or cmd-drag marquee), remove the whole selection — with a

@@ -411,6 +411,32 @@ describe("ItemMenu", () => {
     expect(itemTexts()).toEqual(["Copy"]);
   });
 
+  it("offers Rename and Remove on a read-only row whose provider offers them", async () => {
+    mountMenu();
+    setMenuTarget({
+      ...target,
+      type: "zed",
+      createInside: undefined,
+      readOnly: true,
+      canRename: true,
+      canRemove: false,
+    });
+    await waitFor(menu);
+    expect(itemTexts()).toEqual(["Copy", "Rename"]);
+  });
+
+  it("copies a sub-document's patchwork url with its path", async () => {
+    mountMenu();
+    setMenuTarget({ ...target, url: `${DOC_URL}/notes` as any });
+    await waitFor(menu);
+    click(item("Copy"));
+    await waitFor(() => menus().length === 2);
+    click(item("Patchwork url"));
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      `${location.protocol}//${location.host}/#doc=${DOC_URL}/notes`
+    );
+  });
+
   it("ignores targets outside its panel", async () => {
     mountMenu();
     const elsewhere = document.createElement("div");

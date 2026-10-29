@@ -7,6 +7,9 @@ const FILE = "automerge:4MCbKQoMiEnGXchaHRH3e7kxWXVs" as AutomergeUrl;
 const BOARD = "automerge:2j9knpCseyhnK8izDmLpGP5WMdZQ" as AutomergeUrl;
 const PLAIN = "automerge:3aNu5cqxaJ1vLywKRRX9kYEB8unS" as AutomergeUrl;
 const BROKEN = "automerge:4Nk2JnD9cGJ3xTaq9ADuXzX7dPHL" as AutomergeUrl;
+const NESTED = "automerge:3VvPLAvjtd3gtkPjNHJ4w3rC6cTb" as AutomergeUrl;
+const INNER = "automerge:2SxHu9PECxzCNn6mBV6uhw5yPxEW" as AutomergeUrl;
+const FLAKY = "automerge:4AT7fHTvjgE6eCsMEPsiDAqpVrGw" as AutomergeUrl;
 const DROPPED = "automerge:2Ldo5rBdVzfnDRCjgkRZrQ7pMUnW" as AutomergeUrl;
 
 const typeOf = (doc: any) => doc?.["@patchwork"]?.type;
@@ -40,11 +43,24 @@ const broken = {
 vi.mock("@inkandswitch/patchwork-filesystem", () => ({
   providerFor: (doc: any) => (typeOf(doc) === "directory" ? directory : undefined),
 }));
+// A folder, as far as the sidebar asks: its entries, and no editing here.
+const folderish = {
+  list: (node: any) => node.docs.map(({ name, url }: any) => ({ name, link: url })),
+};
+// The plugin providers by type; a test can swap one, as a hot reload does.
+const byType: Record<string, unknown> = { directory, board, plain, broken };
+const registryListeners = new Set<() => void>();
+const changed = () => registryListeners.forEach((listener) => listener());
 vi.mock("@inkandswitch/patchwork-plugins", () => ({
   pathProviderFor: async (doc: any) =>
-    ({ directory, board, plain, broken })[typeOf(doc) as string],
+    Array.isArray(doc?.docs) ? folderish : byType[typeOf(doc) as string],
   pathProviderTypes: () => new Set(["board", "plain", "broken"]),
-  getRegistry: () => ({ on: () => () => {} }),
+  getRegistry: () => ({
+    on: (_event: string, listener: () => void) => {
+      registryListeners.add(listener);
+      return () => registryListeners.delete(listener);
+    },
+  }),
 }));
 
 const { ContainerItem } = await import("./container-item.tsx");
@@ -77,6 +93,11 @@ const docs: Record<string, object> = {
   [BOARD]: boardDoc("board"),
   [PLAIN]: boardDoc("plain"),
   [BROKEN]: boardDoc("broken"),
+  // A board holding a folder, which takes no drops of its own.
+  [NESTED]: { "@patchwork": { type: "board" }, links: [{ name: "inner", url: INNER }] },
+  [INNER]: { title: "inner", docs: [{ name: "f", type: "file", url: FILE }] },
+  // A board whose handle can't be found again (for a sub-document's url).
+  [FLAKY]: boardDoc("board"),
 };
 const handles = new Map<string, ReturnType<typeof fakeHandle>>();
 const handleOf = (url: AutomergeUrl) => {
@@ -85,7 +106,10 @@ const handleOf = (url: AutomergeUrl) => {
 };
 /** What solid-automerge's useDocument asks of a Repo. */
 const repo = {
-  find: async (url: AutomergeUrl) => handleOf(url),
+  find: async (url: AutomergeUrl) => {
+    if (url === FLAKY) throw new Error("unavailable");
+    return handleOf(url);
+  },
   findWithProgress: (url: AutomergeUrl) => ({
     peek: () => ({ state: "ready", handle: handleOf(url) }),
     whenReady: async () => handleOf(url),
@@ -245,6 +269,43 @@ describe("ContainerItem", () => {
     await drop(PLAIN, "plain");
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(board.add).not.toHaveBeenCalled();
+  });
+
+  it("doesn't hand a drop meant for a nested folder to the board around it", async () => {
+    const { container, row, rows, expand } = mount(NESTED, "board", "n");
+    await expand(2);
+    (row("inner").querySelector(".document-list-folder__toggle") as HTMLElement).click();
+    await vi.waitFor(() => expect(rows()).toHaveLength(3));
+    const groups = container.querySelectorAll<HTMLElement>(".document-list-folder__contents");
+    const inner = groups[groups.length - 1];
+    const payload = JSON.stringify({ source: "s", items: [{ url: DROPPED, name: "dropped" }] });
+    const event = new Event("drop", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "dataTransfer", {
+      value: { types: ["text/x-patchwork-dnd"], files: [], getData: () => payload },
+    });
+    inner.dispatchEvent(event);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(board.add).not.toHaveBeenCalled();
+  });
+
+  it("asks again for a provider when path-provider plugins change", async () => {
+    const { rows, expand } = mount(BOARD, "board", "b");
+    await expand(3);
+    byType.board = { list: () => [{ name: "only", link: FILE }] };
+    try {
+      changed();
+      await vi.waitFor(() => expect(rows()).toHaveLength(2));
+    } finally {
+      byType.board = board;
+    }
+  });
+
+  it("hides a sub-document whose url can't be had, without breaking the list", async () => {
+    const { rows, row, expand } = mount(FLAKY, "board", "f");
+    await expand(2);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(rows()).toHaveLength(2);
+    expect(row("child")).toBeTruthy();
   });
 
   it("shows no children when the provider fails", async () => {
