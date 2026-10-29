@@ -39,7 +39,7 @@ import { ensureThreepaneConfig } from "./account/ensureThreepaneConfig";
 import { seedExampleDocuments } from "./account/seedExampleDocuments";
 import { ensureFrameStyles } from "./ensureFrameStyles";
 import { useHandleDoc } from "./hooks/useHandleDoc";
-import { packagesLinkUrl } from "./account/packagesLink";
+import { packagesLinkUrl, type ModuleSettings } from "./account/packagesLink";
 
 type SelectedView = {
   url: AutomergeUrl;
@@ -211,6 +211,11 @@ function PatchworkFrameInner(props: {
   });
 
   const accountDoc = useHandleDoc(accountDocHandle);
+  // Whether the Packages button is still needed depends on what's left in it.
+  const [moduleSettings] = useDocument<ModuleSettings>(
+    () => accountDoc()?.moduleSettingsUrl,
+    { repo: props.repo }
+  );
   const accountDocUrl = props.handle.url;
 
   // The threepane layout config doc (sidebar widgets / context tabs / doctitle
@@ -318,7 +323,7 @@ function PatchworkFrameInner(props: {
         rootFolderUrl={rootFolderUrl}
         widgetsReady={widgetsReady}
         contactUrl={() => accountDoc()?.contactUrl}
-        moduleSettingsUrl={() => packagesLinkUrl(accountDoc())}
+        moduleSettingsUrl={() => packagesLinkUrl(accountDoc(), moduleSettings())}
         isolation={props.isolation}
         onInterceptOpen={setPopoverView}
       >

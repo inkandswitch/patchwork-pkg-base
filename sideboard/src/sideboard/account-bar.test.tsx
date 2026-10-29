@@ -30,14 +30,28 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-function buttons(doc: SideboardAccountDoc) {
+const ID = "2j9knpCseyhnK8izDmLpGP5WMdZQ";
+const settingsDocs: Record<string, object> = {
+  [SETTINGS]: { modules: [`automerge:${ID}`], movedToPackages: [ID] },
+};
+/** What solid-automerge's useDocument asks of a Repo. */
+const repo = {
+  find: async (url: string) => fakeHandle(settingsDocs[url] as SideboardAccountDoc),
+  findWithProgress: (url: string) => ({
+    peek: () => ({ state: "ready", handle: fakeHandle(settingsDocs[url] as SideboardAccountDoc) }),
+    whenReady: async () => fakeHandle(settingsDocs[url] as SideboardAccountDoc),
+  }),
+} as unknown as Repo;
+
+function buttons(doc: SideboardAccountDoc, hostLoadsPackages = true) {
   const container = document.createElement("div");
   document.body.append(container);
   dispose = render(
     () => (
       <AccountBar
         handle={fakeHandle(doc)}
-        repo={{} as Repo}
+        repo={repo}
+        hostLoadsPackages={hostLoadsPackages}
         element={container as unknown as PatchworkViewElement}
       />
     ),
@@ -51,9 +65,15 @@ describe("AccountBar", () => {
     expect(buttons({ moduleSettingsUrl: SETTINGS })).toContain("Packages");
   });
 
-  it("leaves Packages to the sidebar once /packages is bound", () => {
+  it("leaves Packages to the sidebar once /packages covers module settings", () => {
     expect(
       buttons({ moduleSettingsUrl: SETTINGS, namespace: { "/packages": [{ url: PACKAGES }] } })
     ).not.toContain("Packages");
+  });
+
+  it("keeps Packages on a host that doesn't load /packages", () => {
+    expect(
+      buttons({ moduleSettingsUrl: SETTINGS, namespace: { "/packages": [{ url: PACKAGES }] } }, false)
+    ).toContain("Packages");
   });
 });

@@ -1,6 +1,6 @@
 import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
 import type { Accessor } from "solid-js";
-import { Show } from "solid-js";
+import { createEffect, Show } from "solid-js";
 
 interface MainDocumentViewProps {
   viewKey: Accessor<string | undefined>;
@@ -31,7 +31,15 @@ export function MainDocumentView({
             <patchwork-view
               doc-url={selectedDocUrl()!}
               tool-id={toolId()}
-              attr:path={path?.()}
+              // Where it was opened from, as an attribute: patchwork-view's
+              // JSX typings predate `path`.
+              ref={(view: HTMLElement) =>
+                createEffect(() => {
+                  const at = path?.();
+                  if (at) view.setAttribute("path", at);
+                  else view.removeAttribute("path");
+                })
+              }
             />
           );
         }}
