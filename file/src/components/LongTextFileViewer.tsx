@@ -17,6 +17,7 @@ import {getLanguageExtension} from "../languages"
 import type {FileDoc} from "../types"
 import {fileText} from "../datatype"
 import {collectExtensions} from "./codemirror-extensions"
+import {createFileComments} from "./comments"
 
 // Read-only text: ImmutableString files, and text too long to edit live. It
 // follows the file as it changes (an ImmutableString is replaced whole, so the
@@ -30,6 +31,13 @@ export function LongTextFileViewer(props: {
 		props.doc.extension,
 		props.doc.mimeType,
 	)
+
+	// Read-only to the editor, but the file can still take comments (unless
+	// it's an ImmutableString — see createFileComments).
+	const comments =
+		props.handle && props.element
+			? createFileComments({handle: props.handle, element: props.element})
+			: undefined
 
 	const view = new EditorView({
 		doc: fileText(props.handle?.doc() ?? props.doc),
@@ -48,6 +56,7 @@ export function LongTextFileViewer(props: {
 			keymap.of([...searchKeymap, ...foldKeymap, ...defaultKeymap]),
 			languageExtension,
 			...codemirrorTheme,
+			comments?.extension ?? [],
 			// last, so they can override anything above
 			collectExtensions(props.element, props.handle, props.doc, true),
 		],
@@ -59,6 +68,7 @@ export function LongTextFileViewer(props: {
 		view.dispatch({changes: {from: 0, to: view.state.doc.length, insert: text}})
 	}
 	props.handle?.on("change", follow)
+	comments?.attach(view)
 
 	onCleanup(() => {
 		props.handle?.off("change", follow)
