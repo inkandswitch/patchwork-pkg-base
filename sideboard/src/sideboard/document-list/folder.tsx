@@ -58,6 +58,8 @@ export default function Folder(props: {
   /** The names walked from the panel's folder to this folder's parent. */
   names?: string[];
   livePathOf?: LivePathOf;
+  /** Stays put: see Item's `pinned`. */
+  pinned?: boolean;
 }) {
   const [expanded, setExpanded] = createSignal(false);
   // This folder's own names, for its live path and its children's.
@@ -196,6 +198,7 @@ export default function Folder(props: {
         rootFolderHandle={props.rootFolderHandle}
         parentFolderHandle={props.parentFolderHandle}
         itemIndex={props.itemIndex}
+        pinned={props.pinned}
         isExpanded={expanded()}
         onToggleExpand={() => setExpanded((yn) => !yn)}
         expand={() => setExpanded(true)}

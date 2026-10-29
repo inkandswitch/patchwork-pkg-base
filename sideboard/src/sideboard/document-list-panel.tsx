@@ -29,6 +29,7 @@ import CreateNew from "./create-new.tsx";
 import { createOpenEvent } from "./events.ts";
 import { SearchIcon } from "./icons.tsx";
 import { DocumentList } from "./document-list/document-list.tsx";
+import { pinnedPackagesFolder } from "./packages.ts";
 import { LoadingRows } from "./document-list/loading-row.tsx";
 import { subscribe } from "@inkandswitch/patchwork-providers-solid";
 import {
@@ -78,6 +79,22 @@ export function DocumentListPanel(props: {
         folderUrl
       )
   );
+
+  // The account's packages folder sits last in its root, set apart. The
+  // account can bind /packages while this is up (a migration), so follow it.
+  type AccountHandle = Parameters<typeof pinnedPackagesFolder>[0] & {
+    on?(event: "change", listener: () => void): void;
+    off?(event: "change", listener: () => void): void;
+  };
+  const account = (globalThis as { patchwork?: { account?: AccountHandle } }).patchwork?.account;
+  const [accountChanged, setAccountChanged] = createSignal(0);
+  const onAccountChange = () => setAccountChanged((n) => n + 1);
+  account?.on?.("change", onAccountChange);
+  onCleanup(() => account?.off?.("change", onAccountChange));
+  const pinnedLast = () => {
+    accountChanged();
+    return pinnedPackagesFolder(account, props.folderUrl);
+  };
 
   // Optimistic loading: show the skeleton from the moment the panel mounts and
   // keep it up until the root folder handle has actually resolved. Reading the
@@ -226,6 +243,7 @@ export function DocumentListPanel(props: {
           <Suspense fallback={<LoadingRows depth={0} />}>
             <DocumentList
               depth={0}
+              pinnedLast={pinnedLast()}
               repo={props.repo}
               docs={folder()?.docs}
               handle={folderHandle.latest!}

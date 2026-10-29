@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
-import { packagesFolderSuffices, packagesFolders } from "./packages.ts";
+import { packagesFolderSuffices, packagesFolders, pinnedPackagesFolder } from "./packages.ts";
 
 const A = "automerge:3tmVsDzywTYecevUsD21YABfXKon" as AutomergeUrl;
 const B = "automerge:4MCbKQoMiEnGXchaHRH3e7kxWXVs" as AutomergeUrl;
@@ -42,5 +42,21 @@ describe("packagesFolderSuffices", () => {
   it("is false without /packages, or on a host that doesn't load it", () => {
     expect(packagesFolderSuffices({}, covered, true)).toBe(false);
     expect(packagesFolderSuffices(bound, covered, false)).toBe(false);
+  });
+});
+
+describe("pinnedPackagesFolder", () => {
+  const ROOT = "automerge:2j9knpCseyhnK8izDmLpGP5WMdZQ" as AutomergeUrl;
+  const account = (doc: object) => ({ doc: () => doc });
+
+  it("is the first /packages folder, in the account's own root folder", () => {
+    const acct = account({ rootFolderUrl: ROOT, namespace: { "/packages": [{ url: A }, { url: B }] } });
+    expect(pinnedPackagesFolder(acct, ROOT)).toBe(A);
+  });
+
+  it("is nothing in another folder, without /packages, or without an account", () => {
+    expect(pinnedPackagesFolder(account({ rootFolderUrl: ROOT, namespace: { "/packages": [{ url: A }] } }), B)).toBeUndefined();
+    expect(pinnedPackagesFolder(account({ rootFolderUrl: ROOT }), ROOT)).toBeUndefined();
+    expect(pinnedPackagesFolder(undefined, ROOT)).toBeUndefined();
   });
 });

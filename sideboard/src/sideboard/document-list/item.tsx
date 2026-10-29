@@ -66,6 +66,11 @@ export default function Item(props: {
   createInside?(datatype: Plugin<DatatypeDescription>): void;
   /** Not an entry in a folder: open it or drag it out, but no rename, remove or drops. */
   readOnly?: boolean;
+  /**
+   * A row that stays where it is (the account's packages folder): it can't be
+   * dragged or selected for a drag, and a drop on it goes inside, never beside.
+   */
+  pinned?: boolean;
   /** Override `readOnly` for the menu: what this row's path provider offers. */
   canRename?: boolean;
   canRemove?: boolean;
@@ -146,7 +151,8 @@ export default function Item(props: {
       aria-selected={props.pressed ? "true" : undefined}
       aria-expanded={isFolder() ? !!props.isExpanded : undefined}
       class="popmenu__trigger document-list-item"
-      draggable="true"
+      draggable={props.pinned ? "false" : "true"}
+      data-pinned={props.pinned ? "" : undefined}
       data-dnd-item={props.id}
       data-dnd-parent={parentUrl()}
       data-dnd-index={props.itemIndex}
@@ -192,7 +198,9 @@ export default function Item(props: {
 
         const rect = row!.getBoundingClientRect();
         let position: "above" | "below" | "inside";
-        if (isFolder()) {
+        if (props.pinned) {
+          position = "inside";
+        } else if (isFolder()) {
           // three zones: top quarter above, bottom quarter below, middle inside
           const at = (event.clientY - rect.top) / rect.height;
           position = at < 0.25 ? "above" : at > 0.75 ? "below" : "inside";
@@ -240,7 +248,7 @@ export default function Item(props: {
       onMouseDown={(event: MouseEvent) => {
         // Warm up file metadata so a subsequent drag can export to the OS.
         dragOut.prefetch();
-        if (event.ctrlKey || event.metaKey) {
+        if ((event.ctrlKey || event.metaKey) && !props.pinned) {
           if (dragstack.has(props.id)) {
             removeFromDragstack(props.id);
           } else {

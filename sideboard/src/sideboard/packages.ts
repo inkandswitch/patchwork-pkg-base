@@ -40,3 +40,16 @@ export function packagesFolderSuffices(
     return !/[#/]/.test(id) && moved.has(id);
   });
 }
+
+/**
+ * The folder the account's root list shows last, set apart: the first one
+ * bound at `/packages`, when `folderUrl` is the account's root folder.
+ */
+export function pinnedPackagesFolder(
+  account: { doc(): Pick<SideboardAccountDoc, "rootFolderUrl" | "namespace"> | undefined } | undefined,
+  folderUrl: AutomergeUrl
+): AutomergeUrl | undefined {
+  const doc = account?.doc();
+  if (!doc || doc.rootFolderUrl !== folderUrl) return undefined;
+  return packagesFolders(doc)[0];
+}
