@@ -122,7 +122,7 @@ export function ContainerItem(
 }
 
 function ContainerChildren(
-  props: Shared & { url: AutomergeUrl; names: string[]; depth: number }
+  props: Shared & { url: AutomergeUrl; type: string; names: string[]; depth: number }
 ) {
   const [doc] = useDocument<object>(() => props.url, { repo: props.repo });
   // Providers go by type; re-asked when the type changes or a plugin is
@@ -205,6 +205,7 @@ function ContainerChildren(
             {...props}
             child={child}
             containerDoc={doc()}
+            containerType={props.type}
             expandable={expandable}
             canRename={!!provider.latest?.rename}
             canRemove={!!provider.latest?.remove}
@@ -226,6 +227,8 @@ function ChildRow(
     url: AutomergeUrl;
     child: ContainerChild;
     containerDoc: unknown;
+    /** The container's type: a sub-document of no type of its own opens with it. */
+    containerType: string;
     names: string[];
     depth: number;
     expandable(type: string): boolean;
@@ -259,7 +262,9 @@ function ChildRow(
   const url = () => link() ?? subUrl();
   const type = () => {
     const sub = segments();
-    if (sub) return typeOf(valueAt(props.containerDoc, sub)) ?? "";
+    // A part of a document with no type of its own (a canvas's shape, say) is
+    // its container's to show.
+    if (sub) return typeOf(valueAt(props.containerDoc, sub)) ?? props.containerType;
     return typeOf(linked()) ?? (Array.isArray(linked()?.docs) ? "folder" : "");
   };
 

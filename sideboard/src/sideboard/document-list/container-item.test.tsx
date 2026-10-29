@@ -11,6 +11,7 @@ const NESTED = "automerge:3VvPLAvjtd3gtkPjNHJ4w3rC6cTb" as AutomergeUrl;
 const INNER = "automerge:2SxHu9PECxzCNn6mBV6uhw5yPxEW" as AutomergeUrl;
 const FLAKY = "automerge:4AT7fHTvjgE6eCsMEPsiDAqpVrGw" as AutomergeUrl;
 const DROPPED = "automerge:2Ldo5rBdVzfnDRCjgkRZrQ7pMUnW" as AutomergeUrl;
+const CANVAS = "automerge:2rbVqNiLNVeZAHRxaj7yMZHBmBZV" as AutomergeUrl;
 
 const typeOf = (doc: any) => doc?.["@patchwork"]?.type;
 
@@ -32,6 +33,10 @@ const board = {
   rename: vi.fn(),
   remove: vi.fn(),
 };
+// A canvas's provider: its shapes, parts of it with no type of their own.
+const canvas = {
+  list: (node: any) => Object.keys(node.store).map((id) => ({ name: id, sub: ["store", id] })),
+};
 // One that offers no editing, and one that fails.
 const plain = { list: boardList };
 const broken = {
@@ -48,13 +53,13 @@ const folderish = {
   list: (node: any) => node.docs.map(({ name, url }: any) => ({ name, link: url })),
 };
 // The plugin providers by type; a test can swap one, as a hot reload does.
-const byType: Record<string, unknown> = { directory, board, plain, broken };
+const byType: Record<string, unknown> = { directory, board, plain, broken, canvas };
 const registryListeners = new Set<() => void>();
 const changed = () => registryListeners.forEach((listener) => listener());
 vi.mock("@inkandswitch/patchwork-plugins", () => ({
   pathProviderFor: async (doc: any) =>
     Array.isArray(doc?.docs) ? folderish : byType[typeOf(doc) as string],
-  pathProviderTypes: () => new Set(["board", "plain", "broken"]),
+  pathProviderTypes: () => new Set(["board", "plain", "broken", "canvas"]),
   getRegistry: () => ({
     on: (_event: string, listener: () => void) => {
       registryListeners.add(listener);
@@ -98,6 +103,7 @@ const docs: Record<string, object> = {
   [INNER]: { title: "inner", docs: [{ name: "f", type: "file", url: FILE }] },
   // A board whose handle can't be found again (for a sub-document's url).
   [FLAKY]: boardDoc("board"),
+  [CANVAS]: { "@patchwork": { type: "canvas" }, store: { "shape:a": { typeName: "shape" } } },
 };
 const handles = new Map<string, ReturnType<typeof fakeHandle>>();
 const handleOf = (url: AutomergeUrl) => {
@@ -191,6 +197,17 @@ describe("ContainerItem", () => {
       url: `${BOARD}/notes`,
       type: "markdown",
       path: "acct/packages/b/notes",
+    });
+  });
+
+  it("opens a sub-document with no type of its own with its container's type", async () => {
+    const { opened, row, expand } = mount(CANVAS, "canvas", "c");
+    await expand(2);
+    row("shape:a").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(opened.at(-1)).toMatchObject({
+      url: `${CANVAS}/store/shape:a`,
+      type: "canvas",
+      path: "acct/packages/c/shape:a",
     });
   });
 
