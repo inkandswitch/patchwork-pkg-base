@@ -92,6 +92,20 @@ export async function providerOf(
   }
 }
 
+/** The value at `segments` below `doc`, or undefined: as a walk finds it. */
+export function valueAt(doc: unknown, segments: Segment[]): unknown {
+  let at = doc;
+  for (const segment of segments) {
+    if (!at || typeof at !== "object" || at instanceof Uint8Array) return undefined;
+    if (!Object.hasOwn(at, segment)) return undefined;
+    at = (at as Record<Segment, unknown>)[segment];
+  }
+  return at;
+}
+
+/** Whether `url` names part of a document (`automerge:<id>/<path>`), not a whole one. */
+export const isSubUrl = (url: string) => url.split("#")[0].includes("/");
+
 export type ContainerChild =
   | { name: string; url: AutomergeUrl }
   | { name: string; sub: Segment[] };
@@ -113,7 +127,7 @@ export function containerChildren(
   return children.flatMap((child): ContainerChild[] =>
     child.link
       ? [{ name: child.name, url: child.link }]
-      : Array.isArray(child.sub)
+      : Array.isArray(child.sub) && valueAt(doc, child.sub) !== undefined
         ? [{ name: child.name, sub: child.sub }]
         : []
   );

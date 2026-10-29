@@ -11,8 +11,10 @@ import { useDocument } from "solid-automerge";
 import { createResource, createSignal, For, Match, Show, Switch, type JSX } from "solid-js";
 import {
   containerChildren,
+  isSubUrl,
   providerOf,
   useExpandable,
+  valueAt,
   type ContainerChild,
   type Provider,
 } from "../container.ts";
@@ -177,6 +179,8 @@ function ContainerChildren(
         event.preventDefault();
         event.stopPropagation();
         for (const item of getDndPayload(event)?.items ?? []) {
+          // Part of a document isn't something to link to: a walk wouldn't follow it.
+          if (isSubUrl(item.url)) continue;
           void add({ name: item.name ?? item.url.slice("automerge:".length), link: item.url });
         }
       }}
@@ -197,16 +201,6 @@ function ContainerChildren(
       </For>
     </div>
   );
-}
-
-/** The value at `segments` in `doc`, for a sub-document's type. */
-function valueAt(doc: unknown, segments: (string | number)[]): unknown {
-  let at = doc;
-  for (const segment of segments) {
-    if (!at || typeof at !== "object") return undefined;
-    at = (at as Record<string | number, unknown>)[segment];
-  }
-  return at;
 }
 
 /**

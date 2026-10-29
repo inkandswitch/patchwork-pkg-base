@@ -205,12 +205,14 @@ describe("ContainerItem", () => {
     expect(target.canRemove).toBeFalsy();
   });
 
+  let subDrop = false;
   it("adds a document dropped among its children, when the provider offers it", async () => {
     const drop = async (url: AutomergeUrl, type: string) => {
       const { container, expand } = mount(url, type, "x");
       await expand(3);
       const group = container.querySelector<HTMLElement>(".document-list-folder__contents")!;
-      const payload = JSON.stringify({ source: "s", items: [{ url: DROPPED, name: "dropped" }] });
+      const dropped = subDrop ? `${DROPPED}/notes` : DROPPED;
+      const payload = JSON.stringify({ source: "s", items: [{ url: dropped, name: "dropped" }] });
       const dataTransfer = {
         types: ["text/x-patchwork-dnd"],
         files: [],
@@ -234,6 +236,12 @@ describe("ContainerItem", () => {
       })
     );
     board.add.mockClear();
+    // A sub-document isn't a document to link to: walks wouldn't follow it.
+    subDrop = true;
+    await drop(BOARD, "board");
+    subDrop = false;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(board.add).not.toHaveBeenCalled();
     await drop(PLAIN, "plain");
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(board.add).not.toHaveBeenCalled();

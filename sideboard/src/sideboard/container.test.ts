@@ -115,11 +115,13 @@ describe("containerChildren", () => {
     ]);
   });
 
-  it("lists sub-documents", () => {
-    expect(containerChildren(BOARD, board)).toEqual([
+  it("lists sub-documents whose value is there, and hides those whose isn't", () => {
+    const doc = { ...BOARD, notes: { content: "n" } };
+    expect(containerChildren(doc, board)).toEqual([
       { name: "child", url: A },
       { name: "notes", sub: ["notes"] },
     ]);
+    expect(containerChildren(BOARD, board)).toEqual([{ name: "child", url: A }]);
   });
 
   it("lists nothing without a provider, or when it throws", () => {
