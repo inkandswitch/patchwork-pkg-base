@@ -55,6 +55,12 @@ export interface MenuTarget {
    * of a branches doc): it can be opened and copied, not renamed or removed.
    */
   readOnly?: boolean;
+  /**
+   * Whether Rename and Remove are offered. Default: unless `readOnly`. A
+   * child of a package's path provider has them if the provider does.
+   */
+  canRename?: boolean;
+  canRemove?: boolean;
 }
 
 export const [menuTarget, setMenuTarget] = createSignal<MenuTarget | null>(

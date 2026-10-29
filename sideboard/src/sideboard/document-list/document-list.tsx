@@ -37,7 +37,7 @@ import Item from "./item.tsx";
 import { ItemName } from "./name.tsx";
 import { LoadingRow } from "./loading-row.tsx";
 import type { LivePathOf, OpenDetail } from "../live-path.ts";
-import { canExpand } from "../container.ts";
+import { useExpandable } from "../container.ts";
 import { ContainerItem } from "./container-item.tsx";
 
 const NewDocPlaceholder = lazy(() =>
@@ -70,6 +70,8 @@ const FRAME_BUDGET_MS = 8;
 
 export function DocumentList(props: DocumentListProps) {
   const visitedFolders = props.visitedFolders ?? new Set<AutomergeUrl>();
+  // Package path providers can arrive after this renders.
+  const expandable = useExpandable();
   // Where a row here was opened from, so the router can say so in `&path=`.
   const pathTo = (name: string) =>
     props.livePathOf?.([...(props.names ?? []), String(name)]);
@@ -272,7 +274,7 @@ export function DocumentList(props: DocumentListProps) {
                     />
                   </Show>
                 </Match>
-                <Match when={doc.type != "folder" && canExpand(doc.type)}>
+                <Match when={doc.type != "folder" && expandable(doc.type)}>
                   <ContainerItem
                     url={doc.url}
                     name={doc.name}

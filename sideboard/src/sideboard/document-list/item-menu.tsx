@@ -65,7 +65,8 @@ function MenuItems(props: {
   const t = props.target;
   const tools = useSupportedToolsForType(t.type);
   const datatypes = useFilteredDatatypes((item) => !item.unlisted);
-  const multi = () => dragstack.has(t.id) && dragstack.size > 1;
+  // A selection is a set of folder entries; a provider's child removes only itself.
+  const multi = () => !t.readOnly && dragstack.has(t.id) && dragstack.size > 1;
   const patchworkUrl = () =>
     `${location.protocol}//${location.host}/#doc=${parseAutomergeUrl(t.url).documentId}`;
 
@@ -135,8 +136,10 @@ function MenuItems(props: {
           </SubMenu>
         </Show>
       </SubMenu>
-      <Show when={!t.readOnly}>
+      <Show when={t.canRename ?? !t.readOnly}>
         <MenuItem onSelect={() => t.startRenaming()}>Rename</MenuItem>
+      </Show>
+      <Show when={t.canRemove ?? !t.readOnly}>
         <MenuItem onSelect={handleRemove}>
           {multi() ? `Remove ${dragstack.size} items` : "Remove"}
         </MenuItem>

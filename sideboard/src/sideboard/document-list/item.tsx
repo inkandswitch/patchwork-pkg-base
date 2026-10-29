@@ -66,6 +66,9 @@ export default function Item(props: {
   createInside?(datatype: Plugin<DatatypeDescription>): void;
   /** Not an entry in a folder: open it or drag it out, but no rename, remove or drops. */
   readOnly?: boolean;
+  /** Override `readOnly` for the menu: what this row's path provider offers. */
+  canRename?: boolean;
+  canRemove?: boolean;
 }) {
   let row: HTMLDivElement | undefined;
   const isFolder = () => props.type === "folder";
@@ -119,6 +122,8 @@ export default function Item(props: {
       remove: props.remove,
       createInside: props.createInside,
       readOnly: props.readOnly,
+      canRename: props.canRename,
+      canRemove: props.canRemove,
     });
   }
 

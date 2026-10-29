@@ -1,37 +1,120 @@
 // Docs that aren't folders but have children: a directory doc's files (a
-// pushwork package), a branches doc's branches. Which children they have is the
-// host's patchwork-filesystem path providers' call (an importmap external), the
-// same ones a path walks, so a child opens at a path the router can resolve. A
-// host without providers shows these docs as plain rows, as before.
+// pushwork package), a branches doc's branches, and any type a package
+// registers a path provider for. Which children they have is the host's call
+// (patchwork-filesystem's built-in providers, then patchwork-plugins'
+// path-provider plugins; both importmap externals), the same providers a path
+// walks, so a child opens at a path the router can resolve. Each is
+// feature-detected: an older host shows these docs as plain rows, as before.
 import * as filesystem from "@inkandswitch/patchwork-filesystem";
-import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
+import * as plugins from "@inkandswitch/patchwork-plugins";
+import type { AutomergeUrl, DocHandle } from "@automerge/automerge-repo/slim";
+import { createSignal, onCleanup } from "solid-js";
 
-type Child = { name: string; link?: AutomergeUrl; value?: unknown; union?: AutomergeUrl[] };
-type Providers = {
-  providerFor(doc: unknown): { list(node: unknown): Child[] } | undefined;
+type Segment = string | number;
+type Child = {
+  name: string;
+  link?: AutomergeUrl;
+  value?: unknown;
+  union?: AutomergeUrl[];
+  sub?: Segment[];
 };
 
-const hostProviders = filesystem as unknown as Partial<Providers>;
+/** A path provider, as much of one as the sidebar uses. The editing methods are optional. */
+export type Provider = {
+  list(node: unknown): Child[];
+  add?(
+    handle: DocHandle<unknown>,
+    node: unknown,
+    child: { name: string; link: AutomergeUrl },
+    index?: number
+  ): void | Promise<void>;
+  rename?(handle: DocHandle<unknown>, node: unknown, name: string, to: string): void | Promise<void>;
+  remove?(handle: DocHandle<unknown>, node: unknown, name: string): void | Promise<void>;
+};
 
-// Types whose rows expand through a provider. Folders have their own row
-// (folder.tsx), which can also be edited.
+/** What this needs of the host's patchwork-filesystem and patchwork-plugins; all optional. */
+export type HostPaths = {
+  providerFor?(doc: unknown): Provider | undefined;
+  pathProviderFor?(doc: unknown): Promise<Provider | undefined>;
+  pathProviderTypes?(): Set<string>;
+  getRegistry?(type: string): { on?(event: "changed", listener: () => void): () => void };
+};
+
+const fromHost = (module: object, names: (keyof HostPaths)[]): HostPaths =>
+  Object.fromEntries(
+    names.flatMap((name) => {
+      const value = (module as Record<string, unknown>)[name];
+      return typeof value === "function" ? [[name, value]] : [];
+    })
+  );
+
+const hostPaths: HostPaths = {
+  ...fromHost(filesystem, ["providerFor"]),
+  ...fromHost(plugins, ["pathProviderFor", "pathProviderTypes", "getRegistry"]),
+};
+
+// Types whose rows expand through a built-in provider. Folders have their own
+// row (folder.tsx), which can also be edited.
 const EXPANDABLE = new Set(["directory", "branches"]);
 
-/** Whether a link of `type` can be opened up to show its children. */
-export function canExpand(
-  type: string,
-  providers: Partial<Providers> = hostProviders
-): boolean {
-  return EXPANDABLE.has(type) && typeof providers.providerFor === "function";
+/** Whether a link of `type` can be opened up to show its children, as things stand. */
+export function canExpand(type: string, host: HostPaths = hostPaths): boolean {
+  if (EXPANDABLE.has(type) && host.providerFor) return true;
+  return !!host.pathProviderFor && !!host.pathProviderTypes?.().has(type);
 }
 
-/** The documents `doc` links to, by name; values inside it aren't documents. */
+/**
+ * {@link canExpand}, following path-provider plugins as they register, so a
+ * row of a package's type opens up once its package has loaded.
+ */
+export function useExpandable(host: HostPaths = hostPaths): (type: string) => boolean {
+  const [version, setVersion] = createSignal(0);
+  const off = host.getRegistry?.("patchwork:path-provider").on?.("changed", () =>
+    setVersion((n) => n + 1)
+  );
+  if (typeof off === "function") onCleanup(off);
+  return (type) => {
+    version();
+    return canExpand(type, host);
+  };
+}
+
+/** The provider that walks `doc`: plugins' if the host has them, else the built-ins. */
+export async function providerOf(
+  doc: unknown,
+  host: HostPaths = hostPaths
+): Promise<Provider | undefined> {
+  try {
+    if (host.pathProviderFor) return await host.pathProviderFor(doc);
+    return host.providerFor?.(doc);
+  } catch {
+    return undefined;
+  }
+}
+
+export type ContainerChild =
+  | { name: string; url: AutomergeUrl }
+  | { name: string; sub: Segment[] };
+
+/**
+ * The documents `doc` links to, and the values it offers as sub-documents, by
+ * name. Other values inside it aren't documents, and stay hidden.
+ */
 export function containerChildren(
   doc: unknown,
-  providers: Partial<Providers> = hostProviders
-): Array<{ name: string; url: AutomergeUrl }> {
-  const provider = providers.providerFor?.(doc);
-  return (provider?.list(doc) ?? []).flatMap((child) =>
-    child.link ? [{ name: child.name, url: child.link }] : []
+  provider: Provider | undefined
+): ContainerChild[] {
+  let children: Child[];
+  try {
+    children = provider?.list(doc) ?? [];
+  } catch {
+    return [];
+  }
+  return children.flatMap((child): ContainerChild[] =>
+    child.link
+      ? [{ name: child.name, url: child.link }]
+      : Array.isArray(child.sub)
+        ? [{ name: child.name, sub: child.sub }]
+        : []
   );
 }
