@@ -33,6 +33,10 @@ export interface PackagesActions {
   openDoc(url: string): void;
   /** Take a module out of the viewed package list and the live registries. */
   uninstall(importUrl: string | undefined): void;
+  /** Whether it can be uninstalled here (not when only someone else's folder links it). */
+  canUninstall?(importUrl: string | undefined): boolean;
+  /** The /packages folder that links it, if one does. */
+  linkedFrom?(importUrl: string | undefined): { title: string; mine: boolean } | undefined;
 }
 
 const PackagesContext = createContext<PackagesActions>();
@@ -212,7 +216,9 @@ export function SourceActions(props: {
   importUrl: string | undefined;
   origin: Origin;
 }): JSX.Element {
-  const { openDoc, uninstall } = useActions();
+  const { openDoc, uninstall, canUninstall, linkedFrom } = useActions();
+  const removable = () => canUninstall?.(props.importUrl) ?? true;
+  const from = () => linkedFrom?.(props.importUrl);
   return (
     <Show when={hasActions(props.importUrl, props.origin)}>
       <div class="pw-actions">
@@ -224,14 +230,23 @@ export function SourceActions(props: {
             open
           </button>
         </Show>
-        <Show when={props.origin === "installed"}>
+        <Show when={props.origin === "installed" && removable()}>
           <button
             class="pw-actions__btn pw-actions__btn--danger"
-            title="Remove this module from the settings doc you're viewing"
+            title={
+              from()?.mine
+                ? "Uninstall: remove it from your packages folder"
+                : "Remove this module from the settings doc you're viewing"
+            }
             onClick={() => uninstall(props.importUrl)}
           >
             delete
           </button>
+        </Show>
+        <Show when={props.origin === "installed" && !removable() && from()}>
+          <span class="pw-actions__from" title="Installed from a folder you share; remove it there">
+            from {from()!.title}
+          </span>
         </Show>
       </div>
     </Show>

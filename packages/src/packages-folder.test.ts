@@ -68,7 +68,7 @@ describe("unlinkPackage", () => {
       { name: "c", type: "folder", url: `${PKG}#abc` },
     ]);
     expect(unlinkPackage(f, PKG.slice("automerge:".length))).toBe(true);
-    expect(f.doc()!.docs.map((d) => d.name)).toEqual(["b"]);
+    expect(f.doc()!.docs!.map((d) => d.name)).toEqual(["b"]);
     expect(unlinkPackage(f, PKG.slice("automerge:".length))).toBe(false);
   });
 });

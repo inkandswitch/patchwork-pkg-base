@@ -11,7 +11,7 @@ type Link = { name: string; type: string; url: string };
 /** As much of a folder doc's handle as linking needs. */
 export interface FolderHandle {
   url: string;
-  doc(): { docs?: Link[] } | undefined;
+  doc(): { title?: string; docs?: Link[] } | undefined;
   change(fn: (doc: { docs: Link[] }) => void): void;
 }
 
