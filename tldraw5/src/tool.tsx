@@ -64,7 +64,7 @@ import {
 import { isPatchworkDrag, parseDroppedDocs } from "./dnd.ts";
 import { MigratePrompt, TLDRAW4_TYPE, getDocType } from "./migrate.tsx";
 import { useColorScheme } from "./color-scheme.ts";
-import { splitShapeUrl } from "./shape-url.ts";
+import { shapeUrl, splitShapeUrl } from "./shape-url.ts";
 import {
   TldrFileContext,
   TldrFileMainMenu,
@@ -624,7 +624,40 @@ function TldrawInner(props: {
 
   // After the saved camera, so the shape wins.
   useFocusShape(editor, props.focusShape);
+  useReportSelection(editor, props.element, props.docUrl);
   return null;
+}
+
+// Tells whoever's listening (the sidebar, through the selection provider)
+// which shapes are selected, as parts of this canvas, whenever that changes.
+// On the way out it says none, so they don't stay selected after.
+function useReportSelection(editor: Editor | null, element: HTMLElement, docUrl: AutomergeUrl) {
+  useEffect(() => {
+    if (!editor) return;
+    const url = docUrl.split("#")[0] as AutomergeUrl;
+    const tell = (parts: AutomergeUrl[]) =>
+      element.dispatchEvent(
+        new CustomEvent("patchwork:select-parts", {
+          bubbles: true,
+          composed: true,
+          detail: { url, parts },
+        })
+      );
+    let last = "";
+    const report = () => {
+      const ids = editor.getSelectedShapeIds();
+      const key = ids.join(",");
+      if (key === last) return;
+      last = key;
+      tell(ids.map((id) => shapeUrl(url, id)));
+    };
+    report();
+    const unlisten = editor.store.listen(report, { scope: "session" });
+    return () => {
+      unlisten();
+      if (last) tell([]);
+    };
+  }, [editor, element, docUrl]);
 }
 
 // Selects a shape and brings it into view, once, when the canvas opens on it.

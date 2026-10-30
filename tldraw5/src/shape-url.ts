@@ -32,3 +32,12 @@ function decodeKey(segment: string): string | undefined {
     return undefined;
   }
 }
+
+/**
+ * A shape's part url, `automerge:<id>/store/<shape id>`, as automerge-repo
+ * writes it and the sidebar lists it: the live canvas, so no heads.
+ */
+export function shapeUrl(docUrl: AutomergeUrl, shapeId: TLShapeId): AutomergeUrl {
+  const doc = docUrl.split("#")[0].split("/")[0];
+  return `${doc}/store/${encodeURIComponent(shapeId)}` as AutomergeUrl;
+}

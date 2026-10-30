@@ -3,7 +3,7 @@ import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
 import { toRichText } from "@tldraw/tldraw";
 import { init, type TLDrawDoc } from "./datatype.ts";
 import { provider } from "./path-provider.ts";
-import { splitShapeUrl } from "./shape-url.ts";
+import { shapeUrl, splitShapeUrl } from "./shape-url.ts";
 
 const FILE = "automerge:4MCbKQoMiEnGXchaHRH3e7kxWXVs";
 const EMBED = "automerge:3tmVsDzywTYecevUsD21YABfXKon";
@@ -131,5 +131,21 @@ describe("splitShapeUrl", () => {
   it("shows the canvas for any other path into it", () => {
     expect(splitShapeUrl(at(`${id}/store/page%3Apage`))).toEqual({ docUrl: id });
     expect(splitShapeUrl(at(`${id}/docs/@0`))).toEqual({ docUrl: id });
+  });
+});
+
+describe("shapeUrl", () => {
+  const DOC = "automerge:2j9knpCseyhnK8izDmLpGP5WMdZQ" as any;
+
+  it("is a shape's part url, as automerge-repo writes one, without heads", () => {
+    expect(shapeUrl(DOC, "shape:abc" as any)).toBe(`${DOC}/store/shape%3Aabc`);
+    expect(shapeUrl(`${DOC}#h1` as any, "shape:abc" as any)).toBe(`${DOC}/store/shape%3Aabc`);
+  });
+
+  it("splits back into the canvas and the shape", () => {
+    expect(splitShapeUrl(shapeUrl(DOC, "shape:a/b c" as any))).toEqual({
+      docUrl: DOC,
+      shapeId: "shape:a/b c",
+    });
   });
 });
