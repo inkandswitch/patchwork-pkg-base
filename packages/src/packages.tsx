@@ -50,14 +50,15 @@ export function Packages(props: {
 }): JSX.Element {
   // Where installs go: your /packages folder on a host that loads it.
   const env = hostEnv(props.element);
-  const folders = usePackagesFolders(env);
+  const folders = usePackagesFolders(env, props.handle.url);
+  const data = usePackageData(props.handle, () => folders.links().keys());
   const installer = createInstaller({
     settings: props.handle,
+    settingsDoc: data.doc,
     folders,
     describe: describeWith(env.repo),
     deactivate: deactivateModule,
   });
-  const data = usePackageData(props.handle, () => folders.links().keys());
   const broken = useBrokenModules(() => data.doc()?.modules, data.snapshot);
 
   // --- controls --------------------------------------------------------------
@@ -140,7 +141,9 @@ export function Packages(props: {
   const [installUrl, setInstallUrl] = createSignal<string | null>(null);
 
   const install = (url: string) => {
-    void installer.install(url);
+    installer
+      .install(url)
+      .catch((error) => console.warn(`couldn't install ${url}`, error));
   };
 
   // Pasting a package URL into the filter is a shortcut to the install modal.

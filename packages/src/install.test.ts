@@ -13,8 +13,15 @@ function folder(url: string, docs: { name: string; type: string; url: string }[]
   return { url, doc: () => doc, change: (fn) => fn(doc) };
 }
 
-function setup(options: { mine?: Promise<FolderHandle | undefined>; describe?: () => Promise<{ name: string; type: string }> } = {}) {
-  const settingsDoc = { modules: [] as string[] };
+function setup(
+  options: {
+    mine?: Promise<FolderHandle | undefined>;
+    describe?: () => Promise<{ name: string; type: string }>;
+    alsoShared?: string[];
+    movedToPackages?: string[];
+  } = {}
+) {
+  const settingsDoc = { modules: [] as string[], movedToPackages: options.movedToPackages };
   const settings = {
     url: "automerge:settingssettingsset",
     doc: () => settingsDoc,
@@ -29,15 +36,20 @@ function setup(options: { mine?: Promise<FolderHandle | undefined>; describe?: (
     hasMine: () => true,
     links: () =>
       new Map<string, FolderLink>([
-        [id(TEAM_PKG), { folderUrl: TEAM, title: "team", mine: false }],
+        [id(TEAM_PKG), { folderUrl: TEAM, title: "team", mine: false, shared: true }],
         ...(mine.doc()!.docs ?? []).map(
-          (d) => [id(d.url), { folderUrl: MINE, title: "packages", mine: true }] as const
+          (d) =>
+            [
+              id(d.url),
+              { folderUrl: MINE, title: "packages", mine: true, shared: !!options.alsoShared?.includes(d.url) },
+            ] as const
         ),
       ]),
   };
   const deactivate = vi.fn();
   const installer = createInstaller({
     settings,
+    settingsDoc: () => settingsDoc,
     folders,
     describe: options.describe ?? (async () => ({ name: "alpha", type: "directory" })),
     deactivate,
@@ -122,5 +134,27 @@ describe("installedKeySet", () => {
     );
     // A moved entry no folder links any more isn't loaded, so it isn't installed.
     expect([...keys].sort()).toEqual([id(PKG), id(TEAM_PKG), "https://x.test/a.js", id(MINE)].sort());
+  });
+});
+
+describe("review fixes", () => {
+  it("can't uninstall a package a shared folder links too, even if yours does", async () => {
+    const { installer } = setup({ alsoShared: [PKG] });
+    await installer.install(PKG);
+    expect(installer.canUninstall(PKG)).toBe(false);
+  });
+
+  it("installs a pinned module even where a moved bare entry for it is left over", async () => {
+    const { settingsDoc, installer } = setup({ movedToPackages: [id(PKG)] });
+    settingsDoc.modules.push(PKG);
+    await installer.install(`${PKG}#abc`);
+    expect(settingsDoc.modules).toEqual([PKG, `${PKG}#abc`]);
+  });
+
+  it("writes module settings when your /packages binding isn't a folder", async () => {
+    const notAFolder: FolderHandle = { url: MINE, doc: () => ({}) as any, change: () => {} };
+    const { settingsDoc, installer } = setup({ mine: Promise.resolve(notAFolder) });
+    await installer.install(PKG);
+    expect(settingsDoc.modules).toEqual([PKG]);
   });
 });

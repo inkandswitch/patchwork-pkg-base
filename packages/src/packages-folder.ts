@@ -55,13 +55,13 @@ export function uniqueName(name: string, taken: Iterable<string>): string {
  * Link a package into the folder, under a name no other entry has (only the
  * first of a name is reachable by it). Nothing happens if the folder already
  * links that document. Checked inside the change, so two installs in a row
- * can't both add it.
+ * can't both add it. False if it isn't a folder (a doc with a `docs` list).
  */
-export function linkPackage(folder: FolderHandle, link: Link): void {
+export function linkPackage(folder: FolderHandle, link: Link): boolean {
   const documentId = documentIdOf(link.url);
-  if (!documentId) return;
+  if (!documentId || !Array.isArray(folder.doc()?.docs)) return false;
   folder.change((doc) => {
-    doc.docs ??= [];
+    if (!Array.isArray(doc.docs)) return;
     if (doc.docs.some((entry) => documentIdOf(String(entry?.url)) === documentId)) return;
     const name = uniqueName(
       link.name,
@@ -69,6 +69,7 @@ export function linkPackage(folder: FolderHandle, link: Link): void {
     );
     doc.docs.push({ name, type: link.type, url: link.url });
   });
+  return true;
 }
 
 /** Remove every link to `documentId` from the folder. True if any went. */

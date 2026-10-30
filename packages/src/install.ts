@@ -13,7 +13,14 @@ import {
 import type { ToolHandle } from "./registry.ts";
 
 /** Where a package is linked from: a `/packages` member folder. */
-export type FolderLink = { folderUrl: string; title: string; mine: boolean };
+export type FolderLink = {
+  folderUrl: string;
+  title: string;
+  /** The first folder that links it is yours. */
+  mine: boolean;
+  /** A folder that isn't yours links it too, so the host keeps loading it from there. */
+  shared: boolean;
+};
 
 export interface Folders {
   /** Your packages folder, once it's loaded; undefined if there isn't one. */
@@ -49,19 +56,48 @@ export function installedKeySet(
   return keys;
 }
 
+type SettingsDoc = { modules?: string[]; movedToPackages?: string[] } | undefined;
+
+// A bare entry migration moved to /packages: the host doesn't load it.
+const movedEntry = (entry: string, doc: SettingsDoc) =>
+  bareModuleUrl(entry) === entry && !!doc?.movedToPackages?.includes(moduleKey(entry)!);
+
 export function createInstaller(deps: {
   settings: ToolHandle;
+  /** The settings doc, read reactively where it's shown. */
+  settingsDoc?: () => SettingsDoc;
   folders: Folders;
   describe: Describe;
   deactivate(importUrl: string): void;
 }) {
+  const settingsDoc = deps.settingsDoc ?? (() => deps.settings.doc() as SettingsDoc);
   const intoSettings = (url: string) => {
     const key = moduleKey(url);
     if (!key) return;
     deps.settings.change((doc) => {
       if (!Array.isArray(doc.modules)) doc.modules = [];
-      if (!doc.modules.some((entry) => moduleKey(entry) === key)) doc.modules.push(url);
+      const loaded = doc.modules.some(
+        (entry) => moduleKey(entry) === key && !movedEntry(entry, doc as SettingsDoc)
+      );
+      if (!loaded) doc.modules.push(url);
     });
+  };
+
+  /**
+   * Whether you can uninstall it here: it's in module settings or your
+   * folder, and no folder you share links it, since the host would keep
+   * loading it from there.
+   */
+  const canUninstall = (importUrl: string | undefined): boolean => {
+    const key = moduleKey(importUrl);
+    if (!key) return false;
+    const link = deps.folders.links().get(key);
+    if (link?.shared || (link && !link.mine)) return false;
+    const doc = settingsDoc();
+    const inSettings = (doc?.modules ?? []).some(
+      (entry) => moduleKey(entry) === key && !movedEntry(entry, doc)
+    );
+    return inSettings || !!link?.mine;
   };
 
   return {
@@ -73,22 +109,15 @@ export function createInstaller(deps: {
           const { name, type } = await deps
             .describe(url)
             .catch(() => ({ name: documentId, type: "folder" }));
-          linkPackage(folder, { url, name: name || documentId, type: type || "folder" });
-          return;
+          if (linkPackage(folder, { url, name: name || documentId, type: type || "folder" })) {
+            return;
+          }
         }
       }
       intoSettings(url);
     },
 
-    /** Whether you can uninstall it here: it's in module settings, or your folder links it. */
-    canUninstall(importUrl: string | undefined): boolean {
-      const key = moduleKey(importUrl);
-      if (!key) return false;
-      const inSettings = (deps.settings.doc()?.modules ?? []).some(
-        (entry) => moduleKey(entry) === key
-      );
-      return inSettings || !!deps.folders.links().get(key)?.mine;
-    },
+    canUninstall,
 
     /**
      * Take it out of module settings and your folder, and out of the live
@@ -97,7 +126,7 @@ export function createInstaller(deps: {
      */
     async uninstall(importUrl: string | undefined): Promise<void> {
       const key = moduleKey(importUrl);
-      if (!key || !importUrl) return;
+      if (!key || !importUrl || !canUninstall(importUrl)) return;
       deps.settings.change((doc) => {
         if (!Array.isArray(doc.modules)) return;
         for (let i = doc.modules.length - 1; i >= 0; i--) {
