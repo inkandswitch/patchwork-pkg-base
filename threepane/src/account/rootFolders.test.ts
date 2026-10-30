@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
+import { ImmutableString, type AutomergeUrl } from "@automerge/automerge-repo/slim";
 import { DOCUMENT_LIST_TOOL } from "../datatypes";
 import { rootFolders, sidebarWidgetsFor } from "./rootFolders";
 
@@ -12,6 +12,10 @@ describe("rootFolders", () => {
     expect(rootFolders({ rootFolderUrl: ROOT, namespace: { "/": [{ url: A }, { url: B }] } })).toEqual([A, B]);
     expect(rootFolders({ rootFolderUrl: ROOT })).toEqual([ROOT]);
     expect(rootFolders({ rootFolderUrl: ROOT, namespace: { "/": [{ url: "nope" as AutomergeUrl }] } })).toEqual([ROOT]);
+    expect(rootFolders({ rootFolderUrl: ROOT, namespace: { "/": "nope" as never } })).toEqual([ROOT]);
+    expect(
+      rootFolders({ rootFolderUrl: ROOT, namespace: { "/": [{ url: new ImmutableString(A) as never }] } })
+    ).toEqual([A]);
     expect(rootFolders(undefined)).toEqual([]);
   });
 });

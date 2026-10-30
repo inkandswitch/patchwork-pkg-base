@@ -5,6 +5,7 @@
 // none, and rows open without a path.
 import * as filesystem from "@inkandswitch/patchwork-filesystem";
 import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
+import { createResource, type Resource } from "solid-js";
 import type { OpenDocumentEventDetail } from "@inkandswitch/patchwork-elements";
 import type { SideboardAccountDoc } from "../types.ts";
 import { rootFolders } from "./packages.ts";
@@ -45,4 +46,29 @@ export async function livePathsFor(
   if (!account || rootFolders(account.doc())[0] !== folderUrl) return undefined;
   const acctHash = await idhash(account.documentId);
   return (names) => livePath(acctHash, names);
+}
+
+type LivePathAccount = Parameters<typeof livePathsFor>[0];
+
+/**
+ * {@link livePathsFor} for the list showing `folderUrl`, kept current: asked
+ * again when the folder changes, or when `accountChanged` says the account did
+ * and that moved whether the folder is first at `/`. A list stays mounted when
+ * `/` is rebound around it, so it can't count on being made again.
+ */
+export function createLivePaths(
+  folderUrl: () => AutomergeUrl,
+  account: () => LivePathAccount,
+  accountChanged: () => unknown,
+  grammar?: Partial<PathGrammar>
+): Resource<LivePathOf | undefined> {
+  const [livePathOf] = createResource(
+    () => {
+      accountChanged();
+      const url = folderUrl();
+      return `${rootFolders(account()?.doc())[0] === url}:${url}`;
+    },
+    () => livePathsFor(account(), folderUrl(), grammar)
+  );
+  return livePathOf;
 }

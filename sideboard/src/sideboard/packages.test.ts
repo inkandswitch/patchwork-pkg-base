@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
+import { ImmutableString, type AutomergeUrl } from "@automerge/automerge-repo/slim";
 import { packagesFolderSuffices, packagesFolders, pinnedPackagesFolder, rootFolders } from "./packages.ts";
 
 const A = "automerge:3tmVsDzywTYecevUsD21YABfXKon" as AutomergeUrl;
@@ -81,6 +81,10 @@ describe("rootFolders", () => {
     expect(rootFolders({ rootFolderUrl: ROOT })).toEqual([ROOT]);
     expect(rootFolders({ rootFolderUrl: ROOT, namespace: { "/": [] } })).toEqual([ROOT]);
     expect(rootFolders({ rootFolderUrl: ROOT, namespace: { "/": [{ url: "nope" as AutomergeUrl }] } })).toEqual([ROOT]);
+    expect(rootFolders({ rootFolderUrl: ROOT, namespace: { "/": "nope" as never } })).toEqual([ROOT]);
+    expect(
+      rootFolders({ rootFolderUrl: ROOT, namespace: { "/": [{ url: new ImmutableString(A) as never }] } })
+    ).toEqual([A]);
   });
 
   it("is nothing without either", () => {

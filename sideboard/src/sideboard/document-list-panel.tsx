@@ -6,7 +6,6 @@ import type { FolderDoc } from "@inkandswitch/patchwork-filesystem";
 import {
   createEffect,
   createMemo,
-  createResource,
   createSelector,
   createSignal,
   lazy,
@@ -47,7 +46,7 @@ import { hasDocumentDrag } from "./dnd/payload.ts";
 import { createMarquee } from "./document-list/marquee.ts";
 import { createTreeNav } from "./document-list/tree-nav.ts";
 import { menuTarget } from "./state.ts";
-import { livePathsFor } from "./live-path.ts";
+import { createLivePaths } from "./live-path.ts";
 
 const ItemMenu = lazy(() =>
   import("./document-list/item-menu.tsx").then((m) => ({
@@ -72,20 +71,10 @@ export function DocumentListPanel(props: {
     repo: props.repo,
   });
   const [filter, setFilter] = createSignal("");
-  // Rows in the account's own root folder open at their live path.
-  const [livePathOf] = createResource(
-    () => props.folderUrl,
-    (folderUrl) =>
-      livePathsFor(
-        (globalThis as { patchwork?: { account?: Parameters<typeof livePathsFor>[0] } })
-          .patchwork?.account,
-        folderUrl
-      )
-  );
-
   // The account's packages folder sits last in its root, set apart. The
   // account can bind /packages while this is up (a migration), so follow it.
-  type AccountHandle = Parameters<typeof pinnedPackagesFolder>[0] & {
+  type AccountHandle = NonNullable<Parameters<typeof pinnedPackagesFolder>[0]> & {
+    documentId: string;
     on?(event: "change", listener: () => void): void;
     off?(event: "change", listener: () => void): void;
   };
@@ -98,6 +87,12 @@ export function DocumentListPanel(props: {
     accountChanged();
     return pinnedPackagesFolder(account, props.folderUrl);
   };
+  // Rows in the account's own root folder open at their live path.
+  const livePathOf = createLivePaths(
+    () => props.folderUrl,
+    () => account,
+    accountChanged
+  );
 
   // Optimistic loading: show the skeleton from the moment the panel mounts and
   // keep it up until the root folder handle has actually resolved. Reading the

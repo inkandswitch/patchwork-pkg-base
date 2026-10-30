@@ -1,6 +1,16 @@
-import { isValidAutomergeUrl, type AutomergeUrl } from "@automerge/automerge-repo/slim";
+import {
+  isImmutableString,
+  isValidAutomergeUrl,
+  type AutomergeUrl,
+} from "@automerge/automerge-repo/slim";
 import { DOCUMENT_LIST_TOOL } from "../datatypes";
 import type { AccountDoc, ToolSlot } from "../types";
+
+// A url, as accountBindings reads one: a string, or an ImmutableString holding one.
+const asLink = (value: unknown): AutomergeUrl | undefined => {
+  const url = isImmutableString(value) ? String(value) : value;
+  return typeof url === "string" && isValidAutomergeUrl(url) ? url : undefined;
+};
 
 /**
  * The folders bound at `/`, in order: the account's root, as paths see it.
@@ -10,11 +20,13 @@ import type { AccountDoc, ToolSlot } from "../types";
 export function rootFolders(
   doc: Pick<AccountDoc, "rootFolderUrl" | "namespace"> | undefined
 ): AutomergeUrl[] {
-  const bound = (doc?.namespace?.["/"] ?? [])
-    .map((binding) => binding?.url)
-    .filter((url): url is AutomergeUrl => isValidAutomergeUrl(url));
+  const bindings = doc?.namespace?.["/"];
+  const bound = (Array.isArray(bindings) ? bindings : [])
+    .map((binding) => asLink(binding?.url))
+    .filter((url): url is AutomergeUrl => !!url);
   if (bound.length) return bound;
-  return isValidAutomergeUrl(doc?.rootFolderUrl) ? [doc!.rootFolderUrl!] : [];
+  const root = asLink(doc?.rootFolderUrl);
+  return root ? [root] : [];
 }
 
 /**

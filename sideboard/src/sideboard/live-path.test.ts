@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
-import { livePathsFor } from "./live-path.ts";
+import { createLivePaths, livePathsFor } from "./live-path.ts";
 
 const ROOT = "automerge:3tmVsDzywTYecevUsD21YABfXKon" as AutomergeUrl;
 const OTHER = "automerge:4MCbKQoMiEnGXchaHRH3e7kxWXVs" as AutomergeUrl;
@@ -38,5 +38,28 @@ describe("livePathsFor", () => {
 
   it("gives no paths on a system without them", async () => {
     expect(await livePathsFor(account, ROOT, {})).toBeUndefined();
+  });
+});
+
+describe("createLivePaths", () => {
+  it("follows the account: a list gains paths when it becomes the first at /, and loses them after", async () => {
+    const { createRoot, createSignal } = await import("solid-js");
+    let namespace: Record<string, Array<{ url: AutomergeUrl }>> = {};
+    const acct = { documentId: account.documentId, doc: () => ({ rootFolderUrl: ROOT, namespace }) };
+    const [changed, setChanged] = createSignal(0);
+    await createRoot(async (dispose) => {
+      const livePathOf = createLivePaths(() => OTHER, () => acct, changed, grammar);
+      await vi.waitFor(() => expect(livePathOf.state).toBe("ready"));
+      expect(livePathOf.latest).toBeUndefined();
+
+      namespace = { "/": [{ url: OTHER }, { url: ROOT }] };
+      setChanged(1);
+      await vi.waitFor(() => expect(livePathOf.latest?.(["a"])).toBe("hash(2j9knpCseyhnK8izDmLpGP5WMdZQ)/a"));
+
+      namespace = {};
+      setChanged(2);
+      await vi.waitFor(() => expect(livePathOf.latest).toBeUndefined());
+      dispose();
+    });
   });
 });
