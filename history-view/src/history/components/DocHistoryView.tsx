@@ -1,5 +1,5 @@
 import type { AutomergeUrl, Repo } from "@automerge/automerge-repo/slim";
-import { type Accessor, Show } from "solid-js";
+import { type Accessor, Show, createEffect } from "solid-js";
 import { useDocument } from "solid-automerge";
 import type { HasPatchworkMetadata } from "@inkandswitch/patchwork-filesystem";
 import {
@@ -7,7 +7,7 @@ import {
   useHistorySelection,
   useCachedHistory,
 } from "../hooks";
-import { type GroupingStrategyConfig, type HistoryItem } from "../../types";
+import { type GroupingStrategyConfig, type HistoryItem, findItemForHeads } from "../../types";
 import { DEFAULT_TIME_WINDOW } from "../utils";
 import { DocHistoryHeader } from "./DocHistoryHeader";
 import { HistoryList } from "./HistoryList";
@@ -23,6 +23,13 @@ export interface DocHistoryViewProps {
    * while keeping the reset button.
    */
   showTitle?: Accessor<boolean>;
+  /**
+   * A point in time to show: once the history has loaded, the item these
+   * heads belong to is selected and scrolled into view. If no item ends at
+   * those heads (they're older than anything grouped, or not in this doc),
+   * nothing is selected.
+   */
+  focusHeads?: Accessor<readonly string[] | undefined>;
 }
 
 const STRATEGY_CONFIG: GroupingStrategyConfig = {
@@ -54,8 +61,27 @@ export function DocHistoryView(props: DocHistoryViewProps) {
     }
   };
 
+  // Focus the requested point in time once, when the items first contain it.
+  let panel: HTMLDivElement | undefined;
+  let focusedFor: string | undefined;
+  createEffect(() => {
+    const heads = props.focusHeads?.();
+    if (!heads?.length || isInitializing()) return;
+    const key = heads.join(",");
+    if (key === focusedFor) return;
+    const item = findItemForHeads(groupedItems(), heads);
+    if (!item) return;
+    focusedFor = key;
+    selectItem(item);
+    queueMicrotask(() =>
+      panel
+        ?.querySelector(`[data-latest-hash="${CSS.escape(item.latestHash)}"]`)
+        ?.scrollIntoView({ block: "nearest" })
+    );
+  });
+
   return (
-    <div class="history-panel" style={{ flex: "1", "min-height": "0" }} onClick={clearSelection}>
+    <div ref={panel} class="history-panel" style={{ flex: "1", "min-height": "0" }} onClick={clearSelection}>
       <DocHistoryHeader
         title={(props.showTitle?.() ?? true) ? title() : undefined}
         onRecompute={forceRecompute}

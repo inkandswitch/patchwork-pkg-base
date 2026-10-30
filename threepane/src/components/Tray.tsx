@@ -13,6 +13,12 @@ export function Tray(props: { slots: Accessor<ToolSlot[]> }) {
   return (
     <Show when={props.slots().length}>
       <div class="frame-tray">
+        {/* The why inspector is always first, not configured. It's looked up
+            by id when the page runs, so if its package isn't installed this
+            renders nothing. */}
+        <div class="frame-tray__item frame-tray__why">
+          <patchwork-view component="why-inspector" />
+        </div>
         <For each={uniqueSlots(props.slots())}>
           {(slot) => (
             <div class="frame-tray__item" data-tray-id={slotId(slot)}>
