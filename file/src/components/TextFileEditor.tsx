@@ -182,8 +182,34 @@ export function TextFileEditor(props: {
 		view.destroy()
 	})
 
+	// cmd+= / cmd+- / cmd+0 (ctrl off a Mac) resize the editor's text instead
+	// of zooming the whole page.
+	const MIN_FONT_SIZE = 6
+	const apple = ["Mac", "iPhone", "iPad"].some((name) =>
+		navigator.platform.includes(name),
+	)
+	const zoomMask = 1 << (apple ? mod.command : mod.control)
+	const zoom = (event: KeyboardEvent) => {
+		if ((modshift(event) & ~(1 << mod.shift)) != zoomMask) return
+		let step
+		if (event.key == "=" || event.key == "+") step = 1
+		else if (event.key == "-" || event.key == "_") step = -1
+		else if (event.key == "0") step = 0
+		else return
+		event.preventDefault()
+		event.stopPropagation()
+		if (step == 0) {
+			view.dom.style.fontSize = ""
+		} else {
+			const size = parseFloat(getComputedStyle(view.dom).fontSize)
+			view.dom.style.fontSize = `${Math.max(MIN_FONT_SIZE, size + step)}px`
+		}
+		view.requestMeasure()
+	}
+
 	return (
 		<div
+			onKeyDown={zoom}
 			ref={(el) => {
 				container = el
 				el.appendChild(view.dom)
