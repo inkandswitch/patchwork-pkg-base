@@ -50,3 +50,52 @@ describe("SelectedDocProvider: path", () => {
     await vi.waitFor(() => expect(views.at(-1)).toMatchObject({ path: "acct/y" }));
   });
 });
+
+describe("SelectedDocProvider: parts a tool selects", () => {
+  const SHAPE = `${URL}/store/shape%3Aa`;
+  const OTHER = "automerge:4MCbKQoMiEnGXchaHRH3e7kxWXVs";
+
+  function withDocs() {
+    const { open, ...rest } = setup();
+    const docs: unknown[] = [];
+    const child = document.body.firstElementChild!.firstElementChild! as HTMLElement;
+    subscribe(child, { type: "patchwork:selected-doc" }, (urls) => docs.push(urls));
+    const selectParts = (detail: object) =>
+      child.dispatchEvent(
+        new CustomEvent("patchwork:select-parts", { bubbles: true, composed: true, detail })
+      );
+    return { open, docs, selectParts, ...rest };
+  }
+
+  it("adds the parts of the open document a tool says are selected", async () => {
+    const { open, docs, selectParts } = withDocs();
+    open({ url: URL });
+    selectParts({ url: URL, parts: [SHAPE] });
+    await vi.waitFor(() => expect(docs.at(-1)).toEqual([URL, SHAPE]));
+    selectParts({ url: URL, parts: [] });
+    await vi.waitFor(() => expect(docs.at(-1)).toEqual([URL]));
+  });
+
+  it("ignores parts of a document that isn't open", async () => {
+    const { open, docs, selectParts } = withDocs();
+    open({ url: URL });
+    selectParts({ url: OTHER, parts: [`${OTHER}/store/shape%3Ab`] });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(docs.at(-1)).toEqual([URL]);
+  });
+
+  it("forgets the parts when another document opens", async () => {
+    const { open, docs, selectParts } = withDocs();
+    open({ url: URL });
+    selectParts({ url: URL, parts: [SHAPE] });
+    open({ url: OTHER });
+    await vi.waitFor(() => expect(docs.at(-1)).toEqual([OTHER]));
+  });
+
+  it("counts a part opened on its own as part of the same document", async () => {
+    const { open, docs, selectParts } = withDocs();
+    open({ url: SHAPE });
+    selectParts({ url: URL, parts: [SHAPE] });
+    await vi.waitFor(() => expect(docs.at(-1)).toEqual([SHAPE]));
+  });
+});

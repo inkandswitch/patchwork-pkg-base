@@ -3,6 +3,14 @@ import { accept, type SubscribeEvent } from "@inkandswitch/patchwork-providers";
 import type { OpenDocumentEvent } from "@inkandswitch/patchwork-elements";
 
 const SELECTED_DOC_SELECTOR = "patchwork:selected-doc";
+/**
+ * A tool says which parts of the document it shows are selected (a tldraw
+ * canvas's shapes): `{ url, parts }`, where `url` is that document and each
+ * part an `automerge:<id>/<path>` url into it. They join the selection, so
+ * whatever lists them (the sidebar) can show them selected, without the
+ * document being opened again.
+ */
+const SELECT_PARTS_EVENT = "patchwork:select-parts";
 const SELECTED_VIEW_SELECTOR = "patchwork:selected-view";
 
 type SelectedView = {
@@ -29,8 +37,11 @@ type SelectedView = {
  * Selection is transient UI state, so it lives only in memory here — it is
  * never written to an Automerge doc (and therefore never synced to peers).
  */
+const documentIdOf = (url: string) => url.replace(/^automerge:/, "").split(/[/#]/)[0];
+
 export const SelectedDocProvider = (element: HTMLElement) => {
   let selectedView = selectedViewFromLocation();
+  let selectedParts: AutomergeUrl[] = [];
   const docSubscribers = new Set<(urls: AutomergeUrl[]) => void>();
   const viewSubscribers = new Set<(view: SelectedView | null) => void>();
 
@@ -48,13 +59,37 @@ export const SelectedDocProvider = (element: HTMLElement) => {
     ) {
       return;
     }
+    if (!selectedView || documentIdOf(selectedView.url) !== documentIdOf(next.url)) {
+      selectedParts = [];
+    }
     selectedView = next;
     for (const emit of docSubscribers) emit(selectedDocUrls());
     for (const emit of viewSubscribers) emit(selectedView);
   };
 
   const selectedDocUrls = (): AutomergeUrl[] => {
-    return selectedView ? [selectedView.url] : [];
+    if (!selectedView) return [];
+    const view = selectedView.url;
+    return [view, ...selectedParts.filter((part) => part !== view)];
+  };
+
+  const onSelectParts = (event: Event) => {
+    const { url, parts } = ((event as CustomEvent).detail ?? {}) as {
+      url?: string;
+      parts?: unknown;
+    };
+    if (!selectedView || !url || !Array.isArray(parts)) return;
+    // Only parts of what's open: a tool showing something else isn't the selection.
+    const id = documentIdOf(selectedView.url);
+    if (documentIdOf(url) !== id) return;
+    const next = parts.filter(
+      (part): part is AutomergeUrl => typeof part === "string" && documentIdOf(part) === id
+    );
+    if (next.length === selectedParts.length && next.every((part, i) => part === selectedParts[i])) {
+      return;
+    }
+    selectedParts = next;
+    for (const emit of docSubscribers) emit(selectedDocUrls());
   };
 
   const onOpenDocument = (event: OpenDocumentEvent) => {
@@ -94,6 +129,7 @@ export const SelectedDocProvider = (element: HTMLElement) => {
     onOpenDocument as EventListener
   );
   element.addEventListener("patchwork:subscribe", onSubscribe);
+  element.addEventListener(SELECT_PARTS_EVENT, onSelectParts);
   window.addEventListener("hashchange", onHashChange);
 
   return () => {
@@ -102,6 +138,7 @@ export const SelectedDocProvider = (element: HTMLElement) => {
       onOpenDocument as EventListener
     );
     element.removeEventListener("patchwork:subscribe", onSubscribe);
+    element.removeEventListener(SELECT_PARTS_EVENT, onSelectParts);
     window.removeEventListener("hashchange", onHashChange);
     docSubscribers.clear();
     viewSubscribers.clear();
