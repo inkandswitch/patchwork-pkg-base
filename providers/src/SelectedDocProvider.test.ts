@@ -92,10 +92,19 @@ describe("SelectedDocProvider: parts a tool selects", () => {
     await vi.waitFor(() => expect(docs.at(-1)).toEqual([OTHER]));
   });
 
-  it("counts a part opened on its own as part of the same document", async () => {
-    const { open, docs, selectParts } = withDocs();
+  it("puts the document first when what's open is a part of it", async () => {
+    const { open, docs } = withDocs();
     open({ url: SHAPE });
-    selectParts({ url: URL, parts: [SHAPE] });
-    await vi.waitFor(() => expect(docs.at(-1)).toEqual([SHAPE]));
+    await vi.waitFor(() => expect(docs.at(-1)).toEqual([URL, SHAPE]));
+  });
+
+  it("lets the tool's selection replace the part that was opened", async () => {
+    const { open, docs, selectParts } = withDocs();
+    const HEART = `${URL}/store/shape%3Aheart`;
+    open({ url: SHAPE });
+    selectParts({ url: URL, parts: [HEART] });
+    await vi.waitFor(() => expect(docs.at(-1)).toEqual([URL, HEART]));
+    selectParts({ url: URL, parts: [] });
+    await vi.waitFor(() => expect(docs.at(-1)).toEqual([URL]));
   });
 });

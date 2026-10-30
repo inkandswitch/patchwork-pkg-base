@@ -38,10 +38,18 @@ type SelectedView = {
  * never written to an Automerge doc (and therefore never synced to peers).
  */
 const documentIdOf = (url: string) => url.replace(/^automerge:/, "").split(/[/#]/)[0];
+/** The document a part url (`automerge:<id>/<path>`) is part of, with its heads; undefined for a whole one. */
+const containerOf = (url: string): AutomergeUrl | undefined => {
+  const [base, heads] = url.split("#");
+  const [document, ...segments] = base.split("/");
+  if (!segments.length || !document.startsWith("automerge:")) return undefined;
+  return (heads === undefined ? document : `${document}#${heads}`) as AutomergeUrl;
+};
 
 export const SelectedDocProvider = (element: HTMLElement) => {
   let selectedView = selectedViewFromLocation();
-  let selectedParts: AutomergeUrl[] = [];
+  // The parts the tool says are selected; undefined until it says.
+  let selectedParts: AutomergeUrl[] | undefined;
   const docSubscribers = new Set<(urls: AutomergeUrl[]) => void>();
   const viewSubscribers = new Set<(view: SelectedView | null) => void>();
 
@@ -60,17 +68,25 @@ export const SelectedDocProvider = (element: HTMLElement) => {
       return;
     }
     if (!selectedView || documentIdOf(selectedView.url) !== documentIdOf(next.url)) {
-      selectedParts = [];
+      selectedParts = undefined;
     }
     selectedView = next;
     for (const emit of docSubscribers) emit(selectedDocUrls());
     for (const emit of viewSubscribers) emit(selectedView);
   };
 
+  /**
+   * What's open first, then the parts selected in it. When what's open is
+   * itself a part (a shape opened from the sidebar), the document it's part of
+   * comes first and the part after it, until the tool says what it has
+   * selected: from then on, that.
+   */
   const selectedDocUrls = (): AutomergeUrl[] => {
     if (!selectedView) return [];
     const view = selectedView.url;
-    return [view, ...selectedParts.filter((part) => part !== view)];
+    const document = containerOf(view);
+    if (!document) return [view, ...(selectedParts ?? [])];
+    return [document, ...(selectedParts ?? [view])];
   };
 
   const onSelectParts = (event: Event) => {
@@ -85,7 +101,8 @@ export const SelectedDocProvider = (element: HTMLElement) => {
     const next = parts.filter(
       (part): part is AutomergeUrl => typeof part === "string" && documentIdOf(part) === id
     );
-    if (next.length === selectedParts.length && next.every((part, i) => part === selectedParts[i])) {
+    const previous = selectedParts;
+    if (previous && next.length === previous.length && next.every((part, i) => part === previous[i])) {
       return;
     }
     selectedParts = next;
