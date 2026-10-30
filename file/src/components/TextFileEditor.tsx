@@ -29,6 +29,7 @@ import {
 import {automergeSyncPlugin} from "@automerge/automerge-codemirror"
 import {isImmutableStringFileDoc} from "../datatype"
 import {collectExtensions} from "./codemirror-extensions"
+import {createFileComments} from "./comments"
 import codemirrorTheme from "../codemirror-theme"
 import {getLanguageExtension} from "../languages"
 import type {FileDoc} from "../types"
@@ -98,6 +99,11 @@ export function TextFileEditor(props: {
 	// once its client has loaded — see below.
 	const tsCompartment = new Compartment()
 
+	const comments =
+		props.handle && props.element
+			? createFileComments({handle: props.handle, element: props.element})
+			: undefined
+
 	const view = new EditorView({
 		doc: props.doc.content?.toString() || "",
 		extensions: [
@@ -138,10 +144,12 @@ export function TextFileEditor(props: {
 			tsCompartment.of([]),
 			...codemirrorTheme,
 			automergeSyncPlugin({handle: props.handle, path: ["content"]}),
+			comments?.extension ?? [],
 			// last, so they can override anything above
 			collectExtensions(props.element, props.handle, props.doc, false),
 		],
 	})
+	comments?.attach(view)
 
 	// For code files, connect to the shared TypeScript language server (tsgo,
 	// in a worker) and add its features to the editor in place. Each document

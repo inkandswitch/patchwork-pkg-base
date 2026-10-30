@@ -108,7 +108,8 @@ type ModuleWatcherLike = {
 /**
  * The patchwork-tools bundle isn't in every site's default module sources
  * (some boot from an automerge module-settings doc, which has no init.js),
- * but its examples should seed everywhere — so it's always consulted.
+ * but its examples should seed everywhere — so it's always consulted, unless
+ * the site asks for only its own examples (see siteExamplesOnly).
  */
 const TOOLS_BUNDLE_INIT_URL = "https://patchwork-tools.netlify.app/init.js";
 
@@ -122,20 +123,34 @@ const TOOLS_BUNDLE_INIT_URL = "https://patchwork-tools.netlify.app/init.js";
 const BASE_BUNDLE_INIT_URL = "https://patchwork-base.netlify.app/init.js";
 
 /**
+ * A site that wants only its own examples says so on its root element —
+ * `<html data-examples="site">` — and the hardcoded bundles above are left
+ * out: just the init.js next to each of its own static manifests runs.
+ */
+function siteExamplesOnly() {
+  return document.documentElement.getAttribute("data-examples") === "site";
+}
+
+/**
  * The `init.js` URL next to every static (http) module manifest the host is
- * watching, plus the hardcoded bundles above. Automerge module-settings docs
- * have no init script. Waits for the watcher's initial load so the bundles'
- * plugins are registered before any example runs.
+ * watching, plus the hardcoded bundles above (unless the site opts out of
+ * them). Automerge module-settings docs have no init script. Waits for the
+ * watcher's initial load so the bundles' plugins are registered before any
+ * example runs.
  */
 async function bundleInitScriptUrls(): Promise<string[]> {
+  const siteOnly = siteExamplesOnly();
   const watcher = (
     window as { patchwork?: { packages?: ModuleWatcherLike } }
   ).patchwork?.packages;
-  if (!watcher?.urls) return [BASE_BUNDLE_INIT_URL, TOOLS_BUNDLE_INIT_URL];
+  if (!watcher?.urls) {
+    return siteOnly ? [] : [BASE_BUNDLE_INIT_URL, TOOLS_BUNDLE_INIT_URL];
+  }
   await watcher.doneLoading;
   const fromManifests = Object.values(watcher.urls)
     .filter((url) => typeof url === "string" && !url.startsWith("automerge:"))
     .map((url) => new URL("init.js", new URL(url, document.baseURI)).href);
+  if (siteOnly) return [...new Set(fromManifests)];
   const base = fromManifests.length ? [] : [BASE_BUNDLE_INIT_URL];
   return [...new Set([...fromManifests, ...base, TOOLS_BUNDLE_INIT_URL])];
 }
