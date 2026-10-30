@@ -33,9 +33,17 @@ const board = {
   rename: vi.fn(),
   remove: vi.fn(),
 };
-// A canvas's provider: its shapes, parts of it with no type of their own.
+// A canvas's provider: its shapes, parts of it with no type of their own. It
+// keeps what it lists per doc, as tldraw's does: an Automerge doc is a new
+// object on every change, so that's safe, given the doc and not a live view.
+const listed = new WeakMap<object, unknown[]>();
 const canvas = {
-  list: (node: any) => Object.keys(node.store).map((id) => ({ name: id, sub: ["store", id] })),
+  list: (node: any) => {
+    if (!listed.has(node)) {
+      listed.set(node, Object.keys(node.store).map((id) => ({ name: id, sub: ["store", id] })));
+    }
+    return listed.get(node);
+  },
 };
 // One that offers no editing, and one that fails.
 const plain = { list: boardList };
@@ -71,17 +79,32 @@ vi.mock("@inkandswitch/patchwork-plugins", () => ({
 const { ContainerItem } = await import("./container-item.tsx");
 const { menuTarget } = await import("../state.ts");
 
-function fakeHandle(url: AutomergeUrl, doc: any) {
+const changeListeners = new Map<string, Set<(payload: unknown) => void>>();
+/** A change to the doc at `url`: a new doc object, as Automerge makes one. */
+function changeDoc(url: AutomergeUrl, doc: object) {
+  docs[url] = doc;
+  for (const listener of changeListeners.get(url) ?? []) {
+    listener({ handle: handleOf(url), doc, patches: [], patchInfo: { before: doc, after: doc, source: "change" } });
+  }
+}
+
+function fakeHandle(url: AutomergeUrl, _doc: any) {
+  const listeners = changeListeners.get(url) ?? new Set();
+  changeListeners.set(url, listeners);
   return {
     url,
     documentId: url.slice("automerge:".length),
-    doc: () => doc,
+    doc: () => docs[url] as any,
     sub: (...segments: string[]) => ({ url: `${url}/${segments.join("/")}` }),
     whenReady: async () => {},
     isReady: () => true,
     heads: () => [],
-    on() {},
-    off() {},
+    on(event: string, listener: (payload: unknown) => void) {
+      if (event === "change") listeners.add(listener);
+    },
+    off(event: string, listener: (payload: unknown) => void) {
+      if (event === "change") listeners.delete(listener);
+    },
     addListener() {},
     removeListener() {},
   };
@@ -330,5 +353,29 @@ describe("ContainerItem", () => {
     (container.querySelector(".document-list-folder__toggle") as HTMLElement).click();
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(rows()).toHaveLength(1);
+  });
+});
+
+describe("ContainerItem: a container that changes", () => {
+  it("lists what's in it now, not what was there when it opened", async () => {
+    const { rows, expand } = mount(CANVAS, "canvas", "c");
+    await expand(2);
+    changeDoc(CANVAS, {
+      "@patchwork": { type: "canvas" },
+      store: { "shape:a": { typeName: "shape" }, "shape:b": { typeName: "shape" } },
+    });
+    await vi.waitFor(() => expect(rows()).toHaveLength(3));
+    changeDoc(CANVAS, { "@patchwork": { type: "canvas" }, store: { "shape:a": { typeName: "shape" } } });
+  });
+});
+
+describe("ContainerItem: a selected part", () => {
+  it("opens up when one of its parts is selected", async () => {
+    const { setAutoExpandedContainers } = await import("../state.ts");
+    const { rows } = mount(CANVAS, "canvas", "c");
+    expect(rows()).toHaveLength(1);
+    setAutoExpandedContainers(new Set([CANVAS]));
+    await vi.waitFor(() => expect(rows()).toHaveLength(2));
+    setAutoExpandedContainers(new Set<AutomergeUrl>());
   });
 });

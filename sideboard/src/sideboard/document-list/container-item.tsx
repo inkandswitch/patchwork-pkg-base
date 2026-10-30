@@ -7,8 +7,9 @@
 import type { AutomergeUrl, DocHandle, Repo } from "@automerge/automerge-repo/slim";
 import type { PatchworkViewElement } from "@inkandswitch/patchwork-elements";
 import type { FolderDoc } from "@inkandswitch/patchwork-filesystem";
-import { useDocument } from "solid-automerge";
+import { useDocSignal, useDocument } from "solid-automerge";
 import {
+  createEffect,
   createMemo,
   createResource,
   createSignal,
@@ -33,7 +34,9 @@ import { getDndPayload, hasDocumentDrag } from "../dnd/payload.ts";
 import { Chevron } from "../icons.tsx";
 import { isSubUrl } from "../sub-url.ts";
 import type { LivePathOf, OpenDetail } from "../live-path.ts";
-import { setRenaming } from "../state.ts";
+import { autoExpandedContainers, setRenaming } from "../state.ts";
+
+const bareUrl = (url: AutomergeUrl) => url.split("#")[0].split("/")[0] as AutomergeUrl;
 import Item from "./item.tsx";
 import { ItemName } from "./name.tsx";
 
@@ -70,6 +73,10 @@ export function ContainerItem(
   }
 ) {
   const [expanded, setExpanded] = createSignal(false);
+  // Open when one of its parts is selected, so that part's row shows.
+  createEffect(() => {
+    if (autoExpandedContainers().has(bareUrl(props.url))) setExpanded(true);
+  });
   const names = () => [...props.names, String(props.name)];
   const toggle = () => setExpanded((yn) => !yn);
 
@@ -134,7 +141,10 @@ export function ContainerItem(
 function ContainerChildren(
   props: Shared & { url: AutomergeUrl; type: string; names: string[]; depth: number }
 ) {
-  const [doc] = useDocument<object>(() => props.url, { repo: props.repo });
+  // The doc itself, not a live view of it: a provider reads only the node it's
+  // given, and may keep what it found per node, as an Automerge doc is a new
+  // object whenever it changes. A live view is one object forever.
+  const [doc] = useDocSignal<object>(() => props.url, { repo: props.repo });
   // Providers go by type; re-asked when the type changes or a plugin is
   // registered, removed or reloaded, not on every edit.
   const version = useProviderVersion();

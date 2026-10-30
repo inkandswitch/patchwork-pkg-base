@@ -18,6 +18,7 @@ import { render } from "solid-js/web";
 
 import {
   setAutoExpandedFolders,
+  setAutoExpandedContainers,
   dropError,
 } from "./state.ts";
 import {
@@ -30,6 +31,7 @@ import { createOpenEvent } from "./events.ts";
 import { SearchIcon } from "./icons.tsx";
 import { DocumentList } from "./document-list/document-list.tsx";
 import { pinnedPackagesFolder } from "./packages.ts";
+import { containerOfPart, selectionKey } from "./selection.ts";
 import { LoadingRows } from "./document-list/loading-row.tsx";
 import { subscribe } from "@inkandswitch/patchwork-providers-solid";
 import {
@@ -117,11 +119,21 @@ export function DocumentListPanel(props: {
 
   // A selector so a selection change only notifies the rows whose selected
   // state actually flipped, instead of every row re-scanning the array.
-  const selectedSet = createMemo(() => new Set(selectedDocUrls()));
+  // By key, so a part of a document matches however its url is spelled.
+  const selectedSet = createMemo(() => new Set(selectedDocUrls().map(selectionKey)));
   const isSelected = createSelector(
     selectedSet,
-    (url: AutomergeUrl, set) => set.has(url)
+    (url: AutomergeUrl, set) => set.has(selectionKey(url))
   );
+
+  // A selected part opens the container it's in, so its row shows.
+  createEffect(() => {
+    const containers = selectedDocUrls().flatMap((url) => {
+      const container = containerOfPart(url);
+      return container ? [container] : [];
+    });
+    setAutoExpandedContainers(new Set(containers));
+  });
 
   // Whenever the selection changes, work out which folders need to be open for
   // the selected docs to be visible, and publish that set. Each Folder reads it
@@ -137,7 +149,10 @@ export function DocumentListPanel(props: {
   // keep the whole widget blank. Let the top level paint first, then reveal.
   createEffect(() => {
     if (!folderReady()) return;
-    const selected = selectedDocUrls();
+    // A part shows once its document's row does: reveal the document.
+    const selected = [
+      ...new Set(selectedDocUrls().map((url) => containerOfPart(url) ?? url)),
+    ];
     if (!selected.length) {
       setAutoExpandedFolders(new Set());
       return;

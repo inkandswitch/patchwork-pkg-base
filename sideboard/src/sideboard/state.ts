@@ -35,6 +35,12 @@ export const [autoExpandedFolders, setAutoExpandedFolders] = createSignal<
   Set<AutomergeUrl>
 >(new Set());
 
+// The documents a selected part belongs to (a tldraw shape's canvas, say): a
+// container row for one opens itself, so the part's row shows.
+export const [autoExpandedContainers, setAutoExpandedContainers] = createSignal<
+  Set<AutomergeUrl>
+>(new Set());
+
 // The row whose context menu is open. Rows don't own a menu each (a Kobalte
 // menu per row is far too heavy for big trees); the panel renders one shared
 // menu for whichever row last asked, anchored at the pointer.
