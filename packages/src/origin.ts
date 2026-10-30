@@ -57,12 +57,32 @@ export function documentIdOf(url: string | undefined): string | undefined {
 }
 
 /**
+ * The package doc a host-loaded import url is for. A host that loads
+ * `/packages` imports each package from its pinned `/@/` url, and registers its
+ * plugins under that; its ModuleWatcher maps it back. Older hosts have no map.
+ */
+function hostPackageFor(url: string): string | undefined {
+  try {
+    const packages = (globalThis as { patchwork?: { packages?: { packageFor?(url: string): unknown } } })
+      .patchwork?.packages;
+    const found = packages?.packageFor?.(url);
+    return typeof found === "string" ? found : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * A stable identity for a module/importUrl that ignores heads pinning:
- * automerge URLs collapse to their documentId; everything else is itself.
+ * automerge URLs collapse to their documentId, a package the host loaded from
+ * `/packages` to its package doc's, and everything else is itself.
  */
 export function moduleKey(url: string | undefined): string | undefined {
   if (!url) return undefined;
-  return documentIdOf(url) ?? url;
+  const id = documentIdOf(url);
+  if (id) return id;
+  const pkg = hostPackageFor(url);
+  return (pkg && documentIdOf(pkg)) ?? url;
 }
 
 /** An automerge URL with any #heads/query stripped (`automerge:<id>`); others unchanged. */

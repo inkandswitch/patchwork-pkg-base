@@ -56,7 +56,7 @@ export function createMarquee(opts: {
     if (!container) return;
 
     const nextOwned = new Set<string>();
-    for (const el of container.querySelectorAll("[data-dnd-item]")) {
+    for (const el of container.querySelectorAll("[data-dnd-item]:not([data-pinned])")) {
       if ((el as HTMLElement).offsetParent === null) continue; // hidden row
       const id = el.getAttribute("data-dnd-item");
       if (!id || preexisting.has(id)) continue;

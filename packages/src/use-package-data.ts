@@ -10,9 +10,9 @@ import {
   documentIdOf,
   headsOf,
   moduleKey,
-  moduleKeySet,
 } from "./origin.ts";
 import { readSettingsSources, systemModuleKeys } from "./settings-sources.ts";
+import { installedKeySet } from "./install.ts";
 import { useDocHeadsMap } from "./doc-heads.ts";
 import {
   packageDisplayName,
@@ -21,14 +21,25 @@ import {
 } from "./pkg-meta.ts";
 import type { Enriched } from "./model.ts";
 
-export function usePackageData(handle: ToolHandle) {
+export function usePackageData(
+  handle: ToolHandle,
+  /** Documents the account's /packages folders link: installed too. */
+  linked: () => Iterable<string> = () => []
+) {
   // --- the settings doc you're viewing (drives installed / core / ephemeral) -
   const [doc, setDoc] = createSignal(handle.doc());
   const onChange = () => setDoc(handle.doc());
   handle.on("change", onChange);
   onCleanup(() => handle.off("change", onChange));
-  // Modules listed in the doc you're looking at → "installed".
-  const installedKeys = createMemo(() => moduleKeySet(doc()?.modules));
+  // What's installed: the doc you're looking at, as the host loads it, and
+  // what your /packages folders link.
+  const installedKeys = createMemo(() =>
+    installedKeySet(
+      doc()?.modules,
+      (doc() as { movedToPackages?: string[] } | undefined)?.movedToPackages,
+      linked()
+    )
+  );
 
   // --- the live registries ---------------------------------------------------
   const { snapshot } = useLiveRegistries();

@@ -17,6 +17,8 @@ import { render } from "solid-js/web";
 
 import {
   setAutoExpandedFolders,
+  setAutoExpandedContainers,
+  setPrimarySelection,
   dropError,
 } from "./state.ts";
 import {
@@ -28,6 +30,8 @@ import CreateNew from "./create-new.tsx";
 import { createOpenEvent } from "./events.ts";
 import { SearchIcon } from "./icons.tsx";
 import { DocumentList } from "./document-list/document-list.tsx";
+import { pinnedPackagesFolder } from "./packages.ts";
+import { containerOfPart, selectionKey } from "./selection.ts";
 import { LoadingRows } from "./document-list/loading-row.tsx";
 import { subscribe } from "@inkandswitch/patchwork-providers-solid";
 import {
@@ -42,6 +46,7 @@ import { hasDocumentDrag } from "./dnd/payload.ts";
 import { createMarquee } from "./document-list/marquee.ts";
 import { createTreeNav } from "./document-list/tree-nav.ts";
 import { menuTarget } from "./state.ts";
+import { createLivePaths } from "./live-path.ts";
 
 const ItemMenu = lazy(() =>
   import("./document-list/item-menu.tsx").then((m) => ({
@@ -52,17 +57,42 @@ const ItemMenu = lazy(() =>
 /**
  * The document-list panel: a sticky toolbar (new-doc button + filter) over a
  * scrolling, recursive list of the folder's documents and subfolders. Renders a
- * single folder, given its url.
+ * single folder, given its url. With a `heading` it's a section of the sidebar
+ * (the account's packages, say), and `toolbar={false}` leaves the toolbar out.
  */
 export function DocumentListPanel(props: {
   folderUrl: AutomergeUrl;
   repo: Repo;
   element: PatchworkViewElement;
+  heading?: string;
+  toolbar?: boolean;
 }) {
   const [folder, folderHandle] = useDocument<FolderDoc>(() => props.folderUrl, {
     repo: props.repo,
   });
   const [filter, setFilter] = createSignal("");
+  // The account's packages folder sits last in its root, set apart. The
+  // account can bind /packages while this is up (a migration), so follow it.
+  type AccountHandle = NonNullable<Parameters<typeof pinnedPackagesFolder>[0]> & {
+    documentId: string;
+    on?(event: "change", listener: () => void): void;
+    off?(event: "change", listener: () => void): void;
+  };
+  const account = (globalThis as { patchwork?: { account?: AccountHandle } }).patchwork?.account;
+  const [accountChanged, setAccountChanged] = createSignal(0);
+  const onAccountChange = () => setAccountChanged((n) => n + 1);
+  account?.on?.("change", onAccountChange);
+  onCleanup(() => account?.off?.("change", onAccountChange));
+  const pinnedLast = () => {
+    accountChanged();
+    return pinnedPackagesFolder(account, props.folderUrl);
+  };
+  // Rows in the account's own root folder open at their live path.
+  const livePathOf = createLivePaths(
+    () => props.folderUrl,
+    () => account,
+    accountChanged
+  );
 
   // Optimistic loading: show the skeleton from the moment the panel mounts and
   // keep it up until the root folder handle has actually resolved. Reading the
@@ -85,11 +115,27 @@ export function DocumentListPanel(props: {
 
   // A selector so a selection change only notifies the rows whose selected
   // state actually flipped, instead of every row re-scanning the array.
-  const selectedSet = createMemo(() => new Set(selectedDocUrls()));
+  // By key, so a part of a document matches however its url is spelled.
+  const selectedSet = createMemo(() => new Set(selectedDocUrls().map(selectionKey)));
   const isSelected = createSelector(
     selectedSet,
-    (url: AutomergeUrl, set) => set.has(url)
+    (url: AutomergeUrl, set) => set.has(selectionKey(url))
   );
+
+  // The first of the selection is what's open; see primarySelection.
+  createEffect(() => {
+    const [open] = selectedDocUrls();
+    setPrimarySelection(open ? selectionKey(open) : undefined);
+  });
+
+  // A selected part opens the container it's in, so its row shows.
+  createEffect(() => {
+    const containers = selectedDocUrls().flatMap((url) => {
+      const container = containerOfPart(url);
+      return container ? [container] : [];
+    });
+    setAutoExpandedContainers(new Set(containers));
+  });
 
   // Whenever the selection changes, work out which folders need to be open for
   // the selected docs to be visible, and publish that set. Each Folder reads it
@@ -105,7 +151,10 @@ export function DocumentListPanel(props: {
   // keep the whole widget blank. Let the top level paint first, then reveal.
   createEffect(() => {
     if (!folderReady()) return;
-    const selected = selectedDocUrls();
+    // A part shows once its document's row does: reveal the document.
+    const selected = [
+      ...new Set(selectedDocUrls().map((url) => containerOfPart(url) ?? url)),
+    ];
     if (!selected.length) {
       setAutoExpandedFolders(new Set());
       return;
@@ -141,7 +190,11 @@ export function DocumentListPanel(props: {
   };
 
   return (
-    <aside class="document-list">
+    <aside
+      class="document-list"
+      classList={{ "document-list--section": !!props.heading }}
+      aria-label={props.heading}
+    >
       <nav
         ref={attachMarquee}
         class="document-list__doclist document-list-widget"
@@ -178,6 +231,10 @@ export function DocumentListPanel(props: {
           });
         }}
       >
+        <Show when={props.heading}>
+          <h2 class="document-list__heading">{props.heading}</h2>
+        </Show>
+        <Show when={props.toolbar !== false}>
         <div class="document-list__toolbar">
           <CreateNew
             square
@@ -198,10 +255,12 @@ export function DocumentListPanel(props: {
             />
           </div>
         </div>
+        </Show>
         <Show when={folderReady()} fallback={<LoadingRows depth={0} />}>
           <Suspense fallback={<LoadingRows depth={0} />}>
             <DocumentList
               depth={0}
+              pinnedLast={pinnedLast()}
               repo={props.repo}
               docs={folder()?.docs}
               handle={folderHandle.latest!}
@@ -211,9 +270,13 @@ export function DocumentListPanel(props: {
               rootFolderHandle={folderHandle.latest!}
               filter={filter()}
               clearFilter={() => setFilter("")}
+              names={[]}
+              livePathOf={livePathOf.latest}
             />
           </Suspense>
-          <Show when={menuTarget()}>
+          {/* One shared menu target for the whole sidebar: only the panel the
+              row is in shows it, so it acts on that panel's folder. */}
+          <Show when={menuTarget() && navEl?.contains(menuTarget()!.element)}>
             <ItemMenu
               repo={props.repo}
               rootFolderHandle={folderHandle.latest!}

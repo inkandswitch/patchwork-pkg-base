@@ -1,4 +1,4 @@
-import { createEffect, onCleanup, type JSX } from "solid-js";
+import { createEffect, onCleanup, Show, type JSX } from "solid-js";
 import type {
   DatatypeDescription,
   Plugin,
@@ -20,7 +20,8 @@ import {
   setDragOriginView,
   rowSpot,
 } from "../dnd/dnd.ts";
-import { setMenuTarget } from "../state.ts";
+import { primarySelection, setMenuTarget } from "../state.ts";
+import { selectionKey } from "../selection.ts";
 import type {
   AutomergeUrl,
   DocHandle,
@@ -32,6 +33,7 @@ import { startDrag } from "../dnd/drag-start.ts";
 import { createDragOut } from "../dnd/drag-out.ts";
 import { createHoverTimer } from "../lib/hover-timer.ts";
 import { revealSelectedRow } from "./reveal.ts";
+import { packageTooltip, usePackageStatus } from "../package-status.ts";
 
 // Spring-loading: while a drag is in progress, hovering it over a document
 // row for a moment opens that document in the main view *without ending the
@@ -63,9 +65,22 @@ export default function Item(props: {
   /** when set (i.e. this item is a folder), enables a "Create" submenu that
    * makes a new doc of the picked datatype inside this folder */
   createInside?(datatype: Plugin<DatatypeDescription>): void;
+  /** Not an entry in a folder: open it or drag it out, but no rename, remove or drops. */
+  readOnly?: boolean;
+  /**
+   * A row that stays as it is (the account's packages folder): it can't be
+   * dragged, selected for a drag, renamed or removed, and a drop on it goes
+   * inside, never beside.
+   */
+  pinned?: boolean;
+  /** Override `readOnly` for the menu: what this row's path provider offers. */
+  canRename?: boolean;
+  canRemove?: boolean;
 }) {
   let row: HTMLDivElement | undefined;
   const isFolder = () => props.type === "folder";
+  // When this row's document is a package: whether it loaded.
+  const packageStatus = usePackageStatus(() => props.url);
   const parentUrl = () =>
     (props.parentFolderHandle ?? props.rootFolderHandle).url;
 
@@ -113,6 +128,11 @@ export default function Item(props: {
       startRenaming: props.startRenaming,
       remove: props.remove,
       createInside: props.createInside,
+      readOnly: props.readOnly,
+      // A pinned row is the account's packages folder: renaming it would split
+      // its name from /packages, and removing it would lose it for good.
+      canRename: props.pinned ? false : props.canRename,
+      canRemove: props.pinned ? false : props.canRemove,
     });
   }
 
@@ -133,9 +153,17 @@ export default function Item(props: {
       aria-label={props["aria-label"]}
       aria-haspopup="menu"
       aria-selected={props.pressed ? "true" : undefined}
+      data-selected-part={
+        props.pressed &&
+        primarySelection() !== undefined &&
+        selectionKey(props.url) !== primarySelection()
+          ? ""
+          : undefined
+      }
       aria-expanded={isFolder() ? !!props.isExpanded : undefined}
       class="popmenu__trigger document-list-item"
-      draggable="true"
+      draggable={props.pinned ? "false" : "true"}
+      data-pinned={props.pinned ? "" : undefined}
       data-dnd-item={props.id}
       data-dnd-parent={parentUrl()}
       data-dnd-index={props.itemIndex}
@@ -174,12 +202,16 @@ export default function Item(props: {
         setDragging(false);
       }}
       ondragover={(event: DragEvent) => {
+        // Not a folder entry: nowhere to put a drop. Let it pass to the list.
+        if (props.readOnly) return;
         event.preventDefault();
         event.dataTransfer!.dropEffect = copyMode() ? "copy" : "move";
 
         const rect = row!.getBoundingClientRect();
         let position: "above" | "below" | "inside";
-        if (isFolder()) {
+        if (props.pinned) {
+          position = "inside";
+        } else if (isFolder()) {
           // three zones: top quarter above, bottom quarter below, middle inside
           const at = (event.clientY - rect.top) / rect.height;
           position = at < 0.25 ? "above" : at > 0.75 ? "below" : "inside";
@@ -211,6 +243,7 @@ export default function Item(props: {
         }
       }}
       ondrop={(event: DragEvent) => {
+        if (props.readOnly) return;
         // Rows handle every drop on them themselves, "inside" a folder too:
         // relying on it bubbling to the folder wrapper is fragile.
         event.preventDefault();
@@ -226,7 +259,7 @@ export default function Item(props: {
       onMouseDown={(event: MouseEvent) => {
         // Warm up file metadata so a subsequent drag can export to the OS.
         dragOut.prefetch();
-        if (event.ctrlKey || event.metaKey) {
+        if ((event.ctrlKey || event.metaKey) && !props.pinned) {
           if (dragstack.has(props.id)) {
             removeFromDragstack(props.id);
           } else {
@@ -249,6 +282,7 @@ export default function Item(props: {
       }}
       on:dblclick={(event: MouseEvent) => {
         if ((event.target as Element).closest("input")) return;
+        if (props.pinned) return;
         props.startRenaming();
       }}
       onkeydown={(event: KeyboardEvent) => {
@@ -290,6 +324,16 @@ export default function Item(props: {
       }}
     >
       {props.children}
+      <Show when={packageStatus()}>
+        {(status) => (
+          <span
+            class="document-list-item__package"
+            data-package-state={status().state}
+            title={packageTooltip(status())}
+            aria-label={packageTooltip(status())}
+          />
+        )}
+      </Show>
     </div>
   );
 }

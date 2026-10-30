@@ -388,6 +388,13 @@
   margin-left: auto;
   flex-shrink: 0;
 }
+/* Installed from a folder you share: removed there, not here. */
+.pw-actions__from {
+  color: var(--pw-packages-muted);
+  font-size: 0.6875rem;
+  font-style: italic;
+}
+
 .pw-actions__btn {
   border: 1px solid var(--pw-packages-border-strong);
   background: var(--pw-packages-raise);

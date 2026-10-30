@@ -316,6 +316,15 @@ button {
       border-bottom-right-radius: var(--document-list-radius);
     }
   }
+  /* Selected inside what's open (a shape the canvas has selected), not the
+     open document itself: the same colour, lighter. */
+  &[aria-selected="true"][data-selected-part] {
+    background: color-mix(in oklch, var(--document-list-selection-fill), transparent 65%);
+    color: var(--sidebar-widget-line);
+    .document-list-folder__toggle path {
+      stroke: var(--sidebar-widget-line);
+    }
+  }
   &[aria-checked="true"] {
     outline: 2px dashed
       color-mix(in oklch, var(--document-list-line), transparent 50%);
@@ -486,6 +495,11 @@ button {
   }
 }
 
+/* A package's container that takes drops, with nothing in it yet: room to drop on. */
+.document-list-folder__contents[data-provider-drop]:empty {
+  min-height: 1.5em;
+}
+
 .document-list-folder__contents--hidden {
   display: none;
 }
@@ -505,6 +519,13 @@ button {
 
 .document-list__item--invisible {
   display: none;
+}
+
+/* The account's packages folder: last, set apart by a little line. */
+.document-list__item--pinned {
+  margin-top: 0.375rem;
+  padding-top: 0.375rem;
+  border-top: 1px solid var(--document-list-border);
 }
 
 .document-list__item--visible,
@@ -703,6 +724,23 @@ button {
   padding-bottom: 0;
 }
 
+/* A section under the root folder's list (the account's packages): as tall as
+   its contents, up to a share of the sidebar, then it scrolls. */
+.sideboard > .document-list--section {
+  flex: 0 1 auto;
+  max-height: 40%;
+}
+
+.document-list__heading {
+  margin: 0;
+  padding: 0 var(--doclist-padding-x, 0.75rem);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
 /* The account bar: avatar (account picker), packages, settings. Usable as its
    own tool or pinned to the bottom of the combined sideboard. */
 .account-bar {
@@ -743,4 +781,22 @@ button {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+/* A package's status, beside its row: loading, loaded, or failed. */
+.document-list-item__package {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-inline: 0.25rem 0.5rem;
+  border-radius: 50%;
+  background: var(--package-loading, #b8b8b8);
+}
+
+.document-list-item__package[data-package-state="loaded"] {
+  background: var(--package-loaded, #3fa45b);
+}
+
+.document-list-item__package[data-package-state="failed"] {
+  background: var(--package-failed, #d0453b);
 }

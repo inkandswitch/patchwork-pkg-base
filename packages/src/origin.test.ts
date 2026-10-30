@@ -111,3 +111,20 @@ describe("url kinds", () => {
     expect(isInstallableUrl("comments")).toBe(false);
   });
 });
+
+describe("moduleKey: a package the host loaded from /packages", () => {
+  const PINNED = "https://p.test/@/acct@h/packages/m@h/pkg@h~L";
+  const PKG = "automerge:2j9knpCseyhnK8izDmLpGP5WMdZQ";
+
+  it("is its package doc's id, as the host's ModuleWatcher says", () => {
+    const patchwork = { packages: { packageFor: (url: string) => (url === PINNED ? PKG : undefined) } };
+    (globalThis as any).patchwork = patchwork;
+    try {
+      expect(moduleKey(PINNED)).toBe("2j9knpCseyhnK8izDmLpGP5WMdZQ");
+      expect(moduleKey("https://cdn.test/x.js")).toBe("https://cdn.test/x.js");
+      expect(classifyOrigin(PINNED, new Set(["2j9knpCseyhnK8izDmLpGP5WMdZQ"]), new Set())).toBe("installed");
+    } finally {
+      delete (globalThis as any).patchwork;
+    }
+  });
+});

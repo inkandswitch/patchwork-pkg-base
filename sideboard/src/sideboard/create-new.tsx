@@ -12,10 +12,11 @@ import {
   isLoadablePlugin,
   isLoadedPlugin,
 } from "@inkandswitch/patchwork-plugins";
-import { createSignal, lazy, Show } from "solid-js";
+import { createSignal, lazy, onMount, Show } from "solid-js";
 import { NewDocIcon } from "./icons.tsx";
 import type { DocLink, FolderDoc } from "@inkandswitch/patchwork-filesystem";
 import { docLinkFromUrl } from "./lib/doc-link.ts";
+import { listedDatatypes } from "./lib/solid-plugins";
 import type { OpenDocumentEventDetail } from "@inkandswitch/patchwork-elements";
 import {
   NEW_DOC_DND_TYPE,
@@ -66,6 +67,11 @@ export interface CreateNewProps {
 
 export default function CreateNew(props: CreateNewProps) {
   const [open, setOpen] = createSignal(false);
+
+  // Warm the menu before its first open: start following the datatype list
+  // now, and fetch the menu's chunk once the button is on screen.
+  listedDatatypes();
+  onMount(() => void CreateNewMenu.preload());
 
   async function selectDatatype(datatype: Plugin<DatatypeDescription>) {
     const freshy = await createNew(props.repo, datatype);

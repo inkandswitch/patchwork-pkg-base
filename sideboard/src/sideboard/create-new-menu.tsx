@@ -10,14 +10,9 @@ import type {
 import { createSignal, For, Show } from "solid-js";
 import type { DocLink } from "@inkandswitch/patchwork-filesystem";
 import { docLinkFromUrl } from "./lib/doc-link.ts";
-import { useFilteredDatatypes } from "./lib/solid-plugins";
+import { label, listedDatatypes } from "./lib/solid-plugins";
 import { Menu, MenuItem, type Anchor } from "./popmenu.tsx";
 import { createNew } from "./create-new.tsx";
-
-// a broken plugin may register without a name; show its id rather than
-// letting it take the whole menu down
-const label = (d: Plugin<DatatypeDescription>) =>
-  typeof d.name === "string" ? d.name : String(d.id);
 
 /**
  * The contents of the create-new dropdown: a filter input (also accepts a pasted
@@ -28,7 +23,7 @@ function DatatypeMenuContent(props: {
   onPickDatatype(datatype: Plugin<DatatypeDescription>): void;
   onSubmitUrl(url: string): void;
 }) {
-  const datatypes = useFilteredDatatypes((item) => !item.unlisted);
+  const datatypes = listedDatatypes();
   const [query, setQuery] = createSignal("");
   const [highlightIndex, setHighlightIndex] = createSignal(0);
 
@@ -36,10 +31,9 @@ function DatatypeMenuContent(props: {
 
   const filteredDatatypes = () => {
     const q = query().toLowerCase();
-    const matching = q
-      ? datatypes.filter((d) => label(d).toLowerCase().includes(q))
-      : datatypes;
-    return [...matching].sort((a, b) => label(a).localeCompare(label(b)));
+    return q
+      ? datatypes().filter((d) => label(d).toLowerCase().includes(q))
+      : datatypes();
   };
 
   // total number of selectable items (url item + datatypes)

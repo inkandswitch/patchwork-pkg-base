@@ -5,10 +5,7 @@ import {
   type DocHandle,
 } from "@automerge/automerge-repo/slim";
 import { useDocument } from "solid-automerge";
-import type {
-  OpenDocumentEventDetail,
-  PatchworkViewElement,
-} from "@inkandswitch/patchwork-elements";
+import type { PatchworkViewElement } from "@inkandswitch/patchwork-elements";
 import type { FolderDoc } from "@inkandswitch/patchwork-filesystem";
 import {
   createEffect,
@@ -41,13 +38,14 @@ import {
 } from "../dnd/dnd.ts";
 import { dropInto } from "../dnd/drop-into.ts";
 import { createHoverTimer } from "../lib/hover-timer.ts";
+import type { LivePathOf, OpenDetail } from "../live-path.ts";
 
 export default function Folder(props: {
   url: AutomergeUrl;
   repo: Repo;
   depth?: number;
   removeFromParent(): void;
-  open(detail: OpenDocumentEventDetail): void;
+  open(detail: OpenDetail): void;
   name?: string;
   isSelected(url: AutomergeUrl): boolean;
   visitedFolders?: Set<AutomergeUrl>;
@@ -57,8 +55,15 @@ export default function Folder(props: {
   itemIndex?: number;
   filter: string;
   clearFilter(): void;
+  /** The names walked from the panel's folder to this folder's parent. */
+  names?: string[];
+  livePathOf?: LivePathOf;
+  /** Stays put: see Item's `pinned`. */
+  pinned?: boolean;
 }) {
   const [expanded, setExpanded] = createSignal(false);
+  // This folder's own names, for its live path and its children's.
+  const names = () => [...(props.names ?? []), String(props.name ?? "")];
 
   const [folder, handle] = useDocument<FolderDoc>(() => props.url, props);
   createEffect(() => {
@@ -121,7 +126,7 @@ export default function Folder(props: {
     });
     props.clearFilter();
     setExpanded(true);
-    props.open(freshy);
+    props.open({ ...freshy, path: props.livePathOf?.([...names(), String(freshy.name)]) });
     setRenaming(h.url + "/" + newIndex);
   }
 
@@ -193,6 +198,7 @@ export default function Folder(props: {
         rootFolderHandle={props.rootFolderHandle}
         parentFolderHandle={props.parentFolderHandle}
         itemIndex={props.itemIndex}
+        pinned={props.pinned}
         isExpanded={expanded()}
         onToggleExpand={() => setExpanded((yn) => !yn)}
         expand={() => setExpanded(true)}
@@ -203,6 +209,7 @@ export default function Folder(props: {
             toolId,
             title: folder()?.title ?? props.name,
             type: "folder",
+            path: props.livePathOf?.(names()),
           });
         }}
       >
@@ -254,6 +261,8 @@ export default function Folder(props: {
               rootFolderHandle={props.rootFolderHandle}
               filter={props.filter}
               clearFilter={props.clearFilter}
+              names={names()}
+              livePathOf={props.livePathOf}
             />
           </Suspense>
         </Show>

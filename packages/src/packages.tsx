@@ -21,6 +21,8 @@ import {
   type Origin,
 } from "./origin.ts";
 import { usePackageData } from "./use-package-data.ts";
+import { createInstaller } from "./install.ts";
+import { describeWith, hostEnv, usePackagesFolders } from "./use-packages-folders.ts";
 import { useBrokenModules } from "./use-broken-modules.ts";
 import {
   countOrigins,
@@ -46,7 +48,17 @@ export function Packages(props: {
   handle: ToolHandle;
   element: ToolElement;
 }): JSX.Element {
-  const data = usePackageData(props.handle);
+  // Where installs go: your /packages folder on a host that loads it.
+  const env = hostEnv(props.element);
+  const folders = usePackagesFolders(env, props.handle.url);
+  const data = usePackageData(props.handle, () => folders.links().keys());
+  const installer = createInstaller({
+    settings: props.handle,
+    settingsDoc: data.doc,
+    folders,
+    describe: describeWith(env.repo),
+    deactivate: deactivateModule,
+  });
   const broken = useBrokenModules(() => data.doc()?.modules, data.snapshot);
 
   // --- controls --------------------------------------------------------------
@@ -112,19 +124,15 @@ export function Packages(props: {
         })
       );
     },
-    // Remove a module from the settings doc you're viewing AND deactivate its
-    // plugins from the live registries so it disappears now, not just on
-    // reload. The doc stores bare module URLs while a plugin's importUrl is
-    // heads-pinned, so both sides match by key.
+    // Out of module settings and your packages folder, and out of the live
+    // registries now, not just on reload (see install.ts).
     uninstall(importUrl) {
+      void installer.uninstall(importUrl);
+    },
+    canUninstall: installer.canUninstall,
+    linkedFrom: (importUrl) => {
       const key = moduleKey(importUrl);
-      if (!key) return;
-      props.handle.change((d) => {
-        if (!Array.isArray(d.modules)) return;
-        const idx = d.modules.findIndex((m) => moduleKey(m) === key);
-        if (idx >= 0) d.modules.splice(idx, 1);
-      });
-      deactivateModule(importUrl);
+      return key ? folders.links().get(key) : undefined;
     },
   };
 
@@ -133,12 +141,9 @@ export function Packages(props: {
   const [installUrl, setInstallUrl] = createSignal<string | null>(null);
 
   const install = (url: string) => {
-    const key = moduleKey(url);
-    if (!key) return;
-    props.handle.change((d) => {
-      if (!Array.isArray(d.modules)) d.modules = [];
-      if (!d.modules.some((m) => moduleKey(m) === key)) d.modules.push(url);
-    });
+    installer
+      .install(url)
+      .catch((error) => console.warn(`couldn't install ${url}`, error));
   };
 
   // Pasting a package URL into the filter is a shortcut to the install modal.

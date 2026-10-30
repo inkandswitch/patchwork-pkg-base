@@ -5,10 +5,7 @@ import {
   type DocHandle,
   type Repo,
 } from "@automerge/automerge-repo/slim";
-import type {
-  OpenDocumentEventDetail,
-  PatchworkViewElement,
-} from "@inkandswitch/patchwork-elements";
+import type { PatchworkViewElement } from "@inkandswitch/patchwork-elements";
 import type {
   DocLink,
   FolderDoc,
@@ -39,6 +36,9 @@ import Folder from "./folder.tsx";
 import Item from "./item.tsx";
 import { ItemName } from "./name.tsx";
 import { LoadingRow } from "./loading-row.tsx";
+import type { LivePathOf, OpenDetail } from "../live-path.ts";
+import { useExpandable } from "../container.ts";
+import { ContainerItem } from "./container-item.tsx";
 
 const NewDocPlaceholder = lazy(() =>
   import("../create-new-menu.tsx").then((m) => ({
@@ -51,13 +51,22 @@ export interface DocumentListProps {
   docs?: DocLink[];
   depth: number;
   repo: Repo;
-  open(detail: OpenDocumentEventDetail): void;
+  open(detail: OpenDetail): void;
   isSelected(url: AutomergeUrl): boolean;
   visitedFolders?: Set<AutomergeUrl>;
   element: PatchworkViewElement;
   rootFolderHandle: DocHandle<FolderDoc>;
   filter: string;
   clearFilter(): void;
+  /** The names walked from the panel's folder to this one, for live paths. */
+  names?: string[];
+  /** The live path of a row, from its names; absent outside the account's root. */
+  livePathOf?: LivePathOf;
+  /**
+   * A folder shown last, under a line, that stays put: the account's packages
+   * folder, in its root. It keeps its place in the folder doc.
+   */
+  pinnedLast?: AutomergeUrl;
 }
 
 // Rows mounted per frame-budget slice while a big folder streams in.
@@ -66,6 +75,11 @@ const FRAME_BUDGET_MS = 8;
 
 export function DocumentList(props: DocumentListProps) {
   const visitedFolders = props.visitedFolders ?? new Set<AutomergeUrl>();
+  // Package path providers can arrive after this renders.
+  const expandable = useExpandable();
+  // Where a row here was opened from, so the router can say so in `&path=`.
+  const pathTo = (name: string) =>
+    props.livePathOf?.([...(props.names ?? []), String(name)]);
 
   // Mount a long list incrementally: the first chunk paints right away, and
   // each animation frame mounts as many more chunks as fit in its budget, so a
@@ -86,9 +100,21 @@ export function DocumentList(props: DocumentListProps) {
     onCleanup(() => cancelAnimationFrame(frame));
   });
   const docs = createMemo(() => {
-    const all = props.docs ?? [];
+    let all = props.docs ?? [];
+    const pinned = props.pinnedLast ? all.findIndex((doc) => doc?.url === props.pinnedLast) : -1;
+    if (pinned >= 0) all = [...all.slice(0, pinned), ...all.slice(pinned + 1), all[pinned]];
     return all.length > limit() ? all.slice(0, limit()) : all;
   });
+  const hasPinned = () => !!props.pinnedLast && docs().some((doc) => doc?.url === props.pinnedLast);
+  // Where a new doc's placeholder shows. One inserted at the pinned row's
+  // place lands just after it in the doc, so it shows with the row after.
+  const pendingIndex = () => {
+    const index = pendingNewDoc()!.index;
+    const pinnedAt = props.pinnedLast
+      ? (props.docs ?? []).findIndex((doc) => doc?.url === props.pinnedLast)
+      : -1;
+    return pinnedAt >= 0 && index === pinnedAt ? index + 1 : index;
+  };
 
   function removeItem(index: number) {
     props.handle.change((folder) => deleteAt(folder.docs, index));
@@ -106,7 +132,7 @@ export function DocumentList(props: DocumentListProps) {
     const index = target.index;
     setPendingNewDoc(null);
     props.handle.change((folder) => folder.docs.splice(index, 0, docLink));
-    props.open(docLink);
+    props.open({ ...docLink, path: pathTo(docLink.name) });
     setRenaming(props.handle.url + "/" + index);
   };
 
@@ -125,14 +151,18 @@ export function DocumentList(props: DocumentListProps) {
     <>
       <For each={docs()}>
         {(doc, index) => {
+          // Where it is in the folder doc, for edits and drops: with a row
+          // pinned last, that isn't where it's shown.
+          const at = () => (props.pinnedLast ? (props.docs ?? []).indexOf(doc) : index());
+          const pinned = () => !!props.pinnedLast && doc.url === props.pinnedLast;
           const visible = () =>
             !props.filter.length || filterMatches(props.filter, doc.name);
-          const remove = () => removeItem(index());
-          const relid = () => props.handle.url + "/" + index();
+          const remove = () => removeItem(at());
+          const relid = () => props.handle.url + "/" + at();
           onCleanup(markMounted(props.element, doc.url));
           const rename = (name: string) => {
             props.handle.change((doc) => {
-              updateText(doc, ["docs", index(), "name"], name);
+              updateText(doc, ["docs", at(), "name"], name);
             });
             const datatypes = getRegistry<Datatype>("patchwork:datatype");
             props.repo
@@ -186,10 +216,10 @@ export function DocumentList(props: DocumentListProps) {
 
                   // Update folder docref name if different
                   const currentFolder = props.handle.doc();
-                  const currentName = currentFolder?.docs?.[index()]?.name;
+                  const currentName = currentFolder?.docs?.[at()]?.name;
                   if (currentName !== title) {
                     props.handle.change((folder) => {
-                      updateText(folder, ["docs", index(), "name"], title);
+                      updateText(folder, ["docs", at(), "name"], title);
                     });
                   }
 
@@ -219,12 +249,20 @@ export function DocumentList(props: DocumentListProps) {
 
           return (
             <>
-              <Show when={pendingHere() && pendingNewDoc()!.index === index()}>
+              <Show
+                when={
+                  pendingHere() &&
+                  (pinned()
+                    ? pendingIndex() >= (props.docs?.length ?? 0)
+                    : pendingIndex() === at())
+                }
+              >
                 {placeholder()}
               </Show>
               <div
                 classList={{
                   "document-list__item": true,
+                  "document-list__item--pinned": pinned(),
                   "document-list__item--visible": visible(),
                   "document-list__item--invisible": !visible(),
                 }}
@@ -251,7 +289,8 @@ export function DocumentList(props: DocumentListProps) {
                       repo={props.repo}
                       removeFromParent={remove}
                       parentFolderHandle={props.handle}
-                      itemIndex={index()}
+                      itemIndex={at()}
+                      pinned={pinned()}
                       open={props.open}
                       name={doc.name}
                       isSelected={props.isSelected}
@@ -260,8 +299,32 @@ export function DocumentList(props: DocumentListProps) {
                       rootFolderHandle={props.rootFolderHandle}
                       filter={props.filter}
                       clearFilter={props.clearFilter}
+                      names={props.names}
+                      livePathOf={props.livePathOf}
                     />
                   </Show>
+                </Match>
+                <Match when={doc.type != "folder" && expandable(doc.type)}>
+                  <ContainerItem
+                    url={doc.url}
+                    name={doc.name}
+                    type={doc.type}
+                    id={relid()}
+                    depth={props.depth}
+                    names={props.names ?? []}
+                    parentFolderHandle={props.handle}
+                    itemIndex={at()}
+                    startRenaming={() => setRenaming(relid())}
+                    remove={remove}
+                    repo={props.repo}
+                    element={props.element}
+                    rootFolderHandle={props.rootFolderHandle}
+                    open={props.open}
+                    isSelected={props.isSelected}
+                    livePathOf={props.livePathOf}
+                  >
+                    <ItemName name={doc.name} id={relid()} rename={rename} />
+                  </ContainerItem>
                 </Match>
                 <Match when={doc.type != "folder"}>
                   <Item
@@ -277,13 +340,14 @@ export function DocumentList(props: DocumentListProps) {
                     repo={props.repo}
                     rootFolderHandle={props.rootFolderHandle}
                     parentFolderHandle={props.handle}
-                    itemIndex={index()}
+                    itemIndex={at()}
                     openWith={(toolId) =>
                       props.open({
                         url: doc.url,
                         toolId,
                         title: doc.name,
                         type: doc.type,
+                        path: pathTo(doc.name),
                       })
                     }
                   >
@@ -298,7 +362,9 @@ export function DocumentList(props: DocumentListProps) {
         }}
       </For>
       <Show
-        when={pendingHere() && pendingNewDoc()!.index >= (props.docs?.length ?? 0)}
+        when={
+          !hasPinned() && pendingHere() && pendingNewDoc()!.index >= (props.docs?.length ?? 0)
+        }
       >
         {placeholder()}
       </Show>

@@ -39,10 +39,14 @@ import { ensureThreepaneConfig } from "./account/ensureThreepaneConfig";
 import { seedExampleDocuments } from "./account/seedExampleDocuments";
 import { ensureFrameStyles } from "./ensureFrameStyles";
 import { useHandleDoc } from "./hooks/useHandleDoc";
+import { packagesLinkUrl, type ModuleSettings } from "./account/packagesLink";
+import { sidebarWidgetsFor } from "./account/rootFolders";
 
 type SelectedView = {
   url: AutomergeUrl;
   toolId: string | null;
+  /** The live path it was opened at, when the opener said. */
+  path?: string;
 };
 
 type SidebarResize = ReturnType<typeof useSidebarResize>;
@@ -208,6 +212,11 @@ function PatchworkFrameInner(props: {
   });
 
   const accountDoc = useHandleDoc(accountDocHandle);
+  // Whether the Packages button is still needed depends on what's left in it.
+  const [moduleSettings] = useDocument<ModuleSettings>(
+    () => accountDoc()?.moduleSettingsUrl,
+    { repo: props.repo }
+  );
   const accountDocUrl = props.handle.url;
 
   // The threepane layout config doc (sidebar widgets / context tabs / doctitle
@@ -224,8 +233,10 @@ function PatchworkFrameInner(props: {
   // to render each. `tray` is the system tray's explicit ordered list of tools,
   // rendered by the one stable host-owned instance below.
   const doctitleSlots = () => threepaneConfig()?.doctitle?.tools;
+  // The root folder's list follows what's bound at `/`.
+  const rootSlots = new Map<AutomergeUrl, ToolSlot>();
   const sidebarWidgets = (): ToolSlot[] =>
-    threepaneConfig()?.sidebar?.widgets ?? [];
+    sidebarWidgetsFor(threepaneConfig()?.sidebar?.widgets ?? [], accountDoc(), rootSlots);
   const traySlots = (): ToolSlot[] => threepaneConfig()?.tray ?? [];
   const rootFolderUrl = () => accountDoc()?.rootFolderUrl;
 
@@ -263,6 +274,7 @@ function PatchworkFrameInner(props: {
 
   const selectedDocUrl = () => selectedView()?.url;
   const selectedToolId = () => selectedView()?.toolId ?? undefined;
+  const selectedPath = () => selectedView()?.path;
 
   // Right-sidebar seeds, read from host localStorage. The host owns this read
   // and hands the values to whichever document-area path renders — the local
@@ -314,7 +326,7 @@ function PatchworkFrameInner(props: {
         rootFolderUrl={rootFolderUrl}
         widgetsReady={widgetsReady}
         contactUrl={() => accountDoc()?.contactUrl}
-        moduleSettingsUrl={() => accountDoc()?.moduleSettingsUrl}
+        moduleSettingsUrl={() => packagesLinkUrl(accountDoc(), moduleSettings())}
         isolation={props.isolation}
         onInterceptOpen={setPopoverView}
       >
@@ -348,6 +360,7 @@ function PatchworkFrameInner(props: {
                 setMainDocElement={setMainDocElement}
                 selectedDocUrl={selectedDocUrl}
                 selectedToolId={selectedToolId}
+                selectedPath={selectedPath}
                 doctitleSlots={doctitleSlots}
                 isLeftCollapsed={sidebarState.isSidebarCollapsed}
                 initialRightWidth={initialRightWidth}

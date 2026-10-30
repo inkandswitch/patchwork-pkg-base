@@ -64,6 +64,7 @@ import {
 import { isPatchworkDrag, parseDroppedDocs } from "./dnd.ts";
 import { MigratePrompt, TLDRAW4_TYPE, getDocType } from "./migrate.tsx";
 import { useColorScheme } from "./color-scheme.ts";
+import { shapeUrl, splitShapeUrl } from "./shape-url.ts";
 import {
   TldrFileContext,
   TldrFileMainMenu,
@@ -155,9 +156,12 @@ export function splitPresenceUserId(userId: string): {
 export function TldrawTool({
   docUrl,
   element,
+  focusShape,
 }: {
   docUrl: AutomergeUrl;
   element: HTMLElement;
+  /** A shape to select and bring into view once the canvas is up. */
+  focusShape?: TLShapeId;
 }) {
   const handle = useDocHandle<TLDrawDoc>(docUrl, { suspense: true });
   const readOnly = useIsHandleReadOnly(handle);
@@ -171,7 +175,7 @@ export function TldrawTool({
     return <MigratePrompt handle={handle} readOnly={readOnly} />;
   }
 
-  return <TldrawCanvas docUrl={docUrl} element={element} />;
+  return <TldrawCanvas docUrl={docUrl} element={element} focusShape={focusShape} />;
 }
 
 // `config.js` builds the shape utils, tools, overlays and components the canvas
@@ -181,9 +185,11 @@ export function TldrawTool({
 function TldrawCanvas({
   docUrl,
   element,
+  focusShape,
 }: {
   docUrl: AutomergeUrl;
   element: HTMLElement;
+  focusShape?: TLShapeId;
 }) {
   const repo = useRepo();
   // Suspending: a doc that's undefined on the first render would settle the
@@ -202,6 +208,7 @@ function TldrawCanvas({
       docUrl={docUrl}
       element={element}
       config={config.config}
+      focusShape={focusShape}
     />
   );
 }
@@ -307,10 +314,12 @@ function TldrawConfiguredCanvas({
   docUrl,
   element,
   config,
+  focusShape,
 }: {
   docUrl: AutomergeUrl;
   element: HTMLElement;
   config: TldrawConfig;
+  focusShape?: TLShapeId;
 }) {
   const handle = useDocHandle<TLDrawDoc>(docUrl, { suspense: true });
   // A history-pinned handle (url carries heads) is at fixed heads and rejects
@@ -375,7 +384,12 @@ function TldrawConfiguredCanvas({
           overrides={newDocUiOverrides}
           components={components}
         >
-          <TldrawInner docUrl={docUrl} element={element} readOnly={readOnly} />
+          <TldrawInner
+            docUrl={docUrl}
+            element={element}
+            readOnly={readOnly}
+            focusShape={focusShape}
+          />
         </Tldraw>
       </TldrFileContext.Provider>
     </DiffStatusContext.Provider>
@@ -491,6 +505,7 @@ function TldrawInner(props: {
   docUrl: AutomergeUrl;
   element: HTMLElement;
   readOnly: boolean;
+  focusShape?: TLShapeId;
 }) {
   const key = useMemo(() => `${props.docUrl}-camera`, [props.docUrl]);
 
@@ -606,7 +621,64 @@ function TldrawInner(props: {
     editor.on("change", onChange);
     return () => void editor.off("change", onChange);
   }, [editor, props.readOnly]);
+
+  // After the saved camera, so the shape wins.
+  useFocusShape(editor, props.focusShape);
+  useReportSelection(editor, props.element, props.docUrl);
   return null;
+}
+
+// Tells whoever's listening (the sidebar, through the selection provider)
+// which shapes are selected, as parts of this canvas, whenever that changes.
+// On the way out it says none, so they don't stay selected after.
+function useReportSelection(editor: Editor | null, element: HTMLElement, docUrl: AutomergeUrl) {
+  useEffect(() => {
+    if (!editor) return;
+    const url = docUrl.split("#")[0] as AutomergeUrl;
+    const tell = (parts: AutomergeUrl[]) =>
+      element.dispatchEvent(
+        new CustomEvent("patchwork:select-parts", {
+          bubbles: true,
+          composed: true,
+          detail: { url, parts },
+        })
+      );
+    let last = "";
+    const report = () => {
+      const ids = editor.getSelectedShapeIds();
+      const key = ids.join(",");
+      if (key === last) return;
+      last = key;
+      tell(ids.map((id) => shapeUrl(url, id)));
+    };
+    report();
+    const unlisten = editor.store.listen(report, { scope: "session" });
+    return () => {
+      unlisten();
+      if (last) tell([]);
+    };
+  }, [editor, element, docUrl]);
+}
+
+// Selects a shape and brings it into view, once, when the canvas opens on it.
+// One that's gone (or never was) leaves the canvas as it opened.
+function useFocusShape(editor: Editor | null, shapeId: TLShapeId | undefined) {
+  useEffect(() => {
+    if (!editor || !shapeId) return;
+    // A frame on, so the viewport has its size to fit the shape to.
+    const frame = requestAnimationFrame(() => {
+      const shape = editor.getShape(shapeId);
+      if (!shape) return;
+      const pageId = editor.getAncestorPageId(shape);
+      if (pageId && pageId !== editor.getCurrentPageId()) {
+        editor.setCurrentPage(pageId);
+      }
+      editor.select(shapeId);
+      const bounds = editor.getShapePageBounds(shapeId);
+      if (bounds) editor.zoomToBounds(bounds, { targetZoom: 1 });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [editor, shapeId]);
 }
 
 // Runs the document's `script/main.js`, if it has one, on canvas mount and
@@ -831,9 +903,12 @@ function usePatchworkDrop(element: HTMLElement) {
 
 export function render(handle: any, element: any) {
   const root = createRoot(element);
+  // Opened at a shape (`<canvas>/store/<shape id>`, from the sidebar): show
+  // the whole canvas, with that shape selected.
+  const { docUrl, shapeId } = splitShapeUrl(handle.url);
   root.render(
     <RepoContext.Provider value={element.repo}>
-      <TldrawTool docUrl={handle.url} element={element} />
+      <TldrawTool docUrl={docUrl} element={element} focusShape={shapeId} />
     </RepoContext.Provider>
   );
   return () => root.unmount();

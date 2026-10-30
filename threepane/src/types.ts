@@ -18,6 +18,11 @@ export type AccountDoc = {
   rootFolderUrl?: AutomergeUrl;
   moduleSettingsUrl?: AutomergeUrl;
   contactUrl?: AutomergeUrl;
+  /**
+   * The account's mount table. Folders bound at `/packages` are package
+   * management, and show in the sidebar as a `packages` folder.
+   */
+  namespace?: { [mountPoint: string]: Array<{ url: AutomergeUrl }> };
 
   /**
    * Per-tool config doc urls, keyed by tool id. `tools["threepane"]` points at

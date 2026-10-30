@@ -1,4 +1,5 @@
-import { makeDocumentProjection } from "solid-automerge";
+import * as filesystem from "@inkandswitch/patchwork-filesystem";
+import { makeDocumentProjection, useDocument } from "solid-automerge";
 import { Show } from "solid-js";
 import { render } from "solid-js/web";
 import type { DocHandle, Repo } from "@automerge/automerge-repo/slim";
@@ -6,14 +7,26 @@ import type { OpenDocumentEventDetail, PatchworkViewElement } from "@inkandswitc
 
 import type { PatchworkToolProps, SideboardAccountDoc } from "../types.ts";
 import { createOpenEvent } from "./events.ts";
+import { packagesFolderSuffices, type ModuleSettings } from "./packages.ts";
+
+/** Whether the host loads packages from `/packages`. */
+const hostLoadsPackages = () =>
+  typeof (filesystem as Record<string, unknown>).watchPackagesFolder === "function";
 
 /**
  * The account bar: the contact avatar (opens the account picker), Packages
  * (module settings) and Settings (frame configurator). Usable as its own tool
  * or pinned to the bottom of the combined sideboard.
  */
-export function AccountBar(props: PatchworkToolProps<SideboardAccountDoc>) {
+export function AccountBar(
+  props: PatchworkToolProps<SideboardAccountDoc> & { hostLoadsPackages?: boolean }
+) {
   const doc = makeDocumentProjection(props.handle);
+  const [settings] = useDocument<ModuleSettings>(() => doc.moduleSettingsUrl, {
+    repo: props.repo,
+  });
+  const folderSuffices = () =>
+    packagesFolderSuffices(doc, settings(), props.hostLoadsPackages ?? hostLoadsPackages());
 
   const open = (detail: OpenDocumentEventDetail) =>
     props.element.dispatchEvent(createOpenEvent(detail));
@@ -34,7 +47,8 @@ export function AccountBar(props: PatchworkToolProps<SideboardAccountDoc>) {
         </button>
       </Show>
 
-      <Show when={doc.moduleSettingsUrl}>
+      {/* Once /packages covers module settings, the sidebar lists packages itself. */}
+      <Show when={doc.moduleSettingsUrl && !folderSuffices()}>
         <button
           type="button"
           class="account-bar__button"

@@ -25,6 +25,18 @@ export const plugins = [
     },
   },
   {
+    // A canvas's shapes (and the docs it links) as its children in paths and
+    // the sidebar. A shape opens as `<canvas>/store/<shape id>`, which the
+    // tool shows as the whole canvas with that shape selected.
+    type: "patchwork:path-provider",
+    id: "tldraw5",
+    name: "tldraw shapes",
+    supportedDatatypes: ["tldraw5"],
+    async load() {
+      return (await import("./path-provider.ts")).provider;
+    },
+  },
+  {
     type: "patchwork:tool",
     id: "tldraw5",
     name: "tldraw",

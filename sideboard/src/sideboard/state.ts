@@ -35,6 +35,17 @@ export const [autoExpandedFolders, setAutoExpandedFolders] = createSignal<
   Set<AutomergeUrl>
 >(new Set());
 
+// The open document, as the first of the selection: its row shows selected in
+// full. Anything else selected alongside it (shapes a canvas says are
+// selected) shows more lightly. A selection key (see selection.ts).
+export const [primarySelection, setPrimarySelection] = createSignal<string | undefined>();
+
+// The documents a selected part belongs to (a tldraw shape's canvas, say): a
+// container row for one opens itself, so the part's row shows.
+export const [autoExpandedContainers, setAutoExpandedContainers] = createSignal<
+  Set<AutomergeUrl>
+>(new Set());
+
 // The row whose context menu is open. Rows don't own a menu each (a Kobalte
 // menu per row is far too heavy for big trees); the panel renders one shared
 // menu for whichever row last asked, anchored at the pointer.
@@ -50,6 +61,17 @@ export interface MenuTarget {
   startRenaming(): void;
   remove(): void;
   createInside?(datatype: Plugin<DatatypeDescription>): void;
+  /**
+   * A row that isn't an entry in a folder (a file in a directory doc, a branch
+   * of a branches doc): it can be opened and copied, not renamed or removed.
+   */
+  readOnly?: boolean;
+  /**
+   * Whether Rename and Remove are offered. Default: unless `readOnly`. A
+   * child of a package's path provider has them if the provider does.
+   */
+  canRename?: boolean;
+  canRemove?: boolean;
 }
 
 export const [menuTarget, setMenuTarget] = createSignal<MenuTarget | null>(
