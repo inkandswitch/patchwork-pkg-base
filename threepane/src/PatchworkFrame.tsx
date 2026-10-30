@@ -40,6 +40,7 @@ import { seedExampleDocuments } from "./account/seedExampleDocuments";
 import { ensureFrameStyles } from "./ensureFrameStyles";
 import { useHandleDoc } from "./hooks/useHandleDoc";
 import { packagesLinkUrl, type ModuleSettings } from "./account/packagesLink";
+import { sidebarWidgetsFor } from "./account/rootFolders";
 
 type SelectedView = {
   url: AutomergeUrl;
@@ -232,8 +233,10 @@ function PatchworkFrameInner(props: {
   // to render each. `tray` is the system tray's explicit ordered list of tools,
   // rendered by the one stable host-owned instance below.
   const doctitleSlots = () => threepaneConfig()?.doctitle?.tools;
+  // The root folder's list follows what's bound at `/`.
+  const rootSlots = new Map<AutomergeUrl, ToolSlot>();
   const sidebarWidgets = (): ToolSlot[] =>
-    threepaneConfig()?.sidebar?.widgets ?? [];
+    sidebarWidgetsFor(threepaneConfig()?.sidebar?.widgets ?? [], accountDoc(), rootSlots);
   const traySlots = (): ToolSlot[] => threepaneConfig()?.tray ?? [];
   const rootFolderUrl = () => accountDoc()?.rootFolderUrl;
 

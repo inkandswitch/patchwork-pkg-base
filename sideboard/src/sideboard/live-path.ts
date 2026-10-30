@@ -6,6 +6,8 @@
 import * as filesystem from "@inkandswitch/patchwork-filesystem";
 import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
 import type { OpenDocumentEventDetail } from "@inkandswitch/patchwork-elements";
+import type { SideboardAccountDoc } from "../types.ts";
+import { rootFolders } from "./packages.ts";
 
 /**
  * An open-document request that may say where it was opened from. `path` is on
@@ -23,20 +25,24 @@ type PathGrammar = {
 };
 
 /**
- * Live paths for rows under `folderUrl`, if it's `account`'s root folder (paths
- * start at the account, so only its tree has them) and the host has paths.
- * Undefined otherwise.
+ * Live paths for rows under `folderUrl`, if it's `account`'s root folder, the
+ * first bound at `/` (paths start at the account, so only its tree has them;
+ * a name in a later `/` member may be shadowed by the first), and the host has
+ * paths. Undefined otherwise.
  */
 export async function livePathsFor(
   account:
-    | { documentId: string; doc(): { rootFolderUrl?: AutomergeUrl } | undefined }
+    | {
+        documentId: string;
+        doc(): Pick<SideboardAccountDoc, "rootFolderUrl" | "namespace"> | undefined;
+      }
     | undefined,
   folderUrl: AutomergeUrl,
   grammar: Partial<PathGrammar> = filesystem as Partial<PathGrammar>
 ): Promise<LivePathOf | undefined> {
   const { idhash, livePath } = grammar;
   if (typeof idhash !== "function" || typeof livePath !== "function") return undefined;
-  if (!account || account.doc()?.rootFolderUrl !== folderUrl) return undefined;
+  if (!account || rootFolders(account.doc())[0] !== folderUrl) return undefined;
   const acctHash = await idhash(account.documentId);
   return (names) => livePath(acctHash, names);
 }

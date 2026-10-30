@@ -22,6 +22,15 @@ describe("livePathsFor", () => {
     expect(grammar.livePath).toHaveBeenCalledWith("hash(2j9knpCseyhnK8izDmLpGP5WMdZQ)", ["Projects", "foo"]);
   });
 
+  it("builds paths in the folder bound first at /, and no others", async () => {
+    const rebound = {
+      documentId: account.documentId,
+      doc: () => ({ rootFolderUrl: ROOT, namespace: { "/": [{ url: OTHER }, { url: ROOT }] } }),
+    };
+    expect((await livePathsFor(rebound, OTHER, grammar))?.(["a"])).toBe("hash(2j9knpCseyhnK8izDmLpGP5WMdZQ)/a");
+    expect(await livePathsFor(rebound, ROOT, grammar)).toBeUndefined();
+  });
+
   it("gives any other folder no paths", async () => {
     expect(await livePathsFor(account, OTHER, grammar)).toBeUndefined();
     expect(await livePathsFor(undefined, ROOT, grammar)).toBeUndefined();

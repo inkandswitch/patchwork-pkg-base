@@ -1,5 +1,5 @@
 import { makeDocumentProjection } from "solid-automerge";
-import { Show } from "solid-js";
+import { For, Show } from "solid-js";
 import { render } from "solid-js/web";
 import type { DocHandle, Repo } from "@automerge/automerge-repo/slim";
 import type { PatchworkViewElement } from "@inkandswitch/patchwork-elements";
@@ -8,11 +8,13 @@ import type { PatchworkToolProps, SideboardAccountDoc } from "../types.ts";
 import { DocumentListPanel } from "./document-list-panel.tsx";
 import { LoadingRows } from "./document-list/loading-row.tsx";
 import { AccountBar } from "./account-bar.tsx";
+import { rootFolders } from "./packages.ts";
 
 /**
- * The combined sideboard: the document-list panel for the account's root folder,
- * with the account bar pinned below it. Reads the account document. `/packages`
- * shows in the root folder as a `packages` folder.
+ * The combined sideboard: a document-list panel for each folder bound at `/`
+ * (the account's root folder, unless `/` is bound elsewhere), with the account
+ * bar pinned below them. Reads the account document. `/packages` shows in the
+ * root folder as a `packages` folder.
  */
 export function Sideboard(props: PatchworkToolProps<SideboardAccountDoc>) {
   const doc = makeDocumentProjection(props.handle);
@@ -20,7 +22,7 @@ export function Sideboard(props: PatchworkToolProps<SideboardAccountDoc>) {
   return (
     <div class="sideboard">
       <Show
-        when={doc.rootFolderUrl}
+        when={rootFolders(doc).length}
         fallback={
           <aside class="document-list">
             <nav class="document-list__doclist document-list-widget">
@@ -29,11 +31,15 @@ export function Sideboard(props: PatchworkToolProps<SideboardAccountDoc>) {
           </aside>
         }
       >
-        <DocumentListPanel
-          folderUrl={doc.rootFolderUrl!}
-          repo={props.repo}
-          element={props.element}
-        />
+        <For each={rootFolders(doc)}>
+          {(folderUrl) => (
+            <DocumentListPanel
+              folderUrl={folderUrl}
+              repo={props.repo}
+              element={props.element}
+            />
+          )}
+        </For>
       </Show>
       <AccountBar
         handle={props.handle}

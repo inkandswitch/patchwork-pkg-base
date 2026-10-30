@@ -17,6 +17,22 @@ export function packagesFolders(
     .filter((url): url is AutomergeUrl => isValidAutomergeUrl(url));
 }
 
+/**
+ * The folders bound at `/`, in order: the account's root, as paths see it.
+ * Falls back to `rootFolderUrl` when the namespace binds nothing valid there,
+ * as patchwork-filesystem's `accountBindings` does. The first is the one the
+ * sidebar's root list shows, and whose rows have live paths.
+ */
+export function rootFolders(
+  doc: Pick<SideboardAccountDoc, "rootFolderUrl" | "namespace"> | undefined
+): AutomergeUrl[] {
+  const bound = (doc?.namespace?.["/"] ?? [])
+    .map((binding) => binding?.url)
+    .filter((url): url is AutomergeUrl => isValidAutomergeUrl(url));
+  if (bound.length) return bound;
+  return isValidAutomergeUrl(doc?.rootFolderUrl) ? [doc!.rootFolderUrl!] : [];
+}
+
 /** What the account bar needs of the module-settings doc. */
 export type ModuleSettings = { modules?: unknown[]; movedToPackages?: unknown[] };
 
@@ -43,13 +59,14 @@ export function packagesFolderSuffices(
 
 /**
  * The folder the account's root list shows last, set apart: the first one
- * bound at `/packages`, when `folderUrl` is the account's root folder.
+ * bound at `/packages`, when `folderUrl` is the account's root folder (the
+ * first bound at `/`).
  */
 export function pinnedPackagesFolder(
   account: { doc(): Pick<SideboardAccountDoc, "rootFolderUrl" | "namespace"> | undefined } | undefined,
   folderUrl: AutomergeUrl
 ): AutomergeUrl | undefined {
   const doc = account?.doc();
-  if (!doc || doc.rootFolderUrl !== folderUrl) return undefined;
+  if (!doc || rootFolders(doc)[0] !== folderUrl) return undefined;
   return packagesFolders(doc)[0];
 }
