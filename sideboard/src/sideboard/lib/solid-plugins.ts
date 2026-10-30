@@ -38,7 +38,9 @@ export function listedDatatypes(): Accessor<Plugin<DatatypeDescription>[]> {
         .filter((d) => !d.unlisted)
         .sort((a, b) => label(a).localeCompare(label(b)));
     const [get, set] = createSignal(read());
-    registry.on("changed", () => set(read()));
+    registry.on("changed", () => {
+      set(read());
+    });
     listed = get;
   }
   return listed;
