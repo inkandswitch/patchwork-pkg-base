@@ -7,25 +7,41 @@ import {
   getRegistry,
   getSupportedToolsForType,
 } from "@inkandswitch/patchwork-plugins";
-import { createEffect, createRoot, onCleanup } from "solid-js";
+import {
+  type Accessor,
+  createEffect,
+  createRoot,
+  createSignal,
+  onCleanup,
+} from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 
 export type MaybeAccessor<T> = T | (() => T);
 
+// a broken plugin may register without a name; show its id rather than
+// letting it take the whole menu down
+export const label = (d: Plugin<DatatypeDescription>) =>
+  typeof d.name === "string" ? d.name : String(d.id);
+
+let listed: Accessor<Plugin<DatatypeDescription>[]> | undefined;
+
 /**
- * Hook to get filtered datatype plugins
+ * The listed (not `unlisted`) datatypes, sorted by name. One signal for the
+ * page, made on first call and kept current from the registry from then on,
+ * so a create menu opens with its list already in hand.
  */
-export function useFilteredDatatypes(
-  filter: (item: DatatypeDescription) => boolean
-): Plugin<DatatypeDescription>[] {
-  const datatypeRegistry =
-    getRegistry<DatatypeDescription>("patchwork:datatype");
-  const [plugins, setPlugins] = createStore(datatypeRegistry.filter(filter));
-  const dispose = datatypeRegistry.on("changed", () =>
-    setPlugins(reconcile(datatypeRegistry.filter(filter)))
-  );
-  onCleanup(dispose);
-  return plugins;
+export function listedDatatypes(): Accessor<Plugin<DatatypeDescription>[]> {
+  if (!listed) {
+    const registry = getRegistry<DatatypeDescription>("patchwork:datatype");
+    const read = () =>
+      registry
+        .filter((d) => !d.unlisted)
+        .sort((a, b) => label(a).localeCompare(label(b)));
+    const [get, set] = createSignal(read());
+    registry.on("changed", () => set(read()));
+    listed = get;
+  }
+  return listed;
 }
 
 /**

@@ -9,7 +9,7 @@ import type { PatchworkViewElement } from "@inkandswitch/patchwork-elements";
 import type { FolderDoc } from "@inkandswitch/patchwork-filesystem";
 import {
   useSupportedToolsForType,
-  useFilteredDatatypes,
+  listedDatatypes,
 } from "../lib/solid-plugins";
 import { dragstack, clearDragstack } from "../dnd/dnd.ts";
 import { removeItemsByUrl } from "../dnd/operations.ts";
@@ -65,7 +65,7 @@ function MenuItems(props: {
 }) {
   const t = props.target;
   const tools = useSupportedToolsForType(t.type);
-  const datatypes = useFilteredDatatypes((item) => !item.unlisted);
+  const datatypes = listedDatatypes();
   // A selection is a set of folder entries; a provider's child removes only itself.
   const multi = () => !t.readOnly && dragstack.has(t.id) && dragstack.size > 1;
   // A sub-document keeps its path (`automerge:<id>/<path>`), or the link opens the whole doc.
@@ -93,7 +93,7 @@ function MenuItems(props: {
     <>
       <Show when={t.createInside}>
         <SubMenu label="Create">
-          <For each={datatypes}>
+          <For each={datatypes()}>
             {(datatype) => (
               <MenuItem onSelect={() => t.createInside!(datatype)}>
                 {datatype.name}
