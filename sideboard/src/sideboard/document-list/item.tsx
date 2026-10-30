@@ -67,8 +67,9 @@ export default function Item(props: {
   /** Not an entry in a folder: open it or drag it out, but no rename, remove or drops. */
   readOnly?: boolean;
   /**
-   * A row that stays where it is (the account's packages folder): it can't be
-   * dragged or selected for a drag, and a drop on it goes inside, never beside.
+   * A row that stays as it is (the account's packages folder): it can't be
+   * dragged, selected for a drag, renamed or removed, and a drop on it goes
+   * inside, never beside.
    */
   pinned?: boolean;
   /** Override `readOnly` for the menu: what this row's path provider offers. */
@@ -127,8 +128,10 @@ export default function Item(props: {
       remove: props.remove,
       createInside: props.createInside,
       readOnly: props.readOnly,
-      canRename: props.canRename,
-      canRemove: props.canRemove,
+      // A pinned row is the account's packages folder: renaming it would split
+      // its name from /packages, and removing it would lose it for good.
+      canRename: props.pinned ? false : props.canRename,
+      canRemove: props.pinned ? false : props.canRemove,
     });
   }
 
@@ -271,6 +274,7 @@ export default function Item(props: {
       }}
       on:dblclick={(event: MouseEvent) => {
         if ((event.target as Element).closest("input")) return;
+        if (props.pinned) return;
         props.startRenaming();
       }}
       onkeydown={(event: KeyboardEvent) => {

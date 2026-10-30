@@ -9,6 +9,7 @@ const A = "automerge:2j9knpCseyhnK8izDmLpGP5WMdZQ" as AutomergeUrl;
 const B = "automerge:3aNu5cqxaJ1vLywKRRX9kYEB8unS" as AutomergeUrl;
 
 const { DocumentList } = await import("./document-list.tsx");
+const { menuTarget, renaming } = await import("../state.ts");
 
 function fakeHandle(url: AutomergeUrl, doc: any) {
   return {
@@ -86,5 +87,15 @@ describe("DocumentList: the packages folder", () => {
     expect(rows[2].getAttribute("data-dnd-index")).toBe("0");
     expect(rows[0].getAttribute("data-dnd-index")).toBe("1");
     expect(rows[2].closest(".document-list__item--pinned")).toBeTruthy();
+
+    // It can't be renamed or removed: from the menu, or by double-click.
+    rows[2].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 1, clientY: 1 }));
+    expect(menuTarget()?.canRename).toBe(false);
+    expect(menuTarget()?.canRemove).toBe(false);
+    rows[2].dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    expect(renaming()).not.toBe(PACKAGES);
+    // Its neighbours still can.
+    rows[0].dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 1, clientY: 1 }));
+    expect(menuTarget()?.canRename).not.toBe(false);
   });
 });
