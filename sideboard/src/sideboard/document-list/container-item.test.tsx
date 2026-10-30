@@ -152,7 +152,12 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-function mount(url: AutomergeUrl, type: string, name: string) {
+function mount(
+  url: AutomergeUrl,
+  type: string,
+  name: string,
+  isSelected: (url: AutomergeUrl) => boolean = () => false
+) {
   const container = document.createElement("div");
   document.body.append(container);
   const opened: any[] = [];
@@ -171,7 +176,7 @@ function mount(url: AutomergeUrl, type: string, name: string) {
         element={container as any}
         rootFolderHandle={{} as any}
         open={(detail) => opened.push(detail)}
-        isSelected={() => false}
+        isSelected={isSelected}
         livePathOf={(names) => ["acct", ...names].join("/")}
       >
         <span>{name}</span>
@@ -377,5 +382,18 @@ describe("ContainerItem: a selected part", () => {
     setAutoExpandedContainers(new Set([CANVAS]));
     await vi.waitFor(() => expect(rows()).toHaveLength(2));
     setAutoExpandedContainers(new Set<AutomergeUrl>());
+  });
+});
+
+describe("ContainerItem: what's open and what's selected in it", () => {
+  it("shows a selected part more lightly than the open document", async () => {
+    const { setPrimarySelection } = await import("../state.ts");
+    setPrimarySelection(CANVAS);
+    const { row, expand } = mount(CANVAS, "canvas", "c", () => true);
+    await expand(2);
+    expect(row("c").hasAttribute("data-selected-part")).toBe(false);
+    expect(row("shape:a").getAttribute("aria-selected")).toBe("true");
+    expect(row("shape:a").hasAttribute("data-selected-part")).toBe(true);
+    setPrimarySelection(undefined);
   });
 });

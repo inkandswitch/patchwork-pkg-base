@@ -20,7 +20,8 @@ import {
   setDragOriginView,
   rowSpot,
 } from "../dnd/dnd.ts";
-import { setMenuTarget } from "../state.ts";
+import { primarySelection, setMenuTarget } from "../state.ts";
+import { selectionKey } from "../selection.ts";
 import type {
   AutomergeUrl,
   DocHandle,
@@ -152,6 +153,13 @@ export default function Item(props: {
       aria-label={props["aria-label"]}
       aria-haspopup="menu"
       aria-selected={props.pressed ? "true" : undefined}
+      data-selected-part={
+        props.pressed &&
+        primarySelection() !== undefined &&
+        selectionKey(props.url) !== primarySelection()
+          ? ""
+          : undefined
+      }
       aria-expanded={isFolder() ? !!props.isExpanded : undefined}
       class="popmenu__trigger document-list-item"
       draggable={props.pinned ? "false" : "true"}

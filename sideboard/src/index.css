@@ -316,6 +316,15 @@ button {
       border-bottom-right-radius: var(--document-list-radius);
     }
   }
+  /* Selected inside what's open (a shape the canvas has selected), not the
+     open document itself: the same colour, lighter. */
+  &[aria-selected="true"][data-selected-part] {
+    background: color-mix(in oklch, var(--document-list-selection-fill), transparent 65%);
+    color: var(--sidebar-widget-line);
+    .document-list-folder__toggle path {
+      stroke: var(--sidebar-widget-line);
+    }
+  }
   &[aria-checked="true"] {
     outline: 2px dashed
       color-mix(in oklch, var(--document-list-line), transparent 50%);

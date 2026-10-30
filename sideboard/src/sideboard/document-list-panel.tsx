@@ -19,6 +19,7 @@ import { render } from "solid-js/web";
 import {
   setAutoExpandedFolders,
   setAutoExpandedContainers,
+  setPrimarySelection,
   dropError,
 } from "./state.ts";
 import {
@@ -125,6 +126,12 @@ export function DocumentListPanel(props: {
     selectedSet,
     (url: AutomergeUrl, set) => set.has(selectionKey(url))
   );
+
+  // The first of the selection is what's open; see primarySelection.
+  createEffect(() => {
+    const [open] = selectedDocUrls();
+    setPrimarySelection(open ? selectionKey(open) : undefined);
+  });
 
   // A selected part opens the container it's in, so its row shows.
   createEffect(() => {
