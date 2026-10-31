@@ -1,7 +1,7 @@
 import {describe, expect, it} from "vitest"
 import {ImmutableString} from "@automerge/automerge"
 import {createStore} from "solid-js/store"
-import {fileText, isImmutableStringFileDoc} from "./datatype"
+import {fileText, isImmutableStringFileDoc, isTextBytesFileDoc} from "./datatype"
 import {isTextFile} from "./components/TextFileEditor"
 import type {FileDoc} from "./types"
 
@@ -32,5 +32,18 @@ describe("ImmutableString files", () => {
 		expect(isImmutableStringFileDoc(file("plain"))).toBe(false)
 		expect(isImmutableStringFileDoc(file(new Uint8Array([1, 2])))).toBe(false)
 		expect(fileText(file("plain"))).toBe("plain")
+	})
+})
+
+describe("text stored as bytes", () => {
+	it("is recognised and decoded", () => {
+		const doc = file(new TextEncoder().encode("knit + f1 1\nmiss – f2"))
+		expect(isTextBytesFileDoc(doc)).toBe(true)
+		expect(fileText(doc)).toBe("knit + f1 1\nmiss – f2")
+	})
+
+	it("doesn't take real binary for text", () => {
+		expect(isTextBytesFileDoc(file(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 0])))).toBe(false)
+		expect(isTextBytesFileDoc(file("plain"))).toBe(false)
 	})
 })

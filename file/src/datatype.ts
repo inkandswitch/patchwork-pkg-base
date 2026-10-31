@@ -2,6 +2,7 @@
 
 import {isImmutableString} from "@automerge/automerge-repo/slim"
 import {BinaryFileDoc, FileDoc, TextFileDoc} from "./types"
+import {isBinaryCheck} from "./isBinaryFile"
 
 export function isBinaryFileDoc(doc: FileDoc): doc is BinaryFileDoc {
 	return doc.content instanceof Uint8Array
@@ -24,13 +25,19 @@ export const isImmutableStringFileDoc = (doc: FileDoc): boolean => {
 	return isImmutableString(doc.content) || isClonedImmutableString(doc.content)
 }
 
+// Text that was stored as bytes (e.g. synced in by a tool that didn't know it
+// was text). It can be shown, but not edited as text.
+export const isTextBytesFileDoc = (doc: FileDoc): boolean =>
+	isBinaryFileDoc(doc) && !isBinaryCheck(doc.content, doc.content.length)
+
 // The text of a text file, whichever way it's stored (a string, an
-// ImmutableString, or a cloned one).
+// ImmutableString, a cloned one, or UTF-8 bytes).
 export const fileText = (doc: FileDoc | undefined): string => {
 	const content = doc?.content as unknown
 	if (typeof content === "string") return content
 	if (isClonedImmutableString(content)) return content.val
 	if (isImmutableString(content)) return content.toString()
+	if (content instanceof Uint8Array) return new TextDecoder().decode(content)
 	return ""
 }
 

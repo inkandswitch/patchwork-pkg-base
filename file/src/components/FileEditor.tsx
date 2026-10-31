@@ -4,7 +4,7 @@ import {
 	createDocumentProjection,
 } from "solid-automerge"
 import type {FileDoc} from "../types"
-import {isImmutableStringFileDoc} from "../datatype"
+import {isImmutableStringFileDoc, isTextBytesFileDoc} from "../datatype"
 import {isImageFile} from "../utils"
 import {HTMLFileViewer, isHTMLFile} from "./HTMLFileViewer"
 import {ImageFileViewer} from "./ImageFileViewer"
@@ -78,6 +78,13 @@ export function FileEditor(props: {
 							// @ts-expect-error typescript doesn't know we've narrowed, because it is a function
 							doc()!.content.length > LONG_TEXT_FILE_LENGTH_THRESHOLD)
 					}>
+					<LongTextFileViewer
+						doc={doc()!}
+						handle={props.handle as any}
+						element={props.element}
+					/>
+				</Match>
+				<Match when={isTextBytesFileDoc(doc()!)}>
 					<LongTextFileViewer
 						doc={doc()!}
 						handle={props.handle as any}
