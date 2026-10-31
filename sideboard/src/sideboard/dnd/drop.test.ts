@@ -5,7 +5,10 @@ import type {
   DocHandle,
   Repo,
 } from "@automerge/automerge-repo/slim";
-import type { FolderDoc } from "@inkandswitch/patchwork-filesystem";
+import type {
+  FolderDoc,
+  UnixFileEntry,
+} from "@inkandswitch/patchwork-filesystem";
 import { endSpot, rowSpot } from "./dnd.ts";
 import { DropError, executeDrop } from "./operations.ts";
 import { handleFilesDrop } from "../document-list/file-drop.ts";
@@ -125,6 +128,40 @@ describe("handleFilesDrop", () => {
     expect(names(f)).toEqual(["a", "1", "2"]);
     expect(failed).toEqual(["broken"]);
     expect(landed.map((l) => l.index)).toEqual([1, 2]);
+  });
+
+  it("keeps text as a string, even when the browser calls it octet-stream", async () => {
+    const f = folder();
+    const octet = { type: "application/octet-stream" };
+    await handleFilesDrop(
+      [
+        new File(["a"], "a.amtext", octet),
+        new File(["k"], "k.knitout", octet),
+        new File(["j"], "j.js", { type: "text/javascript" }),
+        new File(["n"], "n.json", { type: "application/json" }),
+        new File([new Uint8Array([0, 1])], "b.bin", octet),
+      ],
+      f,
+      repo,
+      0
+    );
+    const files = await Promise.all(
+      f.doc()!.docs.map(async (d) => (await repo.find<UnixFileEntry>(d.url)).doc()!)
+    );
+    expect(files.map((file) => file.content)).toEqual([
+      "a",
+      "k",
+      "j",
+      "n",
+      new Uint8Array([0, 1]),
+    ]);
+    expect(files.map((file) => file.mimeType)).toEqual([
+      "text/plain",
+      "text/plain",
+      "text/javascript",
+      "application/json",
+      "application/octet-stream",
+    ]);
   });
 });
 
