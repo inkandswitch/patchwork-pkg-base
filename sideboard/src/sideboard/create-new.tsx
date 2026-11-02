@@ -12,7 +12,7 @@ import {
   isLoadablePlugin,
   isLoadedPlugin,
 } from "@inkandswitch/patchwork-plugins";
-import { createSignal, lazy, onMount, Show } from "solid-js";
+import { createSignal, lazy, onCleanup, onMount, Show } from "solid-js";
 import { NewDocIcon } from "./icons.tsx";
 import type { DocLink, FolderDoc } from "@inkandswitch/patchwork-filesystem";
 import { docLinkFromUrl } from "./lib/doc-link.ts";
@@ -72,8 +72,13 @@ export default function CreateNew(props: CreateNewProps) {
   // so it's already there by the time anyone reaches for the button.
   onMount(() => {
     const preload = () => void CreateNewMenu.preload();
-    if (typeof requestIdleCallback === "function") requestIdleCallback(preload);
-    else setTimeout(preload, 0);
+    if (typeof requestIdleCallback === "function") {
+      const id = requestIdleCallback(preload);
+      onCleanup(() => cancelIdleCallback(id));
+    } else {
+      const id = setTimeout(preload, 0);
+      onCleanup(() => clearTimeout(id));
+    }
   });
 
   async function selectDatatype(datatype: Plugin<DatatypeDescription>) {
@@ -147,8 +152,9 @@ export default function CreateNew(props: CreateNewProps) {
         class="create-new-button"
         classList={{ "create-new-button--square": props.square }}
         aria-label="create new"
-        // in case idle never came: start the fetch as the pointer arrives
+        // in case idle never came: start the fetch as the pointer or focus arrives
         onPointerEnter={() => void CreateNewMenu.preload()}
+        onFocus={() => void CreateNewMenu.preload()}
         draggable={props.draggable}
         onClick={() => {
           // skip the click that immediately follows an outside-close
