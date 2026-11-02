@@ -7,6 +7,7 @@ import {
 	highlightActiveLine,
 	rectangularSelection,
 	keymap,
+	scrollPastEnd,
 } from "@codemirror/view"
 import {EditorState, Compartment} from "@codemirror/state"
 import {
@@ -119,6 +120,7 @@ export function TextFileEditor(props: {
 			EditorState.allowMultipleSelections.of(true),
 			EditorState.tabSize.of(2),
 			EditorView.lineWrapping,
+			scrollPastEnd(),
 			EditorView.clickAddsSelectionRange.of((event) => {
 				const mask = modshift(event)
 				if (mask == 1 << mod.option) return true

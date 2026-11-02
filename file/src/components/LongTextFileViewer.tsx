@@ -7,6 +7,7 @@ import {
 	highlightActiveLineGutter,
 	highlightActiveLine,
 	keymap,
+	scrollPastEnd,
 } from "@codemirror/view"
 import {EditorState} from "@codemirror/state"
 import {bracketMatching, foldGutter, foldKeymap} from "@codemirror/language"
@@ -53,6 +54,7 @@ export function LongTextFileViewer(props: {
 			bracketMatching(),
 			EditorState.tabSize.of(2),
 			EditorView.lineWrapping,
+			scrollPastEnd(),
 			keymap.of([...searchKeymap, ...foldKeymap, ...defaultKeymap]),
 			languageExtension,
 			...codemirrorTheme,
