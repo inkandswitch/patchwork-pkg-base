@@ -12,7 +12,7 @@ import {
   isLoadablePlugin,
   isLoadedPlugin,
 } from "@inkandswitch/patchwork-plugins";
-import { createSignal, lazy, Show } from "solid-js";
+import { createSignal, lazy, onMount, Show } from "solid-js";
 import { NewDocIcon } from "./icons.tsx";
 import type { DocLink, FolderDoc } from "@inkandswitch/patchwork-filesystem";
 import { docLinkFromUrl } from "./lib/doc-link.ts";
@@ -66,6 +66,15 @@ export interface CreateNewProps {
 
 export default function CreateNew(props: CreateNewProps) {
   const [open, setOpen] = createSignal(false);
+
+  // The menu is split out to keep it off the initial load, but fetching it on
+  // the first click makes that click feel dead. Fetch it once things are idle
+  // so it's already there by the time anyone reaches for the button.
+  onMount(() => {
+    const preload = () => void CreateNewMenu.preload();
+    if (typeof requestIdleCallback === "function") requestIdleCallback(preload);
+    else setTimeout(preload, 0);
+  });
 
   async function selectDatatype(datatype: Plugin<DatatypeDescription>) {
     const freshy = await createNew(props.repo, datatype);
@@ -138,6 +147,8 @@ export default function CreateNew(props: CreateNewProps) {
         class="create-new-button"
         classList={{ "create-new-button--square": props.square }}
         aria-label="create new"
+        // in case idle never came: start the fetch as the pointer arrives
+        onPointerEnter={() => void CreateNewMenu.preload()}
         draggable={props.draggable}
         onClick={() => {
           // skip the click that immediately follows an outside-close
