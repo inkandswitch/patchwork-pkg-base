@@ -43,7 +43,7 @@ export const MarkdownDatatype: DatatypeImplementation<MarkdownDoc> = {
       updateText(
         doc,
         ["content"],
-        doc.content.replace(/^#\s+(.*)/gm, () => `# ${title}`)
+        doc.content.replace(/^#\s+(.*)/m, () => `# ${title}`)
       );
     } else {
       // todo
