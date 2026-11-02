@@ -25,6 +25,3 @@ export type ImmutableStringFileDoc = {
 }
 
 export type FileDoc = UnixFileEntry
-
-// Conservatively use LongTextFileContent for text files longer than 100KB.
-export const LONG_TEXT_FILE_LENGTH_THRESHOLD = 100000

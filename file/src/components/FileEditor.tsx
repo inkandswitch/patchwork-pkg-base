@@ -12,8 +12,7 @@ import {PDFFileViewer, isPDFFile} from "./PDFFileViewer"
 import {AudioFileViewer, isAudioFile} from "./AudioFileViewer"
 import {VideoFileViewer, isVideoFile} from "./VideoFileViewer"
 import {TextFileEditor, isTextFile} from "./TextFileEditor"
-import {LongTextFileViewer} from "./LongTextFileViewer"
-import {LONG_TEXT_FILE_LENGTH_THRESHOLD} from "../types"
+import {ReadOnlyTextViewer} from "./ReadOnlyTextViewer"
 import {DocHandle} from "@automerge/automerge-repo/slim"
 import {UnixFileEntry} from "@inkandswitch/patchwork-filesystem"
 import {PatchworkViewElement} from "@inkandswitch/patchwork-elements"
@@ -58,12 +57,13 @@ export function FileEditor(props: {
 				<Match when={isVideoFile(doc()!)}>
 					<VideoFileViewer doc={doc()!} />
 				</Match>
+				{/* Text is editable unless it's an ImmutableString or we were handed
+				    a read-only handle (e.g. a view of the file at some heads). */}
 				<Match
 					when={
 						isTextFile(doc()!) &&
 						!isImmutableStringFileDoc(doc()!) &&
-						// @ts-expect-error typescript doesn't know we've narrowed, because it is a function
-						doc()!.content.length <= LONG_TEXT_FILE_LENGTH_THRESHOLD
+						!props.handle.isReadOnly()
 					}>
 					<TextFileEditor
 						doc={doc()!}
@@ -71,21 +71,15 @@ export function FileEditor(props: {
 						element={props.element}
 					/>
 				</Match>
-				<Match
-					when={
-						isTextFile(doc()!) &&
-						(isImmutableStringFileDoc(doc()!) ||
-							// @ts-expect-error typescript doesn't know we've narrowed, because it is a function
-							doc()!.content.length > LONG_TEXT_FILE_LENGTH_THRESHOLD)
-					}>
-					<LongTextFileViewer
+				<Match when={isTextFile(doc()!)}>
+					<ReadOnlyTextViewer
 						doc={doc()!}
 						handle={props.handle as any}
 						element={props.element}
 					/>
 				</Match>
 				<Match when={isTextBytesFileDoc(doc()!)}>
-					<LongTextFileViewer
+					<ReadOnlyTextViewer
 						doc={doc()!}
 						handle={props.handle as any}
 						element={props.element}

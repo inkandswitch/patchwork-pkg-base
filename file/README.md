@@ -78,7 +78,7 @@ file/
 │   │   ├── ImageFileViewer.tsx  # Image display
 │   │   ├── PDFFileViewer.tsx    # PDF display
 │   │   ├── HTMLFileViewer.tsx   # HTML preview
-│   │   └── LongTextFileViewer.tsx # Large file viewer
+│   │   └── ReadOnlyTextViewer.tsx # Read-only text viewer
 │   ├── datatype.ts        # File datatype definition
 │   ├── tool.tsx           # Plugin tool implementation
 │   ├── types.ts           # TypeScript type definitions

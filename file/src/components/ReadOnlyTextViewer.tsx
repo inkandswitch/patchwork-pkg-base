@@ -20,10 +20,10 @@ import {fileText} from "../datatype"
 import {collectExtensions} from "./codemirror-extensions"
 import {createFileComments} from "./comments"
 
-// Read-only text: ImmutableString files, and text too long to edit live. It
-// follows the file as it changes (an ImmutableString is replaced whole, so the
-// view is too).
-export function LongTextFileViewer(props: {
+// Read-only text: ImmutableString files, and any text file opened through a
+// read-only handle. It follows the file as it changes (an ImmutableString is
+// replaced whole, so the view is too).
+export function ReadOnlyTextViewer(props: {
 	doc: FileDoc
 	handle?: DocHandle<FileDoc>
 	element?: HTMLElement
