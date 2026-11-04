@@ -85,9 +85,11 @@ for (const name of readdirSync(root)) {
   }
 }
 
+// `--no-bail`: one tool that fails to start (say, a dependency that won't
+// install) is reported but doesn't stop every other tool's watcher.
 const tools = spawn(
   "pnpm",
-  ["-r", "--parallel", "--if-present", notStaticDist, "dev"],
+  ["-r", "--parallel", "--no-bail", "--if-present", notStaticDist, "dev"],
   { cwd: root, stdio: "inherit" },
 );
 tools.on("exit", (code) => {
