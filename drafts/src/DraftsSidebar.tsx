@@ -45,6 +45,8 @@ import {
   sameHeads,
 } from "./change-group-cache";
 import { ensureMainDraft } from "./draft-docs";
+import { isWorkspaceFolder } from "./folder-links";
+import { makeWorkspace } from "./workspace-docs";
 
 // Seed for the read-only `draft:list` subscription until the provider answers.
 // `main.url` is a placeholder; the Main card displays the host doc url instead.
@@ -63,7 +65,7 @@ const EMPTY_DRAFT_LIST: DraftList = {
 
 // Shown in the panel footer, logged on load, and stamped into fork
 // diagnostics; bump on deploy to tell builds apart.
-const DRAFTS_VERSION = "0.0.45";
+const DRAFTS_VERSION = "0.0.46";
 
 // Logged at module load so the console shows which build is running even
 // before the panel renders.
@@ -157,8 +159,8 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
   });
 
   const isMainSelected = createMemo(() => selected() === null);
-  // Drafting off a folder isn't supported yet, so creating a draft is disabled
-  // while viewing a folder on Main.
+  // Drafting a folder makes it a workspace: its drafts then cover every doc
+  // beneath it.
   const isFolder = createMemo(
     () => hostDoc()?.["@patchwork"]?.type === "folder"
   );
@@ -397,7 +399,6 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
   // (created later) are left out; the version's docs don't reference them
   // yet, so they are normally never resolved beneath the draft.
   const onForkSelection = async (atVersion: boolean) => {
-    if (isFolder()) return;
     const docHandle = hostDocHandle();
     if (!docHandle) return;
     const repo = getRepo();
@@ -451,6 +452,9 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     }
 
     const mainDraft = await ensureMainDraft(repo, docHandle);
+    if (isFolder() && !isWorkspaceFolder(docHandle.doc())) {
+      await makeWorkspace(repo, docHandle, mainDraft);
+    }
     const parentHandle = parentUrl
       ? await repo.find<DraftDoc>(parentUrl)
       : mainDraft;
@@ -623,7 +627,6 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
             eyeOpen={isMainSelected() && eyeOpen()}
             eyeDisabled={!isPinned()}
             onToggleEye={toggleEye}
-            forkDisabled={isFolder()}
             onFork={() => void onForkSelection(false)}
             forkAtLabel={forkAtLabel()}
             onForkAt={() => void onForkSelection(true)}
@@ -1090,7 +1093,6 @@ function MainCard(props: {
   eyeOpen: boolean;
   eyeDisabled: boolean;
   onToggleEye: () => void;
-  forkDisabled: boolean;
   onFork: () => void;
   forkAtLabel: string | null;
   onForkAt: () => void;
@@ -1143,7 +1145,6 @@ function MainCard(props: {
                 onToggle={props.onToggleEye}
               />
               <CardMenu
-                forkDisabled={props.forkDisabled}
                 onFork={props.onFork}
                 forkAtLabel={props.forkAtLabel}
                 onForkAt={props.onForkAt}
@@ -1293,7 +1294,6 @@ function DraftCard(props: {
 // is anchored to the trigger; `onOpenChange` mirrors the open state up so
 // the card can lift its overflow clipping while the list is showing.
 function CardMenu(props: {
-  forkDisabled?: boolean;
   onFork: () => void;
   // "Fork from Jul 24, 3:12 PM" while pinned; null hides the item.
   forkAtLabel: string | null;
@@ -1362,12 +1362,7 @@ function CardMenu(props: {
           <button
             type="button"
             class="draft-menu-item"
-            disabled={props.forkDisabled}
-            title={
-              props.forkDisabled
-                ? "Drafts aren't supported for folders yet"
-                : "Fork a new draft from the latest version"
-            }
+            title="Fork a new draft from the latest version"
             onClick={(e) => pick(e, props.onFork)}
           >
             <GitBranchIcon />

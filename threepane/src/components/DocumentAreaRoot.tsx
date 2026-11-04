@@ -16,6 +16,7 @@
  */
 
 import { type AutomergeUrl } from "@automerge/automerge-repo/slim";
+import { subscribe } from "@inkandswitch/patchwork-providers";
 import { makePersisted } from "@solid-primitives/storage";
 import {
   createEffect,
@@ -25,6 +26,7 @@ import {
   onCleanup,
   onMount,
   Show,
+  untrack,
   type Accessor,
 } from "solid-js";
 import type { ToolSlot } from "../types";
@@ -65,7 +67,25 @@ export interface DocumentAreaRootProps extends DocumentAreaInputs {
    * drive the host's signal), which is correct.
    */
   setMainDocElement?: (el: HTMLElement) => void;
+  /**
+   * Set when an ancestor `patchwork-workspace-provider` can say which
+   * workspace the selected doc belongs to. Drafts are then scoped to that
+   * workspace, and the checked-out draft is persisted to `accountDocUrl`.
+   * Inside the isolation iframe there is no such ancestor, so drafts stay
+   * scoped to the document.
+   */
+  workspaceScoped?: boolean;
+  accountDocUrl?: AutomergeUrl;
 }
+
+// What `patchwork-workspace-provider` answers for the selected doc.
+type WorkspaceRoot = {
+  docUrl: string;
+  rootUrl: AutomergeUrl;
+  draftUrl: AutomergeUrl | null;
+};
+
+type DraftScope = { docUrl: AutomergeUrl; rootUrl: AutomergeUrl };
 
 export function DocumentAreaRoot(props: DocumentAreaRootProps) {
   // ── Right-sidebar state (document-area-local) ──────────────────
@@ -133,10 +153,42 @@ export function DocumentAreaRoot(props: DocumentAreaRootProps) {
     { name: SIDEBAR_KEYS.contextToolId }
   );
 
-  // Per-document draft scope. Keyed on the selected doc URL so the whole draft
-  // tree remounts when the user switches docs: the draft-state provider reads
-  // its `doc-url` attribute once at mount (attribute changes are ignored while
-  // a `component` attribute is set), so it cannot re-point in place.
+  // The workspace the selected doc belongs to. Only an answer for the doc
+  // that's selected *now* counts, so a doc is never mounted under the
+  // previous doc's drafts while its own root is still on the way.
+  let anchor!: HTMLDivElement;
+  const [workspaceRoot, setWorkspaceRoot] = createSignal<WorkspaceRoot | null>(
+    null
+  );
+  onMount(() => {
+    if (!props.workspaceScoped) return;
+    onCleanup(
+      subscribe<WorkspaceRoot>(anchor, { type: "workspace:root" }, (root) =>
+        setWorkspaceRoot(root)
+      )
+    );
+  });
+  const scope = createMemo<DraftScope | undefined>(
+    () => {
+      const docUrl = props.selectedDocUrl();
+      if (!docUrl) return undefined;
+      if (!props.workspaceScoped) return { docUrl, rootUrl: docUrl };
+      const root = workspaceRoot();
+      return root?.docUrl === docUrl
+        ? { docUrl, rootUrl: root.rootUrl }
+        : undefined;
+    },
+    undefined,
+    {
+      equals: (a, b) => a?.docUrl === b?.docUrl && a?.rootUrl === b?.rootUrl,
+    }
+  );
+
+  // Draft scope: the selected doc's workspace root (the doc itself when it
+  // isn't in one). Keyed on doc *and* root so the whole draft tree remounts
+  // when either changes: the draft-state provider reads its attributes once
+  // at mount (attribute changes are ignored while a `component` attribute is
+  // set), so it cannot re-point in place.
   const [draftStateProviderHost, setDraftStateProviderHost] =
     createSignal<HTMLElement>();
   const isDraftStateProviderReady = useProviderReady(
@@ -147,35 +199,39 @@ export function DocumentAreaRoot(props: DocumentAreaRootProps) {
     isDraftStateProviderReady() ? draftStateProviderHost() : undefined;
 
   return (
-    <Show when={props.selectedDocUrl()} keyed>
-      {(docUrl) => (
-        <patchwork-view
-          component="patchwork-draft-state-provider"
-          doc-url={docUrl}
-          ref={setDraftStateProviderHost}
-        >
-          <Show when={readyDraftStateHost()}>
-            {(host) => (
-              <DraftDocumentArea
-                host={host()}
-                setMainDocElement={props.setMainDocElement}
-                selectedDocUrl={props.selectedDocUrl}
-                selectedToolId={props.selectedToolId}
-                doctitleSlots={props.doctitleSlots}
-                isLeftCollapsed={props.isLeftCollapsed}
-                isRightSidebarCollapsed={isRightSidebarCollapsed}
-                setIsRightSidebarCollapsed={setIsRightSidebarCollapsed}
-                rightSidebarWidth={rightSidebarWidth}
-                handleMouseDown={sidebarResize.handleMouseDown}
-                handleToggleClick={sidebarResize.handleToggleClick}
-                selectedContextToolId={selectedContextToolId}
-                setSelectedContextToolId={setSelectedContextToolId}
-              />
-            )}
-          </Show>
-        </patchwork-view>
-      )}
-    </Show>
+    <div ref={anchor} style={{ display: "contents" }}>
+      <Show when={scope()} keyed>
+        {(current) => (
+          <patchwork-view
+            component="patchwork-draft-state-provider"
+            doc-url={current.rootUrl}
+            attr:account-url={props.accountDocUrl}
+            attr:checked-out={untrack(workspaceRoot)?.draftUrl ?? undefined}
+            ref={setDraftStateProviderHost}
+          >
+            <Show when={readyDraftStateHost()}>
+              {(host) => (
+                <DraftDocumentArea
+                  host={host()}
+                  setMainDocElement={props.setMainDocElement}
+                  selectedDocUrl={props.selectedDocUrl}
+                  selectedToolId={props.selectedToolId}
+                  doctitleSlots={props.doctitleSlots}
+                  isLeftCollapsed={props.isLeftCollapsed}
+                  isRightSidebarCollapsed={isRightSidebarCollapsed}
+                  setIsRightSidebarCollapsed={setIsRightSidebarCollapsed}
+                  rightSidebarWidth={rightSidebarWidth}
+                  handleMouseDown={sidebarResize.handleMouseDown}
+                  handleToggleClick={sidebarResize.handleToggleClick}
+                  selectedContextToolId={selectedContextToolId}
+                  setSelectedContextToolId={setSelectedContextToolId}
+                />
+              )}
+            </Show>
+          </patchwork-view>
+        )}
+      </Show>
+    </div>
   );
 }
 

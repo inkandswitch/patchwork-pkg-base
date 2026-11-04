@@ -1,10 +1,7 @@
 import {
   isValidAutomergeUrl,
-  parseAutomergeUrl,
-  stringifyAutomergeUrl,
   type AutomergeUrl,
   type DocHandle,
-  type UrlHeads,
 } from "@automerge/automerge-repo/slim";
 import {
   accept,
@@ -14,7 +11,8 @@ import {
 } from "@inkandswitch/patchwork-providers";
 
 import type { CheckedOutDraft, DraftDoc } from "../draft-types.js";
-import { SKIPPED_DATATYPES, canonicalUrl } from "../clone-policy.js";
+import { canonicalUrl } from "../clone-policy.js";
+import { ensureClone, isSkippedDoc, withHeads } from "../draft-clones.js";
 
 const HANDLE_DESCRIPTOR_SELECTOR = "repo:handle-descriptor";
 const CHECKED_OUT_SELECTOR = "draft:checked-out";
@@ -241,7 +239,7 @@ export const DraftOverlayProvider = (element: HTMLElement) => {
     original: AutomergeUrl
   ): Promise<DocHandleDescriptor> {
     const to = checkedOutHandle?.doc()?.at?.[original]?.to ?? undefined;
-    if (!draftUrl || (await isSkippedDoc(original))) {
+    if (!draftUrl || (await isSkippedDoc(liveRepo, original))) {
       return to
         ? { url: original, cloneUrl: withHeads(original, to) }
         : { url: original };
@@ -250,40 +248,8 @@ export const DraftOverlayProvider = (element: HTMLElement) => {
     return { url: original, cloneUrl: withHeads(cloneUrl, to) };
   }
 
-  // Stamp `heads` onto `url` (same documentId), or return it unchanged when
-  // there is no pin. Heads ride on the url so `OverlayRepo` resolves the doc at
-  // that point in time.
-  function withHeads(
-    url: AutomergeUrl,
-    heads: UrlHeads | undefined
-  ): AutomergeUrl {
-    if (!heads) return url;
-    return stringifyAutomergeUrl({
-      documentId: parseAutomergeUrl(url).documentId,
-      heads,
-    });
-  }
-
-  // A doc is skipped when its `@patchwork.type` is in `SKIPPED_DATATYPES`. On
-  // any failure we fall back to cloning (the existing behaviour), which is the
-  // safe default — a doc that should be skipped merely keeps forking, it isn't
-  // lost.
-  async function isSkippedDoc(original: AutomergeUrl): Promise<boolean> {
-    try {
-      const handle = await liveRepo.find<{ "@patchwork"?: { type?: string } }>(
-        original
-      );
-      const type = handle.doc()?.["@patchwork"]?.type;
-      return type != null && SKIPPED_DATATYPES.has(type);
-    } catch {
-      return false;
-    }
-  }
-
-  // Ensure a clone of `original` exists for the current draft and return its
-  // url. Reuses an existing clone recorded in `DraftDoc.clones`; otherwise
-  // forks `original` at its current heads and records the fork point so the
-  // baseline and merge-back can find it.
+  // The current draft's clone of `original`, forked on first use. De-duped
+  // per original so concurrent requests share one fork.
   function resolveClone(original: AutomergeUrl): Promise<AutomergeUrl> {
     const cached = cloneResolutions.get(original);
     if (cached) return cached;
@@ -292,20 +258,7 @@ export const DraftOverlayProvider = (element: HTMLElement) => {
       if (!ready) {
         throw new Error("[drafts] resolveClone called without a draft");
       }
-      const handle = await ready;
-      const existing = handle.doc()?.clones?.[original];
-      if (existing) return canonicalUrl(existing.cloneUrl);
-
-      const originalHandle = await liveRepo.find<unknown>(original);
-      const clonedAt = originalHandle.heads();
-      const clone = liveRepo.clone(originalHandle);
-      const cloneUrl = canonicalUrl(clone.url);
-
-      handle.change((d) => {
-        d.clones[original] = { cloneUrl, clonedAt };
-      });
-
-      return cloneUrl;
+      return ensureClone(liveRepo, await ready, original);
     })();
     cloneResolutions.set(original, promise);
     return promise;

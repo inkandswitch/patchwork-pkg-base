@@ -197,11 +197,30 @@ export type DraftList = {
 // pointing at its single "main draft" — a `DraftDoc` (with `isMain`) whose
 // `drafts` lists the top-level drafts that branch off of it. The pointer is
 // created lazily on the first draft, so it is absent until then.
+//
+// `workspace` marks a folder whose drafts cover everything beneath it (see
+// WorkspaceProvider). It is stamped when the folder is first drafted, not
+// when the main draft is created — older builds created main drafts for every
+// doc the sidebar looked at, so `mainDraftUrl` alone doesn't mean "drafted".
 export type HasDrafts = {
   "@patchwork"?: {
     type?: string;
     mainDraftUrl?: AutomergeUrl;
+    workspace?: boolean;
   };
+};
+
+// Which draft is checked out per workspace root, linked from the account doc
+// via `workspaceCheckoutsUrl`. A workspace root is a folder marked
+// `@patchwork.workspace` or any single doc not inside one. Absent = main.
+export type WorkspaceCheckoutsDoc = {
+  "@patchwork": { type: "workspace-checkouts" };
+  checkedOut: Record<AutomergeUrl, AutomergeUrl>;
+};
+
+export type HasWorkspaceCheckouts = {
+  workspaceCheckoutsUrl?: AutomergeUrl;
+  rootFolderUrl?: AutomergeUrl;
 };
 
 export function isDraftDoc(value: unknown): value is DraftDoc {

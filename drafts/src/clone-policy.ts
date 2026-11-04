@@ -26,6 +26,7 @@ export const SKIPPED_DATATYPES: ReadonlySet<string> = new Set([
   "account",
   "contact",
   "draft",
+  "workspace-checkouts",
   "change-group",
   // Legacy marker retained while existing ChangeGroupDocs are migrated.
   "change-group-cache",

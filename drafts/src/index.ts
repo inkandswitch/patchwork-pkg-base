@@ -22,6 +22,16 @@ export const plugins: Plugin<any>[] = [
     },
   },
   {
+    type: "patchwork:component",
+    id: "patchwork-workspace-provider",
+    name: "Workspace Provider",
+    async load() {
+      const { WorkspaceProvider } =
+        await import("./providers/WorkspaceProvider.js");
+      return WorkspaceProvider;
+    },
+  },
+  {
     type: "patchwork:datatype",
     id: "patchwork:draft",
     name: "Draft",
@@ -70,5 +80,6 @@ export type {
   DraftList,
   DraftMemberDoc,
   DraftSummary,
+  WorkspaceCheckoutsDoc,
 } from "./draft-types.js";
 export { isDraftDoc } from "./draft-types.js";
