@@ -39,15 +39,15 @@ export function ThemeTray(element: HTMLElement) {
 			min-width: 0;
 			height: 1.75rem;
 			padding: 0 var(--studio-space-xs, 0.375rem);
-			border: 1px solid var(--studio-chrome-offset-20, var(--studio-fill-offset-20, #d4d4d4));
+			border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--studio-chrome-offset-20, var(--studio-fill-offset-20, #d4d4d4));
 			border-radius: var(--studio-radius-sm, 4px);
 			background: var(--studio-chrome, var(--studio-fill, white));
 			color: var(--studio-chrome-line, var(--studio-line, black));
 			font: 500 0.75rem/1 var(--studio-family-sans, system-ui, sans-serif);
-			cursor: pointer;
+			cursor: var(--studio-cursor-pointer, pointer);
 		}
 		.theme-tray-button:hover {
-			background: var(--studio-chrome-offset-10, var(--studio-fill-offset-10, #f2f2f2));
+			background: var(--studio-chrome-hover-fill, var(--studio-chrome-offset-10, var(--studio-fill-offset-10, #f2f2f2)));
 		}
 		.theme-tray-swatch {
 			width: 0.75rem;
@@ -65,12 +65,12 @@ export function ThemeTray(element: HTMLElement) {
 		}
 		.theme-tray-popover {
 			position: fixed;
-			z-index: 1000;
+			z-index: var(--studio-layer-popover, 1000);
 			width: 13rem;
 			max-height: min(18rem, 60vh);
 			overflow-y: auto;
 			padding: var(--studio-space-2xs, 0.25rem);
-			border: 1px solid var(--studio-chrome-offset-20, var(--studio-fill-offset-20, #d4d4d4));
+			border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--studio-chrome-offset-20, var(--studio-fill-offset-20, #d4d4d4));
 			border-radius: var(--studio-radius-sm, 4px);
 			background: var(--studio-chrome, var(--studio-fill, white));
 			color: var(--studio-chrome-line, var(--studio-line, black));
@@ -89,8 +89,8 @@ export function ThemeTray(element: HTMLElement) {
 			opacity: 1;
 			scale: 1;
 			transition:
-				opacity 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
-				scale 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+				opacity max(1ms, calc(150ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
+				scale max(1ms, calc(150ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 		}
 		.theme-tray-header {
 			display: flex;
@@ -102,7 +102,7 @@ export function ThemeTray(element: HTMLElement) {
 		.theme-tray-title {
 			font: 600 0.72rem/1 var(--studio-family-sans, system-ui, sans-serif);
 			text-transform: lowercase;
-			letter-spacing: 0.02em;
+			letter-spacing: var(--studio-chrome-letter-spacing, 0.02em);
 			opacity: 0.7;
 		}
 		.theme-tray-toggle {
@@ -111,20 +111,20 @@ export function ThemeTray(element: HTMLElement) {
 			gap: var(--studio-space-2xs, 0.25rem);
 			font: 500 0.68rem/1 var(--studio-family-sans, system-ui, sans-serif);
 			opacity: 0.7;
-			cursor: pointer;
+			cursor: var(--studio-cursor-pointer, pointer);
 			user-select: none;
 		}
 		.theme-tray-toggle input {
 			margin: 0;
 			accent-color: var(--studio-primary-fill, var(--studio-primary, #35f7ca));
-			cursor: pointer;
+			cursor: var(--studio-cursor-pointer, pointer);
 		}
 		.theme-tray-filter {
 			width: 100%;
 			height: 1.75rem;
 			margin-bottom: var(--studio-space-2xs, 0.25rem);
 			padding: 0 var(--studio-space-xs, 0.375rem);
-			border: 1px solid var(--studio-chrome-offset-20, var(--studio-fill-offset-20, #d4d4d4));
+			border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--studio-chrome-offset-20, var(--studio-fill-offset-20, #d4d4d4));
 			border-radius: var(--studio-radius-xs, 2px);
 			background: var(--studio-chrome-fill, var(--studio-fill, white));
 			color: var(--studio-chrome-line, var(--studio-line, black));
@@ -151,10 +151,10 @@ export function ThemeTray(element: HTMLElement) {
 			color: var(--studio-chrome-line, var(--studio-line, black));
 			font: 500 0.78rem/1 var(--studio-family-sans, system-ui, sans-serif);
 			text-align: left;
-			cursor: pointer;
+			cursor: var(--studio-cursor-pointer, pointer);
 		}
 		.theme-tray-option:hover {
-			background: var(--studio-chrome-fill-offset-20, var(--studio-fill-offset-20, #f2f2f2));
+			background: var(--studio-chrome-hover-fill, var(--studio-chrome-fill-offset-20, var(--studio-fill-offset-20, #f2f2f2)));
 		}
 		.theme-tray-option[data-selected] {
 			box-shadow: inset 0 0 0 1px var(--studio-chrome-line, var(--studio-line, black));

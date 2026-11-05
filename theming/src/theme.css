@@ -2,7 +2,7 @@
 :root,
 :host,
 [theme] {
-	color-scheme: light;
+	color-scheme: var(--studio-scheme);
 	color: var(--studio-line);
 	accent-color: var(--studio-primary);
 	font-family: var(--studio-family);
@@ -10,6 +10,10 @@
 	font-weight: var(--studio-font-weight);
 	line-height: var(--studio-line-height);
 	--default-tab-size: 2;
+	/* light | dark. themes that set color-scheme directly still win; a theme
+	   that sets neither gets it guessed from its fill (see active-theme.ts,
+	   which marks the root data-studio-scheme). */
+	--studio-scheme: light;
 
 	/* a plain fill<->line mix drifts to neutral gray in the middle of the
 	   ramp, so every derived offset is pulled a little toward this tint.
@@ -162,8 +166,13 @@
 	--studio-link: #36e;
 	--studio-danger: #ff6a90;
 	--studio-warning: #f8c43b;
+	/* success/info default to existing palette colours so every theme gets
+	   sensible ones without defining them: success rides --studio-added (the
+	   "good change" colour), info rides the secondary. */
+	--studio-success: var(--studio-added);
+	--studio-info: var(--studio-secondary);
 
-	/* Accent surfaces. Each accent (primary/secondary/danger/warning) ships as a
+	/* Accent surfaces. Each accent (primary/secondary/danger/warning/success/info) ships as a
 	   Bulma-style contrast pair — the same fill/line shape as --studio-chrome:
 
 	   --studio-{accent}-fill  the accent used AS A SURFACE (button/pill background).
@@ -216,6 +225,22 @@
 	--studio-warning-fill-offset-40: color-mix(in oklch, var(--studio-warning-fill), var(--studio-warning-line) 32%);
 	--studio-warning-fill-offset-50: color-mix(in oklch, var(--studio-warning-fill), var(--studio-warning-line) 50%);
 
+	--studio-success-fill: var(--studio-success);
+	--studio-success-line: oklch(from var(--studio-success) clamp(0, (0.62 - l) * 1000, 1) 0 0);
+	--studio-success-fill-offset-10: color-mix(in oklch, var(--studio-success-fill), var(--studio-success-line) 0%);
+	--studio-success-fill-offset-20: color-mix(in oklch, var(--studio-success-fill), var(--studio-success-line) 7%);
+	--studio-success-fill-offset-30: color-mix(in oklch, var(--studio-success-fill), var(--studio-success-line) 18%);
+	--studio-success-fill-offset-40: color-mix(in oklch, var(--studio-success-fill), var(--studio-success-line) 32%);
+	--studio-success-fill-offset-50: color-mix(in oklch, var(--studio-success-fill), var(--studio-success-line) 50%);
+
+	--studio-info-fill: var(--studio-info);
+	--studio-info-line: oklch(from var(--studio-info) clamp(0, (0.62 - l) * 1000, 1) 0 0);
+	--studio-info-fill-offset-10: color-mix(in oklch, var(--studio-info-fill), var(--studio-info-line) 0%);
+	--studio-info-fill-offset-20: color-mix(in oklch, var(--studio-info-fill), var(--studio-info-line) 7%);
+	--studio-info-fill-offset-30: color-mix(in oklch, var(--studio-info-fill), var(--studio-info-line) 18%);
+	--studio-info-fill-offset-40: color-mix(in oklch, var(--studio-info-fill), var(--studio-info-line) 32%);
+	--studio-info-fill-offset-50: color-mix(in oklch, var(--studio-info-fill), var(--studio-info-line) 50%);
+
 	/* The link accent is built on the --studio-link color. Everything else derives
 	   from --studio-link-fill — the invert ink, hover/border ramp, and all three
 	   -text variants — so retinting links is a single override of --studio-link. */
@@ -236,6 +261,8 @@
 	--studio-secondary-text: color-mix(in oklch, var(--studio-secondary), var(--studio-line) 35%);
 	--studio-danger-text: color-mix(in oklch, var(--studio-danger), var(--studio-line) 35%);
 	--studio-warning-text: color-mix(in oklch, var(--studio-warning), var(--studio-line) 35%);
+	--studio-success-text: color-mix(in oklch, var(--studio-success), var(--studio-line) 35%);
+	--studio-info-text: color-mix(in oklch, var(--studio-info), var(--studio-line) 35%);
 	--studio-link-text: color-mix(in oklch, var(--studio-link-fill), var(--studio-line) 35%);
 
 	--studio-family-sans: "Jost*", "Jost", system-ui, -apple-system, sans-serif;
@@ -246,31 +273,64 @@
 	   controls/chrome; both track the sans family by default. */
 	--studio-family: var(--studio-family-sans);
 	--studio-family-ui: var(--studio-family-sans);
+	--studio-family-serif:
+		"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, ui-serif, serif;
 	--studio-font-size: 16px;
+
+	/* Opt-in typography. all of these are left unset so nothing changes until a
+	   theme sets them:
+	   --studio-letter-spacing          tracking for content (applied on :root)
+	   --studio-chrome-letter-spacing   tracking for small chrome labels; tools
+	                                    read var(--studio-chrome-letter-spacing, <theirs>)
+	   --studio-font-features           font-feature-settings, e.g. "ss01", "zero"
+	   --studio-font-variation          font-variation-settings, e.g. "wght" 420
+	   --studio-heading-family          a display face for headings
+	   --studio-heading-weight          heading weight
+	   --studio-font-scale              a modular ratio for headings, e.g. 1.25.
+	                                    when set, --studio-heading-size-1..6 become
+	                                    ratio^4, ^3, ^2, ^1, 1em and 1/ratio. they
+	                                    reference the unset ratio, so they stay
+	                                    invalid (and tools' var(--studio-heading-size-N,
+	                                    <theirs>) fallbacks win) until it's set. */
+	--studio-heading-size-1: calc(1em * pow(var(--studio-font-scale), 4));
+	--studio-heading-size-2: calc(1em * pow(var(--studio-font-scale), 3));
+	--studio-heading-size-3: calc(1em * pow(var(--studio-font-scale), 2));
+	--studio-heading-size-4: calc(1em * var(--studio-font-scale));
+	--studio-heading-size-5: calc(1em * pow(var(--studio-font-scale), 0));
+	--studio-heading-size-6: calc(1em / var(--studio-font-scale));
 	--studio-font-weight: 400;
 	--studio-selection-fill: #ffee8888;
 	--studio-selection-line: var(--studio-line);
 	--studio-line-height: 1.5;
 
-	/* Border radius */
-	--studio-radius-xs: 2px;
-	--studio-radius-sm: 4px;
-	--studio-radius: 6px;
-	--studio-radius-md: 8px;
-	--studio-radius-lg: 12px;
-	--studio-radius-xl: 16px;
-	--studio-radius-round: 9999px;
+	/* Border radius. --studio-radius-scale multiplies the whole scale: 0 gives a
+	   square theme, 1.5 a soft one. round stays round at any positive scale. */
+	--studio-radius-scale: 1;
+	--studio-radius-xs: calc(2px * var(--studio-radius-scale));
+	--studio-radius-sm: calc(4px * var(--studio-radius-scale));
+	--studio-radius: calc(6px * var(--studio-radius-scale));
+	--studio-radius-md: calc(8px * var(--studio-radius-scale));
+	--studio-radius-lg: calc(12px * var(--studio-radius-scale));
+	--studio-radius-xl: calc(16px * var(--studio-radius-scale));
+	--studio-radius-round: calc(9999px * var(--studio-radius-scale));
 
-	/* Spacing scale */
-	--studio-space-3xs: 0.125rem;  /* 2px */
-	--studio-space-2xs: 0.25rem;   /* 4px */
-	--studio-space-xs: 0.375rem;   /* 6px */
-	--studio-space-sm: 0.5rem;     /* 8px */
-	--studio-space: 0.75rem;       /* 12px */
-	--studio-space-md: 1rem;       /* 16px */
-	--studio-space-lg: 1.5rem;     /* 24px */
-	--studio-space-xl: 2rem;       /* 32px */
-	--studio-space-2xl: 3rem;      /* 48px */
+	/* Spacing scale. --studio-density multiplies the whole scale: ~0.75 is
+	   compact, ~1.25 roomy. */
+	--studio-density: 1;
+	--studio-space-3xs: calc(0.125rem * var(--studio-density));  /* 2px */
+	--studio-space-2xs: calc(0.25rem * var(--studio-density));   /* 4px */
+	--studio-space-xs: calc(0.375rem * var(--studio-density));   /* 6px */
+	--studio-space-sm: calc(0.5rem * var(--studio-density));     /* 8px */
+	--studio-space: calc(0.75rem * var(--studio-density));       /* 12px */
+	--studio-space-md: calc(1rem * var(--studio-density));       /* 16px */
+	--studio-space-lg: calc(1.5rem * var(--studio-density));     /* 24px */
+	--studio-space-xl: calc(2rem * var(--studio-density));       /* 32px */
+	--studio-space-2xl: calc(3rem * var(--studio-density));      /* 48px */
+
+	/* Borders. width and style for ordinary ui borders (dividers, inputs,
+	   cards); a theme can go chunky (2px) or sketchy (dashed). */
+	--studio-border-width: 1px;
+	--studio-border-style: solid;
 
 	/* Shadows. the shadow colour is the line pulled toward the offset tint by
 	   the same amount as the rest of the ramp, so shadows read as part of the
@@ -280,24 +340,108 @@
 		var(--studio-line),
 		var(--studio-offset-tint) var(--studio-offset-tint-amount)
 	);
+	/* --studio-shadow-strength multiplies every shadow's opacity: 0 is a flat
+	   theme, 2-3 a heavy one. each layer keeps its own base alpha (5/6/10%). */
+	--studio-shadow-strength: 1;
+	--studio-shadow-a5: clamp(0%, calc(100% - 5% * var(--studio-shadow-strength)), 100%);
+	--studio-shadow-a6: clamp(0%, calc(100% - 6% * var(--studio-shadow-strength)), 100%);
+	--studio-shadow-a10: clamp(0%, calc(100% - 10% * var(--studio-shadow-strength)), 100%);
 	--studio-shadow-sm: 0 1px 2px
-		color-mix(in oklch, var(--studio-shadow-color), transparent 95%);
+		color-mix(in oklch, var(--studio-shadow-color), transparent var(--studio-shadow-a5));
 	--studio-shadow: 0 1px 3px
-			color-mix(in oklch, var(--studio-shadow-color), transparent 90%),
-		0 1px 2px color-mix(in oklch, var(--studio-shadow-color), transparent 94%);
+			color-mix(in oklch, var(--studio-shadow-color), transparent var(--studio-shadow-a10)),
+		0 1px 2px color-mix(in oklch, var(--studio-shadow-color), transparent var(--studio-shadow-a6));
 	--studio-shadow-md: 0 4px 6px -1px
-			color-mix(in oklch, var(--studio-shadow-color), transparent 90%),
-		0 2px 4px -2px color-mix(in oklch, var(--studio-shadow-color), transparent 90%);
+			color-mix(in oklch, var(--studio-shadow-color), transparent var(--studio-shadow-a10)),
+		0 2px 4px -2px color-mix(in oklch, var(--studio-shadow-color), transparent var(--studio-shadow-a10));
 	--studio-shadow-lg: 0 10px 15px -3px
-			color-mix(in oklch, var(--studio-shadow-color), transparent 90%),
-		0 4px 6px -4px color-mix(in oklch, var(--studio-shadow-color), transparent 90%);
+			color-mix(in oklch, var(--studio-shadow-color), transparent var(--studio-shadow-a10)),
+		0 4px 6px -4px color-mix(in oklch, var(--studio-shadow-color), transparent var(--studio-shadow-a10));
 
-	/* Transitions */
-	--studio-transition-fast: 0.1s ease;
-	--studio-transition: 0.15s ease;
-	--studio-transition-slow: 0.25s ease;
+	/* Motion. --studio-motion-scale multiplies every duration: 0 turns motion
+	   off, 2 is slow and dreamy. --studio-motion-preference is the user's OS
+	   setting (0 under prefers-reduced-motion, see below) and multiplies on top,
+	   so a theme can't override it. durations never go below 1ms so
+	   transitionend/animationend still fire for code waiting on them. */
+	--studio-motion-scale: 1;
+	--studio-motion-preference: 1;
+	--studio-duration-fast: max(1ms, calc(100ms * var(--studio-motion-scale) * var(--studio-motion-preference)));
+	--studio-duration: max(1ms, calc(150ms * var(--studio-motion-scale) * var(--studio-motion-preference)));
+	--studio-duration-slow: max(1ms, calc(250ms * var(--studio-motion-scale) * var(--studio-motion-preference)));
+	--studio-ease: ease;
 	/* Strong ease-out for things entering: fast start, long gentle settle. */
 	--studio-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+	/* ease-in for things leaving; spring overshoots a little for playful entrances. */
+	--studio-ease-in: cubic-bezier(0.55, 0, 1, 0.45);
+	--studio-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+	--studio-transition-fast: var(--studio-duration-fast) var(--studio-ease);
+	--studio-transition: var(--studio-duration) var(--studio-ease);
+	--studio-transition-slow: var(--studio-duration-slow) var(--studio-ease);
+
+	/* Focus. --studio-focus-ring is the outline shorthand for keyboard focus;
+	   tools read it as var(--studio-focus-ring, <their own ring>), so it is
+	   deliberately left undefined here (opt-in): set it in a theme to make every
+	   focus ring match, e.g. `3px dashed hotpink`. same for the offset. */
+	/* --studio-focus-ring: <unset>; */
+	/* --studio-focus-ring-offset: <unset>; */
+
+	/* Interaction states. */
+	--studio-disabled-opacity: 0.5;
+	/* hover/pressed surfaces are opt-in like the focus ring: tools fall back to
+	   their own offset step. set these to pick one step for everything, e.g.
+	   `var(--studio-fill-offset-30)` for a stronger hover. */
+	/* --studio-hover-fill / --studio-active-fill: <unset>;  (content surfaces) */
+	/* --studio-chrome-hover-fill / --studio-chrome-active-fill: <unset>;  (chrome) */
+
+	/* Cursors. a theme can ship its own, e.g.
+	   --studio-cursor-pointer: url(hand.svg) 4 0, pointer; */
+	--studio-cursor-default: default;
+	--studio-cursor-pointer: pointer;
+	--studio-cursor-text: text;
+	--studio-cursor-grab: grab;
+	--studio-cursor-grabbing: grabbing;
+	--studio-cursor-move: move;
+	--studio-cursor-crosshair: crosshair;
+	--studio-cursor-not-allowed: not-allowed;
+	--studio-cursor-resize-col: col-resize;
+	--studio-cursor-resize-row: row-resize;
+
+	/* Layers. a shared z-index scale so tools' overlays stack predictably.
+	   opt-in for now: tools read var(--studio-layer-*, <their own z>), so
+	   nothing moves until a theme or a future pass defines the scale. the
+	   intended values are:
+	     --studio-layer-raised: 1;     sticky headers, floating bits inside a view
+	     --studio-layer-dropdown: 1000;
+	     --studio-layer-overlay: 2000; scrims, drawers
+	     --studio-layer-modal: 3000;
+	     --studio-layer-popover: 4000; menus/popovers that can sit over a modal
+	     --studio-layer-toast: 5000;
+	     --studio-layer-tooltip: 6000; */
+
+	/* Backdrops behind modals/menus. opt-in: tools read
+	   var(--studio-backdrop, <theirs>) and var(--studio-backdrop-blur, <theirs>). */
+	/* --studio-backdrop: <unset>;  e.g. color-mix(in oklch, var(--studio-line), transparent 70%) */
+	/* --studio-backdrop-blur: <unset>;  e.g. blur(8px) */
+
+	/* Scrollbars. opt-in: unset means the browser default.
+	   --studio-scrollbar-color takes the scrollbar-color pair (thumb track),
+	   e.g. `var(--studio-fill-offset-40) transparent`;
+	   --studio-scrollbar-width takes auto | thin | none. */
+
+	/* Categorical swatches: 8 distinct colours that belong to the theme, for
+	   cursors, collaborators, tags and charts. walked round the hue wheel from
+	   the primary, with lightness/chroma pinned to a band that reads on both
+	   light and dark fills. override any of them individually. */
+	--studio-swatch-lightness: 0.7;
+	--studio-swatch-chroma: 0.15;
+	--studio-swatch-1: oklch(from var(--studio-primary) var(--studio-swatch-lightness) var(--studio-swatch-chroma) h);
+	--studio-swatch-2: oklch(from var(--studio-primary) var(--studio-swatch-lightness) var(--studio-swatch-chroma) calc(h + 45));
+	--studio-swatch-3: oklch(from var(--studio-primary) var(--studio-swatch-lightness) var(--studio-swatch-chroma) calc(h + 90));
+	--studio-swatch-4: oklch(from var(--studio-primary) var(--studio-swatch-lightness) var(--studio-swatch-chroma) calc(h + 135));
+	--studio-swatch-5: oklch(from var(--studio-primary) var(--studio-swatch-lightness) var(--studio-swatch-chroma) calc(h + 180));
+	--studio-swatch-6: oklch(from var(--studio-primary) var(--studio-swatch-lightness) var(--studio-swatch-chroma) calc(h + 225));
+	--studio-swatch-7: oklch(from var(--studio-primary) var(--studio-swatch-lightness) var(--studio-swatch-chroma) calc(h + 270));
+	--studio-swatch-8: oklch(from var(--studio-primary) var(--studio-swatch-lightness) var(--studio-swatch-chroma) calc(h + 315));
 
 	--editor-line: var(--studio-line);
 	--editor-fill: var(--studio-fill);
@@ -357,23 +501,20 @@
 	--editor-secondary-text: color-mix(in oklch, var(--studio-secondary), var(--editor-line) 35%);
 	--editor-danger-text: color-mix(in oklch, var(--studio-danger), var(--editor-line) 35%);
 	--editor-warning-text: color-mix(in oklch, var(--studio-warning), var(--editor-line) 35%);
+	--editor-success-text: color-mix(in oklch, var(--studio-success), var(--editor-line) 35%);
+	--editor-info-text: color-mix(in oklch, var(--studio-info), var(--editor-line) 35%);
 	--editor-link-text: color-mix(in oklch, var(--studio-link-fill), var(--editor-line) 35%);
 
 	--editor-family-code: var(--studio-family-code);
 	--editor-family-sans: var(--studio-family-sans);
 	--editor-family: var(--editor-family-sans);
 	--editor-font-size: var(--studio-font-size);
-	--editor-font-weight: var(--editor-font-weight);
+	--editor-font-weight: var(--studio-font-weight);
 	--editor-selection-fill: var(--studio-selection-fill);
 	--editor-selection-line: var(--studio-selection-line);
 	--editor-line-height: var(--studio-line-height);
 	--editor-cursor-fill: var(--editor-line);
 	--text-editor-fill: var(--editor-fill);
-	--text-editor-fill-offset-10: var(--editor-fill-offset-10);
-	--text-editor-fill-offset-20: var(--editor-fill-offset-20);
-	--text-editor-fill-offset-30: var(--editor-fill-offset-30);
-	--text-editor-fill-offset-40: var(--editor-fill-offset-40);
-	--text-editor-fill-offset-50: var(--editor-fill-offset-50);
 	--text-editor-fill-offset-10: color-mix(
 		in oklch,
 		color-mix(in oklch, var(--text-editor-fill), var(--text-editor-line) 0%),
@@ -430,6 +571,8 @@
 	--text-editor-secondary-text: color-mix(in oklch, var(--studio-secondary), var(--text-editor-line) 35%);
 	--text-editor-danger-text: color-mix(in oklch, var(--studio-danger), var(--text-editor-line) 35%);
 	--text-editor-warning-text: color-mix(in oklch, var(--studio-warning), var(--text-editor-line) 35%);
+	--text-editor-success-text: color-mix(in oklch, var(--studio-success), var(--text-editor-line) 35%);
+	--text-editor-info-text: color-mix(in oklch, var(--studio-info), var(--text-editor-line) 35%);
 	--text-editor-link-text: color-mix(in oklch, var(--studio-link-fill), var(--text-editor-line) 35%);
 
 	--text-editor-family-code: var(--editor-family-code);
@@ -466,7 +609,7 @@
 	--syntax-weight-comment: var(--text-editor-text-weight);
 
 	--syntax-line-comment: var(--syntax-comment);
-	--syntax-style-line-comment: var(--syntax-style-line-comment);
+	--syntax-style-line-comment: var(--syntax-style-comment);
 	--syntax-fill-line-comment: var(--syntax-fill-comment);
 	--syntax-weight-line-comment: var(--syntax-weight-comment);
 
@@ -566,13 +709,13 @@
 	--syntax-weight-function--property-name: var(--syntax-weight-variable-name);
 
 	--syntax-string: var(--text-editor-line);
-	--syntax-fill-string: var(--text-editor-text-style);
-	--syntax-style-string: var(--text-editor-text-fill);
+	--syntax-fill-string: var(--text-editor-text-fill);
+	--syntax-style-string: var(--text-editor-text-style);
 	--syntax-weight-string: var(--text-editor-text-weight);
 
 	--syntax-number: var(--text-editor-line);
-	--syntax-fill-number: var(--text-editor-text-style);
-	--syntax-style-number: var(--text-editor-text-fill);
+	--syntax-fill-number: var(--text-editor-text-fill);
+	--syntax-style-number: var(--text-editor-text-style);
 	--syntax-weight-number: var(--text-editor-text-weight);
 
 	--syntax-integer: var(--syntax-number);
@@ -601,8 +744,8 @@
 	--syntax-weight-special--string: var(--syntax-weight-string);
 
 	--syntax-tag-name: var(--text-editor-line);
-	--syntax-fill-tag-name: var(--text-editor-text-style);
-	--syntax-style-tag-name: var(--text-editor-text-fill);
+	--syntax-fill-tag-name: var(--text-editor-text-fill);
+	--syntax-style-tag-name: var(--text-editor-text-style);
 	--syntax-weight-tag-name: var(--text-editor-text-weight);
 
 	--syntax-angle-bracket: var(--syntax-punctuation);
@@ -611,33 +754,33 @@
 	--syntax-weight-angle-bracket: var(--syntax-weight-punctuation);
 
 	--syntax-attribute-name: var(--text-editor-line);
-	--syntax-fill-attribute-name: var(--text-editor-text-style);
-	--syntax-style-attribute-name: var(--text-editor-text-fill);
+	--syntax-fill-attribute-name: var(--text-editor-text-fill);
+	--syntax-style-attribute-name: var(--text-editor-text-style);
 	--syntax-weight-attribute-name: var(--text-editor-text-weight);
 
 	--syntax-namespace: var(--text-editor-line);
-	--syntax-fill-namespace: var(--text-editor-text-style);
-	--syntax-style-namespace: var(--text-editor-text-fill);
+	--syntax-fill-namespace: var(--text-editor-text-fill);
+	--syntax-style-namespace: var(--text-editor-text-style);
 	--syntax-weight-namespace: var(--text-editor-text-weight);
 
 	--syntax-strong: var(--text-editor-line);
-	--syntax-fill-strong: var(--text-editor-text-style);
-	--syntax-style-strong: var(--text-editor-text-fill);
+	--syntax-fill-strong: var(--text-editor-text-fill);
+	--syntax-style-strong: var(--text-editor-text-style);
 	--syntax-weight-strong: bold;
 
 	--syntax-emphasis: var(--text-editor-line);
-	--syntax-fill-emphasis: var(--text-editor-text-style);
+	--syntax-fill-emphasis: var(--text-editor-text-fill);
 	--syntax-style-emphasis: italic;
 	--syntax-weight-emphasis: var(--text-editor-text-weight);
 
 	--syntax-heading: var(--text-editor-line);
-	--syntax-fill-heading: var(--text-editor-text-style);
-	--syntax-style-heading: var(--text-editor-text-fill);
+	--syntax-fill-heading: var(--text-editor-text-fill);
+	--syntax-style-heading: var(--text-editor-text-style);
 	--syntax-weight-heading: bold;
 
 	--syntax-link: var(--studio-link);
-	--syntax-fill-link: var(--text-editor-text-style);
-	--syntax-style-link: var(--text-editor-text-fill);
+	--syntax-fill-link: var(--text-editor-text-fill);
+	--syntax-style-link: var(--text-editor-text-style);
 	--syntax-weight-link: var(--text-editor-text-weight);
 
 	--syntax-quote: var(--syntax-punctuation);
@@ -646,8 +789,8 @@
 	--syntax-weight-quote: var(--syntax-weight-punctuation);
 
 	--syntax-list: var(--text-editor-line);
-	--syntax-fill-list: var(--text-editor-text-style);
-	--syntax-style-list: var(--text-editor-text-fill);
+	--syntax-fill-list: var(--text-editor-text-fill);
+	--syntax-style-list: var(--text-editor-text-style);
 	--syntax-weight-list: var(--text-editor-text-weight);
 
 	--syntax-inserted: var(--studio-added);
@@ -671,8 +814,27 @@
 	--syntax-weight-content-separator: var(--text-editor-text-weight);
 }
 
+[data-studio-scheme="dark"] {
+	--studio-scheme: dark;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	:root,
+	:host,
+	[theme] {
+		--studio-motion-preference: 0;
+	}
+}
+
 :root {
 	background-color: var(--studio-chrome-fill);
+	/* opt-in, inherited knobs. every fallback is the property's initial value,
+	   and anything a tool sets on its own elements still wins over inheritance. */
+	letter-spacing: var(--studio-letter-spacing, normal);
+	font-feature-settings: var(--studio-font-features, normal);
+	font-variation-settings: var(--studio-font-variation, normal);
+	scrollbar-color: var(--studio-scrollbar-color, auto);
+	scrollbar-width: var(--studio-scrollbar-width, auto);
 }
 
 ::selection {

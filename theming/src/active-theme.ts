@@ -2,6 +2,7 @@ import {getRegistry} from "@inkandswitch/patchwork-plugins"
 import themeCssUrl from "./theme.css"
 import lycheeCssUrl from "./lychee.css"
 import gloomCssUrl from "./gloom.css"
+import {scheduleFillScheme} from "./fill-scheme.ts"
 
 type ActiveThemeState = {
 	mode: "light" | "dark"
@@ -66,6 +67,8 @@ function ensureThemeLink(style: string) {
 	const link = document.createElement("link")
 	link.rel = "stylesheet"
 	link.href = style
+	// a stylesheet arriving can change the active theme's fill
+	link.addEventListener("load", scheduleFillScheme)
 	document.head.appendChild(link)
 	themeLinks.set(style, link)
 }
@@ -110,6 +113,7 @@ function emit() {
 
 function applyTheme(themeId: string) {
 	if (themeId) document.documentElement.setAttribute("theme", themeId)
+	scheduleFillScheme()
 }
 
 function applyFromPrefs() {
