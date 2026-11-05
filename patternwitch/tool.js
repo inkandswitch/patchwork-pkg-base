@@ -330,54 +330,108 @@ export default function PatternWitchTool(handle, element) {
   let activeColor = 0;
   let activeTool = "draw"; // "draw" | "fill"
   let showSettings = false;
-  const history = []; // stack of pixel snapshots for undo (local)
-  const future = []; // stack of pixel snapshots for redo (local)
-  const HISTORY_MAX = 40;
+  const HISTORY_MAX = 200;
 
   // ---- helpers ----
   const getDoc = () => handle.doc();
   const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
   const snapshot = () => getDoc().pixels.map((row) => row.slice());
 
-  function pushHistory(pixels = snapshot()) {
-    history.push(pixels);
+  // ============================================================
+  // Undo: commands, not snapshots
+  // ============================================================
+  // An op makes a change to the doc and returns the op that reverses it (or
+  // null if it changed nothing). Undoing an op returns the op that redoes it,
+  // so the same shape runs both ways.
+  //
+  // Inverses only touch what this user did, and they check before they write:
+  // a cell a peer has painted since is left alone. So undo stays local while
+  // someone else is drawing on the same canvas.
+  const history = []; // inverse ops, for undo (local)
+  const future = []; // inverse-of-inverse ops, for redo (local)
+
+  function run(op) {
+    const inverse = op();
+    if (!inverse) return;
+    history.push(inverse);
     if (history.length > HISTORY_MAX) history.shift();
     future.length = 0; // a new edit forks history; the old future is gone
   }
 
-  // Write a whole grid cell by cell, so concurrent edits from peers merge
-  // instead of fighting over replaced rows.
-  function writePixels(next) {
-    handle.change((d) => {
-      if (d.height !== next.length || d.width !== next[0].length) {
-        d.height = next.length;
-        d.width = next[0].length;
-        d.pixels = next;
-        return;
-      }
-      for (let y = 0; y < d.height; y++)
-        for (let x = 0; x < d.width; x++)
-          if (d.pixels[y][x] !== next[y][x]) d.pixels[y][x] = next[y][x];
-    });
+  function undo() {
+    const op = history.pop();
+    if (!op) return;
+    const redoOp = op();
+    if (redoOp) future.push(redoOp);
   }
 
-  // Resize the grid, preserving overlapping pixels.
-  function resize(newW, newH, record = true) {
+  function redo() {
+    const op = future.pop();
+    if (!op) return;
+    const undoOp = op();
+    if (undoOp) history.push(undoOp);
+  }
+
+  // Run several ops as one; the inverse runs their inverses backwards.
+  const sequence = (ops) => () => {
+    const inverses = ops.map((op) => op()).filter(Boolean).reverse();
+    return inverses.length ? sequence(inverses) : null;
+  };
+
+  // Set cells, each [x, y, to, expected?]. With `expected`, a cell is only
+  // written if it still holds that value, which is how inverses avoid
+  // clobbering peers. Cell by cell, never whole rows: replacing rows makes
+  // concurrent edits merge as list insertions, shifting pixels sideways.
+  function paintOp(cells) {
+    const done = [];
+    handle.change((d) => {
+      for (const [x, y, to, expected] of cells) {
+        if (y >= d.height || x >= d.width) continue;
+        const current = d.pixels[y][x];
+        if (expected !== undefined && current !== expected) continue;
+        if (current === to) continue;
+        d.pixels[y][x] = to;
+        done.push([x, y, current, to]);
+      }
+    });
+    return done.length ? () => paintOp(done) : null;
+  }
+
+  // Every cell where `next` differs from the doc, as paintOp cells.
+  function diffCells(next) {
+    const { pixels } = getDoc();
+    const cells = [];
+    for (let y = 0; y < next.length; y++)
+      for (let x = 0; x < next[y].length; x++)
+        if (pixels[y][x] !== next[y][x]) cells.push([x, y, next[y][x]]);
+    return cells;
+  }
+
+  // Resize in place (trim / extend rows and columns) so cells inside both
+  // sizes are never rewritten and peers' paint there survives. The inverse
+  // resizes back and restores the cropped cells, unless something has since
+  // been painted over the blank space they come back into.
+  function resizeOp(newW, newH) {
     newW = clamp(Math.round(newW), MIN_SIZE, MAX_SIZE);
     newH = clamp(Math.round(newH), MIN_SIZE, MAX_SIZE);
-    const doc = getDoc();
-    if (newW === doc.width && newH === doc.height) return;
-    if (record) pushHistory();
-    const old = doc.pixels;
-    const next = makePixels(newW, newH, 0);
-    for (let y = 0; y < Math.min(newH, doc.height); y++)
-      for (let x = 0; x < Math.min(newW, doc.width); x++)
-        next[y][x] = old[y][x];
+    const { width: oldW, height: oldH } = getDoc();
+    if (newW === oldW && newH === oldH) return null;
+    const cropped = [];
     handle.change((d) => {
+      for (let y = 0; y < oldH; y++)
+        for (let x = y < newH ? newW : 0; x < oldW; x++)
+          if (d.pixels[y][x] !== 0) cropped.push([x, y, d.pixels[y][x], 0]);
+      if (oldH > newH) d.pixels.splice(newH, oldH - newH);
+      for (let y = 0; y < Math.min(oldH, newH); y++) {
+        const row = d.pixels[y];
+        if (oldW > newW) row.splice(newW, oldW - newW);
+        else if (newW > oldW) row.push(...new Array(newW - oldW).fill(0));
+      }
+      for (let y = oldH; y < newH; y++) d.pixels.push(new Array(newW).fill(0));
       d.width = newW;
       d.height = newH;
-      d.pixels = next;
     });
+    return sequence([() => resizeOp(oldW, oldH), () => paintOp(cropped)]);
   }
 
   function floodFill(sx, sy, target) {
@@ -385,7 +439,6 @@ export default function PatternWitchTool(handle, element) {
     const { width, height } = doc;
     const from = doc.pixels[sy][sx];
     if (from === target) return;
-    const before = snapshot();
     const grid = snapshot();
     const stack = [[sx, sy]];
     while (stack.length) {
@@ -395,26 +448,14 @@ export default function PatternWitchTool(handle, element) {
       grid[y][x] = target;
       stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
     }
-    pushHistory(before);
-    writePixels(grid);
-  }
-
-  function undo() {
-    if (!history.length) return;
-    future.push(snapshot());
-    writePixels(history.pop());
-  }
-
-  function redo() {
-    if (!future.length) return;
-    history.push(snapshot());
-    writePixels(future.pop());
+    const cells = diffCells(grid);
+    run(() => paintOp(cells));
   }
 
   function clearAll() {
-    const doc = getDoc();
-    pushHistory();
-    writePixels(makePixels(doc.width, doc.height, activeColor));
+    const { width, height } = getDoc();
+    const cells = diffCells(makePixels(width, height, activeColor));
+    run(() => paintOp(cells));
   }
 
   // ============================================================
@@ -544,7 +585,6 @@ export default function PatternWitchTool(handle, element) {
   let painting = false;
   let strokeCells = null; // Map<"x,y", colour> of pending changes
   let lastCell = null; // last painted cell in the current stroke
-  let strokeBefore = null; // pixels as they were when the stroke started
 
   function paintCell(x, y) {
     const k = `${x},${y}`;
@@ -578,21 +618,15 @@ export default function PatternWitchTool(handle, element) {
     }
   }
 
-  // Commit cell by cell: replacing whole rows makes concurrent edits merge as
-  // list insertions, which shifts pixels sideways and duplicates them.
   function commitStroke() {
-    const cells = strokeCells;
-    const before = strokeBefore;
+    const pending = strokeCells;
     strokeCells = null;
-    strokeBefore = null;
-    if (!cells || cells.size === 0) return;
-    pushHistory(before);
-    handle.change((d) => {
-      for (const [k, color] of cells) {
-        const [x, y] = k.split(",").map(Number);
-        if (y < d.height && x < d.width) d.pixels[y][x] = color;
-      }
+    if (!pending || pending.size === 0) return;
+    const cells = [...pending].map(([k, color]) => {
+      const [x, y] = k.split(",").map(Number);
+      return [x, y, color];
     });
+    run(() => paintOp(cells));
   }
 
   canvas.addEventListener("pointerdown", (e) => {
@@ -605,7 +639,6 @@ export default function PatternWitchTool(handle, element) {
     }
     painting = true;
     strokeCells = new Map();
-    strokeBefore = snapshot();
     canvas.setPointerCapture(e.pointerId);
     paintCell(c.x, c.y);
     lastCell = c;
@@ -690,17 +723,19 @@ export default function PatternWitchTool(handle, element) {
     const rect = canvas.getBoundingClientRect();
     const step = Math.max(4, rect.width / doc.width); // px per cell
     grip.setPointerCapture(e.pointerId);
-    pushHistory(); // one undo entry for the whole drag
+    const steps = []; // each step's inverse; one undo entry for the whole drag
 
     const onMove = (ev) => {
       const dW = Math.round((ev.clientX - startX) / step);
       const dH = Math.round((ev.clientY - startY) / step);
-      resize(startW + dW, startH + dH, false);
+      const inverse = resizeOp(startW + dW, startH + dH);
+      if (inverse) steps.push(inverse);
     };
     const onUp = (ev) => {
       grip.releasePointerCapture(ev.pointerId);
       grip.removeEventListener("pointermove", onMove);
       grip.removeEventListener("pointerup", onUp);
+      if (steps.length) run(() => sequence(steps.reverse()));
     };
     grip.addEventListener("pointermove", onMove);
     grip.addEventListener("pointerup", onUp);
@@ -787,10 +822,9 @@ export default function PatternWitchTool(handle, element) {
     });
 
     modal.querySelector("[data-apply-size]").addEventListener("click", () => {
-      resize(
-        Number(modal.querySelector('[data-dim="w"]').value),
-        Number(modal.querySelector('[data-dim="h"]').value),
-      );
+      const w = Number(modal.querySelector('[data-dim="w"]').value);
+      const h = Number(modal.querySelector('[data-dim="h"]').value);
+      run(() => resizeOp(w, h));
     });
 
     modal.querySelector("[data-close]").addEventListener("click", () => {
@@ -802,21 +836,49 @@ export default function PatternWitchTool(handle, element) {
     modalMount.append(backdrop);
   }
 
-  // Remove a palette colour and remap pixels that referenced it.
   function removeColor(index) {
-    pushHistory();
+    run(() => removeColorOp(index));
+  }
+
+  // Remove a palette colour and remap pixels that referenced it: its own
+  // pixels become colour 0, and higher indices shift down by one.
+  function removeColorOp(index) {
+    const hex = getDoc().palette[index];
+    const orphans = new Set(); // "x,y" of pixels that were this colour
     handle.change((d) => {
       d.palette.splice(index, 1);
       const max = d.palette.length - 1;
       for (let y = 0; y < d.height; y++)
         for (let x = 0; x < d.width; x++) {
           let v = d.pixels[y][x];
-          if (v === index) v = 0;
-          else if (v > index) v = v - 1;
+          if (v === index) {
+            orphans.add(`${x},${y}`);
+            v = 0;
+          } else if (v > index) v = v - 1;
           v = clamp(v, 0, max);
           if (d.pixels[y][x] !== v) d.pixels[y][x] = v;
         }
     });
+    return () => insertColorOp(index, hex, orphans);
+  }
+
+  // Inverse of removeColorOp. Every index at or above `index` shifts back up,
+  // including pixels peers painted in the meantime, since those were painted
+  // against the shorter palette. Orphans get their colour back if they're
+  // still colour 0; one a peer has repainted keeps the peer's colour.
+  function insertColorOp(index, hex, orphans) {
+    handle.change((d) => {
+      d.palette.splice(index, 0, hex);
+      for (let y = 0; y < d.height; y++)
+        for (let x = 0; x < d.width; x++) {
+          const v = d.pixels[y][x];
+          let next = v;
+          if (v === 0 && orphans.has(`${x},${y}`)) next = index;
+          else if (v >= index) next = v + 1;
+          if (next !== v) d.pixels[y][x] = next;
+        }
+    });
+    return () => removeColorOp(index);
   }
 
   // ============================================================
