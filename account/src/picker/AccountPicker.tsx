@@ -283,6 +283,7 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
       <Show when={!currentAccount?.contactUrl || self() !== undefined}>
       <Show when={!isLoggedIn()}>
         <Tabs
+          class="auth"
           defaultValue={AccountPickerTab.SignUp}
           onChange={(tab: string) => setActiveTab(tab)}
           value={activeTab()}
@@ -296,7 +297,7 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
             </TabsTrigger>
           </TabsList>
           <TabsContent value={AccountPickerTab.SignUp} class="tabs-content">
-            <div class="field-group">
+            <form class="field-group" onSubmit={(e) => { e.preventDefault(); if (canSignUp()) onSignUp(); }}>
               <Label for="name">Name</Label>
               <Input
                 id="name"
@@ -304,14 +305,10 @@ export const AccountPicker = (props: PatchworkToolProps<any>) => {
                 onInput={(e) => setSignupName(e.currentTarget.value)}
                 placeholder="Enter your name"
               />
-              <Button
-                type="submit"
-                onClick={onSignUp}
-                disabled={!canSignUp()}
-              >
+              <Button type="submit" disabled={!canSignUp()}>
                 Sign up
               </Button>
-            </div>
+            </form>
           </TabsContent>
           <TabsContent value={AccountPickerTab.LogIn} class="tabs-content">
             <form class="field-group" onSubmit={(e) => { e.preventDefault(); if (canLogIn()) onLogIn(); }}>

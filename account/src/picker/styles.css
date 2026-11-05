@@ -9,6 +9,8 @@
   --account-picker-hover: var(--studio-fill-offset-10, #e5e5e5);
   --account-picker-tooltip-bg: var(--studio-line, black);
   --account-picker-tooltip-fg: var(--studio-fill, white);
+  --account-picker-quick: max(1ms, calc(120ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)));
+  --account-picker-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 }
 }
 
@@ -16,8 +18,24 @@
   width: 100%;
   height: 100%;
   overflow: auto;
-  padding: 1.5rem 2rem;
+  /* narrow containers get a narrower gutter */
+  padding: 1.5rem clamp(1rem, 6%, 2rem);
   color: var(--account-picker-fg);
+
+  /* width: 100% plus padding must stay inside the container */
+  &,
+  & *,
+  & *::before,
+  & *::after {
+    box-sizing: border-box;
+  }
+
+  /* sign up / log in: one readable column, centred when there's room */
+  & .auth {
+    width: 100%;
+    max-width: 22rem;
+    margin-inline: auto;
+  }
 
   & .profile-header {
     position: relative;
@@ -129,6 +147,16 @@
   & .input-row {
     display: flex;
     gap: 0.25rem;
+
+    /* inputs have an intrinsic width; let them shrink beside the eye button */
+    & .input {
+      flex: 1;
+      min-width: 0;
+    }
+
+    & .btn {
+      flex-shrink: 0;
+    }
   }
 
   & .tabs-list {
@@ -154,7 +182,9 @@
     border: none;
     background: transparent;
     color: inherit;
-    transition: all max(1ms, calc(100ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)));
+    transition-property: background-color, color, box-shadow;
+    transition-duration: var(--account-picker-quick);
+    transition-timing-function: ease;
 
     &[data-selected] {
       background: var(--account-picker-bg);
@@ -176,9 +206,19 @@
     font-weight: 500;
     border: none;
     height: 2rem;
+    justify-content: center;
     padding: 0 0.75rem;
-    transition: all max(1ms, calc(100ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)));
+    transition:
+      background-color var(--account-picker-quick) ease,
+      box-shadow var(--account-picker-quick) ease,
+      opacity var(--account-picker-quick) ease,
+      transform var(--account-picker-quick) var(--account-picker-ease-out);
     color: var(--account-picker-fg);
+
+    /* a small press, so the button feels heard */
+    &:active {
+      transform: scale(0.97);
+    }
 
     &:disabled {
       pointer-events: none;
@@ -402,15 +442,18 @@
   }
 
   & .hint {
+    margin: 0;
     font-size: 0.75rem;
     color: var(--account-picker-muted);
     line-height: 1.4;
+    text-wrap: pretty;
   }
 
   & .error-text {
     font-size: 0.75rem;
-    color: hsl(0 70% 50%);
+    color: var(--studio-danger-text, var(--studio-danger, hsl(0 70% 50%)));
     min-height: 1rem;
+    overflow-wrap: anywhere;
   }
 
   & .loading-text {
