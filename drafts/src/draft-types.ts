@@ -34,10 +34,6 @@ export type DraftDoc = {
   drafts: AutomergeUrl[];
   clones: Record<AutomergeUrl, CloneEntry>;
   mergedAt?: number;
-  // Points at this draft's ChangeGroupDoc, holding the precomputed activity
-  // groups for its timeline. Stamped lazily by the ChangeGrouper the first
-  // time it touches the timeline (see change-group-cache.ts).
-  changeGroupDocUrl?: AutomergeUrl;
   // Main draft only: points at the host doc's ActorAttributionDoc, mapping
   // actor ids to contact urls for author display. Stamped by the list
   // provider alongside the eager main-draft creation.
@@ -59,11 +55,10 @@ export type ActorAttributionDoc = {
   actors: Record<string, AutomergeUrl>;
 };
 
-// One persisted burst of activity in a draft's timeline: consecutive changes
-// (interleaved across the draft's member docs) separated by no more than the
-// inactivity gap, aggregated down to what a timeline row renders. Computed
-// once per change by the ChangeGrouper and persisted, so the sidebar never
-// has to re-diff history.
+// One burst of activity in a draft's timeline: consecutive changes
+// (interleaved across the draft's member docs and their actors) separated by
+// no more than the timeline gap, aggregated down to what a timeline row
+// renders. Stitched from each member's history groups (see timeline.ts).
 export type ChangeGroup = {
   id: string; // `tg-${newestHash}` — stable group identity
   startTime: number; // span covered, seconds (automerge change time)
@@ -77,20 +72,6 @@ export type ChangeGroup = {
   additions: number; // summed across ALL member docs in the span
   deletions: number;
   changeCount: number; // for scrubber band geometry
-};
-
-// Self-contained: one group doc per DraftDoc, holding that draft's timeline.
-export type ChangeGroupDoc = {
-  "@patchwork": { type: "change-group" };
-  version: number; // document format; mismatch = rebuild
-  inactivityGapMs: number; // grouping param baked in; changed = rebuild
-  // Keyed by group id, ordered on read by endTime desc. A map (not array) so
-  // concurrent writers converge per-group instead of duplicating rows.
-  groups: Record<string, ChangeGroup>;
-  // Per member: heads the grouping has consumed. getChangesMetaSince(doc,
-  // these) yields exactly the unconsumed tail — including late-syncing
-  // changes with old timestamps, which is what makes invalidation detectable.
-  computedThrough: Record<AutomergeUrl, UrlHeads>;
 };
 
 // One member doc's pinned view within a checkpoint. `to` is the heads to render
@@ -175,10 +156,6 @@ export type DraftSummary = {
   // User-given display name (`DraftDoc.name`); `null` (not optional, to stay
   // structured-cloneable) means unnamed — the card shows its default label.
   name: string | null;
-  // The draft's ChangeGroupDoc url (`DraftDoc.changeGroupDocUrl`); `null`
-  // until the ChangeGrouper stamps it. Cards read their timeline's groups
-  // straight from this doc.
-  changeGroupDocUrl: AutomergeUrl | null;
 };
 
 // Response shape for `draft:list`: the host doc's `main` entry plus the flat,

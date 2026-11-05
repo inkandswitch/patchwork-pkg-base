@@ -27,8 +27,9 @@ export const SKIPPED_DATATYPES: ReadonlySet<string> = new Set([
   "contact",
   "draft",
   "workspace-checkouts",
+  // Legacy: drafts used to keep their timelines in these docs, and old
+  // workspaces still link them.
   "change-group",
-  // Legacy marker retained while existing ChangeGroupDocs are migrated.
   "change-group-cache",
 ]);
 

@@ -9,7 +9,7 @@ import * as Automerge from "@automerge/automerge/slim";
 import { subscribe } from "@inkandswitch/patchwork-providers";
 
 import type { ActorAttributionDoc, DraftDoc } from "./draft-types.js";
-import { editCountsSince } from "./change-group-cache.js";
+import { editCountsSince } from "./edit-counts.js";
 
 // Only the writing client knows which Automerge actor ids are its own. The
 // recorder watches the docs the user can currently write to (`watch`); each

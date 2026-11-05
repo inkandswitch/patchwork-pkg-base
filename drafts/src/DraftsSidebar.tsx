@@ -28,7 +28,6 @@ import {
 import type {
   ActorAttributionDoc,
   ChangeGroup,
-  ChangeGroupDoc,
   CheckedOutDraft,
   CloneEntry,
   DraftCheckpoint,
@@ -42,8 +41,13 @@ import {
   computeEditCounts,
   computeRangeEditCounts,
   getDocCreationTime,
-  sameHeads,
-} from "./change-group-cache";
+} from "./edit-counts";
+import {
+  combineHistories,
+  sameMembers,
+  watchMemberHistories,
+  type MemberHistory,
+} from "./timeline";
 import { ensureMainDraft } from "./draft-docs";
 import { isWorkspaceFolder } from "./folder-links";
 import { makeWorkspace } from "./workspace-docs";
@@ -57,7 +61,6 @@ const EMPTY_DRAFT_LIST: DraftList = {
     members: [],
     childCount: 0,
     name: null,
-    changeGroupDocUrl: null,
   },
   drafts: [],
   actorAttributionUrl: null,
@@ -611,7 +614,7 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
             hostDocUrl={hostDocHandle()?.url}
             isSelected={isMainSelected()}
             members={() => list().main.members}
-            changeGroupDocUrl={list().main.changeGroupDocUrl}
+            element={props.element}
             name={list().main.name}
             onRename={(name) => void onRename(null, name)}
             onSelect={() => selectDraft(null)}
@@ -639,7 +642,7 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
               <DraftCard
                 url={summary.url}
                 members={summary.members}
-                changeGroupDocUrl={summary.changeGroupDocUrl}
+                element={props.element}
                 mainDocUrl={hostDocHandle()?.url}
                 isSelected={selected() === summary.url}
                 name={summary.name}
@@ -1079,7 +1082,7 @@ function MainCard(props: {
   hostDocUrl: AutomergeUrl | undefined;
   isSelected: boolean;
   members: Accessor<DraftMemberDoc[]>;
-  changeGroupDocUrl: AutomergeUrl | null;
+  element: HTMLElement;
   name: string | null;
   onRename: (name: string | null) => void;
   onSelect: () => void;
@@ -1157,7 +1160,7 @@ function MainCard(props: {
       <Show when={props.isSelected}>
         <DraftChangesList
           members={props.members}
-          changeGroupDocUrl={props.changeGroupDocUrl}
+          element={props.element}
           mainDocUrl={props.hostDocUrl}
           onScrub={props.onScrub}
           scrubber={props.scrubber}
@@ -1175,7 +1178,7 @@ function MainCard(props: {
 function DraftCard(props: {
   url: AutomergeUrl;
   members: DraftMemberDoc[];
-  changeGroupDocUrl: AutomergeUrl | null;
+  element: HTMLElement;
   mainDocUrl: AutomergeUrl | undefined;
   isSelected: boolean;
   name: string | null;
@@ -1272,7 +1275,7 @@ function DraftCard(props: {
       <Show when={props.isSelected}>
         <DraftChangesList
           members={() => props.members}
-          changeGroupDocUrl={props.changeGroupDocUrl}
+          element={props.element}
           mainDocUrl={props.mainDocUrl}
           onScrub={props.onScrub}
           scrubber={props.scrubber}
@@ -1705,11 +1708,10 @@ type ScanChange = {
   seq: number;
 };
 
-// Renders a draft's (or main's) timeline straight from its ChangeGroupDoc.
-// The ChangeGrouper computes and persists activity groups (newest first, older
-// history backfilling), and this component is a pure reader: it paints before
-// the member docs even load, and live edits arrive through the group doc's
-// change signal. A gutter on
+// Renders a draft's (or main's) timeline from its members' history groups,
+// which the history provider indexes per document and this stitches into
+// rows (see timeline.ts). It paints before the member docs even load, and
+// live edits arrive as the provider's updates. A gutter on
 // the left spans the whole history (top = latest version, bottom = first);
 // the indicator — a calendar-style dot + line — marks the version being
 // looked at and paints *on top* of everything in the changes area.
@@ -1721,7 +1723,7 @@ type ScanChange = {
 // time span (no diffs), memoized per group so dragging stays snappy.
 function DraftChangesList(props: {
   members: Accessor<DraftMemberDoc[]>;
-  changeGroupDocUrl: AutomergeUrl | null;
+  element: HTMLElement;
   mainDocUrl: AutomergeUrl | undefined;
   onScrub: (scrub: ScrubberState) => void;
   scrubber: Accessor<ScrubberState | null>;
@@ -1735,35 +1737,18 @@ function DraftChangesList(props: {
 }) {
   const repo = useRepo();
 
-  // The group doc is read live, so ChangeGrouper writes stream in as rows.
-  const [changeGroupHandle, setChangeGroupHandle] =
-    createSignal<DocHandle<ChangeGroupDoc>>();
-  createEffect(() => {
-    const url = props.changeGroupDocUrl;
-    setChangeGroupHandle(undefined);
-    if (!url || !repo) return;
-    let disposed = false;
-    void repo.find<ChangeGroupDoc>(url).then(
-      (handle) => {
-        if (!disposed) setChangeGroupHandle(handle);
-      },
-      (err) => {
-        console.warn("[drafts] failed to load change-group doc:", url, err);
-      }
-    );
-    onCleanup(() => {
-      disposed = true;
-    });
-  });
-  const changeGroupDoc = createDocSignal(changeGroupHandle);
-
-  // The rendered groups, newest-first. Metadata-only groups are retained so
-  // the ChangeGrouper can extend the newest one, but filtered from the UI.
-  const timeGroups = createMemo<ChangeGroup[]>(() =>
-    Object.values(changeGroupDoc()?.groups ?? {})
-      .filter((g) => g.additions > 0 || g.deletions > 0)
-      .sort((a, b) => b.endTime - a.endTime || (a.id < b.id ? -1 : 1))
+  // Resubscribe only when the membership itself changes, not on every
+  // `draft:list` push.
+  const memberSet = createMemo(
+    () => props.members(),
+    undefined,
+    { equals: sameMembers }
   );
+  const [histories, setHistories] = createSignal<MemberHistory[]>([]);
+  createEffect(() => {
+    const members = memberSet();
+    onCleanup(watchMemberHistories(props.element, members, setHistories));
+  });
 
   // Member doc handles (plus the creation-time cutoff), resolved once per
   // member set — only needed to *scrub*, never to render the rows.
@@ -1804,31 +1789,27 @@ function DraftChangesList(props: {
     });
   });
 
-  // Grouping is caught up when every member's live heads match the group
-  // doc's consumed marker (`computedThrough` — written only when a pass
-  // completes, while groups flush incrementally during it). A running build
-  // keeps writing to the group doc, so this re-evaluates live; it also reads
-  // true while another peer does the building, since the group doc syncs.
-  // Checkpoint pins don't interfere: they bake heads onto overlay urls, the
-  // handles here always sit at the live frontier.
-  const isBuilding = createMemo<boolean>(() => {
-    const consumed = changeGroupDoc()?.computedThrough ?? {};
-    const srcs = sources();
-    if (!srcs || srcs.length === 0) return false;
-    return srcs.some(({ member, handle }) => {
-      const heads = handle.heads();
-      return heads ? !sameHeads(heads, consumed[member.url]) : false;
-    });
-  });
+  // The rendered groups, newest-first. Metadata-only groups are filtered
+  // from the UI.
+  const timeGroups = createMemo<ChangeGroup[]>(() =>
+    combineHistories(histories(), { createdAt: createdAt() }).filter(
+      (g) => g.additions > 0 || g.deletions > 0
+    )
+  );
+
+  // A member's index is still catching up with its document.
+  const isBuilding = createMemo<boolean>(() =>
+    histories().some((h) => h.pending)
+  );
 
   // Recover a group's member changes on demand: scan each member's post-fork
-  // change metadata filtered to the group's span (spans are disjoint — groups
+  // change metadata filtered to the group's span (rows are disjoint — they
   // are separated by >gap lulls, so time containment recovers exactly the
-  // group's changes) and interleave with the ChangeGrouper's ordering.
-  // Metadata only, no diffs. Memoized per group identity so dragging
-  // stays snappy; returns null until the member handles resolve. It must apply
-  // the same filters as grouping (notably the pre-creation cutoff), or the
-  // scrubber's index math drifts from the persisted changeCount.
+  // row's changes), newest first. Metadata only, no diffs. Memoized per group
+  // identity so dragging stays snappy; returns null until the member handles
+  // resolve. It must cover the same changes as the history groups (each
+  // member's changes since its fork point), or the scrubber's index math
+  // drifts from `changeCount`.
   const scanCache = new Map<string, ScanChange[]>();
   const resolveGroupChanges = (group: ChangeGroup): ScanChange[] | null => {
     const key = `${group.id}:${group.changeCount}`;
@@ -1836,7 +1817,6 @@ function DraftChangesList(props: {
     if (hit) return hit;
     const srcs = sources();
     if (!srcs) return null;
-    const cutoff = createdAt();
     const rows: ScanChange[] = [];
     for (const { member, handle } of srcs) {
       const doc = handle.doc() as Automerge.Doc<unknown> | undefined;
@@ -1845,7 +1825,6 @@ function DraftChangesList(props: {
         const since = member.clonedAt ? decodeHeads(member.clonedAt) : [];
         const metas = Automerge.getChangesMetaSince(doc, since);
         metas.forEach((meta, seq) => {
-          if (cutoff !== undefined && meta.time && meta.time < cutoff) return;
           if (meta.time < group.startTime || meta.time > group.endTime) return;
           rows.push({
             docUrl: member.url,

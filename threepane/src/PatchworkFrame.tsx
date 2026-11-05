@@ -171,13 +171,20 @@ export function PatchworkFrame({
                 element is the ctx a worker spec's open(ctx) gets.
               */}
               <patchwork-view component="patchwork-worker-provider">
-                <Show when={areProvidersReady()}>
-                  <PatchworkFrameInner
-                    handle={handle}
-                    repo={repo}
-                    isolation={props.isolation}
-                  />
-                </Show>
+                {/*
+                  Answers history:groups with each document's history grouped
+                  per actor, indexed in a worker. Not waited on either: the
+                  drafts timeline asks again until it answers.
+                */}
+                <patchwork-view component="patchwork-history-provider">
+                  <Show when={areProvidersReady()}>
+                    <PatchworkFrameInner
+                      handle={handle}
+                      repo={repo}
+                      isolation={props.isolation}
+                    />
+                  </Show>
+                </patchwork-view>
               </patchwork-view>
             </patchwork-view>
           </patchwork-view>

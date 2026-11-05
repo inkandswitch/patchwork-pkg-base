@@ -20,10 +20,6 @@ import type {
 } from "../draft-types.js";
 import { SKIPPED_DATATYPES, canonicalUrl } from "../clone-policy.js";
 import {
-  createChangeGrouper,
-  type TimelineGroupingSpec,
-} from "../change-group-cache.js";
-import {
   createActorRecorder,
   ensureActorAttribution,
 } from "../actor-attribution.js";
@@ -72,8 +68,7 @@ export type DraftState = {
 // (its main draft and ActorAttributionDoc) is created on demand: when the
 // sidebar first subscribes to `draft:list`, or when the user first edits a
 // member doc. A folder only gets it once it has been made a workspace, so
-// looking at a folder doesn't make it one. Timelines are grouped only while a
-// `draft:list` subscriber exists.
+// looking at a folder doesn't make it one.
 export function createDraftState(options: DraftStateOptions): DraftState {
   const { repo, docUrl, checkedOutHandle, mounts } = options;
 
@@ -106,7 +101,6 @@ export function createDraftState(options: DraftStateOptions): DraftState {
       members: [],
       childCount: 0,
       name: null,
-      changeGroupDocUrl: null,
     },
     drafts: [],
     actorAttributionUrl: null,
@@ -118,8 +112,6 @@ export function createDraftState(options: DraftStateOptions): DraftState {
     repo,
     ensureAttribution
   );
-  // Groups each timeline into its ChangeGroupDoc while the sidebar is open.
-  const changeGrouper = createChangeGrouper(repo);
   // Cached "is this an app-global datatype we skip?" verdict per mounted url,
   // resolved lazily since reading `@patchwork.type` means loading the doc.
   // Absent = unresolved, treated as not-skipped (visible) until known.
@@ -178,7 +170,6 @@ export function createDraftState(options: DraftStateOptions): DraftState {
       if (listSubscribers.size === 1) activate();
       return () => {
         listSubscribers.delete(respond);
-        if (listSubscribers.size === 0) deactivate();
       };
     },
     subscribeBaseline(target, respond) {
@@ -203,7 +194,6 @@ export function createDraftState(options: DraftStateOptions): DraftState {
     if (disposed) return;
     disposed = true;
     if (cloneSyncTimer !== null) clearTimeout(cloneSyncTimer);
-    changeGrouper.dispose();
     actorRecorder.dispose();
     draftRouter.dispose();
     offMounts();
@@ -221,8 +211,7 @@ export function createDraftState(options: DraftStateOptions): DraftState {
   }
 
   // The sidebar is open: make sure the root has its main draft (so the Main
-  // timeline has a home), record what's mounted as main's members, and keep
-  // the timelines grouped.
+  // timeline has a home) and record what's mounted as main's members.
   function activate(): void {
     ensureMainDraftDoc().then(
       () => {
@@ -232,10 +221,6 @@ export function createDraftState(options: DraftStateOptions): DraftState {
       (err) => console.warn("[drafts] failed to create main draft:", err)
     );
     reconcile();
-  }
-
-  function deactivate(): void {
-    changeGrouper.setTimelines([]);
   }
 
   // Resolve (creating on first use) the root's main draft. Main's clones are
@@ -347,13 +332,11 @@ export function createDraftState(options: DraftStateOptions): DraftState {
   }
 
   // Bring everything derived from the current state up to date: which docs
-  // the actor recorder watches, which timelines are grouped (sidebar open
-  // only), and the `draft:list` value, pushed to subscribers when it actually
-  // changed.
+  // the actor recorder watches, and the `draft:list` value, pushed to
+  // subscribers when it actually changed.
   function reconcile(): void {
     if (disposed) return;
     actorRecorder.watch(writableDocUrls());
-    if (listSubscribers.size > 0) updateChangeGrouping();
     const next = computeList();
     if (draftListsEqual(draftList, next)) return;
     draftList = next;
@@ -377,37 +360,6 @@ export function createDraftState(options: DraftStateOptions): DraftState {
     return urls;
   }
 
-  // Hand the ChangeGrouper the current timelines, priority-ordered: main,
-  // checked-out draft, then the remaining drafts in tree order. Main reads
-  // the main draft's identity clones rather than the mounted-doc fallback.
-  function updateChangeGrouping(): void {
-    if (disposed) return;
-    const specs: TimelineGroupingSpec[] = [];
-    if (mainDraftHandle) {
-      specs.push({
-        draftHandle: mainDraftHandle,
-        members: clonesToMembers(mainDraftHandle.doc()?.clones ?? {}),
-        rootDocUrl: docUrl,
-      });
-    }
-    const selected = checkedOutHandle.doc()?.checkedOut ?? null;
-    const ordered =
-      selected && orderedDraftUrls.includes(selected)
-        ? [selected, ...orderedDraftUrls.filter((u) => u !== selected)]
-        : orderedDraftUrls;
-    for (const url of ordered) {
-      const handle = trackedDrafts.get(url);
-      const doc = handle?.doc();
-      if (!handle || !doc || doc.mergedAt !== undefined) continue;
-      specs.push({
-        draftHandle: handle,
-        members: clonesToMembers(doc.clones),
-        rootDocUrl: docUrl,
-      });
-    }
-    changeGrouper.setTimelines(specs);
-  }
-
   // The full read-only list: the main entry plus one summary per non-merged
   // draft, in rewalk (tree) order.
   function computeList(): DraftList {
@@ -421,7 +373,6 @@ export function createDraftState(options: DraftStateOptions): DraftState {
         members: clonesToMembers(doc.clones),
         childCount: doc.drafts.length,
         name: doc.name ?? null,
-        changeGroupDocUrl: doc.changeGroupDocUrl ?? null,
       });
     }
     return {
@@ -460,8 +411,6 @@ export function createDraftState(options: DraftStateOptions): DraftState {
     const url = mainDraftHandle?.url ?? docUrl;
     const childCount = mainDraftHandle?.doc()?.drafts.length ?? 0;
     const name = mainDraftHandle?.doc()?.name ?? null;
-    const changeGroupDocUrl =
-      mainDraftHandle?.doc()?.changeGroupDocUrl ?? null;
 
     const mainClones = mainDraftHandle?.doc()?.clones;
     if (mainClones && Object.keys(mainClones).length > 0) {
@@ -471,7 +420,6 @@ export function createDraftState(options: DraftStateOptions): DraftState {
         members: clonesToMembers(mainClones),
         childCount,
         name,
-        changeGroupDocUrl,
       };
     }
 
@@ -479,7 +427,7 @@ export function createDraftState(options: DraftStateOptions): DraftState {
       .filter((u) => skipVerdicts.get(u) !== true)
       .map((u) => ({ url: u, cloneUrl: null, clonedAt: null }))
       .sort(byMemberUrl);
-    return { url, parent: null, members, childCount, name, changeGroupDocUrl };
+    return { url, parent: null, members, childCount, name };
   }
 
   // The diff baseline for `target`: the checkpoint's per-doc `from`, written
@@ -548,7 +496,7 @@ export function createDraftState(options: DraftStateOptions): DraftState {
   }
 
   // Mounts and skip verdicts arrive one doc at a time; batch them into a single
-  // main-draft write (each write would otherwise rewalk and regroup).
+  // main-draft write (each write would otherwise rewalk).
   function scheduleCloneSync(): void {
     if (disposed || cloneSyncTimer !== null) return;
     cloneSyncTimer = setTimeout(() => {
@@ -641,7 +589,6 @@ function summariesEqual(a: DraftSummary, b: DraftSummary): boolean {
     a.parent === b.parent &&
     a.childCount === b.childCount &&
     a.name === b.name &&
-    a.changeGroupDocUrl === b.changeGroupDocUrl &&
     memberListsEqual(a.members, b.members)
   );
 }

@@ -32,6 +32,15 @@ export const plugins: Plugin<any>[] = [
     },
   },
   {
+    type: "patchwork:component",
+    id: "patchwork-history-provider",
+    name: "History Provider",
+    async load() {
+      const { HistoryProvider } = await import("./history/HistoryProvider.js");
+      return HistoryProvider;
+    },
+  },
+  {
     type: "patchwork:datatype",
     id: "patchwork:draft",
     name: "Draft",
@@ -73,7 +82,6 @@ export type {
   ActorAttributionDoc,
   Baseline,
   ChangeGroup,
-  ChangeGroupDoc,
   CheckedOutDraft,
   CloneEntry,
   DraftDoc,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as Automerge from "@automerge/automerge";
 
-import { computeEditCounts, editCountsSince } from "./change-group-cache";
+import { computeEditCounts, editCountsSince } from "./edit-counts";
 
 type Fixture = {
   "@patchwork": {
