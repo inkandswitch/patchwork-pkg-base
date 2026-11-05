@@ -1,6 +1,20 @@
-import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
+import type { AutomergeUrl, Repo } from "@automerge/automerge-repo/slim";
+import type { RepoProviderElement } from "@inkandswitch/patchwork-providers";
+import {
+  getSuggestedImportUrl,
+  getType,
+  type HasPatchworkMetadata,
+} from "@inkandswitch/patchwork-filesystem";
+import { getFallbackTool, getRegistry } from "@inkandswitch/patchwork-plugins";
 import type { Accessor } from "solid-js";
-import { Show } from "solid-js";
+import {
+  createMemo,
+  createSignal,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js";
+import { NoToolCard, UnavailableCard, Finding } from "./DocumentCards";
 
 interface MainDocumentViewProps {
   viewKey: Accessor<string | undefined>;
@@ -20,20 +34,243 @@ export function MainDocumentView({
   toolId,
   ref,
 }: MainDocumentViewProps) {
+  let container!: HTMLDivElement;
+  // the repo of the nearest `<repo-provider>`, to look at the doc before
+  // showing it: undefined until mounted, null when there's none
+  const [repo, setRepo] = createSignal<Repo | null>();
+  onMount(() => {
+    setRepo(
+      container.closest<RepoProviderElement>("repo-provider")?.repo ?? null
+    );
+  });
+
   return (
-    <div class="document-view" ref={ref}>
-      <Show when={viewKey()} keyed>
-        {(key) => {
-          return (
-            <patchwork-view doc-url={selectedDocUrl()!} tool-id={toolId()} />
-          );
-        }}
+    <div
+      class="document-view"
+      ref={(el) => {
+        container = el;
+        ref?.(el);
+      }}
+    >
+      <Show when={repo() !== undefined && viewKey()} keyed>
+        {(_key) => (
+          <Show
+            when={repo()}
+            // no repo to look with: leave it all to patchwork-view
+            fallback={
+              <patchwork-view doc-url={selectedDocUrl()!} tool-id={toolId()} />
+            }
+          >
+            {(r) => (
+              <DocumentView url={selectedDocUrl()!} toolId={toolId} repo={r()} />
+            )}
+          </Show>
+        )}
       </Show>
       {!selectedDocUrl() && (
-        <div class="placeholder">
-          Select a document in the sidebar
-        </div>
+        <div class="placeholder">Select a document in the sidebar</div>
       )}
     </div>
   );
+}
+
+// what we know about the doc: still looking, couldn't get it, or here it is
+type Lookup =
+  | { state: "finding" }
+  | { state: "unavailable" }
+  | { state: "ready"; doc: HasPatchworkMetadata };
+
+/**
+ * Finds the doc before handing it to `<patchwork-view>`, so that when it can't
+ * be had, or nothing here can open it, we say so in words instead of a `:(`.
+ * Everything else (no datatype at all, a tool that throws) is still
+ * patchwork-view's to report.
+ */
+function DocumentView(props: {
+  url: AutomergeUrl;
+  toolId: Accessor<string | undefined>;
+  repo: Repo;
+}) {
+  const tools = getRegistry("patchwork:tool");
+  const [toolsChanged, setToolsChanged] = createSignal(0);
+  onCleanup(
+    tools.on("changed", () => {
+      setToolsChanged((n) => n + 1);
+    })
+  );
+
+  const [lookup, setLookup] = createSignal<Lookup>({ state: "finding" });
+  // a "*" tool the reader asked to open this with anyway
+  const [peekWith, setPeekWith] = createSignal<string>();
+  // the tool that was asked for. patchwork-view is told only this, so it still
+  // picks (and later upgrades) its own fallback when none was
+  const asked = () => props.toolId() ?? peekWith();
+
+  // whether the patchwork-view underneath has mounted a tool. it keeps trying
+  // with a doc it couldn't get (a keyhive sync can grant access), so when it
+  // gets there first, that's as good as us finding it
+  const [mounted, setMounted] = createSignal(false);
+  // bumped to give patchwork-view a fresh start: when we find a doc it gave up
+  // on, it has no handle to look at and won't go looking again by itself
+  const [attempt, setAttempt] = createSignal(0);
+
+  let disposed = false;
+  onCleanup(() => (disposed = true));
+
+  async function find() {
+    try {
+      const handle = await props.repo.find<HasPatchworkMetadata>(props.url);
+      if (disposed) return;
+      const wasUnavailable = lookup().state === "unavailable";
+      setLookup({ state: "ready", doc: handle.doc() });
+      if (wasUnavailable && !mounted()) setAttempt((n) => n + 1);
+    } catch {
+      if (!disposed) setLookup({ state: "unavailable" });
+    }
+  }
+
+  // an unavailable doc can still turn up: a peer connects and has it, or the
+  // sender finishes syncing. the repo's progress says when, so look again then
+  let progress: Progress | undefined;
+  let unwatch: (() => void) | undefined;
+  function watch() {
+    unwatch?.();
+    progress = findProgress(props.repo, props.url);
+    unwatch = progress?.subscribe((p) => {
+      if (p.state === "ready" && lookup().state === "unavailable") void find();
+    });
+  }
+  onCleanup(() => unwatch?.());
+
+  void find();
+  watch();
+
+  // asking again: an unavailable lookup answers straight away from what it
+  // already knows, so forget it first and the repo asks its peers afresh
+  // (patchwork-view does the same when it retries). the card stays up while
+  // we ask, rather than flickering away and back
+  function retry() {
+    if (progress?.peek().state === "unavailable") {
+      try {
+        props.repo.delete(props.url);
+      } catch {}
+    }
+    void find();
+    watch();
+  }
+
+  const view = createMemo(() => {
+    toolsChanged();
+    const found = lookup();
+    if (found.state !== "ready") return found;
+    const doc = found.doc;
+    const type = doc ? getType(doc) : undefined;
+    // no datatype at all: patchwork-view says what's wrong with it
+    if (!type) return { state: "open" as const };
+
+    let id = asked();
+    let anything: { id: string; name: string } | undefined;
+    if (!id) {
+      const fallback = safely(() => getFallbackTool(doc));
+      // a "*" tool (raw, inspector) will open anything, but it isn't this
+      // datatype's tool: offer it rather than open the doc's insides unasked
+      if (fallback && opensOnlyAsAnything(fallback.supportedDatatypes, type))
+        anything = { id: fallback.id, name: fallback.name };
+      else if (fallback) id = fallback.id;
+    }
+    if (id && tools.get(id)) return { state: "open" as const };
+    return {
+      state: "no-tool" as const,
+      type,
+      suggestion: getSuggestedImportUrl(doc),
+      anything,
+    };
+  });
+
+  const state = createMemo(() => view().state);
+  const noTool = createMemo(() => {
+    const v = view();
+    return v.state === "no-tool" ? v : undefined;
+  });
+
+  return (
+    <div
+      class="doc-stack"
+      ref={(el) => {
+        const onMounted = (event: Event) => {
+          const detail = (event as CustomEvent<{ url?: string }>).detail;
+          if (detail?.url && detail.url !== props.url) return;
+          setMounted(true);
+          // it got the doc we couldn't: look again, to drop the card
+          if (lookup().state === "unavailable") void find();
+        };
+        el.addEventListener("patchwork:mounted", onMounted);
+        onCleanup(() => el.removeEventListener("patchwork:mounted", onMounted));
+      }}
+    >
+      {/* the view stays put from unavailable through to open, so whatever it
+          was doing to recover carries on. not keyed on the view memo (a new
+          object on every registry change): it follows tool-id by itself */}
+      <Show when={state() === "open" || state() === "unavailable"}>
+        <Show when={attempt() + 1} keyed>
+          {(_attempt) => (
+            <patchwork-view doc-url={props.url} tool-id={asked()} />
+          )}
+        </Show>
+      </Show>
+      <Show when={state() === "finding"}>
+        <Finding />
+      </Show>
+      <Show when={state() === "unavailable" && !mounted()}>
+        <UnavailableCard url={props.url} repo={props.repo} onRetry={retry} />
+      </Show>
+      <Show when={noTool()}>
+        {(v) => (
+          <NoToolCard
+            url={props.url}
+            type={v().type}
+            suggestion={v().suggestion}
+            anything={v().anything}
+            onPeek={setPeekWith}
+          />
+        )}
+      </Show>
+    </div>
+  );
+}
+
+// the repo's live progress for a doc, where the repo has one (a remapping
+// overlay or an older repo might not)
+type Progress = {
+  peek(): { state: string };
+  subscribe(cb: (p: { state: string }) => void): () => void;
+};
+function findProgress(repo: Repo, url: AutomergeUrl): Progress | undefined {
+  const withProgress = (
+    repo as unknown as { findWithProgress?: (url: AutomergeUrl) => Progress }
+  ).findWithProgress;
+  if (typeof withProgress !== "function") return undefined;
+  return safely(() => {
+    const p = withProgress.call(repo, url);
+    return typeof p?.subscribe === "function" && typeof p?.peek === "function"
+      ? p
+      : undefined;
+  });
+}
+
+// whether a tool takes `type` only because it takes "*"
+function opensOnlyAsAnything(
+  supported: "*" | string[] | undefined,
+  type: string
+): boolean {
+  const list = supported === "*" ? ["*"] : (supported ?? []);
+  return list.includes("*") && !list.includes(type);
+}
+
+function safely<T>(fn: () => T): T | undefined {
+  try {
+    return fn();
+  } catch {
+    return undefined;
+  }
 }
