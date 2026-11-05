@@ -40,6 +40,7 @@ export const TEMPLATE_TOOL_PROVIDERS = new Set(["local"])
 
 /**
  * @typedef {Object} PrepareOpts
+ * @property {import("@automerge/automerge-repo").Repo} repo  where the prompt docs are read from
  * @property {any[]|string} messages   chat messages, or a string
  * @property {string} [system]         extra system prompt, already provider-resolved
  * @property {any[]} [tools]           tool descriptors, already filtered
@@ -63,10 +64,10 @@ export const TEMPLATE_TOOL_PROVIDERS = new Set(["local"])
  * @param {PrepareOpts} opts
  * @returns {Promise<PreparedGenerate>}
  */
-export async function prepareGenerate(cfg0, {messages, system, tools, continuation, overrides = {}}) {
+export async function prepareGenerate(cfg0, {repo, messages, system, tools, continuation, overrides = {}}) {
 	// Resolve the selected system/pre prompt docs → their text. repo.find is
 	// cached, so this is cheap after first load.
-	const cfg = await resolveCfgPrompts(cfg0)
+	const cfg = await resolveCfgPrompts(cfg0, repo)
 	/** @type {CallConfigExt} */
 	const config = callConfig(/** @type {any} */ (cfg), /** @type {any} */ (overrides))
 

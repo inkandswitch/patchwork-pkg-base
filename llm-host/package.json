@@ -18,7 +18,7 @@
   "author": "grjte",
   "license": "MIT",
   "dependencies": {
-    "@chee/patchwork-llm": "automerge:m6dt2f4hYdhyvmFDvXYbYDdNQey",
+    "@chee/patchwork-llm": "automerge:2jiTjDVH5s6mrW8Wq7aBiUUuEbWD",
     "solid-js": "^1.9.11"
   },
   "devDependencies": {

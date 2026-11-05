@@ -3,18 +3,20 @@
  *
  *   import { dom, stream, generate } from "@patchwork/llm"
  *
- *   const el = popup(); root.append(el); el.showPopover()  // framed model picker
- *   const cfg = await el.result                            // null if cancelled
- *   box.append(dom({source, tools}))                       // bare embeddable panel
+ *   const el = popup({repo}); root.append(el); el.showPopover()  // framed model picker
+ *   const cfg = await el.result                                  // null if cancelled
+ *   box.append(dom({repo, source, tools}))                       // bare embeddable panel
  *
- *   for await (const ev of stream(messages, { topk: 5 })) {
+ *   for await (const ev of stream(messages, { repo, topk: 5 })) {
  *     if (ev.type === "token")      out += ev.delta
  *     if (ev.type === "prediction") showCandidates(ev.candidates) // next-token dist
  *     if (ev.type === "stats")      showStats(ev)                 // ttft, tok/s, decode
  *   }
  *
- *   const { text, stats } = await generate(messages, { onToken, onPrediction })
+ *   const { text, stats } = await generate(messages, { repo, onToken, onPrediction })
  *
+ * Every call that reads documents takes an explicit `repo` — pass the one your
+ * tool was given (`element.repo`), never `window.repo`.
  * Provider/model/key/temperature live on the account doc (set via popup()/dom()).
  * Telemetry (top-k next-token predictions + decode stats) works for local
  * transformers.js AND OpenRouter.

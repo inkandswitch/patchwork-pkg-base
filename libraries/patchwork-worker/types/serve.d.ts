@@ -1,11 +1,9 @@
 /**
  * @param {WorkerSpec} spec
- * @param {{element?: HTMLElement}} [ctx]
+ * @param {ServeContext} [ctx]
  * @returns {{readable: ReadableStream, writable: WritableStream}}
  */
-export function serveWorkerSpec(spec: WorkerSpec, ctx?: {
-    element?: HTMLElement;
-}): {
+export function serveWorkerSpec(spec: WorkerSpec, ctx?: ServeContext): {
     readable: ReadableStream;
     writable: WritableStream;
 };
@@ -31,15 +29,19 @@ export type IO = {
      * what `spec.open` resolved, or null
      */
     state: any;
-    ctx: {
-        element?: HTMLElement;
-    };
+    /**
+     * Host-realm context from whoever serves the spec: an element inside a mounted
+     * view (to reach providers) and the repo to resolve documents in.
+     */
+    ctx: ServeContext;
+};
+export type ServeContext = {
+    element?: HTMLElement;
+    repo?: unknown;
 };
 export type WorkerSpec = {
     createWorker: () => Worker | Promise<Worker>;
-    open?: ((ctx: {
-        element?: HTMLElement;
-    }) => any) | undefined;
+    open?: ((ctx: ServeContext) => any) | undefined;
     /**
      * returns an abort token
      */

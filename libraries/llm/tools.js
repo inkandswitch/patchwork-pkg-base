@@ -77,9 +77,10 @@ export default async function handle(args) {
 const DEFAULT_DESCRIPTION =
 	"Describe what this tool does, when the model should call it, and the parameters it takes — e.g. { city: string, units?: \"c\" | \"f\" }."
 
-/** @param {Repo} [repo] @returns {Repo} */
+/** @param {Repo} repo @returns {Repo} */
 function theRepo(repo) {
-	return /** @type {Repo} */ (repo || (typeof window !== "undefined" && window.repo) || null)
+	if (!repo || typeof repo.find !== "function") throw new TypeError("[llm] a Repo is required")
+	return repo
 }
 
 /** @param {string} [name] */
@@ -88,7 +89,7 @@ function slug(name) {
 }
 
 /** Create the handler file doc (a standard `file` doc the file tool can edit).
- * @param {Repo} [repo] @param {string} [name] @param {string} [content]
+ * @param {Repo} repo @param {string} [name] @param {string} [content]
  */
 export async function createToolFile(repo, name = "handler.js", content = DEFAULT_HANDLER) {
 	const r = theRepo(repo)
@@ -102,7 +103,7 @@ export async function createToolFile(repo, name = "handler.js", content = DEFAUL
 }
 
 /** Create a new llm-tool (handler file + wrapper doc). Returns the wrapper handle.
- * @param {Repo} [repo] @param {{name?: string, description?: string}} [opts]
+ * @param {Repo} repo @param {{name?: string, description?: string}} [opts]
  */
 export async function createLLMTool(repo, {name = "New tool", description = DEFAULT_DESCRIPTION} = {}) {
 	const r = theRepo(repo)
@@ -122,13 +123,14 @@ export async function createLLMTool(repo, {name = "New tool", description = DEFA
 // ---------------------------------------------------------------------------
 
 /** Read a folder's DocLinks, optionally filtered by `.type`.
- * @param {string|null|undefined} folderUrl @param {string} [type] @param {Repo} [repo]
+ * @param {string|null|undefined} folderUrl @param {string|undefined} type @param {Repo} repo
  * @returns {Promise<DocLink[]>}
  */
 export async function folderLinks(folderUrl, type, repo) {
+	const r = theRepo(repo)
 	if (typeof folderUrl !== "string") return []
 	try {
-		const folder = /** @type {FolderDoc} */ ((await theRepo(repo).find(/** @type {any} */ (folderUrl))).doc())
+		const folder = /** @type {FolderDoc} */ ((await r.find(/** @type {any} */ (folderUrl))).doc())
 		const docs = folder?.docs || []
 		return type ? docs.filter((l) => l.type === type) : docs
 	} catch {
@@ -137,13 +139,12 @@ export async function folderLinks(folderUrl, type, repo) {
 }
 
 /** Ensure a folder URL exists; create an empty `folder` doc if missing. Returns the URL.
- * @param {Repo} [repo] @param {string|null|undefined} [url] @param {string} [title]
+ * @param {Repo} repo @param {string|null|undefined} [url] @param {string} [title]
  */
 export async function ensureFolderUrl(repo, url, title = "Folder") {
+	const r = theRepo(repo)
 	if (typeof url === "string") return url
-	return (
-		await theRepo(repo).create2({"@patchwork": {type: "folder"}, title, docs: []})
-	).url
+	return (await r.create2({"@patchwork": {type: "folder"}, title, docs: []})).url
 }
 
 /** @param {Repo} repo @param {string} folderUrl @param {DocLink} docLink */
@@ -166,7 +167,7 @@ export async function removeFromFolder(repo, folderUrl, docUrl) {
 }
 
 /** Resolve the tools folder into [{ url, name, description, handlerUrl }].
- * @param {LLMConfig} [cfg] @param {Repo} [repo] @returns {Promise<ResolvedTool[]>}
+ * @param {LLMConfig|undefined} cfg @param {Repo} repo @returns {Promise<ResolvedTool[]>}
  */
 export async function resolveTools(cfg, repo) {
 	const r = theRepo(repo)
@@ -424,7 +425,7 @@ export function parseToolCalls(text) {
 }
 
 /** Fetch a handler file doc's JS source as a string.
- * @param {string} handlerUrl @param {Repo} [repo]
+ * @param {string} handlerUrl @param {Repo} repo
  */
 async function loadHandlerCode(handlerUrl, repo) {
 	const h = await theRepo(repo).find(/** @type {any} */ (handlerUrl))
@@ -437,9 +438,9 @@ async function loadHandlerCode(handlerUrl, repo) {
 /**
  * Load a tool's handler as a function. The handler file's JS is imported as an
  * ES module (via a blob URL) and runs in the MAIN thread with full page access
- * (window.repo, the account doc, the DOM). Use a sandbox (see runTool) for
- * untrusted / shared tools that shouldn't have that reach.
- * @param {string} handlerUrl @param {Repo} [repo]
+ * (the page's globals, the DOM). Use a sandbox (see runTool) for untrusted /
+ * shared tools that shouldn't have that reach.
+ * @param {string} handlerUrl @param {Repo} repo
  */
 export async function loadHandler(handlerUrl, repo) {
 	const code = await loadHandlerCode(handlerUrl, repo)
@@ -456,7 +457,7 @@ export async function loadHandler(handlerUrl, repo) {
 }
 
 // A module worker that imports the handler code in its OWN realm and runs it on
-// just the args we hand in — no window, no DOM, no window.repo, no account doc,
+// just the args we hand in — no window, no DOM, no repo, no account doc,
 // no network of ours. Only structured-cloneable args/results cross the boundary.
 const SANDBOX_BOOTSTRAP = `
 self.onmessage = async (e) => {
@@ -508,15 +509,18 @@ export async function runHandlerSandboxed(code, args, {timeoutMs = 10000} = {}) 
 /**
  * Run a resolved tool with args. By default loads + calls its handler in the
  * MAIN thread (full page access). Pass `{sandbox: true}` to run it in an
- * isolated Worker with no page access — for untrusted / shared tools.
+ * isolated Worker with no page access — for untrusted / shared tools. `repo`
+ * is where the handler file doc is read from.
  *
  * @param {ResolvedTool} tool   resolved tool ({handlerUrl, …})
  * @param {any} args
- * @param {any} [opts]  options, or a Repo (back-compat positional repo)
+ * @param {{repo: Repo, sandbox?: boolean, timeoutMs?: number} | Repo} opts  options, or a Repo (back-compat positional repo)
  */
-export async function runTool(tool, args, opts = {}) {
+export async function runTool(tool, args, opts) {
 	// Back-compat: runTool(tool, args, repo) — a Repo has a `.find` method.
-	const o = opts && typeof opts.find === "function" ? {repo: opts} : opts || {}
+	const o = /** @type {{repo: Repo, sandbox?: boolean, timeoutMs?: number}} */ (
+		opts && typeof (/** @type {any} */ (opts).find) === "function" ? {repo: opts} : opts || {}
+	)
 	if (o.sandbox) {
 		const code = await loadHandlerCode(/** @type {string} */ (tool.handlerUrl), o.repo)
 		return runHandlerSandboxed(code, args, {timeoutMs: o.timeoutMs})
@@ -562,7 +566,7 @@ const PROMPT_KINDS = {
 }
 
 /** Create a saved prompt (text file + wrapper). `kind` = "system" | "pre".
- * @param {Repo} [repo] @param {string} [kind] @param {{name?: string, text?: string}} [opts]
+ * @param {Repo} repo @param {string} [kind] @param {{name?: string, text?: string}} [opts]
  */
 export async function createPromptDoc(repo, kind, {name, text} = {}) {
 	const r = theRepo(repo)
@@ -582,7 +586,7 @@ export async function createPromptDoc(repo, kind, {name, text} = {}) {
 }
 
 /** Resolve the prompts folder (filtered by `kind`) into [{ url, name, promptUrl }].
- * @param {LLMConfig} [cfg] @param {string} [kind] @param {Repo} [repo]
+ * @param {LLMConfig|undefined} cfg @param {string|undefined} kind @param {Repo} repo
  */
 export async function resolvePromptDocs(cfg, kind, repo) {
 	const k = PROMPT_KINDS[/** @type {string} */ (kind)] || PROMPT_KINDS.system
@@ -602,13 +606,13 @@ export async function resolvePromptDocs(cfg, kind, repo) {
 }
 
 /** Read the text of the currently-selected prompt for `kind` (its file content).
- * @param {LLMConfig} [cfg] @param {string} [kind] @param {Repo} [repo]
+ * @param {LLMConfig|undefined} cfg @param {string|undefined} kind @param {Repo} repo
  */
 export async function resolvePromptText(cfg, kind, repo) {
+	const r = theRepo(repo)
 	const k = PROMPT_KINDS[/** @type {string} */ (kind)] || PROMPT_KINDS.system
 	const url = /** @type {any} */ (cfg)?.[k.urlKey] // top-level systemUrl / preUrl
 	if (!url) return ""
-	const r = theRepo(repo)
 	try {
 		const promptUrl = /** @type {any} */ ((await r.find(url)).doc())?.promptUrl
 		if (!promptUrl) return ""
@@ -622,7 +626,7 @@ export async function resolvePromptText(cfg, kind, repo) {
 }
 
 /** Resolve a cfg's selected system + pre prompt docs into `cfg.resolved.{system,pre}` text.
- * @param {LLMConfig} [cfg] @param {Repo} [repo]
+ * @param {LLMConfig|undefined} cfg @param {Repo} repo
  */
 export async function resolveCfgPrompts(cfg, repo) {
 	const system = await resolvePromptText(cfg, "system", repo)
@@ -635,12 +639,12 @@ export async function resolveCfgPrompts(cfg, repo) {
  * `systemPrompts`/`prePrompts` (URL arrays) and `prompts` (object) inside the
  * settings doc (see `ensureSettingsDoc`) into `folder` docs + the new scalar
  * shape. Idempotent.
- * @param {Repo} [repo]
+ * @param {Repo} repo
  */
 export async function migrateConfig(repo) {
 	const r = theRepo(repo)
-	const handle = await ensureSettingsDoc()
-	if (!r || !handle) return
+	const handle = await ensureSettingsDoc(null, r)
+	if (!handle) return
 	const llm = /** @type {any} */ (handle.doc() ?? {})
 	const oldTools = Array.isArray(llm.tools) ? llm.tools : null
 	const oldPromptsObj = llm.prompts && typeof llm.prompts === "object" ? llm.prompts : null

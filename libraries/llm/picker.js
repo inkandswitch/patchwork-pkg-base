@@ -235,6 +235,7 @@ const CSS = `
  * @property {string} [url]
  *
  * @typedef {Object} PickerOpts
+ * @property {import("@automerge/automerge-repo").Repo} repo  where the settings doc and the prompt / tool docs live
  * @property {PickerSource} [source]
  * @property {string[]} [locked]
  * @property {{name?: string, text?: string}} [toolPrompt]
@@ -1477,7 +1478,7 @@ function buildPickerInto(host, opts) {
 	 * @param {"system"|"pre"} kind
 	 */
 	function renderPromptPicker(wrap, kind) {
-		const repo = typeof window !== "undefined" ? window.repo : null
+		const repo = opts.repo
 		const isPre = kind === "pre"
 		const promptType = isPre ? "llm:pre-prompt" : "llm:system-prompt"
 		const urlKey = isPre ? "preUrl" : "systemUrl"
@@ -1700,7 +1701,7 @@ function buildPickerInto(host, opts) {
 
 	// ---- Tools section ----
 	function renderToolsSection() {
-		const repo = typeof window !== "undefined" ? window.repo : null
+		const repo = opts.repo
 		const wrap = el("div", {class: "llmp-body"})
 		content.append(wrap)
 
@@ -2150,18 +2151,20 @@ function buildScopedPicker(mount, opts, onRequestClose) {
  * a tool to embed and own. Returned synchronously, Suspense-style: it shows a
  * spinner and fills in once config resolves (no defaults-flash).
  *
- *   const panel = llm.dom({source, tools})
+ *   const panel = llm.dom({repo, source, tools})
  *   box.append(panel)
  *
- * Scope which config it edits with `{source:{read,write,url?}}` (url shows in the
- * status bar). Pass `{tools:[{name,description}]}` to surface the host's built-in
- * tools in the Tools section. The element carries `.result` (resolves on
- * `.destroy()`), `.destroy()` (flush + remove), `.revert()` (revert + remove).
+ * `repo` is required. Scope which config it edits with
+ * `{source:{read,write,url?}}` (url shows in the status bar). Pass
+ * `{tools:[{name,description}]}` to surface the host's built-in tools in the
+ * Tools section. The element carries `.result` (resolves on `.destroy()`),
+ * `.destroy()` (flush + remove), `.revert()` (revert + remove).
  *
- * @param {PickerOpts} [opts]
+ * @param {PickerOpts} opts
  * @returns {HTMLElement}
  */
-export function dom(opts = {}) {
+export function dom(opts) {
+	if (!opts?.repo) throw new TypeError("[llm] dom() requires a repo")
 	injectStyles()
 	const root = el("div", {class: "llmp llmp--bare", role: "group"})
 	root.append(spinner())
@@ -2189,7 +2192,7 @@ export function dom(opts = {}) {
 		getCtl = buildScopedPicker(root, opts, () => root.destroy())
 	}
 	if (opts.source) start()
-	else ensureSettingsDoc().then(start)
+	else ensureSettingsDoc(null, opts.repo).then(start)
 	return root
 }
 
@@ -2197,16 +2200,17 @@ export function dom(opts = {}) {
  * The config picker wrapped in an outer popover frame (title + ×, Cancel/Done).
  * Returned synchronously; mount it and show it:
  *
- *   const el = llm.popup(); root.append(el); el.showPopover()
+ *   const el = llm.popup({repo}); root.append(el); el.showPopover()
  *   const cfg = await el.result   // resolves on close (null if cancelled)
  *
  * Same options as `dom()`. Changes autosave live; Done keeps them, Cancel reverts
  * to the open-time snapshot, light-dismiss keeps them.
  *
- * @param {PickerOpts} [opts]
+ * @param {PickerOpts} opts
  * @returns {HTMLElement}
  */
-export function popup(opts = {}) {
+export function popup(opts) {
+	if (!opts?.repo) throw new TypeError("[llm] popup() requires a repo")
 	injectStyles()
 	const frame = el("div", {class: "llmp", popover: "auto", role: "dialog"})
 	frame.append(spinner())
@@ -2258,7 +2262,7 @@ export function popup(opts = {}) {
 		getCtl = buildScopedPicker(inner, opts, close)
 	}
 	if (opts.source) start()
-	else ensureSettingsDoc().then(start)
+	else ensureSettingsDoc(null, opts.repo).then(start)
 	return frame
 }
 

@@ -63,13 +63,14 @@ export function makeLLMWorkerSpec(lib) {
 	 * would let a tool choose the provider and its own key.
 	 * @param {any} frame
 	 * @param {Promise<any>|null} settingsWarm
+	 * @param {any} repo
 	 */
-	async function resolveCfg0(frame, settingsWarm) {
+	async function resolveCfg0(frame, settingsWarm, repo) {
 		if (settingsWarm) await settingsWarm
 		// ensureConfig quietly falls back to defaults (and an empty API key) when
 		// the settings doc isn't loaded yet, e.g. when the warm timed out.
-		if (!lib.settingsDocHandle()) await lib.ensureSettingsDoc()
-		return lib.ensureConfig(frame.scope)
+		if (!lib.settingsDocHandle()) await lib.ensureSettingsDoc(null, repo)
+		return lib.ensureConfig(frame.scope, null, repo)
 	}
 
 	/**
@@ -86,9 +87,9 @@ export function makeLLMWorkerSpec(lib) {
 		}
 	}
 
-	/** @param {any} frame @param {Promise<any>|null} settingsWarm */
-	async function resolveForFrame(frame, settingsWarm) {
-		const cfg = await lib.resolveCfgPrompts(await resolveCfg0(frame, settingsWarm))
+	/** @param {any} frame @param {Promise<any>|null} settingsWarm @param {any} repo */
+	async function resolveForFrame(frame, settingsWarm, repo) {
+		const cfg = await lib.resolveCfgPrompts(await resolveCfg0(frame, settingsWarm, repo), repo)
 		return {cfg, config: lib.callConfig(cfg, samplingOverrides(frame))}
 	}
 
@@ -97,8 +98,9 @@ export function makeLLMWorkerSpec(lib) {
 	 * `llm:tool` docs, tagged `host`. A consumer tool wins a name clash.
 	 * @param {any} frame
 	 * @param {any} cfg0
+	 * @param {any} repo
 	 */
-	async function toolsFor(frame, cfg0) {
+	async function toolsFor(frame, cfg0, repo) {
 		const tools = enabledTools(frame.tools, cfg0.toolToggles).map((t) => ({
 			name: t.name,
 			description: t.description,
@@ -106,7 +108,7 @@ export function makeLLMWorkerSpec(lib) {
 		}))
 		if (!frame.userTools) return tools
 		const taken = new Set(tools.map((t) => sanitizeToolName(t.name)))
-		for (const t of await lib.resolveTools(cfg0)) {
+		for (const t of await lib.resolveTools(cfg0, repo)) {
 			if (taken.has(sanitizeToolName(t.name))) continue
 			taken.add(sanitizeToolName(t.name))
 			tools.push({name: t.name, description: t.description, parameters: t.parameters, host: true})
@@ -166,28 +168,33 @@ export function makeLLMWorkerSpec(lib) {
 		createWorker: lib.createWorker,
 
 		/**
-		 * Warm the settings doc. `ctx.element` reaches the tool-storage provider;
-		 * the transport bounds this with a timeout.
-		 * @param {{element?: HTMLElement}} ctx
+		 * Warm the settings doc. `ctx.element` reaches the tool-storage provider
+		 * and `ctx.repo` is where the doc is found; the transport bounds this
+		 * with a timeout.
+		 * @param {{element?: HTMLElement, repo?: any}} ctx
 		 */
 		open(ctx) {
-			return ctx.element ? Promise.resolve(lib.ensureSettingsDoc(ctx.element)).catch(() => null) : null
+			return ctx.element && ctx.repo
+				? Promise.resolve(lib.ensureSettingsDoc(ctx.element, ctx.repo)).catch(() => null)
+				: null
 		},
 
 		/**
 		 * @param {any} frame
-		 * @param {any} io  @grjte/patchwork-worker's IO: {post, emit, on, workerId, state}
+		 * @param {any} io  @grjte/patchwork-worker's IO: {post, emit, on, workerId, state, ctx}
 		 */
 		async handle(frame, io) {
 			const {post, emit, on, workerId, state: settingsWarm} = io
+			const repo = io.ctx?.repo
 			const op = frame.op
 			const sessionKey = frame.sessionKey || workerId
 
 			if (op === "generate") {
-				const cfg0 = await resolveCfg0(frame, settingsWarm)
-				const tools = await toolsFor(frame, cfg0)
+				const cfg0 = await resolveCfg0(frame, settingsWarm, repo)
+				const tools = await toolsFor(frame, cfg0, repo)
 				const system = systemFor(frame.system, cfg0.provider)
 				const base = {
+					repo,
 					messages: frame.text != null ? frame.text : wireNames(frame.messages),
 					// A continuation is a raw string prompt with no chat messages.
 					continuation: !!frame.continuation && frame.messages === undefined,
@@ -270,16 +277,16 @@ export function makeLLMWorkerSpec(lib) {
 			// Always sandboxed: the caller may itself be a sandboxed tool, and must
 			// not get page access through us.
 			if (op === "run-tool") {
-				const cfg0 = await resolveCfg0(frame, settingsWarm)
-				const tool = findTool(await lib.resolveTools(cfg0), frame.name)
+				const cfg0 = await resolveCfg0(frame, settingsWarm, repo)
+				const tool = findTool(await lib.resolveTools(cfg0, repo), frame.name)
 				if (!tool) throw new Error(`no tool named "${frame.name}"`)
-				const result = await lib.runTool(tool, frame.args, {sandbox: true})
+				const result = await lib.runTool(tool, frame.args, {repo, sandbox: true})
 				emit({type: "tool-result", result})
 				return {sessionKey}
 			}
 
 			if (op === "predict") {
-				const {cfg, config} = await resolveForFrame(frame, settingsWarm)
+				const {cfg, config} = await resolveForFrame(frame, settingsWarm, repo)
 				config.continuation = !!frame.continuation
 				if (config.provider === "builtin") {
 					emit({type: "predictions", candidates: []})
@@ -313,7 +320,7 @@ export function makeLLMWorkerSpec(lib) {
 				"probe-attention": ["probe-attention-result"],
 			}
 			if (analytical[op]) {
-				const {config} = await resolveForFrame(frame, settingsWarm)
+				const {config} = await resolveForFrame(frame, settingsWarm, repo)
 				const [terminal, progress] = analytical[op]
 				on((msg) => {
 					if (msg.type === progress) emit(msg)
@@ -330,7 +337,7 @@ export function makeLLMWorkerSpec(lib) {
 			}
 
 			if (op === "preload") {
-				const {config} = await resolveForFrame(frame, settingsWarm)
+				const {config} = await resolveForFrame(frame, settingsWarm, repo)
 				post({type: "preload", provider: config.provider, config})
 			}
 			return {sessionKey}

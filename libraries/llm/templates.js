@@ -87,10 +87,10 @@ handle.on("change", fn)                    // fires on local + remote edits
 handle.off("change", fn)
 \`\`\`
 
-# Globals
+# Repo & account
 
 \`\`\`js
-window.repo                                // the automerge Repo
+const repo = element.repo                  // the automerge Repo, from the tool's element (not window.repo)
 window.accountDocHandle                    // current user's account DocHandle
 
 const handle = await repo.find(url)        // returns Promise<DocHandle> (already ready)

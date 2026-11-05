@@ -1,3 +1,4 @@
+import type { Repo } from "@automerge/automerge-repo/slim";
 import { describe, it, expect, afterEach, vi } from "vitest";
 
 // The provider resolves workers from the host plugin registry. Stub it before
@@ -95,6 +96,8 @@ function ask(el: HTMLElement, kind: string) {
   };
 }
 
+const repo = {} as Repo;
+
 let cleanups: Array<() => void> = [];
 afterEach(() => {
   cleanups.forEach((f) => f());
@@ -107,7 +110,7 @@ function mount() {
   document.body.appendChild(host);
   const el = document.createElement("div");
   host.appendChild(el);
-  const dispose = WorkerProvider(host);
+  const dispose = WorkerProvider(host, repo);
   cleanups.push(() => {
     dispose();
     host.remove();
@@ -139,7 +142,7 @@ describe("WorkerProvider", () => {
     expect(reply.value.writable).toBeInstanceOf(WritableStream);
   });
 
-  it("passes the mounted element to the spec, so a worker can resolve host context", async () => {
+  it("passes the mounted element and repo to the spec, so a worker can resolve host context", async () => {
     let seen: any = null;
     registry.register(
       "llm",
@@ -155,6 +158,7 @@ describe("WorkerProvider", () => {
     await ask(el, "llm").settled();
     // open runs eagerly inside serveWorkerSpec, before any frame.
     expect(seen?.element).toBeInstanceOf(HTMLElement);
+    expect(seen?.repo).toBe(repo);
   });
 
   it("refuses when the plugin does not resolve to a WorkerSpec", async () => {

@@ -19,11 +19,15 @@ const OPEN_TIMEOUT_MS = 5000
  *   fire-and-forget and can't be aborted.
  * @property {string} workerId
  * @property {any} state  what `spec.open` resolved, or null
- * @property {{element?: HTMLElement}} ctx
+ * @property {ServeContext} ctx
+ *
+ * Host-realm context from whoever serves the spec: an element inside a mounted
+ * view (to reach providers) and the repo to resolve documents in.
+ * @typedef {{element?: HTMLElement, repo?: unknown}} ServeContext
  *
  * @typedef {Object} WorkerSpec
  * @property {() => Worker | Promise<Worker>} createWorker
- * @property {(ctx: {element?: HTMLElement}) => any} [open]
+ * @property {(ctx: ServeContext) => any} [open]
  * @property {(frame: any, io: IO) => any} handle  returns an abort token
  * @property {(token: any, post: Post) => void} [abort]
  */
@@ -32,7 +36,7 @@ let idSeq = 0
 
 /**
  * @param {WorkerSpec} spec
- * @param {{element?: HTMLElement}} [ctx]
+ * @param {ServeContext} [ctx]
  * @returns {{readable: ReadableStream, writable: WritableStream}}
  */
 export function serveWorkerSpec(spec, ctx = {}) {
