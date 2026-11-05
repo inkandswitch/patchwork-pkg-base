@@ -691,7 +691,13 @@ export default function PatternWitchTool(handle, element) {
     if (mod || e.altKey || e.shiftKey) return;
     if (key === "b") setTool("draw");
     else if (key === "f") setTool("fill");
-    else return;
+    else if (/^[0-9]$/.test(key)) {
+      // 1–9 then 0, like the number row: 1 is the first colour, 0 the tenth.
+      const i = key === "0" ? 9 : Number(key) - 1;
+      if (i >= getDoc().palette.length) return;
+      activeColor = i;
+      renderPalette();
+    } else return;
     e.preventDefault();
     e.stopPropagation();
   });
