@@ -219,6 +219,7 @@ export class DraftRepo {
       presentedUrl: presented,
       backing,
       beforeWrite: heads ? undefined : () => this.#cloneOnWrite(root),
+      writable: heads ? undefined : () => this.#isSnapshot(root),
     });
     const entry: Entry = {
       presented,
@@ -318,6 +319,14 @@ export class DraftRepo {
       console.error(`[drafts] failed to fork ${root}:`, err);
       return null;
     }
+  }
+
+  // Read from a fork point the next write clones, rather than pinned.
+  #isSnapshot(root: AutomergeUrl): boolean {
+    const draft = this.#checkout.draft;
+    if (!draft || this.#checkout.at?.[root]?.to) return false;
+    const entry = draft.doc()?.clones?.[root];
+    return !!entry && !entry.cloneUrl;
   }
 
   // Unknown while the tree is still being walked; erring on forking is safe.

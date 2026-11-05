@@ -16,6 +16,7 @@ const OWNED: ReadonlySet<PropertyKey> = new Set<PropertyKey>([
   "documentId",
   "backingHandle",
   "swapBackingDocHandle",
+  "isReadOnly",
   "change",
   "changeAt",
   "sub",
@@ -40,6 +41,9 @@ export type DraftHandleOpts<T> = {
   // Runs before every write, and may swap the backing (to a fresh clone) so
   // the write lands there.
   beforeWrite?: () => void;
+  // Whether writes go through even though the backing is a read-only view:
+  // a snapshot the first write clones.
+  writable?: () => boolean;
 };
 
 type SubEntry = {
@@ -63,6 +67,7 @@ export class DraftHandle<T> {
   readonly #presentedUrl: AutomergeUrl;
   #handle: DocHandle<T>;
   readonly #beforeWrite: (() => void) | undefined;
+  readonly #writable: (() => boolean) | undefined;
   readonly #listeners = new Map<string, Set<Listener>>();
   readonly #forwarders = new Map<string, Listener>();
   readonly #subs = new Map<AutomergeUrl, SubEntry>();
@@ -72,6 +77,7 @@ export class DraftHandle<T> {
     this.#presentedUrl = opts.presentedUrl;
     this.#handle = opts.backing;
     this.#beforeWrite = opts.beforeWrite;
+    this.#writable = opts.writable;
     this.#self = forwardingProxy<DraftHandle<T>>(
       this,
       () => this.#handle,
@@ -122,6 +128,10 @@ export class DraftHandle<T> {
     });
   }
 
+  isReadOnly(): boolean {
+    return !this.#writable?.() && this.#handle.isReadOnly();
+  }
+
   change(...args: Parameters<DocHandle<T>["change"]>): void {
     this.#beforeWrite?.();
     this.#handle.change(...args);
@@ -167,6 +177,7 @@ export class DraftHandle<T> {
       presentedUrl: presented,
       backing: backingSub,
       beforeWrite: this.#beforeWrite,
+      writable: this.#writable,
     });
     this.#subs.set(presented, { wrapped, segments });
     return wrapped as unknown as DocHandle<unknown>;

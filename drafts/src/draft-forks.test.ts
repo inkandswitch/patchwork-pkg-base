@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import "@automerge/automerge";
 import {
   Repo,
@@ -8,9 +8,12 @@ import {
   type DocHandle,
 } from "@automerge/automerge-repo";
 
-import type { DraftDoc, DraftMemberDoc } from "./draft-types";
+import type { DraftDoc } from "./draft-types";
 import { cloneAt } from "./draft-clones";
-import { forkPoints, mergeDraft } from "./draft-forks";
+
+vi.mock("@inkandswitch/patchwork-plugins", () => import("./test-registry"));
+
+const { forkPoints, mergeDraft } = await import("./draft-forks");
 
 type Note = { text: string };
 
@@ -20,13 +23,15 @@ function setup() {
   const repo = new Repo({});
   const a = repo.create<Note>({ text: "a" });
   const b = repo.create<Note>({ text: "b" });
-  const mainDraft = draftDoc(repo, a.url, { isMain: true });
-  const main: DraftMemberDoc[] = [a, b].map(({ url }) => ({
-    url,
-    cloneUrl: null,
-    clonedAt: null,
-  }));
-  return { repo, a, b, mainDraft, main };
+  const folder = repo.create({
+    "@patchwork": { type: "folder" },
+    docs: [
+      { url: a.url, type: "note" },
+      { url: b.url, type: "note" },
+    ],
+  });
+  const mainDraft = draftDoc(repo, folder.url, { isMain: true });
+  return { repo, a, b, folder, mainDraft };
 }
 
 function draftDoc(
@@ -45,18 +50,19 @@ function draftDoc(
 
 describe("forkPoints", () => {
   it("records every doc of main at its current heads", async () => {
-    const { repo, a, b, main } = setup();
+    const { repo, a, b, folder } = setup();
 
-    const clones = await forkPoints(repo, main, null, null);
+    const clones = await forkPoints(repo, folder.url, null, null);
 
     expect(clones).toEqual({
+      [folder.url]: { clonedAt: folder.heads() },
       [a.url]: { clonedAt: a.heads() },
       [b.url]: { clonedAt: b.heads() },
     });
   });
 
   it("branches off a parent draft's clones and keeps its unforked points", async () => {
-    const { repo, a, b, main } = setup();
+    const { repo, a, b, folder } = setup();
     const aClone = repo.clone(a);
     aClone.change((d) => {
       d.text = "a on parent";
@@ -72,16 +78,17 @@ describe("forkPoints", () => {
       },
     });
 
-    const clones = await forkPoints(repo, main, parent.url, null);
+    const clones = await forkPoints(repo, folder.url, parent.url, null);
 
     expect(clones).toEqual({
+      [folder.url]: { clonedAt: folder.heads() },
       [a.url]: { source: aClone.url, clonedAt: aClone.heads() },
       [b.url]: { clonedAt: bAt },
     });
   });
 
   it("records each doc as of a version", async () => {
-    const { repo, a, main } = setup();
+    const { repo, a, folder } = setup();
     a.change((d) => {
       d.text = "a1";
     }, { time: 100 });
@@ -90,7 +97,7 @@ describe("forkPoints", () => {
       d.text = "a2";
     }, { time: 200 });
 
-    const clones = await forkPoints(repo, main, null, {
+    const clones = await forkPoints(repo, folder.url, null, {
       docUrl: a.url,
       hash: decodeHeads(at)[0],
       time: 100,

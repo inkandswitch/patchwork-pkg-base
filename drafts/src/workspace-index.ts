@@ -7,7 +7,7 @@ import type {
 import type { HasDrafts } from "./draft-types.js";
 import { canonicalUrl } from "./clone-policy.js";
 import { childrenOf, mayHaveChildren } from "./doc-tree.js";
-import { isWorkspaceFolder } from "./folder-links.js";
+import { isContainerType, isWorkspaceFolder } from "./folder-links.js";
 
 export type WorkspaceIndexOptions = {
   rootFolderUrl: () => AutomergeUrl | undefined;
@@ -39,8 +39,10 @@ const REBUILD_DEBOUNCE_MS = 50;
 // read through the workspace's checked-out draft, so entries added, moved or
 // removed on the draft are indexed where the draft has them.
 //
-// Only containers are loaded; leaf docs are classified from the link alone.
-// Every container read is watched, and any change rebuilds the index.
+// Outside workspaces only folders are loaded; inside one, every doc whose
+// children plugins could list more (folders, essays with embeds). Leaves are
+// classified from the link alone. Every doc read is watched, and any change
+// rebuilds the index.
 export function createWorkspaceIndex(
   repo: Repo,
   options: WorkspaceIndexOptions
@@ -156,8 +158,12 @@ export function createWorkspaceIndex(
       }
 
       const children = await childrenOf(content.doc());
+      // Outside a workspace only containers can lead into one; inside, every
+      // doc with children belongs to it.
+      const descend = (type: string | undefined) =>
+        inner ? mayHaveChildren(type) : type === undefined || isContainerType(type);
       const containers = children.filter(
-        (c) => mayHaveChildren(c.type) && !visited.has(c.url)
+        (c) => descend(c.type) && !visited.has(c.url)
       );
       // Start every child container loading at once; the walk itself stays
       // in entry order so the first path is deterministic.
@@ -165,7 +171,7 @@ export function createWorkspaceIndex(
       for (const child of children) {
         if (visited.has(child.url)) continue;
         visited.add(child.url);
-        if (mayHaveChildren(child.type)) {
+        if (descend(child.type)) {
           await visitContainer(child.url, inner);
         } else if (inner) {
           nextRoots.set(child.url, inner);

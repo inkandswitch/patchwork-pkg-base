@@ -409,7 +409,7 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
 
     const parentUrl = selected(); // null = main
     const head = atVersion ? (scrubber()?.head ?? null) : null;
-    const clones = await forkPoints(repo, list().main.members, parentUrl, head);
+    const clones = await forkPoints(repo, docHandle.url, parentUrl, head);
 
     const mainDraft = await ensureMainDraft(repo, docHandle);
     if (isFolder() && !isWorkspaceFolder(docHandle.doc())) {

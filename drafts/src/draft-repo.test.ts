@@ -100,6 +100,7 @@ describe("DraftRepo", () => {
     repo.checkout({ draft: null, at: { [original.url]: { to: before } } });
     await tick();
     expect(handle.doc()?.text).toBe("main");
+    expect(handle.isReadOnly()).toBe(true);
   });
 
   it("keeps sub-handles in the presented url space and forks on their writes", async () => {
@@ -172,6 +173,7 @@ describe("DraftRepo", () => {
     repo.checkout({ draft, at: null });
     const handle = await repo.find<Note>(original.url);
     expect(handle.doc()?.text).toBe("main");
+    expect(handle.isReadOnly()).toBe(false);
 
     handle.change((d) => {
       d.items.push("draft");

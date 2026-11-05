@@ -15,31 +15,35 @@ import type {
 import { computeCheckpoint, type ChangeRef } from "./checkpoint.js";
 import { canonicalUrl } from "./clone-policy.js";
 import { cloneAt } from "./draft-clones.js";
+import { walkDocTree } from "./doc-tree.js";
 
 // The fork points for a draft forked off `parentUrl` (null = main) as of
 // `head` (null = now), per doc. A doc the parent cloned branches off its
 // clone; one the parent only recorded a fork point for keeps that point,
 // since the parent never changed it; every other doc of main's branches off
-// the original. A doc that didn't exist yet at `head` is left out.
+// the original. Main's docs are the tree under `rootUrl`. A doc that didn't
+// exist yet at `head` is left out.
 export async function forkPoints(
   repo: Repo,
-  mainMembers: DraftMemberDoc[],
+  rootUrl: AutomergeUrl,
   parentUrl: AutomergeUrl | null,
   head: ChangeRef | null
 ): Promise<Record<AutomergeUrl, CloneEntry>> {
-  const parentClones = parentUrl
-    ? ((await repo.find<DraftDoc>(parentUrl)).doc()?.clones ?? {})
-    : {};
+  const [{ urls: mainUrls }, parentClones] = await Promise.all([
+    walkDocTree(repo, canonicalUrl(rootUrl)),
+    parentUrl
+      ? repo.find<DraftDoc>(parentUrl).then((h) => h.doc()?.clones ?? {})
+      : ({} as Record<AutomergeUrl, CloneEntry>),
+  ]);
   const clones: Record<AutomergeUrl, CloneEntry> = {};
-  const sources: DraftMemberDoc[] = mainMembers
-    .filter((member) => !parentClones[member.url])
-    .map(({ url }) => ({ url, cloneUrl: null, clonedAt: null }));
+  const sources: DraftMemberDoc[] = mainUrls
+    .filter((url) => !parentClones[url])
+    .map((url) => ({ url, cloneUrl: null, clonedAt: null }));
   for (const [url, entry] of Object.entries(parentClones) as [
     AutomergeUrl,
     CloneEntry,
   ][]) {
-    const inherited = forkEntry(url, entry.source, entry.clonedAt);
-    if (!entry.cloneUrl) clones[url] = inherited;
+    if (!entry.cloneUrl) clones[url] = forkEntry(url, entry.source, entry.clonedAt);
     else sources.push({ url, cloneUrl: entry.cloneUrl, clonedAt: entry.clonedAt });
   }
 
