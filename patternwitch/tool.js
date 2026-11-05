@@ -41,6 +41,7 @@ const STYLES = `
   box-sizing: border-box;
   overflow: hidden;
   user-select: none;
+  outline: none;
 }
 .patternwitch * { box-sizing: border-box; }
 
@@ -319,6 +320,8 @@ const TOOL_CURSORS = Object.fromEntries(
 export default function PatternWitchTool(handle, element) {
   const root = document.createElement("div");
   root.className = "patternwitch";
+  // Focusable, so keyboard shortcuts only fire while you're in this tool.
+  root.tabIndex = -1;
   const style = document.createElement("style");
   style.textContent = STYLES;
   element.append(style, root);
@@ -328,6 +331,7 @@ export default function PatternWitchTool(handle, element) {
   let activeTool = "draw"; // "draw" | "fill"
   let showSettings = false;
   const history = []; // stack of pixel snapshots for undo (local)
+  const future = []; // stack of pixel snapshots for redo (local)
   const HISTORY_MAX = 40;
 
   // ---- helpers ----
@@ -338,6 +342,7 @@ export default function PatternWitchTool(handle, element) {
   function pushHistory(pixels = snapshot()) {
     history.push(pixels);
     if (history.length > HISTORY_MAX) history.shift();
+    future.length = 0; // a new edit forks history; the old future is gone
   }
 
   // Write a whole grid cell by cell, so concurrent edits from peers merge
@@ -396,7 +401,14 @@ export default function PatternWitchTool(handle, element) {
 
   function undo() {
     if (!history.length) return;
+    future.push(snapshot());
     writePixels(history.pop());
+  }
+
+  function redo() {
+    if (!future.length) return;
+    history.push(snapshot());
+    writePixels(future.pop());
   }
 
   function clearAll() {
@@ -411,11 +423,11 @@ export default function PatternWitchTool(handle, element) {
   root.innerHTML = `
     <div class="toolbar">
       <div class="tool-group">
-        <button class="btn" data-tool="draw" title="Draw">${icon("pencil")}</button>
-        <button class="btn" data-tool="fill" title="Fill">${icon("fill")}</button>
+        <button class="btn" data-tool="draw" title="Brush (B)">${icon("pencil")}</button>
+        <button class="btn" data-tool="fill" title="Fill (F)">${icon("fill")}</button>
       </div>
       <div class="tool-group">
-        <button class="btn" data-act="undo" title="Undo">${icon("undo")}</button>
+        <button class="btn" data-act="undo" title="Undo (⌘Z)">${icon("undo")}</button>
         <button class="btn" data-act="clear" data-danger title="Clear all">${icon("trash")}</button>
       </div>
       <div class="spacer"></div>
@@ -622,11 +634,42 @@ export default function PatternWitchTool(handle, element) {
   // Toolbar / actions
   // ============================================================
   root.querySelectorAll("[data-tool]").forEach((el) => {
-    el.addEventListener("click", () => {
-      activeTool = el.dataset.tool;
-      renderToolbar();
-    });
+    el.addEventListener("click", () => setTool(el.dataset.tool));
   });
+  function setTool(tool) {
+    activeTool = tool;
+    renderToolbar();
+  }
+
+  // Shortcuts, scoped to this tool: the listener is on our root, which only
+  // sees keys while focus is inside it. Text-ish inputs in the settings modal
+  // keep their own keys.
+  root.addEventListener("keydown", (e) => {
+    if (e.target.closest("input, textarea, select, [contenteditable]")) return;
+    const key = e.key.toLowerCase();
+    const mod = e.metaKey || e.ctrlKey;
+    if (mod && !e.altKey && key === "z") {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.shiftKey) redo();
+      else undo();
+      return;
+    }
+    if (mod || e.altKey || e.shiftKey) return;
+    if (key === "b") setTool("draw");
+    else if (key === "f") setTool("fill");
+    else return;
+    e.preventDefault();
+    e.stopPropagation();
+  });
+
+  // Clicking anywhere in the tool (including the canvas) takes focus, so the
+  // shortcuts work straight after painting.
+  root.addEventListener("pointerdown", (e) => {
+    if (e.target.closest("input")) return;
+    root.focus({ preventScroll: true });
+  });
+
   root.querySelector('[data-act="undo"]').addEventListener("click", undo);
   root.querySelector('[data-act="clear"]').addEventListener("click", clearAll);
   root.querySelector('[data-act="settings"]').addEventListener("click", () => {
