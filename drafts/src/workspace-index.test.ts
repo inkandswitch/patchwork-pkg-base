@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   generateAutomergeUrl,
   type AutomergeUrl,
@@ -6,7 +6,9 @@ import {
   type Repo,
 } from "@automerge/automerge-repo/slim";
 
-import { createWorkspaceIndex } from "./workspace-index";
+vi.mock("@inkandswitch/patchwork-plugins", () => import("./test-registry"));
+
+const { createWorkspaceIndex } = await import("./workspace-index");
 
 type Link = { url: AutomergeUrl; type: string; name: string };
 

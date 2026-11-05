@@ -23,6 +23,16 @@ export const plugins = [
     },
   },
   {
+    type: "patchwork:children",
+    id: "markdown-embed-children",
+    name: "Markdown embeds",
+    datatypes: ["essay", "markdown"],
+    async load() {
+      const { markdownChildren } = await import("./children.js");
+      return markdownChildren;
+    },
+  },
+  {
     type: "codemirror:extension",
     id: "codemirror-markdown",
     name: "Markdown",

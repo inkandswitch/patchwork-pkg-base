@@ -30,7 +30,7 @@ export function isDirectoryDoc(doc) {
   return asString(doc?.["@patchwork"]?.type) === "directory";
 }
 
-const DIRECTORY_RESERVED = new Set(["@patchwork", "lastSyncAt"]);
+export const DIRECTORY_RESERVED = new Set(["@patchwork", "lastSyncAt"]);
 
 // Mirrors pushwork's folder shape, which types a file link by its extension.
 function fileType(name) {

@@ -11,7 +11,7 @@ import type {
   HasWorkspaceCheckouts,
   WorkspaceCheckoutsDoc,
 } from "./draft-types.js";
-import { containerChildren } from "./folder-links.js";
+import { walkDocTree } from "./doc-tree.js";
 
 // Resolve the account's WorkspaceCheckoutsDoc, creating it and linking it via
 // `workspaceCheckoutsUrl` the first time.
@@ -85,28 +85,11 @@ async function absorbDrafts(
   });
 }
 
-// Every doc reachable beneath `root` through containers, root excluded.
+// Every doc beneath `root`, root excluded.
 async function descendants(
   repo: Repo,
   root: AutomergeUrl
 ): Promise<AutomergeUrl[]> {
-  const seen = new Set<AutomergeUrl>([root]);
-  const out: AutomergeUrl[] = [];
-  let frontier: AutomergeUrl[] = [root];
-  while (frontier.length) {
-    const handles = await Promise.all(
-      frontier.map((url) => repo.find<unknown>(url).catch(() => null))
-    );
-    const next: AutomergeUrl[] = [];
-    for (const handle of handles) {
-      for (const child of containerChildren(handle?.doc())) {
-        if (seen.has(child.url)) continue;
-        seen.add(child.url);
-        out.push(child.url);
-        if (child.isContainer) next.push(child.url);
-      }
-    }
-    frontier = next;
-  }
-  return out;
+  const { urls } = await walkDocTree(repo, root);
+  return urls.slice(1);
 }

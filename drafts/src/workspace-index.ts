@@ -6,7 +6,8 @@ import type {
 
 import type { HasDrafts } from "./draft-types.js";
 import { canonicalUrl } from "./clone-policy.js";
-import { containerChildren, isWorkspaceFolder } from "./folder-links.js";
+import { childrenOf, mayHaveChildren } from "./doc-tree.js";
+import { isWorkspaceFolder } from "./folder-links.js";
 
 export type WorkspaceIndexOptions = {
   rootFolderUrl: () => AutomergeUrl | undefined;
@@ -154,9 +155,9 @@ export function createWorkspaceIndex(
         if (readUrl !== url) content = (await load(readUrl)) ?? original;
       }
 
-      const children = containerChildren(content.doc());
+      const children = await childrenOf(content.doc());
       const containers = children.filter(
-        (c) => c.isContainer && !visited.has(c.url)
+        (c) => mayHaveChildren(c.type) && !visited.has(c.url)
       );
       // Start every child container loading at once; the walk itself stays
       // in entry order so the first path is deterministic.
@@ -164,7 +165,7 @@ export function createWorkspaceIndex(
       for (const child of children) {
         if (visited.has(child.url)) continue;
         visited.add(child.url);
-        if (child.isContainer) {
+        if (mayHaveChildren(child.type)) {
           await visitContainer(child.url, inner);
         } else if (inner) {
           nextRoots.set(child.url, inner);
