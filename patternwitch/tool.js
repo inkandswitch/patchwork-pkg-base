@@ -292,6 +292,26 @@ function icon(name) {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]}</svg>`;
 }
 
+// Crosshair (hotspot at 8,8) with the tool's icon small at the bottom-right.
+// Everything is drawn twice, white halo under black, so it reads on any pixel.
+function toolCursor(name) {
+  const cross = `M8.5 1.5v5M8.5 10.5v5M1.5 8.5h5M10.5 8.5h5`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" fill="none" stroke-linejoin="round">
+    <path d="${cross}" stroke="#fff" stroke-width="3" stroke-linecap="square"/>
+    <path d="${cross}" stroke="#000" stroke-width="1" stroke-linecap="square"/>
+    <g transform="translate(15 15) scale(.6)" stroke-linecap="round">
+      <g stroke="#fff" stroke-width="6">${ICONS[name]}</g>
+      <g stroke="#000" stroke-width="2">${ICONS[name]}</g>
+    </g>
+  </svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}") 8 8, crosshair`;
+}
+
+const TOOL_ICONS = { draw: "pencil", fill: "fill" };
+const TOOL_CURSORS = Object.fromEntries(
+  Object.entries(TOOL_ICONS).map(([tool, name]) => [tool, toolCursor(name)]),
+);
+
 // ============================================================================
 // Tool
 // ============================================================================
@@ -488,6 +508,7 @@ export default function PatternWitchTool(handle, element) {
     root.querySelectorAll("[data-tool]").forEach((el) => {
       el.toggleAttribute("data-active", el.dataset.tool === activeTool);
     });
+    canvas.style.cursor = TOOL_CURSORS[activeTool];
   }
 
   // ============================================================
