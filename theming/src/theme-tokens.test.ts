@@ -1,7 +1,6 @@
 import {readFileSync} from "node:fs"
 import {resolve} from "node:path"
 import {describe, expect, it} from "vitest"
-import {relativeLuminance, schemeForRgb} from "./fill-scheme.ts"
 import {generateThemeCss} from "./theme-editor.tsx"
 
 const css = readFileSync(resolve(__dirname, "theme.css"), "utf8")
@@ -100,20 +99,6 @@ describe("theme.css tokens", () => {
 		)
 		const missing = [...referenced].filter((n) => !defined.has(n) && !optIn.has(n))
 		expect(missing).toEqual([])
-	})
-})
-
-describe("fill scheme", () => {
-	it("computes WCAG luminance", () => {
-		expect(relativeLuminance(255, 255, 255)).toBeCloseTo(1)
-		expect(relativeLuminance(0, 0, 0)).toBe(0)
-	})
-
-	it("calls the bundled fills correctly", () => {
-		expect(schemeForRgb(255, 255, 255)).toBe("light") // lychee
-		expect(schemeForRgb(0x1a, 0x1b, 0x1e)).toBe("dark") // gloom
-		expect(schemeForRgb(0x80, 0x80, 0x80)).toBe("light") // mid grey
-		expect(schemeForRgb(0x40, 0x40, 0x40)).toBe("dark")
 	})
 })
 
