@@ -76,6 +76,21 @@ export function ThemeTray(element: HTMLElement) {
 			color: var(--studio-chrome-line, var(--studio-line, black));
 			box-shadow: 0 0.5rem 1rem color-mix(in oklch, var(--studio-line, black), transparent 88%);
 			font-family: var(--studio-family-sans, system-ui, sans-serif);
+			/* Grows out of the tray button once it has been measured and placed
+			   (data-placed). Closing is instant. */
+			opacity: 0;
+			scale: 0.97;
+			transform-origin: top right;
+		}
+		.theme-tray-popover[data-side="above"] {
+			transform-origin: bottom right;
+		}
+		.theme-tray-popover[data-placed] {
+			opacity: 1;
+			scale: 1;
+			transition:
+				opacity 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
+				scale 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 		}
 		.theme-tray-header {
 			display: flex;
@@ -163,6 +178,7 @@ export function ThemeTray(element: HTMLElement) {
 		const [popoverPosition, setPopoverPosition] = createSignal<{
 			left: number
 			top: number
+			above: boolean
 		}>()
 		const [themes, setThemes] = createSignal<ThemeDescription[]>([])
 		const [filter, setFilter] = createSignal("")
@@ -218,7 +234,7 @@ export function ThemeTray(element: HTMLElement) {
 					: buttonRect.bottom + gap
 			const top = Math.min(Math.max(preferredTop, margin), maxTop)
 
-			setPopoverPosition({left, top})
+			setPopoverPosition({left, top, above: top < buttonRect.top})
 		}
 
 		const onDocumentClick = (event: MouseEvent) => {
@@ -287,6 +303,8 @@ export function ThemeTray(element: HTMLElement) {
 						<div
 							ref={popoverElement}
 							class="theme-tray-popover"
+							data-placed={popoverPosition() ? "" : undefined}
+							data-side={popoverPosition()?.above ? "above" : "below"}
 							style={{
 								left: `${popoverPosition()?.left ?? 0}px`,
 								top: `${popoverPosition()?.top ?? 0}px`,

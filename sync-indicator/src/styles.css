@@ -61,6 +61,19 @@
   padding: 16px;
   box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
   outline: none;
+  /* Grows out of the indicator: opened below it, right edges aligned (see
+     Popover.tsx updatePosition). Closing is instant. */
+  transform-origin: top right;
+  transition:
+    opacity 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
+    scale 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+}
+
+@starting-style {
+  .sync-popover {
+    opacity: 0;
+    scale: 0.97;
+  }
 }
 
 .sync-popover-body {

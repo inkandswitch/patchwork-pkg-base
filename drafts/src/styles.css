@@ -245,6 +245,17 @@
   border: 1px solid var(--drafts-border);
   border-radius: var(--drafts-radius-sm);
   box-shadow: var(--drafts-shadow-md);
+  /* Grows out of its button. Closing is instant. */
+  transform-origin: top right;
+  transition:
+    opacity 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
+    transform 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+}
+@starting-style {
+  .draft-menu-list {
+    opacity: 0;
+    transform: scale(0.97);
+  }
 }
 
 .draft-menu-item {

@@ -44,8 +44,16 @@ function position(el: HTMLElement, anchor: Anchor, placement: Placement) {
         : innerWidth - MARGIN - width;
   }
   if (top + height > innerHeight - MARGIN) top = innerHeight - MARGIN - height;
-  el.style.left = `${Math.max(MARGIN, left)}px`;
-  el.style.top = `${Math.max(MARGIN, top)}px`;
+  left = Math.max(MARGIN, left);
+  top = Math.max(MARGIN, top);
+  el.style.left = `${left}px`;
+  el.style.top = `${top}px`;
+  // Grow out of the point the menu hangs off: the click, or the trigger's
+  // corner (whichever side a submenu flipped to).
+  const x =
+    placement === "right-start" ? (left < a.left ? a.left : a.right) : a.left;
+  const y = placement === "right-start" ? a.top : a.bottom;
+  el.style.transformOrigin = `${x - left}px ${y - top}px`;
 }
 
 /**

@@ -121,9 +121,11 @@ function Frame(props: FrameProps) {
     if (rect.left + menuWidth > window.innerWidth - 8) {
       menuEl.style.left = "";
       menuEl.style.right = `${window.innerWidth - rect.right}px`;
+      menuEl.style.transformOrigin = "top right";
     } else {
       menuEl.style.right = "";
       menuEl.style.left = `${rect.left}px`;
+      menuEl.style.transformOrigin = "top left";
     }
     menuEl.showPopover();
   }

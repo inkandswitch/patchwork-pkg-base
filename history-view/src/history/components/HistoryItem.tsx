@@ -206,7 +206,7 @@ export function HistoryItem(props: HistoryItemProps) {
       </TimelineCard>
 
       <Show when={isExpanded()}>
-        <div style={{ "margin-left": "1rem", "margin-top": "0.25rem", display: "flex", "flex-direction": "column", gap: "0.25rem" }}>
+        <div class="history-subitems" style={{ "margin-left": "1rem", "margin-top": "0.25rem", display: "flex", "flex-direction": "column", gap: "0.25rem" }}>
           <For each={subItems()}>
             {(subItem) => {
               const subAdd = () => subItem.additions ?? 0;

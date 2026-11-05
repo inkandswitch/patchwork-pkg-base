@@ -5,6 +5,8 @@ import {
   createSignal,
   createMemo,
   createEffect,
+  createComputed,
+  on,
   onCleanup,
   Show,
   For,
@@ -46,6 +48,18 @@ export function CommentsView(props: { element: HTMLElement }) {
   // every mounted doc's threads and never drop the previous document's
   // comments as you navigate.
   const commentEntries = useScopedCommentEntries(props.element, targetDocUrl);
+
+  // Threads that turn up while you're already looking at a doc (one you just
+  // added, or a collaborator's arriving live) lift in; the ones loaded with
+  // the doc just appear, or every thread would animate on every doc switch.
+  // "Loaded with the doc" is anything mounted within SETTLE_MS of selecting it.
+  const SETTLE_MS = 1000;
+  let settledAt = 0;
+  createComputed(
+    on(targetDocUrl, () => {
+      settledAt = performance.now() + SETTLE_MS;
+    })
+  );
 
   // `selection` is read-only input (driven by the active editor), `highlight`
   // is our output. Splitting them avoids the feedback loop a single shared
@@ -257,6 +271,19 @@ export function CommentsView(props: { element: HTMLElement }) {
           {(threadUrl) => (
             <div
               class="comments-thread"
+              data-new={performance.now() > settledAt ? "" : undefined}
+              // Once in, it's an ordinary thread: its actions row remounts each
+              // time the thread becomes primary (it follows the cursor), and
+              // that mustn't lift in again.
+              onTransitionEnd={(e) => {
+                if (
+                  e.propertyName === "opacity" &&
+                  (e.target as Element).parentElement?.localName ===
+                    "patchwork-view"
+                ) {
+                  e.currentTarget.removeAttribute("data-new");
+                }
+              }}
               onClick={(e) => onClickThreadCard(e, threadUrl)}
               onMouseEnter={() => setHoveredThread(threadUrl)}
               onMouseLeave={() =>

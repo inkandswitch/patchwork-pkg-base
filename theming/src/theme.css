@@ -296,6 +296,8 @@
 	--studio-transition-fast: 0.1s ease;
 	--studio-transition: 0.15s ease;
 	--studio-transition-slow: 0.25s ease;
+	/* Strong ease-out for things entering: fast start, long gentle settle. */
+	--studio-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 
 	--editor-line: var(--studio-line);
 	--editor-fill: var(--studio-fill);

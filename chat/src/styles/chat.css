@@ -69,7 +69,16 @@
       background:var(--bg-darkest); border:1px solid var(--border); border-radius:8px;
       padding:8px; min-width:180px; z-index:200;
     }
-    .chat-notify-menu.show { display:block; }
+    /* Grows out of the bell: opened below it, right edges aligned. Closing is instant. */
+    .chat-notify-menu.show {
+      display:block; transform-origin:top right;
+      transition:
+        opacity 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
+        transform 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+    }
+    @starting-style {
+      .chat-notify-menu.show { opacity:0; transform:scale(0.97); }
+    }
     .chat-notify-menu-row {
       display:flex; align-items:center; justify-content:space-between; gap:8px;
       padding:6px 4px; font-size:13px; color:var(--text-secondary); cursor:pointer;

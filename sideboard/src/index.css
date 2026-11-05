@@ -567,12 +567,21 @@ button {
     0 4px 6px -1px rgb(0 0 0 / 0.1),
     0 2px 4px -2px rgb(0 0 0 / 0.1);
   outline: none;
-  transform-origin: var(--kb-menu-content-transform-origin);
-  animation: contentHide 250ms ease-in forwards;
 }
-.popmenu__content[data-expanded],
-.popmenu__sub-content[data-expanded] {
-  animation: contentShow 250ms ease-out;
+/* A menu grows out of the click or its trigger (transform-origin is set in
+   popmenu.tsx), quickly, since it's opened many times a day. Closing is
+   instant, and so are submenus: they open on hover, and anything slower than
+   the pointer reads as lag. */
+.popmenu__content {
+  transition:
+    opacity 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
+    scale 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+}
+@starting-style {
+  .popmenu__content {
+    opacity: 0;
+    scale: 0.97;
+  }
 }
 .popmenu__item,
 .popmenu__checkbox-item,
@@ -611,26 +620,6 @@ button {
   outline: none;
   background-color: var(--document-list-selection-fill);
   color: var(--document-list-selection-line);
-}
-@keyframes contentShow {
-  from {
-    opacity: 0;
-    transform: scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-@keyframes contentHide {
-  from {
-    opacity: 1;
-    transform: scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: scale(0.96);
-  }
 }
 
 .popmenu__item--highlighted {

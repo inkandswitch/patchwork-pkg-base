@@ -135,6 +135,16 @@
   overflow: hidden;
   font-family: var(--embed-frame-family);
   font-size: 0.85em;
+  /* Grows out of the tool button (origin set in tool.tsx). Closing is instant. */
+  transition:
+    opacity 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
+    transform 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+}
+@starting-style {
+  .embed-frame .tool-menu[popover]:popover-open {
+    opacity: 0;
+    transform: scale(0.97);
+  }
 }
 
 .embed-frame .tool-menu .list {

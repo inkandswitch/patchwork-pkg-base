@@ -71,6 +71,22 @@
   gap: 0.5rem;
 }
 
+/* A thread that arrived while the doc was open (see SETTLE_MS in
+   CommentsView.tsx). Its card and actions mount whenever the `comment-thread`
+   tool finishes loading, so they animate on mount rather than the wrapper,
+   which could otherwise lift in while still empty. */
+.comments-thread[data-new] > patchwork-view > * {
+  transition:
+    opacity 200ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
+    transform 200ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+}
+@starting-style {
+  .comments-thread[data-new] > patchwork-view > * {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+
 /* The thread's card + actions are rendered by the `comment-thread` tool into
    its <patchwork-view> host, so that host is the flex column that lays them
    out (a custom element is `display: inline` by default). */

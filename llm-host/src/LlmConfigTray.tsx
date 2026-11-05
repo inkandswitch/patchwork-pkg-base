@@ -45,7 +45,18 @@ export function LlmConfigTray(element: HTMLElement) {
 			border-radius: var(--studio-radius-md, 8px);
 			box-shadow: var(--studio-shadow-lg, 0 8px 32px rgba(0,0,0,0.24));
 			padding: var(--studio-space-sm, 0.5rem);
+			/* Grow out of the tray button. \`scale\`, not \`transform\`: the inline
+			   transform flips the popover above the button. Closing is instant. */
+			transform-origin: top right;
+			transition:
+				opacity 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
+				scale 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 		}
+		@starting-style {
+			.llm-config-tray-popover { opacity: 0; scale: 0.97; }
+		}
+		.llm-config-tray-popover[data-side="above"] { transform-origin: bottom right; }
+		.llm-config-tray-robot { display: block; }
 	`;
   element.append(style);
 
@@ -173,20 +184,39 @@ export function LlmConfigTray(element: HTMLElement) {
           ref={buttonEl}
           class="llm-config-tray-button"
           title="LLM model & config"
+          aria-label="LLM model & config"
           onClick={(event) => {
             event.stopPropagation();
             if (open()) closePicker();
             else openPicker(undefined, {});
           }}
         >
-          <span>🤖</span>
-          <span>model</span>
+          <svg
+            class="llm-config-tray-robot"
+            viewBox="0 0 16 16"
+            width="14"
+            height="14"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.25"
+            stroke-linecap="round"
+            aria-hidden="true"
+          >
+            <path d="M8 2.75V4.5" />
+            <circle cx="8" cy="2" r="0.9" fill="currentColor" stroke="none" />
+            <rect x="2.75" y="4.5" width="10.5" height="8.5" rx="2.25" />
+            <path d="M1.25 7.75v2.5M14.75 7.75v2.5" />
+            <circle cx="6" cy="8.25" r="1" fill="currentColor" stroke="none" />
+            <circle cx="10" cy="8.25" r="1" fill="currentColor" stroke="none" />
+            <path d="M6.5 10.75h3" />
+          </svg>
         </button>
         <Show when={open()}>
           <Portal mount={document.body}>
             <div
               ref={popoverEl}
               class="llm-config-tray-popover"
+              data-side={pos()?.above ? "above" : "below"}
               style={{
                 left: `${pos()?.left ?? 0}px`,
                 top: `${pos()?.top ?? 0}px`,

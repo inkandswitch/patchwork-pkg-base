@@ -826,6 +826,14 @@
   background: color-mix(in oklch, var(--pw-packages-line), transparent 55%);
   backdrop-filter: blur(2px);
   overflow-y: auto;
+  /* Same enter as threepane's frame popover: the wash fades, the card lifts in.
+     Closing is instant. */
+  transition: opacity 150ms ease;
+}
+@starting-style {
+  .pw-modal {
+    opacity: 0;
+  }
 }
 .pw-install {
   width: min(34rem, 100%);
@@ -838,6 +846,15 @@
   border: 1px solid var(--pw-packages-border-strong);
   border-radius: var(--studio-radius-lg, 12px);
   box-shadow: 0 12px 40px color-mix(in oklch, var(--pw-packages-line), transparent 78%);
+  transition:
+    opacity 200ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
+    transform 200ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+}
+@starting-style {
+  .pw-install {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
 }
 .pw-install__head {
   display: flex;

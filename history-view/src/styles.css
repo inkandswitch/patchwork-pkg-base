@@ -219,3 +219,18 @@
   border-color: var(--history-accent);
   background: color-mix(in oklch, var(--history-accent) 10%, var(--history-card-bg));
 }
+
+/* A group's sub-items when it's expanded. Fade and settle only: the rows below
+   still jump to make room, since animating height in a list people are reading
+   slows the reading down. Collapsing is instant. */
+.history-subitems {
+  transition:
+    opacity 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
+    transform 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+}
+@starting-style {
+  .history-subitems {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}

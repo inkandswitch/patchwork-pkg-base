@@ -142,6 +142,17 @@
   border: 1px solid var(--folder-view-card-border);
   border-radius: var(--studio-radius-md, 8px);
   box-shadow: var(--folder-view-card-shadow-hover);
+  /* Grows out of its button. Closing is instant. */
+  transform-origin: top left;
+  transition:
+    opacity 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
+    transform 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+}
+@starting-style {
+  .folder-view .folder-create-menu {
+    opacity: 0;
+    transform: scale(0.97);
+  }
 }
 
 .folder-view .folder-create-menu[hidden] {
