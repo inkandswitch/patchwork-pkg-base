@@ -288,7 +288,7 @@ At boot, the host pre-populates the iframe's plugin registries with metadata for
 
 ### Repo provider in iframe
 
-The iframe registers a `<repo-provider>` custom element and mounts the root `<patchwork-view component=...>` inside it. This mirrors the host bootloader pattern — `<repo-provider>` answers `repo:handle-descriptor` subscriptions with an identity response (no remapping), which is required by `OverlayRepo.find()`. Without it, every `patchwork-view` in legacy mode (with `doc-url`) would hang forever waiting for a descriptor response.
+The iframe registers a `<repo-provider>` custom element and mounts the root `<patchwork-view component=...>` inside it. This mirrors the host bootloader pattern: `<repo-provider>` carries the iframe's repo on `.repo`, and every `patchwork-view` inside inherits it. (On hosts older than patchwork-providers 0.6 it also answers `repo:handle-descriptor` subscriptions, without which legacy-mode views hang waiting for a descriptor.)
 
 The root is an ordinary `patchwork:component`, so mounting it through `patchwork-view`'s normal component path reuses the existing machinery the in-iframe root needs anyway: lazy module loading from the registry (including plugins that haven't loaded yet, which arrive both in the initial registry and via live RPC pushes), hot-reload on a newer `importUrl`, and the mount/unmount lifecycle events that in-iframe provider-readiness gates rely on.
 

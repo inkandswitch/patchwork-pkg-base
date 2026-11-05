@@ -8,7 +8,7 @@ import {
   Show,
   type Accessor,
 } from "solid-js";
-import { createDocSignal } from "solid-automerge";
+import { createDocSignal, useRepo } from "solid-automerge";
 import type {
   AutomergeUrl,
   DocHandle,
@@ -65,7 +65,7 @@ const EMPTY_DRAFT_LIST: DraftList = {
 
 // Shown in the panel footer, logged on load, and stamped into fork
 // diagnostics; bump on deploy to tell builds apart.
-const DRAFTS_VERSION = "0.0.46";
+const DRAFTS_VERSION = "0.0.47";
 
 // Logged at module load so the console shows which build is running even
 // before the panel renders.
@@ -177,8 +177,8 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     });
   };
 
-  const getRepo = (): Repo | undefined =>
-    "repo" in window ? window.repo : undefined;
+  const contextRepo = useRepo();
+  const getRepo = (): Repo | undefined => contextRepo;
 
   // Monotonic counter so a slow checkpoint computation can't overwrite a newer
   // scrub position (a drag fires one recompute per snapped change).
@@ -403,7 +403,7 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     if (!docHandle) return;
     const repo = getRepo();
     if (!repo) {
-      console.warn("[drafts] window.repo is not set");
+      console.warn("[drafts] no repo");
       return;
     }
 
@@ -557,7 +557,7 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
       return;
     const repo = getRepo();
     if (!repo) {
-      console.warn("[drafts] window.repo is not set");
+      console.warn("[drafts] no repo");
       return;
     }
     const draftHandle = await repo.find<DraftDoc>(draftUrl);
@@ -580,7 +580,7 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     if (!window.confirm(warning)) return;
     const repo = getRepo();
     if (!repo) {
-      console.warn("[drafts] window.repo is not set");
+      console.warn("[drafts] no repo");
       return;
     }
     const parentUrl = mergeParentUrl();
@@ -1733,7 +1733,7 @@ function DraftChangesList(props: {
   checkpoint: Accessor<DraftCheckpoint | null>;
   onReturnToLatest: () => void;
 }) {
-  const repo = "repo" in window ? window.repo : undefined;
+  const repo = useRepo();
 
   // The group doc is read live, so ChangeGrouper writes stream in as rows.
   const [changeGroupHandle, setChangeGroupHandle] =

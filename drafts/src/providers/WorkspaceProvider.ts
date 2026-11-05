@@ -16,6 +16,7 @@ import type {
   WorkspaceCheckoutsDoc,
 } from "../draft-types.js";
 import { canonicalUrl } from "../clone-policy.js";
+import { baseRepo } from "../draft-repo.js";
 import { createWorkspaceIndex } from "../workspace-index.js";
 
 const WORKSPACE_ROOT_SELECTOR = "workspace:root";
@@ -46,7 +47,7 @@ export type WorkspaceRoot = {
 // it never creates or edits a document. The frame mounts the per-root
 // draft-state and overlay providers from the answer, and the draft-state
 // provider persists the checkout.
-export const WorkspaceProvider = (element: HTMLElement) => {
+export const WorkspaceProvider = (element: HTMLElement, inherited: Repo) => {
   const rawAccountUrl = element.getAttribute(ATTR_ACCOUNT_URL);
   if (!rawAccountUrl || !isValidAutomergeUrl(rawAccountUrl)) {
     console.warn(
@@ -57,12 +58,7 @@ export const WorkspaceProvider = (element: HTMLElement) => {
   }
   const accountUrl: AutomergeUrl = rawAccountUrl;
 
-  const maybeRepo = "repo" in window ? window.repo : undefined;
-  if (!maybeRepo) {
-    console.warn("[drafts] window.repo is not set; workspace provider disabled");
-    return () => {};
-  }
-  const repo: Repo = maybeRepo;
+  const repo = baseRepo(inherited);
 
   let disposed = false;
   let accountHandle: DocHandle<HasWorkspaceCheckouts> | null = null;

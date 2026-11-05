@@ -276,8 +276,9 @@ export async function boot(deps: BootDeps) {
 
     // 12. Register the patchwork-view and repo-provider custom elements, then
     // create the root <repo-provider> wrapper — mirrors the host bootloader
-    // pattern. It answers `repo:handle-descriptor` subscriptions so
-    // OverlayRepo.find() doesn't hang.
+    // pattern. It carries the iframe's repo, which every view inside inherits.
+    // Hosts on patchwork-providers before 0.6 also need it to answer
+    // `repo:handle-descriptor`, or their views' finds never resolve.
     patchworkElements.registerPatchworkViewElement({ repo });
     patchworkProviders.registerRepoProviderElement(repo);
     const repoProvider = document.createElement("repo-provider");

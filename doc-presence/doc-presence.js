@@ -17,6 +17,7 @@ let myContactUrl = null
 const sessions = new Map()
 let currentDocUrl = null
 let unsubscribeView = null
+let repo = null
 
 let loadingSelf = null
 function loadSelf() {
@@ -30,7 +31,7 @@ async function loadSelfOnce() {
 		await new Promise(resolve => setTimeout(resolve, 250))
 	}
 	myContactUrl = contactUrl
-	const contactHandle = await window.repo.find(myContactUrl)
+	const contactHandle = await repo.find(myContactUrl)
 	function refresh() {
 		const c = contactHandle.doc()
 		if (!c) return
@@ -145,9 +146,9 @@ async function onSelectedDocChange(newUrl) {
 
 	currentDocUrl = newUrl
 
-	if (newUrl && window.repo) {
+	if (newUrl && repo) {
 		loadSelf()
-		const handle = await window.repo.find(newUrl)
+		const handle = await repo.find(newUrl)
 		// selection may have moved on while we awaited; don't join a stale doc
 		if (currentDocUrl !== newUrl) return
 		joinDoc(handle)
@@ -156,6 +157,7 @@ async function onSelectedDocChange(newUrl) {
 
 function connectToSelectedDocProvider(element) {
 	if (unsubscribeView) return
+	repo = element.repo
 	unsubscribeView = subscribe(element, {type: "patchwork:selected-view"}, view => {
 		onSelectedDocChange(view?.url)
 	})

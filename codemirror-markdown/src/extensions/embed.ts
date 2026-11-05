@@ -201,16 +201,16 @@ function embedSyntax({ docId, toolId }: DocRef): string {
 
 /**
  * Import each OS file dropped from the desktop as a Patchwork `file` document,
- * returning tool-less refs to embed. Uses the realm-local `window.repo` (the
- * documented global) — fine for creating brand-new docs, which aren't subject
- * to draft remapping.
+ * returning tool-less refs to embed. The docs are created in the repo the
+ * editor's view inherits.
  */
-async function fileDropRefs(files: FileList): Promise<DocRef[]> {
-  const repo = (window as unknown as { repo?: any }).repo;
+async function fileDropRefs(
+  view: EditorView,
+  files: FileList
+): Promise<DocRef[]> {
+  const repo = repoAt(view.dom);
   if (!repo) {
-    console.warn(
-      "[codemirror-embed] window.repo unavailable; ignoring dropped files"
-    );
+    console.warn("[codemirror-embed] no repo; ignoring dropped files");
     return [];
   }
   const refs: DocRef[] = [];
@@ -245,6 +245,16 @@ async function fileDropRefs(files: FileList): Promise<DocRef[]> {
     }
   }
   return refs;
+}
+
+// The nearest ancestor's `repo`, crossing shadow roots.
+function repoAt(node: Element): any {
+  for (let el: Element | null = node; el; ) {
+    const repo = (el as { repo?: { find?: unknown } }).repo;
+    if (typeof repo?.find === "function") return repo;
+    const root = el.parentNode;
+    el = el.parentElement ?? (root instanceof ShadowRoot ? root.host : null);
+  }
 }
 
 function insertRefs(view: EditorView, pos: number, refs: DocRef[]): void {
@@ -299,7 +309,9 @@ function embedDropHandlers() {
       // OS files import asynchronously; insert once the docs exist.
       if (dt.files && dt.files.length > 0) {
         event.preventDefault();
-        void fileDropRefs(dt.files).then((refs) => insertRefs(view, pos, refs));
+        void fileDropRefs(view, dt.files).then((refs) =>
+          insertRefs(view, pos, refs)
+        );
         return true;
       }
 

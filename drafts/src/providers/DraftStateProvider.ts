@@ -13,6 +13,7 @@ import type {
   HasWorkspaceCheckouts,
 } from "../draft-types.js";
 import { canonicalUrl } from "../clone-policy.js";
+import { baseRepo } from "../draft-repo.js";
 import { createMountTracker } from "../mount-tracker.js";
 import { ensureWorkspaceCheckouts } from "../workspace-docs.js";
 import { createDraftState } from "./draft-state.js";
@@ -63,9 +64,9 @@ function checkoutFor(
 //   - `draft:list`        → DraftList (see `createDraftState`)
 //   - `draft:baseline`    → Baseline for one doc
 //
-// Consumers recover the live `DocHandle`s from the realm-local `window.repo`,
-// so member entries carry only plain `AutomergeUrl`s.
-export const DraftStateProvider = (element: HTMLElement) => {
+// Consumers recover the live `DocHandle`s from their own repo, so member
+// entries carry only plain `AutomergeUrl`s.
+export const DraftStateProvider = (element: HTMLElement, inherited: Repo) => {
   const rawUrl = element.getAttribute(ATTR_DOC_URL);
   if (!rawUrl || !isValidAutomergeUrl(rawUrl)) {
     console.warn(
@@ -76,14 +77,7 @@ export const DraftStateProvider = (element: HTMLElement) => {
   }
   const docUrl: AutomergeUrl = rawUrl;
 
-  const maybeRepo = "repo" in window ? window.repo : undefined;
-  if (!maybeRepo) {
-    console.warn(
-      "[drafts] window.repo is not set; draft-state provider disabled"
-    );
-    return () => {};
-  }
-  const repo: Repo = maybeRepo;
+  const repo = baseRepo(inherited);
 
   const rawSeed = element.getAttribute(ATTR_CHECKED_OUT);
   const seed = rawSeed && isValidAutomergeUrl(rawSeed) ? rawSeed : null;

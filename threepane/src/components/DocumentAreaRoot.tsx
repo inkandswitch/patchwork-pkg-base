@@ -239,9 +239,9 @@ export function DocumentAreaRoot(props: DocumentAreaRootProps) {
 // mounts once and follows the checked-out draft itself (via the draft-state
 // provider's `draft:checked-out` doc), re-pointing live document handles in
 // place — so neither a draft switch nor a history checkpoint move remounts
-// anything here. Checkpoint pins travel on the *backing* url inside the
-// streamed `repo:handle-descriptor` answers (see `DraftOverlayProvider`), so
-// the presented doc url the view is keyed on stays stable while scrubbing.
+// anything here. Checkpoint pins live in the overlay's repo, which re-points
+// each handle at the pinned heads (see `DraftRepo`), so the doc url the view
+// is keyed on stays stable while scrubbing.
 //
 // The comments + focus providers and the context (right) sidebar live *inside*
 // the overlay so that, on a draft, comment threads / selection resolve against
@@ -268,11 +268,10 @@ function DraftDocumentArea(props: {
   const contextItems = useTaggedComponents("context-tool");
   const hasContext = () => contextItems().length > 0;
 
-  // Remount key for the main view: just the selected doc. Checkpoint pins are
-  // streamed by the overlay provider on the descriptors' *backing* urls and
-  // `OverlayRepo` swaps handle backings in place, so scrubbing history must not
-  // change this key. Stamping heads here would also override the streamed pin:
-  // in `OverlayRepo`, heads on the presented url win over the backing's.
+  // Remount key for the main view: just the selected doc. The overlay's repo
+  // swaps handle backings in place for checkpoint pins, so scrubbing history
+  // must not change this key. Stamping heads here would also override the
+  // pin: in `DraftRepo`, heads on the requested url win over the checkpoint's.
   const mainViewKey = createMemo<string | undefined>(() =>
     props.selectedDocUrl()
   );
