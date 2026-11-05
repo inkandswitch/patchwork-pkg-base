@@ -236,12 +236,7 @@ export function UnavailableCard(props: {
           </span>
         </p>
       </Show>
-      <p>if it turns up, it'll open right here.</p>
-      <div class="doc-card__actions">
-        <button type="button" class="doc-card__button" onClick={props.onRetry}>
-          try again
-        </button>
-      </div>
+      <p>we'll keep looking. if it turns up, it'll open right here.</p>
       <p class="doc-card__aside">
         <code class="doc-card__code doc-card__url">{props.url}</code>
       </p>
