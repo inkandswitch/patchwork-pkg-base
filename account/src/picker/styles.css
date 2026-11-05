@@ -54,7 +54,7 @@
     width: 56px;
     height: 56px;
     display: block;
-    cursor: pointer;
+    cursor: var(--studio-cursor-pointer, pointer);
 
     &::after {
       content: "";
@@ -63,7 +63,7 @@
       border-radius: 50%;
       background: rgb(0 0 0 / 30%);
       opacity: 0;
-      transition: opacity 100ms;
+      transition: opacity max(1ms, calc(100ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)));
     }
 
     &:hover::after,
@@ -92,15 +92,15 @@
     margin-top: 12px;
     font-size: 1.125rem;
     font-weight: 600;
-    border: 1px solid transparent;
+    border: var(--studio-border-width, 1px) var(--studio-border-style, solid) transparent;
     background: transparent;
     padding: 0.25rem 0.375rem;
     border-radius: 4px;
     height: auto;
 
     &:focus-visible {
-      outline: 2px solid var(--account-picker-fg);
-      outline-offset: 1px;
+      outline: var(--studio-focus-ring, 2px solid var(--account-picker-fg));
+      outline-offset: var(--studio-focus-ring-offset, 1px);
     }
   }
 
@@ -150,11 +150,11 @@
     padding: 0.25rem 0.5rem;
     font-size: 0.8125rem;
     font-weight: 500;
-    cursor: pointer;
+    cursor: var(--studio-cursor-pointer, pointer);
     border: none;
     background: transparent;
     color: inherit;
-    transition: all 100ms;
+    transition: all max(1ms, calc(100ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)));
 
     &[data-selected] {
       background: var(--account-picker-bg);
@@ -168,7 +168,7 @@
   }
 
   & .btn {
-    cursor: pointer;
+    cursor: var(--studio-cursor-pointer, pointer);
     display: inline-flex;
     align-items: center;
     border-radius: 4px;
@@ -177,7 +177,7 @@
     border: none;
     height: 2rem;
     padding: 0 0.75rem;
-    transition: all 100ms;
+    transition: all max(1ms, calc(100ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)));
     color: var(--account-picker-fg);
 
     &:disabled {
@@ -198,11 +198,11 @@
     &.secondary,
     &.ghost {
       background: var(--account-picker-bg);
-      border: 1px solid var(--account-picker-border);
+      border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--account-picker-border);
       box-shadow: 0 1px 2px rgb(0 0 0 / 5%);
 
       &:hover {
-        background: var(--account-picker-hover);
+        background: var(--studio-chrome-hover-fill, var(--account-picker-hover));
         box-shadow: none;
       }
     }
@@ -213,7 +213,7 @@
     height: 2rem;
     width: 100%;
     border-radius: 4px;
-    border: 1px solid var(--account-picker-border);
+    border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--account-picker-border);
     background: var(--account-picker-bg);
     padding: 0.375rem 0.5rem;
     font-size: 0.8125rem;
@@ -224,12 +224,12 @@
     }
 
     &:focus-visible {
-      outline: 2px solid var(--account-picker-fg);
-      outline-offset: 1px;
+      outline: var(--studio-focus-ring, 2px solid var(--account-picker-fg));
+      outline-offset: var(--studio-focus-ring-offset, 1px);
     }
 
     &:disabled {
-      opacity: 0.5;
+      opacity: var(--studio-disabled-opacity, 0.5);
     }
 
     &.valid {
@@ -244,7 +244,7 @@
   }
 
   & .tooltip-trigger {
-    cursor: pointer;
+    cursor: var(--studio-cursor-pointer, pointer);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -256,12 +256,12 @@
     color: inherit;
 
     &:hover {
-      background: var(--account-picker-hover);
+      background: var(--studio-chrome-hover-fill, var(--account-picker-hover));
     }
   }
 
   & .tooltip-content {
-    z-index: 50;
+    z-index: var(--studio-layer-tooltip, 50);
     border-radius: 4px;
     background: var(--account-picker-tooltip-bg);
     padding: 0.25rem 0.5rem;
@@ -277,7 +277,7 @@
     background: none;
     border: none;
     padding: 0;
-    cursor: pointer;
+    cursor: var(--studio-cursor-pointer, pointer);
 
     &:hover .presence-nametag {
       opacity: 0.85;
@@ -312,10 +312,10 @@
     left: 0;
     padding: 6px;
     background: var(--account-picker-bg);
-    border: 1px solid var(--account-picker-border);
+    border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--account-picker-border);
     border-radius: 8px;
     box-shadow: 0 4px 16px rgb(0 0 0 / 12%);
-    z-index: 30;
+    z-index: var(--studio-layer-dropdown, 30);
   }
 
   & .color-grid {
@@ -327,7 +327,7 @@
   & .color-swatch {
     width: 24px;
     height: 24px;
-    cursor: pointer;
+    cursor: var(--studio-cursor-pointer, pointer);
     padding: 0;
     display: flex;
     align-items: center;
@@ -347,7 +347,7 @@
   & .color-swatch-custom {
     position: relative;
     overflow: hidden;
-    cursor: pointer;
+    cursor: var(--studio-cursor-pointer, pointer);
     background: conic-gradient(
       hsl(0 70% 55%),
       hsl(60 70% 55%),
@@ -362,7 +362,7 @@
       position: absolute;
       inset: 0;
       opacity: 0;
-      cursor: pointer;
+      cursor: var(--studio-cursor-pointer, pointer);
       width: 100%;
       height: 100%;
       border: none;
@@ -438,9 +438,9 @@
   & .modal-backdrop {
     position: fixed;
     inset: 0;
-    background: rgb(0 0 0 / 20%);
-    backdrop-filter: blur(2px);
-    z-index: 100;
+    background: var(--studio-backdrop, rgb(0 0 0 / 20%));
+    backdrop-filter: var(--studio-backdrop-blur, blur(2px));
+    z-index: var(--studio-layer-overlay, 100);
   }
 
   & .modal {
@@ -448,9 +448,9 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    z-index: 101;
+    z-index: var(--studio-layer-modal, 101);
     background: var(--account-picker-bg);
-    border: 1px solid var(--account-picker-border);
+    border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--account-picker-border);
     border-radius: 8px;
     padding: 1.25rem;
     display: flex;
@@ -473,11 +473,11 @@
     overflow: hidden;
     border-radius: 6px;
     background: var(--account-picker-border);
-    cursor: grab;
+    cursor: var(--studio-cursor-grab, grab);
     touch-action: none;
 
     &:active {
-      cursor: grabbing;
+      cursor: var(--studio-cursor-grabbing, grabbing);
     }
   }
 

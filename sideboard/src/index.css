@@ -71,7 +71,7 @@ button {
   border: none;
   font: inherit;
   color: inherit;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   padding: 0;
 }
 
@@ -104,7 +104,7 @@ button {
     margin-left: -2px;
     background: transparent;
     border: none;
-    cursor: pointer;
+    cursor: var(--studio-cursor-pointer, pointer);
     opacity: 0.5;
     color: var(--document-list-line);
   }
@@ -144,12 +144,12 @@ button {
   height: 2rem;
   padding: 0;
   justify-content: center;
-  cursor: grab;
+  cursor: var(--studio-cursor-grab, grab);
   /* icon rides a little paler than the full ink at rest */
   color: color-mix(in oklch, var(--document-list-line), transparent 35%);
   transition:
-    color 0.12s ease,
-    box-shadow 0.12s ease;
+    color max(1ms, calc(0.12s * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) ease,
+    box-shadow max(1ms, calc(0.12s * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) ease;
 }
 
 /* darken and grow a little buttony shadow on hover */
@@ -159,7 +159,7 @@ button {
 }
 
 .create-new-button--square:active {
-  cursor: grabbing;
+  cursor: var(--studio-cursor-grabbing, grabbing);
 }
 
 /* the visible button handles click + drag; a 0-size aria-hidden Kobalte trigger
@@ -182,7 +182,7 @@ button {
   gap: 0.375rem;
   padding: 0.375rem;
   background: var(--document-list-widget-fill);
-  border-bottom: 1px solid var(--document-list-divider);
+  border-bottom: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--document-list-divider);
 }
 
 .document-list__toolbar .document-list__filter-container {
@@ -232,7 +232,7 @@ button {
 
   &:focus-visible {
     outline-color: var(--sidebar-widget-line);
-    outline-offset: 1px;
+    outline-offset: var(--studio-focus-ring-offset, 1px);
     box-shadow: 0 0 0 4px #fff;
     border-radius: var(--document-list-radius);
   }
@@ -248,8 +248,8 @@ button {
   max-height: 100%;
   overflow: scroll;
   transition:
-    background-color 0.2s ease,
-    box-shadow 0.2s ease;
+    background-color max(1ms, calc(0.2s * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) ease,
+    box-shadow max(1ms, calc(0.2s * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) ease;
 
   &::-webkit-scrollbar {
     display: none;
@@ -286,12 +286,12 @@ button {
   padding-block: 0.5rem;
   font-weight: 400;
   color: var(--sidebar-widget-line);
-  cursor: default;
+  cursor: var(--studio-cursor-default, default);
   position: relative;
 
   &:focus-visible {
     outline-color: #000;
-    outline-offset: -2px;
+    outline-offset: var(--studio-focus-ring-offset, -2px);
     box-shadow: 0 0 0 4px var(--document-list-widget-fill);
     border-radius: var(--document-list-radius);
   }
@@ -328,7 +328,7 @@ button {
      SPRING_LOAD_MS (see item.tsx). The highlight only fades in for the second
      half of the hold, so quick pass-overs never flash an animation. */
   &[data-dnd-springload] {
-    animation: doclist-springload 0.75s ease-out 0.75s both;
+    animation: doclist-springload max(1ms, calc(0.75s * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) ease-out 0.75s both;
   }
   &[data-dnd-droplist-state]::before {
     content: "";
@@ -347,7 +347,7 @@ button {
   }
   /* the rows a drop just put here (see flashLanded in drop-into.ts) */
   &[data-dnd-landed] {
-    animation: doclist-landed 600ms ease-out both;
+    animation: doclist-landed max(1ms, calc(600ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) ease-out both;
   }
 }
 
@@ -375,7 +375,7 @@ button {
 
 @media (prefers-reduced-motion: reduce) {
   .document-list-item[data-dnd-landed] {
-    animation: doclist-landed-still 600ms linear both;
+    animation: doclist-landed-still max(1ms, calc(600ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) linear both;
   }
 }
 
@@ -469,7 +469,7 @@ button {
 .document-list-folder__toggle {
   display: inline-flex;
   align-items: center;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   margin-left: -0.75ch;
   padding-inline: 0.25ch;
   &:hover {
@@ -546,7 +546,7 @@ button {
 
 .popmenu__trigger,
 .popmenu__sub-trigger {
-  cursor: default;
+  cursor: var(--studio-cursor-default, default);
   user-select: none;
   width: 100%;
   text-align: left;
@@ -562,7 +562,7 @@ button {
   background-color: var(--document-list-widget-fill);
   font-size: 0.8rem;
   border-radius: 6px;
-  border: 1px solid var(--document-list-border);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--document-list-border);
   box-shadow:
     0 4px 6px -1px rgb(0 0 0 / 0.1),
     0 2px 4px -2px rgb(0 0 0 / 0.1);
@@ -574,8 +574,8 @@ button {
    the pointer reads as lag. */
 .popmenu__content {
   transition:
-    opacity 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
-    scale 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+    opacity max(1ms, calc(150ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
+    scale max(1ms, calc(150ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 @starting-style {
   .popmenu__content {
@@ -599,7 +599,7 @@ button {
   position: relative;
   user-select: none;
   outline: none;
-  cursor: default;
+  cursor: var(--studio-cursor-default, default);
 }
 .popmenu__sub-trigger[data-expanded] {
   background-color: var(--document-list-fill-offset);
@@ -610,7 +610,7 @@ button {
 .popmenu__radio-item[data-disabled],
 .popmenu__sub-trigger[data-disabled] {
   color: var(--document-list-muted);
-  opacity: 0.5;
+  opacity: var(--studio-disabled-opacity, 0.5);
   pointer-events: none;
 }
 .popmenu__item[data-highlighted],
@@ -661,7 +661,7 @@ button {
   box-sizing: border-box;
   padding: 6px 8px;
   font-size: 0.8rem;
-  border: 1px solid var(--document-list-border-strong);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--document-list-border-strong);
   border-radius: 4px;
   background: var(--document-list-widget-fill);
   color: var(--document-list-widget-line);
@@ -702,7 +702,7 @@ button {
   min-height: 4rem;
   background: var(--account-bar-fill);
   color: var(--account-bar-line);
-  border-top: 1px solid var(--document-list-divider);
+  border-top: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--document-list-divider);
   padding-block: 0.25rem;
   padding-bottom: calc(0.25rem + env(safe-area-inset-bottom));
   padding-left: calc(env(safe-area-inset-left) + var(--document-list-padding-x));
@@ -713,7 +713,7 @@ button {
 .account-bar__button {
   display: flex;
   align-items: center;
-  border: 1px solid transparent;
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) transparent;
   padding-inline: 0.25rem;
   padding-block: 0.125rem;
   border-radius: 3px;
@@ -721,7 +721,7 @@ button {
   color: inherit;
   font: inherit;
   white-space: nowrap;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
 }
 
 .account-bar__button:hover {

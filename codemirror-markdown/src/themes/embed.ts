@@ -4,7 +4,7 @@ import { EditorView } from "@codemirror/view";
 export const embedTheme = EditorView.baseTheme({
   ".cm-embed": {
     display: "block",
-    border: "1px solid",
+    border: "var(--studio-border-width, 1px) var(--studio-border-style, solid)",
     borderRadius: "4px",
     overflow: "hidden",
   },

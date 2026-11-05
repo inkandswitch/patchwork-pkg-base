@@ -215,7 +215,7 @@ class DeletionMarker extends WidgetType {
       ? "rgb(239 68 68 / 20%)" // red-500 with opacity
       : "rgb(239 68 68 / 10%)";
     box.style.borderRadius = "3px";
-    box.style.cursor = "default";
+    box.style.cursor = "var(--studio-cursor-default, default)";
     box.innerText = "\u232b";
 
     const hoverText = document.createElement("div");
@@ -227,7 +227,7 @@ class DeletionMarker extends WidgetType {
     hoverText.style.backgroundColor = "rgb(254 242 242)"; // red-50
     hoverText.style.fontSize = "15px";
     hoverText.style.color = "rgb(17 24 39)"; // gray-900
-    hoverText.style.border = "1px solid rgb(185 28 28)"; // red-700
+    hoverText.style.border = "var(--studio-border-width, 1px) var(--studio-border-style, solid) rgb(185 28 28)"; // red-700
     hoverText.style.boxShadow = "0px 0px 6px rgba(0, 0, 0, 0.1)";
     hoverText.style.borderRadius = "3px";
     hoverText.style.visibility = "hidden";
@@ -244,7 +244,7 @@ class DeletionMarker extends WidgetType {
         : "rgb(248 113 113 / 10%)";
       hoverText.style.backgroundColor = "rgb(69 10 10)"; // red-950
       hoverText.style.color = "rgb(254 226 226)"; // red-100
-      hoverText.style.border = "1px solid rgb(153 27 27)"; // red-800
+      hoverText.style.border = "var(--studio-border-width, 1px) var(--studio-border-style, solid) rgb(153 27 27)"; // red-800
     }
 
     box.appendChild(hoverText);

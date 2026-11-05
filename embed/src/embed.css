@@ -26,7 +26,7 @@
   align-items: center;
   gap: var(--studio-space-sm, 0.5rem);
   padding: var(--studio-space-2xs, 0.25rem) var(--studio-space-sm, 0.5rem);
-  border-bottom: 1px solid var(--embed-frame-border);
+  border-bottom: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--embed-frame-border);
   flex-shrink: 0;
 }
 
@@ -38,11 +38,11 @@
   white-space: nowrap;
   font-weight: 500;
   font-size: 0.85em;
-  cursor: default;
+  cursor: var(--studio-cursor-default, default);
 }
 
 .embed-frame .title[data-renamable] {
-  cursor: text;
+  cursor: var(--studio-cursor-text, text);
 }
 
 .embed-frame .rename-input {
@@ -52,7 +52,7 @@
   font-size: 0.85em;
   color: inherit;
   background: none;
-  border: 1px solid var(--embed-frame-border);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--embed-frame-border);
   border-radius: var(--studio-radius-sm, 4px);
   padding: 0 var(--studio-space-2xs, 0.25rem);
   outline: none;
@@ -69,14 +69,14 @@
   align-items: center;
   height: 20px;
   padding: 0 var(--studio-space-sm, 0.5rem);
-  border: 1px solid var(--embed-frame-border);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--embed-frame-border);
   border-radius: var(--studio-radius-round, 9999px);
   background: none;
   color: var(--embed-frame-muted);
   font: inherit;
   font-size: 0.75em;
   font-weight: 500;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   white-space: nowrap;
   max-width: 10rem;
   overflow: hidden;
@@ -100,7 +100,7 @@
   background: none;
   color: inherit;
   padding: 0;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   opacity: 0.7;
   flex-shrink: 0;
 }
@@ -127,7 +127,7 @@
   margin: 0;
   padding: 0;
   min-width: 180px;
-  border: 1px solid var(--embed-frame-border);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--embed-frame-border);
   border-radius: var(--studio-radius-sm, 4px);
   background: var(--embed-frame-bg);
   color: var(--embed-frame-fg);
@@ -137,8 +137,8 @@
   font-size: 0.85em;
   /* Grows out of the tool button (origin set in tool.tsx). Closing is instant. */
   transition:
-    opacity 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
-    transform 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+    opacity max(1ms, calc(150ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
+    transform max(1ms, calc(150ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 @starting-style {
   .embed-frame .tool-menu[popover]:popover-open {
@@ -163,7 +163,7 @@
   color: inherit;
   font: inherit;
   text-align: left;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   white-space: nowrap;
 }
 

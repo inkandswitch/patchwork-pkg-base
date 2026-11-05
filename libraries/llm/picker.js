@@ -77,7 +77,7 @@ const CSS = `
 	--shadow: var(--llmp-shadow, var(--studio-shadow-lg, 0 12px 34px rgba(0,0,0,.18))); --shadow-sm: 0 1px 3px rgba(0,0,0,.08);
 	width: min(840px, 96vw); height: min(760px, 90vh); margin: auto;
 	overflow: hidden;
-	border: 1px solid var(--line); border-radius: var(--radius); padding: 0;
+	border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--line); border-radius: var(--radius); padding: 0;
 	background: var(--paper); color: var(--ink); box-shadow: var(--shadow);
 	font-family: inherit; font-size: 14px; line-height: 1.5;
 }
@@ -91,10 +91,10 @@ const CSS = `
    fill so the status bar stays pinned at the bottom of the modal */
 .llmp-scopebody { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
-.llmp-statusbar { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-top: 1px solid var(--line); background: var(--card); }
+.llmp-statusbar { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-top: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--line); background: var(--card); }
 .llmp-statusbar-label { font-size: 9px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; color: var(--dim); }
 .llmp-statusbar-url { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 10px/1.4 ui-monospace, Menlo, monospace; color: var(--ink); }
-.llmp-statusbar-copy { flex: none; cursor: pointer; padding: 2px 5px; font-size: 12px; color: var(--dim); background: none; border: none; border-radius: 6px; }
+.llmp-statusbar-copy { flex: none; cursor: var(--studio-cursor-pointer, pointer); padding: 2px 5px; font-size: 12px; color: var(--dim); background: none; border: none; border-radius: 6px; }
 .llmp-statusbar-copy:hover { color: var(--ink); background: var(--highlight); }
 /* Suspense placeholder while config resolves (dom() returns synchronously). */
 .llmp-loading { flex: 1; min-height: 120px; display: flex; align-items: center; justify-content: center; }
@@ -103,27 +103,27 @@ const CSS = `
 
 .llmp-header {
 	flex: none; display: flex; align-items: center; justify-content: space-between;
-	padding: 14px 18px; font-weight: 700; font-size: 16px; border-bottom: 1px solid var(--line);
+	padding: 14px 18px; font-weight: 700; font-size: 16px; border-bottom: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--line);
 }
-.llmp-close { background: none; border: none; color: var(--dim); font-size: 22px; line-height: 1; cursor: pointer; }
+.llmp-close { background: none; border: none; color: var(--dim); font-size: 22px; line-height: 1; cursor: var(--studio-cursor-pointer, pointer); }
 .llmp-close:hover { color: var(--ink); }
 
 .llmp-main { flex: 1; min-height: 0; display: flex; align-items: stretch; }
-.llmp-side { flex: 0 0 116px; display: flex; flex-direction: column; gap: 4px; padding: 14px 10px; border-right: 1px solid var(--line); }
-.llmp-side button { text-align: left; padding: 8px 11px; font: inherit; font-weight: 600; cursor: pointer; color: var(--ink); background: transparent; border: none; border-radius: var(--radius-sm); }
+.llmp-side { flex: 0 0 116px; display: flex; flex-direction: column; gap: 4px; padding: 14px 10px; border-right: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--line); }
+.llmp-side button { text-align: left; padding: 8px 11px; font: inherit; font-weight: 600; cursor: var(--studio-cursor-pointer, pointer); color: var(--ink); background: transparent; border: none; border-radius: var(--radius-sm); }
 .llmp-side button:hover { background: var(--accent-soft); }
 .llmp-side button.active { background: var(--accent); color: var(--accent-text); }
 .llmp-content { flex: 1; min-width: 0; overflow: auto; display: flex; flex-direction: column; }
 
 .llmp-tabs { display: flex; gap: 6px; padding: 14px 16px 0; }
-.llmp-tabs button { flex: 1; padding: 7px 10px; font: inherit; font-weight: 600; cursor: pointer; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.llmp-tabs button { flex: 1; padding: 7px 10px; font: inherit; font-weight: 600; cursor: var(--studio-cursor-pointer, pointer); color: var(--ink); background: var(--card); border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--line); border-radius: var(--radius-sm); }
 .llmp-tabs button:hover { background: var(--highlight); }
 .llmp-tabs button.active { background: var(--accent); color: var(--accent-text); border-color: transparent; }
 
 .llmp-recent { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 12px 16px 0; }
 .llmp-recent:empty { display: none; }
 .llmp-recent-label { font-size: 10px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; color: var(--dim); margin-right: 2px; }
-.llmp-chip { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 4px 10px; font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 999px; box-shadow: var(--shadow-sm); }
+.llmp-chip { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 4px 10px; font: inherit; font-size: 11px; font-weight: 600; cursor: var(--studio-cursor-pointer, pointer); color: var(--ink); background: var(--card); border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--line); border-radius: 999px; box-shadow: var(--shadow-sm); }
 .llmp-chip:hover { background: var(--highlight); }
 .llmp-chip.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 
@@ -131,7 +131,7 @@ const CSS = `
 
 .llmp-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 14px; }
 .llmp-label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 600; color: var(--dim); }
-.llmp-input, .llmp-body select { width: 100%; box-sizing: border-box; padding: 8px 11px; font: inherit; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.llmp-input, .llmp-body select { width: 100%; box-sizing: border-box; padding: 8px 11px; font: inherit; color: var(--ink); background: var(--card); border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--line); border-radius: var(--radius-sm); }
 .llmp-input:focus, .llmp-body select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .llmp-textarea { min-height: 80px; resize: vertical; font-family: ui-monospace, Menlo, monospace; line-height: 1.5; }
 
@@ -139,11 +139,11 @@ const CSS = `
 .llmp-combo { position: relative; width: 100%; }
 .llmp-row .llmp-combo { flex: 1; }
 .llmp-combo-input { padding-right: 30px; }
-.llmp-combo-caret { position: absolute; top: 0; right: 1px; height: 100%; width: 28px; display: flex; align-items: center; justify-content: center; color: var(--dim); font-size: 11px; cursor: pointer; user-select: none; transition: transform .12s; }
+.llmp-combo-caret { position: absolute; top: 0; right: 1px; height: 100%; width: 28px; display: flex; align-items: center; justify-content: center; color: var(--dim); font-size: 11px; cursor: var(--studio-cursor-pointer, pointer); user-select: none; transition: transform max(1ms, calc(.12s * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))); }
 .llmp-combo-caret:hover { color: var(--ink); }
 .llmp-combo-input[aria-expanded=true] + .llmp-combo-caret { transform: rotate(180deg); color: var(--accent); }
-.llmp-combo-menu { position: fixed; z-index: 10; overflow-y: auto; padding: 5px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow); }
-.llmp-combo-opt { display: flex; flex-direction: column; gap: 1px; padding: 7px 10px; border-radius: 7px; cursor: pointer; }
+.llmp-combo-menu { position: fixed; z-index: 10; overflow-y: auto; padding: 5px; background: var(--card); border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow); }
+.llmp-combo-opt { display: flex; flex-direction: column; gap: 1px; padding: 7px 10px; border-radius: 7px; cursor: var(--studio-cursor-pointer, pointer); }
 .llmp-combo-opt.active { background: var(--accent-soft); }
 .llmp-combo-opt.current .llmp-combo-opt-label::after { content: " ✓"; color: var(--accent); }
 .llmp-combo-opt-label { font-size: 13px; font-weight: 600; color: var(--ink); }
@@ -163,15 +163,15 @@ const CSS = `
 /* saved-prompt manager: an inline-editable list */
 .llmp-pp-list { display: flex; flex-direction: column; gap: 6px; }
 .llmp-pp-list:empty { display: none; }
-.llmp-pp-row { display: flex; align-items: center; gap: 6px; padding: 5px 7px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.llmp-pp-row { display: flex; align-items: center; gap: 6px; padding: 5px 7px; background: var(--card); border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--line); border-radius: var(--radius-sm); }
 .llmp-pp-row.active { border-color: var(--accent); background: var(--accent-soft); }
-.llmp-pp-pick { flex: 0 0 auto; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; font-size: 13px; cursor: pointer; color: var(--dim); background: none; border: none; border-radius: 999px; }
+.llmp-pp-pick { flex: 0 0 auto; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; font-size: 13px; cursor: var(--studio-cursor-pointer, pointer); color: var(--dim); background: none; border: none; border-radius: 999px; }
 .llmp-pp-pick:hover { color: var(--ink); }
 .llmp-pp-row.active .llmp-pp-pick { color: var(--accent); }
 .llmp-pp-name { flex: 1; min-width: 0; padding: 5px 8px; font-weight: 600; border-color: transparent; background: transparent; box-shadow: none; }
 .llmp-pp-name:hover { border-color: var(--line); background: var(--paper); }
 .llmp-pp-name:focus { border-color: var(--accent); background: var(--card); }
-.llmp-iconbtn { flex: 0 0 auto; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; font-size: 12px; cursor: pointer; color: var(--dim); background: none; border: none; border-radius: var(--radius-sm); }
+.llmp-iconbtn { flex: 0 0 auto; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; font-size: 12px; cursor: var(--studio-cursor-pointer, pointer); color: var(--dim); background: none; border: none; border-radius: var(--radius-sm); }
 .llmp-iconbtn:hover { background: var(--highlight); color: var(--ink); }
 .llmp-warn { margin: 0; font-size: 11px; font-weight: 600; line-height: 1.45; color: var(--accent); }
 .llmp-warn:empty { display: none; }
@@ -188,28 +188,28 @@ const CSS = `
 
 .llmp-tools { display: flex; flex-direction: column; gap: 10px; }
 .llmp-builtins { display: flex; flex-direction: column; gap: 6px; }
-.llmp-builtin { padding: 8px 11px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.llmp-builtin { padding: 8px 11px; background: var(--card); border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--line); border-radius: var(--radius-sm); }
 .llmp-builtin b { display: block; font: 600 12px/1.4 ui-monospace, Menlo, monospace; color: var(--accent); margin-bottom: 2px; }
-.llmp-tool-card { display: flex; flex-direction: column; gap: 8px; padding: 11px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow-sm); }
-.llmp-handler { display: block; height: 260px; overflow: hidden; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-sm); }
-.llmp-tryout { margin: 0; max-height: 220px; overflow: auto; white-space: pre-wrap; word-break: break-word; font: 11px/1.5 ui-monospace, Menlo, monospace; color: var(--ink); background: #f7f2ea; border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 9px; }
+.llmp-tool-card { display: flex; flex-direction: column; gap: 8px; padding: 11px; background: var(--card); border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow-sm); }
+.llmp-handler { display: block; height: 260px; overflow: hidden; background: var(--paper); border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--line); border-radius: var(--radius-sm); }
+.llmp-tryout { margin: 0; max-height: 220px; overflow: auto; white-space: pre-wrap; word-break: break-word; font: 11px/1.5 ui-monospace, Menlo, monospace; color: var(--ink); background: #f7f2ea; border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--line); border-radius: var(--radius-sm); padding: 9px; }
 .llmp-tryout:empty { display: none; }
 .llmp-avail { font-size: 12px; font-weight: 600; color: var(--dim); }
 
 .llmp-custom-rows { display: flex; flex-direction: column; gap: 8px; }
 .llmp-custom-rows:empty { display: none; }
-.llmp-custom-row { display: flex; flex-direction: column; gap: 6px; padding: 9px 11px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow-sm); }
+.llmp-custom-row { display: flex; flex-direction: column; gap: 6px; padding: 9px 11px; background: var(--card); border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow-sm); }
 
-.llmp-footer { flex: none; display: flex; gap: 8px; justify-content: flex-end; padding: 12px 16px; border-top: 1px solid var(--line); }
-.llmp-btn { padding: 8px 15px; font: inherit; font-weight: 600; cursor: pointer; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow-sm); transition: background .12s, box-shadow .12s, transform .08s; }
+.llmp-footer { flex: none; display: flex; gap: 8px; justify-content: flex-end; padding: 12px 16px; border-top: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--line); }
+.llmp-btn { padding: 8px 15px; font: inherit; font-weight: 600; cursor: var(--studio-cursor-pointer, pointer); color: var(--ink); background: var(--card); border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow-sm); transition: background max(1ms, calc(.12s * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))), box-shadow max(1ms, calc(.12s * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))), transform max(1ms, calc(.08s * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))); }
 .llmp-btn:hover { background: var(--highlight); box-shadow: 0 2px 7px rgba(52,49,58,.12); }
 .llmp-btn:active { transform: translateY(1px); }
-.llmp-btn[disabled] { opacity: .5; cursor: default; }
+.llmp-btn[disabled] { opacity: var(--studio-disabled-opacity, .5); cursor: var(--studio-cursor-default, default); }
 .llmp-btn.primary { background: var(--accent); color: var(--accent-text); border-color: transparent; }
 .llmp-btn.primary:hover { background: #ff63a6; }
 /* scope switcher: text-link buttons; the active one is primary with a primary
    underline drawn as a real bottom border (so it sits on the bar baseline) */
-.llmp-scopebtn { padding: 4px 2px; font: inherit; font-weight: 600; cursor: pointer; color: var(--dim); background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0; }
+.llmp-scopebtn { padding: 4px 2px; font: inherit; font-weight: 600; cursor: var(--studio-cursor-pointer, pointer); color: var(--dim); background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0; }
 .llmp-scopebtn:hover { color: var(--accent); }
 .llmp-scopebtn.active { color: var(--accent); border-bottom-color: var(--accent); }
 `
@@ -1851,7 +1851,7 @@ function buildPickerInto(host, opts) {
 				cb.addEventListener("change", () => {
 					cfg.toolToggles = {...(cfg.toolToggles || {}), [t.name]: cb.checked}
 				})
-				return el("label", {class: "llmp-pp-row", style: "display:flex;align-items:flex-start;gap:8px;cursor:pointer"}, [
+				return el("label", {class: "llmp-pp-row", style: "display:flex;align-items:flex-start;gap:8px;cursor:var(--studio-cursor-pointer, pointer)"}, [
 					cb,
 					el("div", {}, [
 						el("b", {text: t.name}),
@@ -2077,7 +2077,7 @@ function buildScopedPicker(mount, opts, onRequestClose) {
 
 	const bar = el("div", {
 		class: "llmp-row",
-		style: "padding:8px 12px;gap:6px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--line,rgba(128,128,128,0.25))",
+		style: "padding:8px 12px;gap:6px;align-items:center;flex-wrap:wrap;border-bottom:var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--line,rgba(128,128,128,0.25))",
 	})
 	const bodyHost = el("div", {class: "llmp-scopebody"})
 	mount.replaceChildren(bar, bodyHost, statusBar(opts))

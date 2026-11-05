@@ -427,7 +427,7 @@ export function SyncIndicator(props: { handle: DocHandle<unknown> }) {
 
 export const renderSyncIndicator: ToolImplementation = (handle, element) => {
   element.style.width = "fit-content";
-  element.style.zIndex = "10";
+  element.style.zIndex = "var(--studio-layer-raised, 10)";
 
   const dispose = render(
     () => (

@@ -122,8 +122,8 @@ const markdownStyles = (style: "serif" | "sans"): Record<string, any> => ({
 });
 
 const baseHeadingStyles = {
-  fontFamily: "var(--text-editor-family-sans)",
-  fontWeight: 400,
+  fontFamily: "var(--studio-heading-family, var(--text-editor-family-sans))",
+  fontWeight: "var(--studio-heading-weight, 400)",
   textDecoration: "none",
 };
 
@@ -142,7 +142,7 @@ const markdownSyntaxHighlighting = (style: "serif" | "sans") =>
     {
       tag: tags.heading1,
       ...baseHeadingStyles,
-      fontSize: "1.5rem",
+      fontSize: "var(--studio-heading-size-1, 1.5rem)",
       lineHeight: "2rem",
       marginBottom: "1rem",
       marginTop: "2rem",
@@ -150,7 +150,7 @@ const markdownSyntaxHighlighting = (style: "serif" | "sans") =>
     {
       tag: tags.heading2,
       ...baseHeadingStyles,
-      fontSize: "1.5rem",
+      fontSize: "var(--studio-heading-size-2, 1.5rem)",
       lineHeight: "2rem",
       marginBottom: "1rem",
       marginTop: "2rem",
@@ -158,7 +158,7 @@ const markdownSyntaxHighlighting = (style: "serif" | "sans") =>
     {
       tag: tags.heading3,
       ...baseHeadingStyles,
-      fontSize: "1.25rem",
+      fontSize: "var(--studio-heading-size-3, 1.25rem)",
       lineHeight: "1.75rem",
       marginBottom: "1rem",
       marginTop: "2rem",
@@ -166,7 +166,7 @@ const markdownSyntaxHighlighting = (style: "serif" | "sans") =>
     {
       tag: tags.heading4,
       ...baseHeadingStyles,
-      fontSize: "1.1rem",
+      fontSize: "var(--studio-heading-size-4, 1.1rem)",
       marginBottom: "1rem",
       marginTop: "2rem",
     },

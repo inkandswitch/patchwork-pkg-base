@@ -371,10 +371,10 @@ const commentUITheme = EditorView.baseTheme({
 		border: "none",
 		borderRadius: "6px",
 		boxShadow: "0 2px 8px rgba(0, 0, 0, 0.25)",
-		cursor: "pointer",
+		cursor: "var(--studio-cursor-pointer, pointer)",
 		userSelect: "none",
 		whiteSpace: "nowrap",
-		transition: "background-color 0.15s",
+		transition: "background-color max(1ms, calc(0.15s * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)))",
 	},
 	".cm-comment-button:hover": {
 		background: "var(--cm-comment-button-bg-hover)",

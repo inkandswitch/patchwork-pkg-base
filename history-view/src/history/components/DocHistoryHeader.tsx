@@ -18,7 +18,7 @@ export function DocHistoryHeader(props: DocHistoryHeaderProps) {
 
       <div class="history-header-actions">
         <button
-          style={{ background: "none", border: "none", cursor: "pointer", padding: "4px", "border-radius": "4px", display: "flex", "align-items": "center", "justify-content": "center" }}
+          style={{ background: "none", border: "none", cursor: "var(--studio-cursor-pointer, pointer)", padding: "4px", "border-radius": "4px", display: "flex", "align-items": "center", "justify-content": "center" }}
           disabled={props.isRecalculating}
           title={props.isRecalculating ? "Recalculating history..." : "Recompute"}
           onClick={(e) => { e.stopPropagation(); props.onRecompute(); }}

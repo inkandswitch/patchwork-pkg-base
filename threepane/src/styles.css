@@ -110,7 +110,7 @@
   position: absolute;
   top: var(--threepane-space-2xs);
   right: var(--threepane-space-sm);
-  z-index: 10;
+  z-index: var(--studio-layer-raised, 10);
   color: var(--threepane-muted);
   font-size: 0.75rem;
   font-weight: 500;
@@ -204,7 +204,7 @@
      border, so the line under the bar runs unbroken across the whole width
      (document column + context tabs). The active tab pulls down 1px to break
      through it and connect to its panel below. */
-  border-bottom: 1px solid var(--threepane-toolbar-border);
+  border-bottom: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--threepane-toolbar-border);
   /* Animate the collapsed left-slot in step with the sidebar's width transition
      so the title glides up against the pinned toggle instead of jumping. */
   transition: padding-left var(--studio-transition-slow, 0.25s ease);
@@ -240,7 +240,7 @@
   border: none;
   background: transparent;
   color: var(--threepane-toggle-fg);
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   transition: color var(--studio-transition-fast, 0.1s ease);
 }
 
@@ -269,7 +269,7 @@
 }
 
 .threepane__title-text--editable {
-  cursor: text;
+  cursor: var(--studio-cursor-text, text);
 }
 
 .threepane__title-text--editable:hover {
@@ -330,7 +330,7 @@
      it runs the whole frame height rather than just the document view. When the
      left sidebar is collapsed the left divider is dropped (see the :has rule
      below) so nothing rides the frame edge. */
-  border-left: 1px solid var(--threepane-toolbar-border);
+  border-left: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--threepane-toolbar-border);
 }
 
 /* Left sidebar collapsed to 0: drop the document-view's left divider so there's
@@ -379,7 +379,7 @@
      here (not on the document view) so it runs the whole frame height — top bar
      level included — and the resize handle straddling this edge is grabbable end
      to end, matching the left sidebar. */
-  border-left: 1px solid var(--context-sidebar-border);
+  border-left: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--context-sidebar-border);
 }
 
 /* Tab bar: the row holding the tab list and the collapse button. Its height +
@@ -393,7 +393,7 @@
   min-height: var(--threepane-space-2xl);
   padding-top: env(safe-area-inset-top, 0px);
   background: var(--context-sidebar-header-bg);
-  border-bottom: 1px solid var(--context-sidebar-border);
+  border-bottom: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--context-sidebar-border);
 }
 
 .context-sidebar__tablist {
@@ -425,7 +425,7 @@
   align-items: center;
   flex-shrink: 0;
   padding: var(--threepane-space-xs) var(--threepane-space-sm);
-  border: 1px solid transparent;
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) transparent;
   border-bottom: none;
   border-top-left-radius: var(--threepane-radius-xs);
   border-top-right-radius: var(--threepane-radius-xs);
@@ -434,14 +434,14 @@
   font-size: 0.875rem;
   white-space: nowrap;
   color: var(--context-sidebar-tab-fg);
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   user-select: none;
   transition: background var(--studio-transition-fast, 0.1s ease),
     color var(--studio-transition-fast, 0.1s ease);
 }
 
 .context-sidebar__tab:hover {
-  background: var(--context-sidebar-tab-hover);
+  background: var(--studio-chrome-hover-fill, var(--context-sidebar-tab-hover));
   color: var(--context-sidebar-tab-active-fg);
 }
 
@@ -470,7 +470,7 @@
   border: none;
   background: transparent;
   color: var(--context-sidebar-fg);
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   opacity: 0.5;
   transition: opacity var(--studio-transition-fast, 0.1s ease);
 }
@@ -527,7 +527,7 @@
   box-sizing: border-box;
   background: var(--threepane-sidebar-fill);
   color: var(--threepane-sidebar-fg);
-  border-top: 1px solid var(--threepane-sidebar-divider);
+  border-top: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--threepane-sidebar-divider);
   padding-block: var(--threepane-space-2xs);
   padding-bottom: calc(var(--threepane-space-2xs) + env(safe-area-inset-bottom));
   padding-left: calc(env(safe-area-inset-left) + var(--threepane-space-md));
@@ -539,7 +539,7 @@
 .threepane-account-bar__button {
   display: flex;
   align-items: center;
-  border: 1px solid transparent;
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) transparent;
   padding-inline: var(--threepane-space-2xs);
   padding-block: var(--threepane-space-3xs);
   border-radius: var(--threepane-radius-xs);
@@ -547,7 +547,7 @@
   color: inherit;
   font: inherit;
   white-space: nowrap;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
 }
 
 .threepane-account-bar__button:hover {
@@ -600,12 +600,12 @@
 
 .threepane-widgets__add {
   padding: var(--threepane-space-xs) var(--threepane-space-sm);
-  border: 1px dashed var(--threepane-sidebar-divider);
+  border: var(--studio-border-width, 1px) dashed var(--threepane-sidebar-divider);
   border-radius: var(--threepane-radius-sm);
   background: transparent;
   color: var(--threepane-muted);
   font: inherit;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   white-space: nowrap;
 }
 
@@ -615,8 +615,8 @@
 }
 
 .threepane-widgets__add:disabled {
-  opacity: 0.5;
-  cursor: default;
+  opacity: var(--studio-disabled-opacity, 0.5);
+  cursor: var(--studio-cursor-default, default);
 }
 
 /* System tray dock: pinned to the frame's bottom-left. Lives outside the
@@ -635,7 +635,7 @@
      doesn't flash at full size over the still-expanding sidebar. The delay equals
      the sidebar's transition duration; collapsing overrides this to hide at once. */
   opacity: 1;
-  transition: opacity 0.1s ease 0.25s;
+  transition: opacity var(--studio-transition-fast, 0.1s ease) 0.25s;
 }
 
 .frame__tray-dock--collapsed {
@@ -659,7 +659,7 @@
   );
   padding-inline: var(--threepane-space-sm);
   padding-bottom: env(safe-area-inset-bottom, 0px);
-  border-top: 1px solid var(--threepane-sidebar-divider);
+  border-top: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--threepane-sidebar-divider);
   background: var(--threepane-sidebar-fill);
 }
 
@@ -684,12 +684,12 @@
 .frame__popover-backdrop {
   position: absolute;
   inset: 0;
-  z-index: 1000;
+  z-index: var(--studio-layer-modal, 1000);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: var(--threepane-space-2xl);
-  background: color-mix(in oklch, var(--threepane-fg), transparent 82%);
+  background: var(--studio-backdrop, color-mix(in oklch, var(--threepane-fg), transparent 82%));
   animation: frame-popover-fade var(--studio-transition, 0.15s ease);
 }
 
@@ -701,7 +701,7 @@
   overflow: hidden;
   background: var(--threepane-bg);
   color: var(--threepane-fg);
-  border: 1px solid var(--threepane-toolbar-border);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--threepane-toolbar-border);
   border-radius: var(--threepane-radius-md);
   box-shadow:
     0 32px 80px color-mix(in oklch, var(--threepane-fg), transparent 45%),
@@ -719,7 +719,7 @@
   flex: 0 0 auto;
   gap: var(--threepane-space-sm);
   padding: var(--threepane-space-sm) var(--threepane-space-md);
-  border-bottom: 1px solid var(--threepane-toolbar-border);
+  border-bottom: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--threepane-toolbar-border);
 }
 
 .frame__popover-toolbar patchwork-view {
@@ -774,7 +774,7 @@
   margin-block: 0;
   border: 0;
   z-index: 1;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   /* transparent at rest - the visible divider is the main view's border; the
      handle lights up (full-height glow + pill) on hover to signal resize. */
   background: transparent;
@@ -817,12 +817,12 @@
 }
 
 .sidebar-toggle--resizable {
-  cursor: col-resize;
+  cursor: var(--studio-cursor-resize-col, col-resize);
   &:hover {
-    cursor: col-resize;
+    cursor: var(--studio-cursor-resize-col, col-resize);
   }
   &:active {
-    cursor: col-resize;
+    cursor: var(--studio-cursor-resize-col, col-resize);
   }
 }
 

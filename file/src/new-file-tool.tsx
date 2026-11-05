@@ -57,7 +57,7 @@ function NewFilePrompt(props: {handle: DocHandle<FileDoc>}) {
 				style={{
 					"font-size": "16px",
 					padding: "8px 12px",
-					border: "1px solid #ccc",
+					border: "var(--studio-border-width, 1px) var(--studio-border-style, solid) #ccc",
 					"border-radius": "6px",
 					"min-width": "240px",
 					outline: "none",
@@ -74,10 +74,10 @@ function NewFilePrompt(props: {handle: DocHandle<FileDoc>}) {
 				style={{
 					"font-size": "14px",
 					padding: "6px 16px",
-					border: "1px solid #ccc",
+					border: "var(--studio-border-width, 1px) var(--studio-border-style, solid) #ccc",
 					"border-radius": "6px",
 					background: "#f5f5f5",
-					cursor: "pointer",
+					cursor: "var(--studio-cursor-pointer, pointer)",
 				}}>
 				Create
 			</button>

@@ -86,14 +86,14 @@ function DocOpenWith(handle, element) {
 			align-items: center;
 			height: 22px;
 			padding: 0 var(--studio-space-sm, 0.5rem);
-			border: 1px solid var(--doc-openwith-border);
+			border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--doc-openwith-border);
 			border-radius: var(--studio-radius-sm, 4px);
 			background: var(--doc-openwith-bg);
 			color: var(--doc-openwith-fg);
 			font: inherit;
 			font-size: 0.8em;
 			font-weight: 500;
-			cursor: pointer;
+			cursor: var(--studio-cursor-pointer, pointer);
 			transition: border-color var(--studio-transition-fast, 0.1s ease),
 				background var(--studio-transition-fast, 0.1s ease);
 			white-space: nowrap;
@@ -111,7 +111,7 @@ function DocOpenWith(handle, element) {
 			inset: unset;
 			margin: 0;
 			padding: 0;
-			border: 1px solid var(--doc-openwith-border);
+			border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--doc-openwith-border);
 			border-radius: var(--studio-radius-sm, 4px);
 			background: var(--doc-openwith-bg);
 			box-shadow: var(--studio-shadow-sm, 0 2px 8px rgba(0, 0, 0, 0.08));
@@ -123,7 +123,7 @@ function DocOpenWith(handle, element) {
 			width: 100%;
 			padding: var(--studio-space-xs, 0.375rem) var(--studio-space-sm, 0.5rem);
 			border: none;
-			border-bottom: 1px solid var(--doc-openwith-divider);
+			border-bottom: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--doc-openwith-divider);
 			background: none;
 			font: inherit;
 			font-size: 0.8em;
@@ -149,7 +149,7 @@ function DocOpenWith(handle, element) {
 			font: inherit;
 			font-size: 0.8em;
 			text-align: left;
-			cursor: pointer;
+			cursor: var(--studio-cursor-pointer, pointer);
 			white-space: nowrap;
 		}
 

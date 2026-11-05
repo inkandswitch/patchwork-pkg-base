@@ -15,7 +15,7 @@ export const plugins = [
     async load(): Promise<ToolImplementation> {
       return (handle, element) => {
         element.style.width = "fit-content";
-        element.style.zIndex = "10";
+        element.style.zIndex = "var(--studio-layer-raised, 10)";
 
         const dispose = render(
           () => (
