@@ -116,7 +116,7 @@ export function ThemePickerTool(handle: any, element: HTMLElement) {
 			gap: var(--studio-space-2xs, 0.375rem);
 			align-self: flex-start;
 			font-size: 0.85rem;
-			cursor: pointer;
+			cursor: var(--studio-cursor-pointer, pointer);
 			user-select: none;
 		}
 		.theme-picker-toggle input {
@@ -124,7 +124,7 @@ export function ThemePickerTool(handle: any, element: HTMLElement) {
 			width: 0.95rem;
 			height: 0.95rem;
 			accent-color: var(--studio-primary, #35f7ca);
-			cursor: pointer;
+			cursor: var(--studio-cursor-pointer, pointer);
 		}
 		.theme-picker-section {
 			display: flex;
@@ -139,7 +139,7 @@ export function ThemePickerTool(handle: any, element: HTMLElement) {
 			font-size: 0.8rem;
 			font-weight: 700;
 			text-transform: uppercase;
-			letter-spacing: 0.05em;
+			letter-spacing: var(--studio-chrome-letter-spacing, 0.05em);
 			color: color-mix(in oklch, var(--studio-line, black), transparent 45%);
 		}
 		.theme-picker-now {
@@ -150,7 +150,7 @@ export function ThemePickerTool(handle: any, element: HTMLElement) {
 			border-radius: 999px;
 			font-size: 0.62rem;
 			font-weight: 700;
-			letter-spacing: 0.03em;
+			letter-spacing: var(--studio-chrome-letter-spacing, 0.03em);
 			text-transform: none;
 			color: var(--studio-fill, white);
 			background: var(--studio-primary, #0a7);
@@ -160,7 +160,7 @@ export function ThemePickerTool(handle: any, element: HTMLElement) {
 			font-size: 0.68rem;
 			font-weight: 600;
 			text-transform: uppercase;
-			letter-spacing: 0.05em;
+			letter-spacing: var(--studio-chrome-letter-spacing, 0.05em);
 			color: color-mix(in oklch, var(--studio-line, black), transparent 55%);
 		}
 		.theme-picker-grid {
@@ -171,12 +171,12 @@ export function ThemePickerTool(handle: any, element: HTMLElement) {
 		.theme-picker-card {
 			position: relative;
 			padding: 0;
-			border: 1px solid color-mix(in oklch, var(--studio-line, black), transparent 82%);
+			border: var(--studio-border-width, 1px) var(--studio-border-style, solid) color-mix(in oklch, var(--studio-line, black), transparent 82%);
 			border-radius: var(--studio-radius-md, 8px);
 			background: none;
-			cursor: pointer;
+			cursor: var(--studio-cursor-pointer, pointer);
 			overflow: hidden;
-			transition: box-shadow 0.1s ease, border-color 0.1s ease;
+			transition: box-shadow var(--studio-transition-fast, 0.1s ease), border-color var(--studio-transition-fast, 0.1s ease);
 		}
 		.theme-picker-card:hover {
 			border-color: color-mix(in oklch, var(--studio-line, black), transparent 55%);

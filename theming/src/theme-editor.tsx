@@ -15,8 +15,10 @@ export function generateThemeCss(name: string, mode: "light" | "dark", vars: Rec
 	let css = `[theme="${name}"] {\n`
 	css += `\tcolor-scheme: ${mode};\n`
 
-	// Write explicit variables
+	// Write explicit variables. blank ones stay unset: an empty custom property
+	// is still "set", which would beat every var() fallback.
 	for (const [key, value] of Object.entries(vars)) {
+		if (!value?.trim()) continue
 		css += `\t${key}: ${value};\n`
 	}
 
@@ -97,7 +99,8 @@ export function ThemeEditorTool(handle: any, element: HTMLElement) {
 		if (!d?.variables) return
 		const root = document.documentElement
 		for (const [key, value] of Object.entries(d.variables)) {
-			root.style.setProperty(key, value)
+			if (value?.trim()) root.style.setProperty(key, value)
+			else root.style.removeProperty(key)
 		}
 		// Also set derived offsets live
 		for (const [label, amount] of FILL_OFFSET_RAMP) {
@@ -130,6 +133,13 @@ export function ThemeEditorTool(handle: any, element: HTMLElement) {
 	})
 
 	function setVar(key: string, value: string) {
+		if (!value.trim()) {
+			document.documentElement.style.removeProperty(key)
+			handle.change((d: any) => {
+				if (d.variables) delete d.variables[key]
+			})
+			return
+		}
 		handle.change((d: any) => {
 			if (!d.variables) d.variables = {}
 			d.variables[key] = value
@@ -227,15 +237,15 @@ export function ThemeEditorTool(handle: any, element: HTMLElement) {
 		.theme-editor .btn {
 			padding: var(--studio-space-2xs, 0.25rem) var(--studio-space-sm, 0.5rem);
 			border-radius: var(--studio-radius-sm, 4px);
-			border: 1px solid color-mix(in oklch, var(--studio-line, black), transparent 80%);
+			border: var(--studio-border-width, 1px) var(--studio-border-style, solid) color-mix(in oklch, var(--studio-line, black), transparent 80%);
 			background: var(--studio-fill, white);
 			color: var(--studio-line, black);
 			font-size: 0.8rem;
 			font-family: inherit;
-			cursor: pointer;
+			cursor: var(--studio-cursor-pointer, pointer);
 		}
 		.theme-editor .btn:hover {
-			background: color-mix(in oklch, var(--studio-fill, white), var(--studio-line, black) 5%);
+			background: var(--studio-hover-fill, color-mix(in oklch, var(--studio-fill, white), var(--studio-line, black) 5%));
 		}
 		.theme-editor .btn[data-active] {
 			background: var(--studio-primary-fill, var(--studio-primary, #35f7ca));
@@ -248,15 +258,15 @@ export function ThemeEditorTool(handle: any, element: HTMLElement) {
 			gap: var(--studio-space-2xs, 0.25rem);
 			padding: var(--studio-space-2xs, 0.25rem) var(--studio-space-sm, 0.5rem);
 			border-radius: var(--studio-radius-sm, 4px);
-			border: 1px solid color-mix(in oklch, var(--studio-line, black), transparent 80%);
+			border: var(--studio-border-width, 1px) var(--studio-border-style, solid) color-mix(in oklch, var(--studio-line, black), transparent 80%);
 			background: var(--studio-fill, white);
 			color: var(--studio-line, black);
 			font-size: 0.8rem;
 			font-family: inherit;
-			cursor: pointer;
+			cursor: var(--studio-cursor-pointer, pointer);
 		}
 		.theme-editor .mode-toggle:hover {
-			background: color-mix(in oklch, var(--studio-fill, white), var(--studio-line, black) 5%);
+			background: var(--studio-hover-fill, color-mix(in oklch, var(--studio-fill, white), var(--studio-line, black) 5%));
 		}
 		.theme-editor .mode-icon {
 			font-size: 1em;
@@ -271,7 +281,7 @@ export function ThemeEditorTool(handle: any, element: HTMLElement) {
 			font-size: 0.75rem;
 			font-weight: 600;
 			text-transform: uppercase;
-			letter-spacing: 0.05em;
+			letter-spacing: var(--studio-chrome-letter-spacing, 0.05em);
 			color: color-mix(in oklch, var(--studio-line, black), transparent 50%);
 		}
 		.theme-editor .var-row {
@@ -287,17 +297,17 @@ export function ThemeEditorTool(handle: any, element: HTMLElement) {
 		.theme-editor .color-input {
 			width: 2.5rem;
 			height: 2rem;
-			border: 1px solid color-mix(in oklch, var(--studio-line, black), transparent 80%);
+			border: var(--studio-border-width, 1px) var(--studio-border-style, solid) color-mix(in oklch, var(--studio-line, black), transparent 80%);
 			border-radius: var(--studio-radius-sm, 4px);
 			padding: 2px;
-			cursor: pointer;
+			cursor: var(--studio-cursor-pointer, pointer);
 			background: none;
 		}
 		.theme-editor .text-input {
 			flex: 1;
 			min-width: 0;
 			padding: var(--studio-space-2xs, 0.25rem) var(--studio-space-xs, 0.375rem);
-			border: 1px solid color-mix(in oklch, var(--studio-line, black), transparent 80%);
+			border: var(--studio-border-width, 1px) var(--studio-border-style, solid) color-mix(in oklch, var(--studio-line, black), transparent 80%);
 			border-radius: var(--studio-radius-sm, 4px);
 			background: var(--studio-fill, white);
 			color: var(--studio-line, black);
@@ -305,8 +315,8 @@ export function ThemeEditorTool(handle: any, element: HTMLElement) {
 			font-family: inherit;
 		}
 		.theme-editor .text-input:focus {
-			outline: 2px solid var(--studio-primary-line, var(--studio-primary, #35f7ca));
-			outline-offset: 1px;
+			outline: var(--studio-focus-ring, 2px solid var(--studio-primary-line, var(--studio-primary, #35f7ca)));
+			outline-offset: var(--studio-focus-ring-offset, 1px);
 		}
 		.theme-editor .hex-display {
 			font-family: var(--studio-family-code, ui-monospace, monospace);
@@ -315,7 +325,7 @@ export function ThemeEditorTool(handle: any, element: HTMLElement) {
 			min-width: 5rem;
 		}
 		.theme-editor .preview {
-			border: 1px solid color-mix(in oklch, var(--studio-line, black), transparent 80%);
+			border: var(--studio-border-width, 1px) var(--studio-border-style, solid) color-mix(in oklch, var(--studio-line, black), transparent 80%);
 			border-radius: var(--studio-radius-md, 8px);
 			padding: var(--studio-space-md, 1rem);
 			display: flex;
@@ -326,7 +336,7 @@ export function ThemeEditorTool(handle: any, element: HTMLElement) {
 			font-size: 0.75rem;
 			font-weight: 600;
 			text-transform: uppercase;
-			letter-spacing: 0.05em;
+			letter-spacing: var(--studio-chrome-letter-spacing, 0.05em);
 			color: color-mix(in oklch, var(--studio-line, black), transparent 50%);
 			margin-bottom: var(--studio-space-2xs, 0.25rem);
 		}
@@ -339,14 +349,14 @@ export function ThemeEditorTool(handle: any, element: HTMLElement) {
 			width: 2rem;
 			height: 2rem;
 			border-radius: var(--studio-radius-sm, 4px);
-			border: 1px solid color-mix(in oklch, var(--studio-line, black), transparent 85%);
+			border: var(--studio-border-width, 1px) var(--studio-border-style, solid) color-mix(in oklch, var(--studio-line, black), transparent 85%);
 		}
 		.theme-editor .offset-strip {
 			display: flex;
 			height: 1.5rem;
 			border-radius: var(--studio-radius-sm, 4px);
 			overflow: hidden;
-			border: 1px solid color-mix(in oklch, var(--studio-line, black), transparent 85%);
+			border: var(--studio-border-width, 1px) var(--studio-border-style, solid) color-mix(in oklch, var(--studio-line, black), transparent 85%);
 		}
 		.theme-editor .offset-strip > div {
 			flex: 1;
@@ -357,7 +367,7 @@ export function ThemeEditorTool(handle: any, element: HTMLElement) {
 			white-space: pre;
 			overflow-x: auto;
 			background: color-mix(in oklch, var(--studio-fill, white), var(--studio-line, black) 3%);
-			border: 1px solid color-mix(in oklch, var(--studio-line, black), transparent 85%);
+			border: var(--studio-border-width, 1px) var(--studio-border-style, solid) color-mix(in oklch, var(--studio-line, black), transparent 85%);
 			border-radius: var(--studio-radius-sm, 4px);
 			padding: var(--studio-space-sm, 0.5rem);
 			max-height: 200px;
@@ -369,7 +379,7 @@ export function ThemeEditorTool(handle: any, element: HTMLElement) {
 			min-height: 6rem;
 			resize: vertical;
 			padding: var(--studio-space-sm, 0.5rem);
-			border: 1px solid color-mix(in oklch, var(--studio-line, black), transparent 80%);
+			border: var(--studio-border-width, 1px) var(--studio-border-style, solid) color-mix(in oklch, var(--studio-line, black), transparent 80%);
 			border-radius: var(--studio-radius-sm, 4px);
 			background: var(--studio-fill, white);
 			color: var(--studio-line, black);
@@ -378,8 +388,8 @@ export function ThemeEditorTool(handle: any, element: HTMLElement) {
 			overflow-x: auto;
 		}
 		.theme-editor .css-textarea:focus {
-			outline: 2px solid var(--studio-primary-line, var(--studio-primary, #35f7ca));
-			outline-offset: 1px;
+			outline: var(--studio-focus-ring, 2px solid var(--studio-primary-line, var(--studio-primary, #35f7ca)));
+			outline-offset: var(--studio-focus-ring-offset, 1px);
 		}
 		.theme-editor .discovered-label {
 			font-family: var(--studio-family-code, ui-monospace, monospace);
@@ -391,15 +401,15 @@ export function ThemeEditorTool(handle: any, element: HTMLElement) {
 		.theme-editor .btn-sm {
 			padding: 2px var(--studio-space-xs, 0.375rem);
 			border-radius: var(--studio-radius-sm, 4px);
-			border: 1px solid color-mix(in oklch, var(--studio-line, black), transparent 80%);
+			border: var(--studio-border-width, 1px) var(--studio-border-style, solid) color-mix(in oklch, var(--studio-line, black), transparent 80%);
 			background: var(--studio-fill, white);
 			color: var(--studio-line, black);
 			font-size: 0.7rem;
 			font-family: inherit;
-			cursor: pointer;
+			cursor: var(--studio-cursor-pointer, pointer);
 		}
 		.theme-editor .btn-sm:hover {
-			background: color-mix(in oklch, var(--studio-fill, white), var(--studio-line, black) 5%);
+			background: var(--studio-hover-fill, color-mix(in oklch, var(--studio-fill, white), var(--studio-line, black) 5%));
 		}
 	`
 	element.appendChild(style)
@@ -495,6 +505,7 @@ export function ThemeEditorTool(handle: any, element: HTMLElement) {
 												class="text-input"
 												type="text"
 												value={vars()[v.key] || DEFAULT_VALUES[v.key] || ""}
+												placeholder={v.placeholder}
 												onInput={(e) => setVar(v.key, e.currentTarget.value)}
 											/>
 										</Show>
