@@ -79,7 +79,7 @@ export function PackageDetails(props: {
   return (
     <>
       <button type="button" class="doc-card__link" popovertarget={id}>
-        details
+        see package details
       </button>
       <div class="pkg-about" id={id} popover="auto" ref={popover}>
         <header class="pkg-about__header">

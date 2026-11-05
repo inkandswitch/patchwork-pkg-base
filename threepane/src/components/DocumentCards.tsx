@@ -117,8 +117,9 @@ export function NoToolCard(props: {
   return (
     <Card url={props.url} title="no tool for this">
       <p>
-        it's a <code class="doc-card__code">{props.type}</code>. nothing here
-        opens one yet.
+        it's a <code class="doc-card__code">{props.type}</code>.
+        <br />
+        nothing here opens one yet.
       </p>
       <Show
         when={props.suggestion}
@@ -175,10 +176,9 @@ export function NoToolCard(props: {
               <button
                 type="button"
                 class="doc-card__link"
-                title={`open it with ${tool().name}`}
                 onClick={() => props.onPeek(tool().id)}
               >
-                raw data
+                open doc with {tool().name.toLowerCase()}
               </button>
             )}
           </Show>
@@ -232,7 +232,11 @@ export function UnavailableCard(props: {
 
   return (
     <Card url={props.url} title="can't load this doc">
-      <p>we couldn't get it from anywhere we looked. that might mean:</p>
+      <p>
+        we couldn't get it from anywhere we looked.
+        <br />
+        that might mean:
+      </p>
       <ul class="doc-card__reasons">
         <li>the person who sent you the link hasn't given you access yet</li>
         <li>it hasn't finished syncing from their device yet</li>
