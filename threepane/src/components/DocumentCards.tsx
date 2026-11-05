@@ -2,7 +2,15 @@ import type { AutomergeUrl, Repo } from "@automerge/automerge-repo/slim";
 import { importPackage } from "@inkandswitch/patchwork-filesystem";
 import { registerPlugins } from "@inkandswitch/patchwork-plugins";
 import type { JSX } from "solid-js";
-import { createSignal, onCleanup, onMount, Show } from "solid-js";
+import {
+  createResource,
+  createSignal,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js";
+import { PackageAbout, PackageLine } from "./PackageAbout";
+import { readClaims } from "./packageInfo";
 
 /**
  * The cards the main view shows in place of a doc it can't show: the one
@@ -67,9 +75,15 @@ export function NoToolCard(props: {
   suggestion: string | undefined;
   anything: { id: string; name: string } | undefined;
   onPeek: (toolId: string) => void;
+  repo: Repo;
 }) {
   const [loading, setLoading] = createSignal(false);
   const [failed, setFailed] = createSignal<string>();
+  // what its package.json says: fetched, never run, so it's read straight away
+  const [claims] = createResource(
+    () => props.suggestion,
+    (url) => readClaims(url).catch(() => undefined)
+  );
 
   async function load(url: string) {
     const ok = window.confirm(
@@ -112,6 +126,10 @@ export function NoToolCard(props: {
             <p>
               it suggests a package that might:
               <br />
+              <PackageLine claims={claims()} />
+              <Show when={claims() && (claims()!.title || claims()!.name)}>
+                <br />
+              </Show>
               <code class="doc-card__code doc-card__url">{url()}</code>
             </p>
             <div class="doc-card__actions">
@@ -123,6 +141,12 @@ export function NoToolCard(props: {
               >
                 {loading() ? "loading…" : "load it"}
               </button>
+              <PackageAbout
+                url={url()}
+                repo={props.repo}
+                claims={claims()}
+                claimsLoading={claims.loading}
+              />
             </div>
             <Show when={failed()}>
               {(why) => (

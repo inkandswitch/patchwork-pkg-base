@@ -232,6 +232,7 @@ function DocumentView(props: {
             suggestion={v().suggestion}
             anything={v().anything}
             onPeek={setPeekWith}
+            repo={props.repo}
           />
         )}
       </Show>

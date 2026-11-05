@@ -540,6 +540,128 @@
   color: var(--doc-card-danger) !important;
 }
 
+/* a suggested package, as its package.json names it */
+.pkg-line {
+  color: var(--doc-card-ink);
+}
+
+.pkg-line__version,
+.pkg-line__description {
+  color: var(--doc-card-muted);
+}
+
+/* everything known about a suggested package. a popover, so it sits in the
+   top layer, but still inherits the card's colours */
+.pkg-about[popover] {
+  box-sizing: border-box;
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  margin: auto;
+  overflow: auto;
+  padding: 18px 22px 16px;
+  border: 1px solid var(--doc-card-line);
+  border-radius: 0.5em;
+  background: var(--doc-card-sheet);
+  box-shadow: 0 0 10px 2px #66003322, 3px 3px 0 var(--doc-card-line);
+  color: var(--doc-card-ink);
+  font: 13px/1.45 var(--studio-family-ui, var(--threepane-family));
+  text-align: left;
+
+  &::backdrop {
+    background: color-mix(in oklab, var(--doc-card-ink) 12%, transparent);
+  }
+
+  & h3 {
+    margin: 0;
+    font-size: 22px;
+  }
+
+  & h4 {
+    margin: 0 0 6px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--doc-card-muted);
+  }
+}
+
+.pkg-about__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.pkg-about__close {
+  font-size: 20px;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.pkg-about__section {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--doc-card-line);
+  border-radius: var(--doc-card-radius);
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+/* the package's own word gets a dashed edge and the highlighter: it's quoted,
+   not vouched for */
+.pkg-about__section--claims {
+  border-style: dashed;
+  background: color-mix(in oklab, var(--doc-card-highlighter) 35%, transparent);
+}
+
+.pkg-about__caveat {
+  margin: 0 0 8px;
+  color: var(--doc-card-muted);
+  font-size: 0.92em;
+  font-style: italic;
+}
+
+.pkg-about__quiet {
+  color: var(--doc-card-muted);
+}
+
+.pkg-about__facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 0 0 8px;
+
+  & dt {
+    color: var(--doc-card-muted);
+  }
+
+  & dd {
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+.pkg-about__list {
+  margin: 4px 0;
+  padding: 0 0 0 1.1em;
+}
+
+.pkg-about__heads {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.pkg-about__ask {
+  & .doc-card__notice {
+    margin: 6px 0 0;
+  }
+}
+
 /* still finding it: a quiet dot, once it's been a moment */
 .doc-card--finding {
   display: flex;
