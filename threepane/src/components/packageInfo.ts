@@ -161,7 +161,7 @@ function moduleLoader(): Worker {
   });
   w.addEventListener("error", (event) => {
     // not tied to any one request: fail them all, and start afresh next time
-    const error = new Error(`the module-loader worker failed: ${event.message ?? "unknown"}`);
+    const error = new Error(`the background worker stopped: ${event.message ?? "no reason given"}`);
     for (const entry of waiting.values()) entry.reject(error);
     waiting.clear();
     worker = undefined;
@@ -220,9 +220,9 @@ export interface PackageHistory {
 }
 
 /**
- * The folder doc's current heads, and who's written to it. Only the folder
- * doc itself: each file in the package is a doc of its own, with its own
- * history. Rejects when the repo can't get the folder.
+ * The folder doc's current heads, and which actors have written to it. Only
+ * the folder doc itself: each file in the package is a doc of its own, with
+ * its own history. Rejects when the repo can't get the folder.
  */
 export async function readHistory(repo: Repo, url: string): Promise<PackageHistory> {
   const handle = await repo.find(bareAutomergeUrl(url));

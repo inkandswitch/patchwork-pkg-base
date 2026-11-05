@@ -410,7 +410,7 @@
 
 .doc-card__sheet {
   box-sizing: border-box;
-  max-width: 340px;
+  max-width: 440px;
   padding: 24px 28px 20px;
   border: 1px solid var(--doc-card-line);
   border-radius: 0.5em;
@@ -457,24 +457,41 @@
 }
 
 /* how the sync server looks from here */
-.doc-card__status {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 2px;
-  color: var(--doc-card-ink);
-  font-size: 0.9em;
+/* the sync server's connection, read off the repo as it stands: a line of
+   machine readout among the prose, so it reads as a fact, not a guess */
+.doc-card__readout {
+  display: inline-block;
+  margin: 0 auto 12px !important;
+  padding: 4px 10px;
+  border: 1px solid var(--doc-card-line);
+  border-radius: var(--doc-card-radius);
+  background: color-mix(in oklab, var(--doc-card-ink) 5%, var(--doc-card-sheet));
+  color: var(--doc-card-ink) !important;
+  font: 12px/1.4 var(--doc-card-mono);
+  white-space: nowrap;
+}
+
+.doc-card__readout-label {
+  color: var(--doc-card-muted);
+}
+
+.doc-card__readout-value {
+  font-weight: 600;
+  color: var(--doc-card-danger);
+
+  .doc-card__readout[data-connected] & {
+    color: var(--doc-card-good);
+  }
 }
 
 .doc-card__status-dot {
+  display: inline-block;
   width: 7px;
   height: 7px;
+  margin: 0 2px;
   border-radius: 50%;
-  background: var(--doc-card-danger);
-
-  .doc-card__status[data-connected] & {
-    background: var(--doc-card-good);
-  }
+  background: currentColor;
+  vertical-align: 0.05em;
 }
 
 .doc-card__actions {

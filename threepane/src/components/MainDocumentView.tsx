@@ -14,7 +14,12 @@ import {
   onMount,
   Show,
 } from "solid-js";
-import { NoToolCard, UnavailableCard, Finding } from "./DocumentCards";
+import {
+  Finding,
+  InvalidUrlCard,
+  NoToolCard,
+  UnavailableCard,
+} from "./DocumentCards";
 
 interface MainDocumentViewProps {
   viewKey: Accessor<string | undefined>;
@@ -74,10 +79,12 @@ export function MainDocumentView({
   );
 }
 
-// what we know about the doc: still looking, couldn't get it, or here it is
+// what we know about the doc: still looking, couldn't get it, its url isn't
+// one, or here it is
 type Lookup =
   | { state: "finding" }
   | { state: "unavailable" }
+  | { state: "invalid" }
   | { state: "ready"; doc: HasPatchworkMetadata };
 
 /**
@@ -124,8 +131,10 @@ function DocumentView(props: {
       const wasUnavailable = lookup().state === "unavailable";
       setLookup({ state: "ready", doc: handle.doc() });
       if (wasUnavailable && !mounted()) setAttempt((n) => n + 1);
-    } catch {
-      if (!disposed) setLookup({ state: "unavailable" });
+    } catch (error) {
+      if (disposed) return;
+      // a url the repo can't even parse won't turn up however long we wait
+      setLookup({ state: isInvalidUrlError(error) ? "invalid" : "unavailable" });
     }
   }
 
@@ -221,6 +230,9 @@ function DocumentView(props: {
       <Show when={state() === "finding"}>
         <Finding />
       </Show>
+      <Show when={state() === "invalid"}>
+        <InvalidUrlCard url={props.url} />
+      </Show>
       <Show when={state() === "unavailable" && !mounted()}>
         <UnavailableCard url={props.url} repo={props.repo} onRetry={retry} />
       </Show>
@@ -257,6 +269,15 @@ function findProgress(repo: Repo, url: AutomergeUrl): Progress | undefined {
       ? p
       : undefined;
   });
+}
+
+// the repo says so when it can't parse a url: "Invalid AutomergeUrl: …" from
+// interpretAsDocumentId, "Invalid document URL: …" from parseAutomergeUrl.
+// we go by what the repo says rather than checking the url ourselves, so a
+// form the host's repo accepts is never turned away here
+function isInvalidUrlError(error: unknown): boolean {
+  const message = (error as Error)?.message ?? String(error);
+  return /invalid (automergeurl|document url|documentid|document id)/i.test(message);
 }
 
 // whether a tool takes `type` only because it takes "*"

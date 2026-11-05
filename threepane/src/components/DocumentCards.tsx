@@ -89,9 +89,9 @@ export function NoToolCard(props: {
     const ok = window.confirm(
       `This document suggests a package to open it with:\n\n` +
         `${url}\n\n` +
-        `Loading it runs the JavaScript at that address right here, where it ` +
-        `can read and change your documents. Only load it if you trust ` +
-        `whoever sent you this document.\n\n` +
+        `Loading it runs its code in this page, where it can read and ` +
+        `change your documents. Only load it if you trust whoever sent you ` +
+        `this document.\n\n` +
         `Load it?`
     );
     if (!ok) return;
@@ -124,7 +124,7 @@ export function NoToolCard(props: {
         {(url) => (
           <>
             <p>
-              it suggests a package that might:
+              the doc suggests a package that might:
               <br />
               <PackageLine claims={claims()} />
               <Show when={claims() && (claims()!.title || claims()!.name)}>
@@ -196,43 +196,72 @@ export function UnavailableCard(props: {
   const [connected, setConnected] = createSignal(
     knowsConnection ? repo.isSubductionConnected!() : undefined
   );
+  // back online: worth asking again
+  const update = (now: boolean) => {
+    const was = connected();
+    setConnected(now);
+    if (now && was === false) props.onRetry();
+  };
   if (knowsConnection && repo.on && repo.off) {
-    const onConnection = (p: { connected: boolean }) => {
-      setConnected(p.connected);
-      // back online: worth asking again
-      if (p.connected) props.onRetry();
-    };
+    const onConnection = (p: { connected: boolean }) => update(p.connected);
     repo.on("subduction-connection", onConnection);
     onCleanup(() => repo.off!("subduction-connection", onConnection));
+  }
+  // the event only fires when the connection flips, and a wrapped repo might
+  // not pass it on, so read it again every so often too: the readout should
+  // never be telling you about a while ago
+  if (knowsConnection) {
+    const poll = setInterval(() => update(repo.isSubductionConnected!()), 2000);
+    onCleanup(() => clearInterval(poll));
   }
 
   return (
     <Card url={props.url} title="can't load this doc">
-      <p>we couldn't find it anywhere. that might mean:</p>
+      <p>we couldn't get it from anywhere we looked. that might mean:</p>
       <ul class="doc-card__reasons">
         <li>the person who sent you the link hasn't given you access yet</li>
-        <li>it hasn't finished syncing on their side</li>
-        <li>
-          something's wrong with the sync server
-          <Show when={connected() !== undefined}>
-            <span
-              class="doc-card__status"
-              data-connected={connected() ? "" : undefined}
-            >
-              <span class="doc-card__status-dot" />
-              {connected()
-                ? "you're connected to it"
-                : "you're not connected to it right now"}
-            </span>
-          </Show>
-        </li>
+        <li>it hasn't finished syncing from their device yet</li>
+        <li>something's wrong with the sync server</li>
       </ul>
+      <Show when={connected() !== undefined}>
+        <p
+          class="doc-card__readout"
+          role="status"
+          data-connected={connected() ? "" : undefined}
+        >
+          <span class="doc-card__readout-label">Sync Server Status:</span>{" "}
+          <span class="doc-card__readout-value">
+            (<span class="doc-card__status-dot" />){" "}
+            {connected() ? "Connected" : "Disconnected"}
+          </span>
+        </p>
+      </Show>
       <p>if it turns up, it'll open right here.</p>
       <div class="doc-card__actions">
         <button type="button" class="doc-card__button" onClick={props.onRetry}>
           try again
         </button>
       </div>
+      <p class="doc-card__aside">
+        <code class="doc-card__code doc-card__url">{props.url}</code>
+      </p>
+    </Card>
+  );
+}
+
+/**
+ * A url the repo can't read as a doc's address at all. Nothing will make it
+ * load, so there's nothing to try again: the link itself needs fixing.
+ */
+export function InvalidUrlCard(props: { url: AutomergeUrl }) {
+  return (
+    <Card url={props.url} title="this link is broken">
+      <p>
+        a bit of it got lost or changed on the way here, so it can't point at
+        any doc. maybe a character dropped when it was copied, or the link got
+        cut short.
+      </p>
+      <p>if someone sent it to you, ask them for the link again.</p>
       <p class="doc-card__aside">
         <code class="doc-card__code doc-card__url">{props.url}</code>
       </p>

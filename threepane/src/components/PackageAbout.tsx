@@ -40,7 +40,8 @@ export function PackageLine(props: { claims: PackageClaims | undefined }) {
 /**
  * A button that pops up what's known about a suggested package, in two
  * halves: what the package says about itself (which it could make up), and
- * what we can see from our own repo (its url, heads, and who's written it).
+ * what we can see from our own repo (its url, heads, and which actors have
+ * written to its folder doc).
  */
 export function PackageAbout(props: {
   url: string;
@@ -65,12 +66,14 @@ export function PackageAbout(props: {
   const [askFailed, setAskFailed] = createSignal<string>();
   async function ask() {
     const ok = window.confirm(
-      `To find out what this package brings, it has to run.\n\n` +
+      `To find out what this package brings, its code has to run.\n\n` +
         `${props.url}\n\n` +
-        `Its code will run in a background worker, away from this page, and ` +
-        `report back the plugins it says it has. Nothing gets loaded into ` +
-        `this page.\n\n` +
-        `Ask it?`
+        `It runs in a background worker, not in this page, and reports back ` +
+        `the plugins it says it has. Nothing is added to this page. It can ` +
+        `still use the network, and the data this site keeps in your ` +
+        `browser, your documents included. Only run it if you trust whoever ` +
+        `sent you this document.\n\n` +
+        `Run it?`
     );
     if (!ok) return;
     setAskFailed(undefined);
@@ -117,7 +120,7 @@ export function PackageAbout(props: {
         <section class="pkg-about__section pkg-about__section--claims">
           <h4>what it says about itself</h4>
           <p class="pkg-about__caveat">
-            this is the package's own word. anyone can write anything here, and
+            the package wrote this about itself. it could say anything, and
             nothing checks it.
           </p>
           <Switch>
@@ -126,7 +129,7 @@ export function PackageAbout(props: {
             </Match>
             <Match when={!props.claims}>
               <p class="pkg-about__quiet">
-                it has no package.json we could read.
+                we couldn't read a package.json for it.
               </p>
             </Match>
             <Match when={props.claims}>
@@ -232,10 +235,10 @@ export function PackageAbout(props: {
                         {h().writers.length === 1 ? "writer" : "writers"}
                         <Writers writers={h().writers} />
                         <p class="pkg-about__caveat">
-                          writers are automerge actors: one for each device or
-                          session that wrote, not one per person. this is the
-                          package folder's own history; each file in it keeps
-                          its own.
+                          a writer is an automerge actor: a device or session
+                          that made changes, not a person. one person can be
+                          several writers. this is only the package folder's
+                          history; each file in it has its own.
                         </p>
                       </dd>
                     </>
