@@ -77,8 +77,8 @@
    which could otherwise lift in while still empty. */
 .comments-thread[data-new] > patchwork-view > * {
   transition:
-    opacity 200ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
-    transform 200ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+    opacity max(1ms, calc(200ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
+    transform max(1ms, calc(200ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 @starting-style {
   .comments-thread[data-new] > patchwork-view > * {
@@ -98,17 +98,17 @@
 
 .comments-thread-card {
   background: var(--comments-bg);
-  border: 1px solid var(--comments-border);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--comments-border);
   padding: 0.5rem;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   border-radius: 6px;
   transition:
-    border-color 0.15s ease,
-    background 0.15s ease,
-    box-shadow 0.15s ease;
+    border-color var(--studio-transition, 0.15s ease),
+    background var(--studio-transition, 0.15s ease),
+    box-shadow var(--studio-transition, 0.15s ease);
 }
 
 .comments-thread-card--primary {
@@ -176,11 +176,11 @@
   font-size: 0.6875rem;
   font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: var(--studio-chrome-letter-spacing, 0.03em);
   padding: 0.0625rem 0.375rem;
   border-radius: 0.625rem;
   color: var(--comments-muted-fg);
-  border: 1px solid var(--comments-border);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--comments-border);
 }
 
 .comments-thread-card-body {
@@ -192,7 +192,7 @@
 .comments-thread-doc-level {
   font-size: 0.6875rem;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: var(--studio-chrome-letter-spacing, 0.03em);
   color: var(--comments-muted-fg);
 }
 
@@ -256,7 +256,7 @@
   min-height: 6rem;
   min-width: 0;
   width: 100%;
-  border: 1px solid var(--comments-border);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--comments-border);
   border-radius: 0.5rem;
   color: var(--comments-fg);
   background: var(--comments-bg);
@@ -282,8 +282,8 @@
 }
 
 .comment-draft-editor:focus-within {
-  outline: 2px solid var(--comments-accent);
-  outline-offset: 1px;
+  outline: var(--studio-focus-ring, 2px solid var(--comments-accent));
+  outline-offset: var(--studio-focus-ring-offset, 1px);
 }
 
 .comment-btn {
@@ -291,12 +291,12 @@
   border-radius: 0.25rem;
   font-family: inherit;
   font-size: 0.875rem;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   border: none;
   background: transparent;
   color: var(--comments-fg);
 }
 
 .comment-btn:hover {
-  background: var(--comments-hover-bg);
+  background: var(--studio-hover-fill, var(--comments-hover-bg));
 }

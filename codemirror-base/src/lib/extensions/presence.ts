@@ -461,7 +461,7 @@ const presenceTheme = EditorView.baseTheme({
     pointerEvents: "none",
     userSelect: "none",
     opacity: "1",
-    transition: "opacity 200ms ease-in-out",
+    transition: "opacity max(1ms, calc(200ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) ease-in-out",
   },
   ".cm-presence-caret--idle .cm-presence-caret-label": {
     opacity: "0",

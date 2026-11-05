@@ -61,7 +61,7 @@
   justify-content: space-between;
   gap: var(--studio-space-sm, 0.5rem);
   padding-bottom: var(--studio-space-sm, 0.5rem);
-  border-bottom: 1px solid var(--folder-view-border);
+  border-bottom: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--folder-view-border);
 }
 
 /* Composition: where we are inside a pushwork directory doc, in place of the
@@ -86,11 +86,11 @@
 
 .folder-view button.folder-view-crumb {
   color: var(--folder-view-accent-text);
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
 }
 
 .folder-view button.folder-view-crumb:hover {
-  background: var(--folder-view-hover);
+  background: var(--studio-hover-fill, var(--folder-view-hover));
 }
 
 .folder-view .folder-view-crumb-sep {
@@ -110,10 +110,10 @@
   font-size: 0.8rem;
   color: var(--folder-view-accent-line);
   background: var(--folder-view-accent);
-  border: 1px solid transparent;
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) transparent;
   border-radius: var(--studio-radius-sm, 4px);
   padding: var(--studio-space-2xs, 0.25rem) var(--studio-space-sm, 0.5rem);
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   transition: filter var(--studio-transition-fast, 0.1s ease);
 }
 
@@ -131,7 +131,7 @@
   position: absolute;
   top: calc(100% + var(--studio-space-2xs, 0.25rem));
   left: 0;
-  z-index: 10;
+  z-index: var(--studio-layer-dropdown, 10);
   min-width: 12rem;
   max-height: 16rem;
   overflow: auto;
@@ -139,14 +139,14 @@
   flex-direction: column;
   padding: var(--studio-space-3xs, 0.125rem);
   background: var(--folder-view-card);
-  border: 1px solid var(--folder-view-card-border);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--folder-view-card-border);
   border-radius: var(--studio-radius-md, 8px);
   box-shadow: var(--folder-view-card-shadow-hover);
   /* Grows out of its button. Closing is instant. */
   transform-origin: top left;
   transition:
-    opacity 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
-    transform 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+    opacity max(1ms, calc(150ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
+    transform max(1ms, calc(150ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 @starting-style {
   .folder-view .folder-create-menu {
@@ -168,11 +168,11 @@
   border: 0;
   border-radius: var(--studio-radius-sm, 4px);
   padding: var(--studio-space-2xs, 0.25rem) var(--studio-space-sm, 0.5rem);
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
 }
 
 .folder-view .folder-create-item:hover {
-  background: var(--folder-view-hover);
+  background: var(--studio-hover-fill, var(--folder-view-hover));
 }
 
 .folder-view .folder-create-empty {
@@ -187,7 +187,7 @@
   padding: var(--studio-space-2xs, 0.25rem) var(--studio-space-sm, 0.5rem);
   border-radius: var(--studio-radius-round, 9999px);
   background: var(--folder-view-card);
-  border: 1px solid var(--folder-view-border);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--folder-view-border);
 }
 
 /* Composition: the list of cards. */
@@ -218,7 +218,7 @@
 /* Block: one rendered file/folder card — sitting on the well. */
 .folder-view .folder-entry {
   background: var(--folder-view-card);
-  border: 1px solid var(--folder-view-card-border);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--folder-view-card-border);
   border-radius: var(--studio-radius-lg, 12px);
   box-shadow: var(--folder-view-card-shadow);
   overflow: hidden;
@@ -258,7 +258,7 @@
   font-size: 0.7rem;
   color: var(--folder-view-muted);
   padding: var(--studio-space-3xs, 0.125rem) var(--studio-space-2xs, 0.25rem);
-  border: 1px solid var(--folder-view-border);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--folder-view-border);
   border-radius: var(--studio-radius-sm, 4px);
   flex-shrink: 0;
 }
@@ -268,7 +268,7 @@
   font-size: 0.8rem;
   background: none;
   border: none;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   color: var(--folder-view-accent-text);
   text-decoration: none;
   padding: var(--studio-space-2xs, 0.25rem) var(--studio-space-sm, 0.5rem);
@@ -278,7 +278,7 @@
 }
 
 .folder-view .folder-entry-open:hover {
-  background: var(--folder-view-hover);
+  background: var(--studio-hover-fill, var(--folder-view-hover));
 }
 
 .folder-view .folder-entry-hint {
@@ -295,7 +295,7 @@
   max-height: 300px;
   display: flex;
   flex-direction: column;
-  border-top: 1px solid var(--folder-view-border);
+  border-top: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--folder-view-border);
 }
 
 .folder-view .folder-entry-scroll {

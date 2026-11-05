@@ -56,7 +56,7 @@ const STYLES = `
   justify-content: space-between;
   gap: 0.5rem;
   padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--re-border);
+  border-bottom: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--re-border);
   flex-shrink: 0;
 }
 .re-url {
@@ -67,8 +67,8 @@ const STYLES = `
   white-space: nowrap;
   min-width: 0;
   flex: 1;
-  cursor: pointer;
-  transition: opacity 0.15s;
+  cursor: var(--studio-cursor-pointer, pointer);
+  transition: opacity max(1ms, calc(0.15s * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)));
   user-select: none;
 }
 .re-url:hover { opacity: 0.7; }
@@ -86,17 +86,17 @@ const STYLES = `
   border-radius: 0.3rem;
   font-size: 0.68rem;
   font-weight: 500;
-  cursor: pointer;
-  border: 1px solid var(--re-border);
+  cursor: var(--studio-cursor-pointer, pointer);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--re-border);
   background: transparent;
   color: inherit;
   opacity: 0.7;
-  transition: opacity 0.1s, background 0.1s;
+  transition: opacity max(1ms, calc(0.1s * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))), background max(1ms, calc(0.1s * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)));
   white-space: nowrap;
   font-family: inherit;
 }
 .re-btn:hover:not(:disabled) { opacity: 1; background: var(--re-btn-hover); }
-.re-btn:disabled { opacity: 0.25; cursor: default; }
+.re-btn:disabled { opacity: 0.25; cursor: var(--studio-cursor-default, default); }
 .re-icon { display: inline-flex; align-items: center; }
 .re-icon svg { display: block; }
 .re-scroll {
@@ -129,7 +129,7 @@ const STYLES = `
   width: 18px;
   height: 18px;
   flex-shrink: 0;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   opacity: 0.5;
   border-radius: 3px;
 }
@@ -148,7 +148,7 @@ const STYLES = `
 }
 .re-automerge-url {
   color: var(--re-link) !important;
-  cursor: pointer !important;
+  cursor: var(--studio-cursor-pointer, pointer) !important;
   text-decoration: underline;
 }
 .re-automerge-url:hover { color: var(--re-link-hover) !important; }
@@ -157,7 +157,7 @@ const STYLES = `
   gap: 2px;
   margin-left: 6px;
   opacity: 0;
-  transition: opacity 0.1s;
+  transition: opacity max(1ms, calc(0.1s * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)));
 }
 .re-act {
   display: inline-flex;
@@ -166,7 +166,7 @@ const STYLES = `
   width: 20px;
   height: 20px;
   border-radius: 3px;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   opacity: 0.5;
 }
 .re-act:hover { opacity: 1; background: var(--re-btn-hover); }
@@ -180,7 +180,7 @@ const STYLES = `
   font-family: inherit;
   font-size: inherit;
   padding: 3px 6px;
-  border: 1px solid var(--re-input-border);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--re-input-border);
   border-radius: 4px;
   background: var(--re-input-bg);
   color: var(--re-input-color);
@@ -193,11 +193,11 @@ const STYLES = `
   font-family: inherit;
   font-size: 0.85em;
   padding: 1px 2px;
-  border: 1px solid var(--re-input-border);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--re-input-border);
   border-radius: 3px;
   background: var(--re-input-bg);
   color: var(--re-input-color);
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
 }
 .re-edit-btn {
   display: inline-flex;
@@ -206,7 +206,7 @@ const STYLES = `
   width: 20px;
   height: 20px;
   border-radius: 3px;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   opacity: 0.6;
 }
 .re-edit-btn:hover { opacity: 1; background: var(--re-btn-hover); }
@@ -215,14 +215,14 @@ const STYLES = `
 .raw-editor-wrapper { position: relative; }
 .re-cm-overlay {
   position: absolute;
-  z-index: 9999;
+  z-index: var(--studio-layer-popover, 9999);
   display: flex;
   flex-direction: column;
   gap: 4px;
   padding: 6px;
   border-radius: 6px;
   background: var(--re-overlay-bg);
-  border: 1px solid var(--re-input-border);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--re-input-border);
   box-shadow: 0 4px 16px color-mix(in srgb, var(--re-line) 15%, transparent), 0 0 0 1px var(--re-border);
 }
 .re-cm-host {
@@ -231,7 +231,7 @@ const STYLES = `
   border-radius: 4px;
   overflow: hidden;
   background: var(--re-input-bg);
-  border: 1px solid var(--re-input-border);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--re-input-border);
 }
 .re-cm-host .cm-editor {
   background: transparent;
@@ -269,7 +269,7 @@ const STYLES = `
 .u8-toggle {
   font-size: 0.68em;
   opacity: 0.5;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   text-decoration: underline;
   text-underline-offset: 2px;
   user-select: none;
@@ -292,16 +292,16 @@ const STYLES = `
   gap: 0.15em;
   margin-bottom: 0.4em;
   padding-bottom: 0.3em;
-  border-bottom: 1px solid var(--re-border);
+  border-bottom: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--re-border);
 }
 .u8-mode-btn {
   padding: 0.1em 0.45em;
   border-radius: 0.2em;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   opacity: 0.5;
   font-size: 0.9em;
   user-select: none;
-  transition: opacity 0.1s, background 0.1s;
+  transition: opacity max(1ms, calc(0.1s * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))), background max(1ms, calc(0.1s * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)));
 }
 .u8-mode-btn:hover { opacity: 0.8; background: var(--re-btn-hover); }
 .u8-mode-btn--active { opacity: 1; background: var(--re-mode-active-bg); font-weight: 600; }

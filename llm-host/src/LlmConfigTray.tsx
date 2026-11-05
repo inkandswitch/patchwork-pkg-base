@@ -28,20 +28,20 @@ export function LlmConfigTray(element: HTMLElement) {
 		.llm-config-tray-button {
 			display: inline-flex; align-items: center; gap: var(--studio-space-2xs, 0.25rem);
 			height: 1.75rem; padding: 0 var(--studio-space-xs, 0.375rem);
-			border: 1px solid var(--studio-chrome-offset-20, var(--studio-fill-offset-20, #d4d4d4));
+			border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--studio-chrome-offset-20, var(--studio-fill-offset-20, #d4d4d4));
 			border-radius: var(--studio-radius-sm, 4px);
 			background: var(--studio-chrome, var(--studio-fill, white));
 			color: var(--studio-chrome-line, var(--studio-line, black));
-			font: 500 0.75rem/1 var(--studio-family-sans, system-ui, sans-serif); cursor: pointer;
+			font: 500 0.75rem/1 var(--studio-family-sans, system-ui, sans-serif); cursor: var(--studio-cursor-pointer, pointer);
 		}
 		.llm-config-tray-button:hover {
 			background: var(--studio-chrome-offset-10, var(--studio-fill-offset-10, #f2f2f2));
 		}
 		.llm-config-tray-popover {
-			position: fixed; z-index: 2147483000; box-sizing: border-box;
+			position: fixed; z-index: var(--studio-layer-popover, 2147483000); box-sizing: border-box;
 			max-width: min(92vw, 520px); max-height: 80vh; overflow: auto;
 			background: var(--studio-fill, white); color: var(--studio-line, black);
-			border: 1px solid var(--studio-fill-offset-20, #d4d4d4);
+			border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--studio-fill-offset-20, #d4d4d4);
 			border-radius: var(--studio-radius-md, 8px);
 			box-shadow: var(--studio-shadow-lg, 0 8px 32px rgba(0,0,0,0.24));
 			padding: var(--studio-space-sm, 0.5rem);
@@ -49,8 +49,8 @@ export function LlmConfigTray(element: HTMLElement) {
 			   transform flips the popover above the button. Closing is instant. */
 			transform-origin: top right;
 			transition:
-				opacity 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
-				scale 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+				opacity max(1ms, calc(150ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
+				scale max(1ms, calc(150ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 		}
 		@starting-style {
 			.llm-config-tray-popover { opacity: 0; scale: 0.97; }

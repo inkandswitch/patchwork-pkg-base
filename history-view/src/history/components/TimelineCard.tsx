@@ -21,7 +21,7 @@ export function TimelineCard(props: TimelineCardProps) {
       class="timeline-card"
       style={{
         "font-size": "0.75rem",
-        cursor: "pointer",
+        cursor: "var(--studio-cursor-pointer, pointer)",
         ...(props.isSelected
           ? { background: "var(--history-accent)", "border-color": "var(--history-accent)", color: "var(--history-accent-fg)" }
           : {})

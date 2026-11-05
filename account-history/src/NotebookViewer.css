@@ -48,9 +48,9 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  border: 1px solid var(--account-history-border);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--account-history-border);
   background: var(--account-history-bg);
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -72,9 +72,9 @@
   display: flex;
   align-items: center;
   border-radius: 12px;
-  border: 1px solid var(--account-history-border);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--account-history-border);
   background: var(--account-history-bg);
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   overflow: hidden;
   user-select: none;
   height: 24px;
@@ -124,7 +124,7 @@
 .notebook-viewer-timeline-label {
   background: transparent;
   border: none;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   font-size: var(--account-history-text-sm);
   font-weight: 500;
   color: var(--account-history-text-secondary);
@@ -142,7 +142,7 @@
 .notebook-viewer-timeline-slider {
   flex: 1;
   min-width: 0;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   accent-color: var(--account-history-primary);
 }
 
@@ -166,7 +166,7 @@
   width: 48px;
   background: transparent;
   border: none;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   color: var(--account-history-text-secondary);
   font-size: 2rem;
   transition: color var(--account-history-transition-fast) var(--easing),
@@ -182,7 +182,7 @@
 
 .notebook-viewer-arrow:disabled {
   opacity: 0.25;
-  cursor: default;
+  cursor: var(--studio-cursor-default, default);
 }
 
 /* The "page" - the central patchwork-view container */
@@ -227,18 +227,18 @@
 .notebook-viewer-select {
   padding: var(--account-history-space-2xs) var(--account-history-space-xs);
   border-radius: var(--account-history-radius);
-  border: 1px solid var(--account-history-border);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--account-history-border);
   background: var(--account-history-bg);
   color: var(--account-history-text);
   font-size: var(--account-history-text-sm);
   font-family: inherit;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
 }
 
 .notebook-viewer-step-slider {
   width: 150px;
   accent-color: var(--account-history-primary);
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
 }
 
 .notebook-viewer-step-value {
@@ -273,9 +273,9 @@
 .notebook-viewer-open-doc-button {
   height: 36px;
   border-radius: 18px;
-  border: 1px solid var(--account-history-border);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--account-history-border);
   background: var(--account-history-bg);
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   display: flex;
   align-items: center;
   gap: var(--account-history-space-2xs);
@@ -305,7 +305,7 @@
   right: 0;
   min-width: 160px;
   background: var(--account-history-bg);
-  border: 1px solid var(--account-history-border);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--account-history-border);
   border-radius: var(--account-history-radius);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12), 0 0 1px rgba(0, 0, 0, 0.08);
   z-index: 4;
@@ -318,7 +318,7 @@
   padding: var(--account-history-space-xs) var(--account-history-space-sm);
   background: none;
   border: none;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   text-align: left;
   font-size: var(--account-history-text-sm);
   font-family: inherit;
@@ -327,11 +327,11 @@
 }
 
 .notebook-viewer-version-option:hover {
-  background: var(--account-history-hover);
+  background: var(--studio-hover-fill, var(--account-history-hover));
 }
 
 .notebook-viewer-version-option + .notebook-viewer-version-option {
-  border-top: 1px solid var(--account-history-border);
+  border-top: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--account-history-border);
 }
 
 /* ===== Empty State ===== */

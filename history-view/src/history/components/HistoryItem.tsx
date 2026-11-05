@@ -146,7 +146,7 @@ export function HistoryItem(props: HistoryItemProps) {
             fallback={
               <>
                 <div
-                  style={{ display: "flex", "align-items": "center", gap: "0.25rem", cursor: "text", "min-width": "0", overflow: "hidden", "flex-shrink": "1" }}
+                  style={{ display: "flex", "align-items": "center", gap: "0.25rem", cursor: "var(--studio-cursor-text, text)", "min-width": "0", overflow: "hidden", "flex-shrink": "1" }}
                   onDblClick={startEdit}
                   title="Double-click to rename"
                 >
@@ -159,7 +159,7 @@ export function HistoryItem(props: HistoryItemProps) {
                     </Show>
                   </span>
                   <svg
-                    style={{ "flex-shrink": "0", width: "12px", height: "12px", opacity: "0", cursor: "pointer", color: "inherit", transition: "opacity 0.15s" }}
+                    style={{ "flex-shrink": "0", width: "12px", height: "12px", opacity: "0", cursor: "var(--studio-cursor-pointer, pointer)", color: "inherit", transition: "opacity max(1ms, calc(0.15s * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)))" }}
                     xmlns="http://www.w3.org/2000/svg"
                     viewBox="0 0 16 16"
                     fill="currentColor"
@@ -174,7 +174,7 @@ export function HistoryItem(props: HistoryItemProps) {
             }
           >
             <input
-              style={{ flex: "1", "min-width": "0", background: "transparent", border: "none", "border-bottom": "1px solid currentColor", outline: "none", padding: "0", "line-height": "1", font: "inherit", color: "inherit" }}
+              style={{ flex: "1", "min-width": "0", background: "transparent", border: "none", "border-bottom": "var(--studio-border-width, 1px) var(--studio-border-style, solid) currentColor", outline: "none", padding: "0", "line-height": "1", font: "inherit", color: "inherit" }}
               value={editValue()}
               onInput={(e) => setEditValue(e.currentTarget.value)}
               onBlur={commitEdit}

@@ -20,9 +20,9 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
-  z-index: 9999;
+  background: var(--studio-backdrop, rgba(0, 0, 0, 0.5));
+  backdrop-filter: var(--studio-backdrop-blur, blur(4px));
+  z-index: var(--studio-layer-modal, 9999);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -36,8 +36,8 @@
   border-radius: 12px;
   box-shadow: 0 16px 70px rgba(0, 0, 0, 0.3);
   overflow: hidden;
-  animation: slideDown 0.2s ease-out;
-  border: 1px solid var(--command-palette-border);
+  animation: slideDown max(1ms, calc(0.2s * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) ease-out;
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--command-palette-border);
 }
 
 @keyframes slideDown {
@@ -59,7 +59,7 @@
   font-size: var(--command-palette-font-size);
   background: transparent;
   color: var(--command-palette-fg);
-  border-bottom: 1px solid var(--command-palette-border);
+  border-bottom: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--command-palette-border);
 }
 
 .command-palette-input::placeholder {
@@ -85,14 +85,14 @@
   font-weight: 600;
   color: var(--command-palette-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: var(--studio-chrome-letter-spacing, 0.5px);
 }
 
 .command-palette-item {
   padding: 12px 12px;
   border-radius: 6px;
-  cursor: pointer;
-  transition: background-color 0.15s;
+  cursor: var(--studio-cursor-pointer, pointer);
+  transition: background-color max(1ms, calc(0.15s * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)));
   margin-bottom: 2px;
 }
 
@@ -101,7 +101,7 @@
 }
 
 .command-palette-item:hover {
-  background: var(--command-palette-hover);
+  background: var(--studio-hover-fill, var(--command-palette-hover));
 }
 
 .command-palette-item-content {
@@ -127,22 +127,22 @@
   align-items: center;
   gap: 12px;
   padding: 16px 20px;
-  border-bottom: 1px solid var(--command-palette-border);
+  border-bottom: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--command-palette-border);
 }
 
 .command-palette-back-button {
   background: none;
   border: none;
   color: var(--command-palette-secondary);
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   font-size: 14px;
   padding: 4px 8px;
   border-radius: 4px;
-  transition: background-color 0.15s;
+  transition: background-color max(1ms, calc(0.15s * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)));
 }
 
 .command-palette-back-button:hover {
-  background: var(--command-palette-hover);
+  background: var(--studio-hover-fill, var(--command-palette-hover));
 }
 
 .command-palette-header-title {
@@ -178,13 +178,13 @@
 .command-palette-arg-input {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid var(--command-palette-border);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--command-palette-border);
   border-radius: 6px;
   font-size: 14px;
   background: var(--command-palette-bg);
   color: var(--command-palette-fg);
   outline: none;
-  transition: border-color 0.15s;
+  transition: border-color max(1ms, calc(0.15s * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)));
 }
 
 .command-palette-arg-input:focus {
@@ -203,9 +203,9 @@
   border-radius: 6px;
   font-size: 14px;
   font-weight: 500;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   border: none;
-  transition: background-color 0.15s;
+  transition: background-color max(1ms, calc(0.15s * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)));
 }
 
 .command-palette-arg-button-cancel {

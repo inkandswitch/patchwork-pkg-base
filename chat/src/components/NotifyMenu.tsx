@@ -38,7 +38,7 @@ export function NotifyMenu(props: {onClose: () => void; anchorRect: DOMRect}) {
 				position: "fixed",
 				top: (props.anchorRect.bottom + 4) + "px",
 				right: (window.innerWidth - props.anchorRect.right) + "px",
-				"z-index": "200",
+				"z-index": "var(--studio-layer-dropdown, 200)",
 			}}
 			on:click={(e) => e.stopPropagation()}
 		>

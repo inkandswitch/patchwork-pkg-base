@@ -21,14 +21,14 @@
 	align-items: center;
 	height: 22px;
 	padding: 0 var(--studio-space-sm, 0.5rem);
-	border: 1px solid var(--add-doc-to-sidebar-border);
+	border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--add-doc-to-sidebar-border);
 	border-radius: var(--studio-radius-sm, 4px);
 	background: var(--add-doc-to-sidebar-bg);
 	color: var(--add-doc-to-sidebar-fg);
 	font: inherit;
 	font-size: 0.8em;
 	font-weight: 500;
-	cursor: pointer;
+	cursor: var(--studio-cursor-pointer, pointer);
 	transition: border-color var(--studio-transition-fast, 0.1s ease),
 		background var(--studio-transition-fast, 0.1s ease);
 	white-space: nowrap;

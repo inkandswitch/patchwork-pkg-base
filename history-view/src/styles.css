@@ -63,7 +63,7 @@
   align-items: center;
   justify-content: space-between;
   padding: var(--studio-space-sm, 0.5rem) var(--studio-space-md, 1rem);
-  border-bottom: 1px solid var(--history-border);
+  border-bottom: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--history-border);
 }
 
 .history-header-title {
@@ -92,7 +92,7 @@
   font-weight: 600;
   color: var(--history-secondary-fg);
   background: var(--history-section-bg);
-  border-bottom: 1px solid var(--history-section-divider);
+  border-bottom: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--history-section-divider);
 }
 
 .history-item {
@@ -100,12 +100,12 @@
   gap: var(--studio-space-sm, 0.5rem);
   padding: var(--studio-space-xs, 0.375rem) var(--studio-space-sm, 0.5rem);
   border-radius: var(--studio-radius-sm, 4px);
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   transition: background var(--studio-transition-fast, 0.1s ease);
 }
 
 .history-item:hover {
-  background: var(--history-card-hover-bg);
+  background: var(--studio-hover-fill, var(--history-card-hover-bg));
 }
 
 .history-item[data-selected] {
@@ -166,7 +166,7 @@
   font-weight: 500;
   color: var(--history-secondary-fg);
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: var(--studio-chrome-letter-spacing, 0.03em);
 }
 
 .history-grouping-selector {
@@ -177,10 +177,10 @@
 .history-grouping-btn {
   padding: var(--studio-space-3xs, 0.125rem) var(--studio-space-xs, 0.375rem);
   border-radius: var(--studio-radius-sm, 4px);
-  border: 1px solid var(--history-border);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--history-border);
   background: none;
   font-size: 0.75rem;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   color: var(--history-secondary-fg);
 }
 
@@ -201,15 +201,15 @@
   font-size: 0.6875rem;
   font-family: var(--history-family-code);
   color: var(--history-secondary-fg);
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
 }
 
 .history-copy-btn:hover {
-  background: var(--history-hover);
+  background: var(--studio-hover-fill, var(--history-hover));
 }
 
 .timeline-card {
-  border: 1px solid var(--history-card-border);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--history-card-border);
   border-radius: var(--studio-radius-md, 8px);
   padding: var(--studio-space-sm, 0.5rem);
   background: var(--history-card-bg);
@@ -225,8 +225,8 @@
    slows the reading down. Collapsing is instant. */
 .history-subitems {
   transition:
-    opacity 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
-    transform 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+    opacity max(1ms, calc(150ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
+    transform max(1ms, calc(150ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 @starting-style {
   .history-subitems {

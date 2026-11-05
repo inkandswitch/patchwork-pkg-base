@@ -24,7 +24,7 @@ export function GroupingSelector(props: GroupingSelectorProps) {
   return (
     <div class="history-grouping-selector">
       <select
-        style={{ flex: "1", padding: "2px 6px", "border-radius": "4px", border: "1px solid var(--studio-fill-offset-20, #ccc)", "font-size": "0.75rem", background: "none" }}
+        style={{ flex: "1", padding: "2px 6px", "border-radius": "4px", border: "var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--studio-fill-offset-20, #ccc)", "font-size": "0.75rem", background: "none" }}
         value={props.selectedConfig.name}
         onChange={(e) => handleStrategyChange(e.currentTarget.value)}
       >

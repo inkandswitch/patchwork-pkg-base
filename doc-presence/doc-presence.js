@@ -210,7 +210,7 @@ function DocPresence(handle, element) {
 			line-height: 1;
 			overflow: hidden;
 			flex-shrink: 0;
-			transition: opacity 0.3s ease;
+			transition: opacity max(1ms, calc(0.3s * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) ease;
 			background-color: var(--color-base-200, #eee);
 			background-size: cover;
 			background-position: center;

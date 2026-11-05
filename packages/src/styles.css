@@ -134,7 +134,7 @@
   gap: 0.625rem;
   padding: 0.875rem 1rem 0;
   background: color-mix(in oklch, var(--pw-packages-fill), transparent 4%);
-  backdrop-filter: blur(6px);
+  backdrop-filter: var(--studio-backdrop-blur, blur(6px));
 }
 
 /* Row 1: filter (left) + a quiet summary pinned top-right. */
@@ -148,7 +148,7 @@
   flex: 1;
   min-width: 12rem;
   height: var(--pw-ctl-h);
-  border: 1px solid var(--pw-packages-border-strong);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--pw-packages-border-strong);
   border-radius: var(--studio-radius-md, 8px);
   background: var(--pw-packages-fill);
   color: var(--pw-packages-line);
@@ -162,8 +162,8 @@
 .pw-packages__search:focus,
 .pw-packages__origin-chip:focus-visible,
 .pw-packages__tab:focus-visible {
-  outline: 2px solid var(--pw-packages-focus);
-  outline-offset: 1px;
+  outline: var(--studio-focus-ring, 2px solid var(--pw-packages-focus));
+  outline-offset: var(--studio-focus-ring-offset, 1px);
 }
 .pw-packages__stats {
   display: flex;
@@ -192,7 +192,7 @@
   flex-wrap: wrap;
   margin: 0.15rem -1rem 0;
   padding: 0 0.6rem;
-  border-bottom: 1px solid var(--pw-packages-border);
+  border-bottom: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--pw-packages-border);
 }
 .pw-packages__tabs {
   display: flex;
@@ -201,7 +201,7 @@
 }
 .pw-packages__tab {
   appearance: none;
-  border: 1px solid transparent;
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) transparent;
   border-bottom: 0;
   background: transparent;
   color: var(--pw-packages-muted);
@@ -209,7 +209,7 @@
   font-size: 0.8125rem;
   padding: 0.4rem 0.9rem;
   border-radius: var(--studio-radius-md, 8px) var(--studio-radius-md, 8px) 0 0;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   margin-bottom: -1px;
   transition: color var(--studio-transition-fast, 0.1s ease);
 }
@@ -219,7 +219,7 @@
 .pw-packages__tab[data-active] {
   background: var(--pw-packages-fill);
   border-color: var(--pw-packages-border);
-  border-bottom: 1px solid var(--pw-packages-fill);
+  border-bottom: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--pw-packages-fill);
   color: var(--pw-packages-line);
   font-weight: 600;
 }
@@ -249,14 +249,14 @@
   display: inline-flex;
   align-items: center;
   gap: 0.375rem;
-  border: 1px solid var(--pw-packages-border-strong);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--pw-packages-border-strong);
   background: var(--pw-packages-fill);
   color: var(--pw-packages-muted);
   border-radius: var(--studio-radius-round, 9999px);
   padding: 0.2rem 0.625rem;
   font: inherit;
   font-size: 0.75rem;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   transition: background var(--studio-transition-fast, 0.1s ease);
 }
 .pw-packages__origin-chip:hover {
@@ -290,7 +290,7 @@
   border-radius: var(--studio-radius-round, 9999px);
   font-size: 0.6875rem;
   font-weight: 600;
-  letter-spacing: 0.01em;
+  letter-spacing: var(--studio-chrome-letter-spacing, 0.01em);
   background: var(--pw-packages-core-fill);
   color: var(--pw-packages-core-text);
   white-space: nowrap;
@@ -318,7 +318,7 @@
   letter-spacing: 0.01em;
   color: var(--pw-packages-muted);
   background: transparent;
-  border: 1px dashed var(--pw-packages-border-strong);
+  border: var(--studio-border-width, 1px) dashed var(--pw-packages-border-strong);
   white-space: nowrap;
 }
 
@@ -337,7 +337,7 @@
   font-family: var(--pw-packages-family-code);
   font-size: 0.75rem;
   color: var(--pw-packages-muted);
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   border-radius: 3px;
   padding: 0.05rem 0.2rem;
   margin: -0.05rem -0.2rem;
@@ -389,14 +389,14 @@
   flex-shrink: 0;
 }
 .pw-actions__btn {
-  border: 1px solid var(--pw-packages-border-strong);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--pw-packages-border-strong);
   background: var(--pw-packages-raise);
   color: var(--pw-packages-muted);
   border-radius: var(--studio-radius-sm, 4px);
   font: inherit;
   font-size: 0.6875rem;
   padding: 0.15rem 0.55rem;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   transition: background var(--studio-transition-fast, 0.1s ease),
     color var(--studio-transition-fast, 0.1s ease),
     border-color var(--studio-transition-fast, 0.1s ease);
@@ -464,7 +464,7 @@
 }
 .pw-plugin__supports-label {
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--studio-chrome-letter-spacing, 0.05em);
   font-size: 0.625rem;
   font-family: var(--pw-packages-family);
   color: var(--pw-packages-faint);
@@ -496,7 +496,7 @@
   justify-content: flex-end;
   align-items: center;
   padding-bottom: 0.65rem;
-  border-bottom: 1px solid var(--pw-packages-border);
+  border-bottom: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--pw-packages-border);
 }
 
 /* show-more toggle, valid inside the plugin/registry <ul>s */
@@ -511,8 +511,8 @@
   font: inherit;
   font-size: 0.75rem;
   color: var(--pw-packages-muted);
-  cursor: pointer;
-  border-bottom: 1px dashed var(--pw-packages-border-strong);
+  cursor: var(--studio-cursor-pointer, pointer);
+  border-bottom: var(--studio-border-width, 1px) dashed var(--pw-packages-border-strong);
 }
 .pw-more__btn:hover {
   color: var(--pw-packages-accent-text);
@@ -563,7 +563,7 @@
   padding: 1rem;
 }
 .pw-registry {
-  border-bottom: 1px solid var(--pw-packages-border);
+  border-bottom: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--pw-packages-border);
 }
 .pw-registry__head {
   display: flex;
@@ -575,7 +575,7 @@
     var(--studio-secondary, #33ccf8),
     var(--pw-packages-fill) 94%
   );
-  border-bottom: 1px solid var(--pw-packages-border);
+  border-bottom: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--pw-packages-border);
 }
 .pw-registry__name {
   margin: 0;
@@ -587,7 +587,7 @@
   font-size: 0.75rem;
   color: var(--pw-packages-muted);
   background: var(--pw-packages-fill);
-  border: 1px solid var(--pw-packages-border);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--pw-packages-border);
   border-radius: var(--studio-radius-round, 9999px);
   padding: 0 0.5rem;
   font-variant-numeric: tabular-nums;
@@ -605,7 +605,7 @@
   border-left: 3px solid transparent;
 }
 .pw-regitem + .pw-regitem {
-  border-top: 1px solid var(--pw-packages-border);
+  border-top: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--pw-packages-border);
 }
 .pw-regitem[data-origin="installed"] {
   border-left-color: var(--pw-packages-installed);
@@ -660,11 +660,11 @@
   color: var(--pw-packages-muted);
   font-weight: 600;
   white-space: nowrap;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   user-select: none;
 }
 .pw-table__th--plain {
-  cursor: default;
+  cursor: var(--studio-cursor-default, default);
 }
 .pw-table__th[data-sorted] {
   color: var(--pw-packages-line);
@@ -674,7 +674,7 @@
   margin-left: 0.25rem;
 }
 .pw-table__row {
-  border-bottom: 1px solid var(--pw-packages-border);
+  border-bottom: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--pw-packages-border);
 }
 .pw-table__row:hover {
   background: var(--pw-packages-raise);
@@ -723,7 +723,7 @@
   align-items: baseline;
   gap: 0.5rem;
   flex-wrap: wrap;
-  border: 1px solid var(--pw-packages-border-strong);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--pw-packages-border-strong);
   border-left: 3px solid var(--pw-packages-unknown);
   border-radius: var(--studio-radius-md, 8px);
   background: var(--pw-packages-unknown-fill);
@@ -742,7 +742,7 @@
   padding: 1rem 1.25rem 0;
 }
 .pw-broken__box {
-  border: 1px solid
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid)
     color-mix(in oklch, var(--pw-packages-danger), var(--pw-packages-fill) 45%);
   border-left: 3px solid var(--pw-packages-danger);
   border-radius: var(--studio-radius-md, 8px);
@@ -763,7 +763,7 @@
   font-size: 0.75rem;
   font-weight: 650;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--studio-chrome-letter-spacing, 0.04em);
   color: color-mix(in oklch, var(--pw-packages-danger), var(--pw-packages-line) 30%);
 }
 .pw-broken__name {
@@ -818,17 +818,17 @@
 .pw-modal {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: var(--studio-layer-modal, 50);
   display: flex;
   align-items: flex-start;
   justify-content: center;
   padding: max(6vh, 2rem) 1rem 2rem;
-  background: color-mix(in oklch, var(--pw-packages-line), transparent 55%);
-  backdrop-filter: blur(2px);
+  background: var(--studio-backdrop, color-mix(in oklch, var(--pw-packages-line), transparent 55%));
+  backdrop-filter: var(--studio-backdrop-blur, blur(2px));
   overflow-y: auto;
   /* Same enter as threepane's frame popover: the wash fades, the card lifts in.
      Closing is instant. */
-  transition: opacity 150ms ease;
+  transition: opacity var(--studio-transition, 150ms ease);
 }
 @starting-style {
   .pw-modal {
@@ -843,12 +843,12 @@
   padding: 1.25rem 1.375rem 1.125rem;
   background: var(--pw-packages-fill);
   color: var(--pw-packages-line);
-  border: 1px solid var(--pw-packages-border-strong);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--pw-packages-border-strong);
   border-radius: var(--studio-radius-lg, 12px);
   box-shadow: 0 12px 40px color-mix(in oklch, var(--pw-packages-line), transparent 78%);
   transition:
-    opacity 200ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
-    transform 200ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+    opacity max(1ms, calc(200ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
+    transform max(1ms, calc(200ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 @starting-style {
   .pw-install {
@@ -875,7 +875,7 @@
   font-size: 1.25rem;
   line-height: 1;
   padding: 0.1rem 0.3rem;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   border-radius: var(--studio-radius-sm, 4px);
 }
 .pw-install__close:hover {
@@ -893,7 +893,7 @@
 }
 .pw-install__input {
   width: 100%;
-  border: 1px solid var(--pw-packages-border-strong);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--pw-packages-border-strong);
   border-radius: var(--studio-radius-sm, 4px);
   background: var(--pw-packages-fill);
   color: var(--pw-packages-line);
@@ -903,8 +903,8 @@
   padding: 0.5rem 0.625rem;
 }
 .pw-install__input:focus {
-  outline: 2px solid var(--pw-packages-focus);
-  outline-offset: 1px;
+  outline: var(--studio-focus-ring, 2px solid var(--pw-packages-focus));
+  outline-offset: var(--studio-focus-ring-offset, 1px);
 }
 .pw-install__preview {
   display: flex;
@@ -986,21 +986,21 @@
   color: var(--pw-packages-muted);
 }
 .pw-install__cancel {
-  border: 1px solid var(--pw-packages-border-strong);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--pw-packages-border-strong);
   background: var(--pw-packages-fill);
   color: var(--pw-packages-muted);
   border-radius: 999px;
   font: inherit;
   font-size: 0.8125rem;
   padding: 0.45rem 0.9rem;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
 }
 .pw-install__cancel:hover {
   background: var(--pw-packages-raise);
   color: var(--pw-packages-line);
 }
 .pw-install__add {
-  border: 1px solid
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid)
     color-mix(in oklch, var(--pw-packages-accent), var(--pw-packages-line) 12%);
   background: color-mix(
     in oklch,
@@ -1013,7 +1013,7 @@
   font-size: 0.8125rem;
   font-weight: 650;
   padding: 0.45rem 1.05rem;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   box-shadow: 0 2px 6px
     color-mix(in oklch, var(--pw-packages-accent), transparent 74%);
   transition: background var(--studio-transition-fast, 0.1s ease),
@@ -1027,7 +1027,7 @@
   );
 }
 .pw-install__add:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  opacity: var(--studio-disabled-opacity, 0.5);
+  cursor: var(--studio-cursor-not-allowed, not-allowed);
   box-shadow: none;
 }

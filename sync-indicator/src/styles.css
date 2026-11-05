@@ -27,7 +27,7 @@
   vertical-align: top;
   background: none;
   border: none;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
 }
 
 .sync-trigger:hover {
@@ -40,11 +40,11 @@
   color: var(--sync-muted);
   background: none;
   border: none;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
 }
 
 .sync-trigger-offline:hover {
-  background: var(--sync-hover);
+  background: var(--studio-hover-fill, var(--sync-hover));
 }
 
 .sync-popover-wrapper {
@@ -53,10 +53,10 @@
 
 .sync-popover {
   position: fixed;
-  z-index: 2147483647;
+  z-index: var(--studio-layer-popover, 2147483647);
   width: 288px;
   border-radius: 6px;
-  border: 1px solid var(--sync-border);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--sync-border);
   background: var(--sync-bg);
   padding: 16px;
   box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
@@ -65,8 +65,8 @@
      Popover.tsx updatePosition). Closing is instant. */
   transform-origin: top right;
   transition:
-    opacity 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
-    scale 150ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+    opacity max(1ms, calc(150ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
+    scale max(1ms, calc(150ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 
 @starting-style {
@@ -96,7 +96,7 @@
 }
 
 .sync-peer {
-  border: 1px solid var(--sync-border);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--sync-border);
   border-radius: 4px;
   padding: 6px 8px;
   font-size: 12px;
@@ -104,11 +104,11 @@
 }
 
 .sync-peer-clickable {
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
 }
 
 .sync-peer-clickable:hover {
-  background: var(--sync-hover);
+  background: var(--studio-hover-fill, var(--sync-hover));
 }
 
 .sync-arrow {
@@ -157,7 +157,7 @@
   display: flex;
   justify-content: flex-end;
   padding-top: 4px;
-  border-top: 1px solid var(--sync-border);
+  border-top: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--sync-border);
 }
 
 .sync-copy-btn {
@@ -167,13 +167,13 @@
   border-radius: 6px;
   background: none;
   border: none;
-  cursor: pointer;
+  cursor: var(--studio-cursor-pointer, pointer);
   height: 28px;
   padding: 0 8px;
   font-size: 12px;
 }
 
 .sync-copy-btn:hover {
-  background: var(--sync-hover);
+  background: var(--studio-hover-fill, var(--sync-hover));
   color: var(--sync-fg);
 }

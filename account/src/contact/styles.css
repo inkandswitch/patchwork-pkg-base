@@ -19,7 +19,7 @@
   flex-shrink: 0;
   overflow: hidden;
   border-radius: 9999px;
-  border: 1px solid var(--contact-border);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--contact-border);
   min-width: 2rem;
   min-height: 2rem;
   max-width: 2rem;
