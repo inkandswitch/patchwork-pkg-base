@@ -20,30 +20,12 @@ import {
 
 let popovers = 0;
 
-/** The one line a card says about a suggested package, from its package.json. */
-export function PackageLine(props: { claims: PackageClaims | undefined }) {
-  return (
-    <Show when={props.claims && (props.claims.title || props.claims.name)}>
-      <span class="pkg-line">
-        <strong>{props.claims!.title ?? props.claims!.name}</strong>
-        <Show when={props.claims!.version}>
-          {(v) => <span class="pkg-line__version"> v{v()}</span>}
-        </Show>
-        <Show when={props.claims!.description}>
-          {(d) => <span class="pkg-line__description"> — {d()}</span>}
-        </Show>
-      </span>
-    </Show>
-  );
-}
-
 /**
- * A button that pops up what's known about a suggested package, in two
- * halves: what the package says about itself (which it could make up), and
- * what we can see from our own repo (its url, heads, and which actors have
- * written to its folder doc).
+ * A "details" link that pops up what's known about a suggested package: what
+ * its package.json claims (unverified), and what our own repo shows of its
+ * source (url, heads, and which actors have written to its folder doc).
  */
-export function PackageAbout(props: {
+export function PackageDetails(props: {
   url: string;
   repo: Repo;
   claims: PackageClaims | undefined;
@@ -66,13 +48,10 @@ export function PackageAbout(props: {
   const [askFailed, setAskFailed] = createSignal<string>();
   async function ask() {
     const ok = window.confirm(
-      `To find out what this package brings, its code has to run.\n\n` +
+      `Listing its plugins runs the package's code in a background worker.\n\n` +
         `${props.url}\n\n` +
-        `It runs in a background worker, not in this page, and reports back ` +
-        `the plugins it says it has. Nothing is added to this page. It can ` +
-        `still use the network, and the data this site keeps in your ` +
-        `browser, your documents included. Only run it if you trust whoever ` +
-        `sent you this document.\n\n` +
+        `It can use the network and this site's stored data, including your ` +
+        `documents. Only run it if you trust where it came from.\n\n` +
         `Run it?`
     );
     if (!ok) return;
@@ -94,18 +73,22 @@ export function PackageAbout(props: {
     });
   });
 
+  const heading = () => props.claims?.title ?? props.claims?.name ?? "package";
+  const listed = () => asked() ?? props.claims?.plugins;
+
   return (
     <>
-      <button
-        type="button"
-        class="doc-card__button"
-        popovertarget={id}
-      >
-        about this package
+      <button type="button" class="doc-card__link" popovertarget={id}>
+        details
       </button>
       <div class="pkg-about" id={id} popover="auto" ref={popover}>
         <header class="pkg-about__header">
-          <h3 class="doc-card__rough">about this package</h3>
+          <h3 class="doc-card__rough">
+            {heading()}
+            <Show when={props.claims?.version}>
+              {(v) => <span class="pkg-about__version"> {v()}</span>}
+            </Show>
+          </h3>
           <button
             type="button"
             class="doc-card__link pkg-about__close"
@@ -118,93 +101,66 @@ export function PackageAbout(props: {
         </header>
 
         <section class="pkg-about__section pkg-about__section--claims">
-          <h4>what it says about itself</h4>
-          <p class="pkg-about__caveat">
-            the package wrote this about itself. it could say anything, and
-            nothing checks it.
-          </p>
+          <h4>
+            self-reported <span class="pkg-about__tag">unverified</span>
+          </h4>
           <Switch>
             <Match when={props.claimsLoading}>
-              <p class="pkg-about__quiet">reading its package.json…</p>
+              <p class="pkg-about__quiet">reading…</p>
             </Match>
-            <Match when={!props.claims}>
-              <p class="pkg-about__quiet">
-                we couldn't read a package.json for it.
-              </p>
+            <Match when={!props.claims && !asked()}>
+              <p class="pkg-about__quiet">no package.json.</p>
             </Match>
-            <Match when={props.claims}>
-              {(claims) => (
-                <dl class="pkg-about__facts">
-                  <Fact label="name" value={claims().name} />
-                  <Fact label="title" value={claims().title} />
-                  <Fact label="version" value={claims().version} />
-                  <Fact label="author" value={claims().author} />
-                  <Fact label="description" value={claims().description} />
-                  <Show when={claims().plugins}>
-                    {(plugins) => (
-                      <>
-                        <dt>plugins it lists</dt>
-                        <dd>
-                          <Plugins plugins={plugins()} />
-                        </dd>
-                      </>
-                    )}
+            <Match when={true}>
+              <dl class="pkg-about__facts">
+                <Fact label="name" value={props.claims?.name} />
+                <Fact label="title" value={props.claims?.title} />
+                <Fact label="author" value={props.claims?.author} />
+                <Fact label="description" value={props.claims?.description} />
+                <dt>plugins</dt>
+                <dd>
+                  <Show
+                    when={listed()}
+                    fallback={
+                      <Show
+                        when={automerge}
+                        fallback={
+                          <span class="pkg-about__quiet">
+                            unknown until loaded
+                          </span>
+                        }
+                      >
+                        <button
+                          type="button"
+                          class="doc-card__link"
+                          disabled={asking()}
+                          onClick={() => void ask()}
+                        >
+                          {asking() ? "listing…" : "list them"}
+                        </button>
+                      </Show>
+                    }
+                  >
+                    {(plugins) => <Plugins plugins={plugins()} />}
                   </Show>
-                </dl>
-              )}
+                  <Show when={askFailed()}>
+                    {(why) => <p class="doc-card__notice">{why()}</p>}
+                  </Show>
+                </dd>
+              </dl>
             </Match>
           </Switch>
-
-          <Show
-            when={automerge}
-            fallback={
-              <p class="pkg-about__quiet">
-                it lives at a web address, so the only way to ask it what it
-                brings is to load it.
-              </p>
-            }
-          >
-            <Show
-              when={asked()}
-              fallback={
-                <div class="pkg-about__ask">
-                  <button
-                    type="button"
-                    class="doc-card__button"
-                    disabled={asking()}
-                    onClick={() => void ask()}
-                  >
-                    {asking() ? "asking…" : "ask it what it brings"}
-                  </button>
-                  <Show when={askFailed()}>
-                    {(why) => (
-                      <p class="doc-card__notice">it didn't say: {why()}</p>
-                    )}
-                  </Show>
-                </div>
-              }
-            >
-              {(plugins) => (
-                <dl class="pkg-about__facts">
-                  <dt>when asked, it said it brings</dt>
-                  <dd>
-                    <Plugins plugins={plugins()} />
-                  </dd>
-                </dl>
-              )}
-            </Show>
-          </Show>
         </section>
 
         <section class="pkg-about__section">
-          <h4>what we can see</h4>
+          <h4>source</h4>
           <dl class="pkg-about__facts">
-            <dt>address</dt>
+            <dt>url</dt>
             <dd>
               <code class="doc-card__code doc-card__url">{props.url}</code>
             </dd>
             <Show when={pinned.length}>
-              <dt>pinned to</dt>
+              <dt>pinned</dt>
               <dd>
                 <Heads heads={pinned} />
               </dd>
@@ -217,28 +173,23 @@ export function PackageAbout(props: {
                 </Match>
                 <Match when={history.error}>
                   <dt>history</dt>
-                  <dd class="pkg-about__quiet">
-                    we couldn't get the package's folder to look at.
-                  </dd>
+                  <dd class="pkg-about__quiet">couldn't get its folder.</dd>
                 </Match>
                 <Match when={history()}>
                   {(h) => (
                     <>
-                      <dt>its heads now</dt>
+                      <dt>heads</dt>
                       <dd>
                         <Heads heads={h().heads} />
                       </dd>
                       <dt>history</dt>
                       <dd>
-                        {h().changes} {h().changes === 1 ? "change" : "changes"}{" "}
-                        from {h().writers.length}{" "}
+                        {h().changes} {h().changes === 1 ? "change" : "changes"}
+                        , {h().writers.length}{" "}
                         {h().writers.length === 1 ? "writer" : "writers"}
                         <Writers writers={h().writers} />
-                        <p class="pkg-about__caveat">
-                          a writer is an automerge actor: a device or session
-                          that made changes, not a person. one person can be
-                          several writers. this is only the package folder's
-                          history; each file in it has its own.
+                        <p class="pkg-about__quiet">
+                          writers are devices, not people. folder only.
                         </p>
                       </dd>
                     </>

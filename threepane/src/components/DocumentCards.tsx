@@ -9,7 +9,7 @@ import {
   onMount,
   Show,
 } from "solid-js";
-import { PackageAbout, PackageLine } from "./PackageAbout";
+import { PackageDetails } from "./PackageAbout";
 import { readClaims } from "./packageInfo";
 
 /**
@@ -87,12 +87,10 @@ export function NoToolCard(props: {
 
   async function load(url: string) {
     const ok = window.confirm(
-      `This document suggests a package to open it with:\n\n` +
+      `Load this package?\n\n` +
         `${url}\n\n` +
-        `Loading it runs its code in this page, where it can read and ` +
-        `change your documents. Only load it if you trust whoever sent you ` +
-        `this document.\n\n` +
-        `Load it?`
+        `Its code runs in this page and can read and change your documents. ` +
+        `Only load it if you trust where it came from.`
     );
     if (!ok) return;
     setFailed(undefined);
@@ -111,26 +109,36 @@ export function NoToolCard(props: {
     }
   }
 
+  const named = () => {
+    const c = claims();
+    return c && (c.title || c.name) ? c : undefined;
+  };
+
   return (
     <Card url={props.url} title="no tool for this">
       <p>
-        it's a <code class="doc-card__code">{props.type}</code>, and nothing
-        here knows how to open one yet.
+        it's a <code class="doc-card__code">{props.type}</code>. nothing here
+        opens one yet.
       </p>
       <Show
         when={props.suggestion}
-        fallback={<p>if a package brings a tool for it, it'll open right here.</p>}
+        fallback={<p>it'll open here if a package adds a tool for it.</p>}
       >
         {(url) => (
           <>
             <p>
-              the doc suggests a package that might:
-              <br />
-              <PackageLine claims={claims()} />
-              <Show when={claims() && (claims()!.title || claims()!.name)}>
-                <br />
+              the doc suggests{" "}
+              <Show when={named()} fallback="a package.">
+                {(c) => (
+                  <>
+                    <strong class="pkg-line">{c().title ?? c().name}</strong>
+                    <Show when={c().version}>
+                      {(v) => <span class="pkg-line__version"> {v()}</span>}
+                    </Show>
+                    .
+                  </>
+                )}
               </Show>
-              <code class="doc-card__code doc-card__url">{url()}</code>
             </p>
             <div class="doc-card__actions">
               <button
@@ -139,14 +147,8 @@ export function NoToolCard(props: {
                 disabled={loading()}
                 onClick={() => void load(url())}
               >
-                {loading() ? "loading…" : "load it"}
+                {loading() ? "loading…" : "load package"}
               </button>
-              <PackageAbout
-                url={url()}
-                repo={props.repo}
-                claims={claims()}
-                claimsLoading={claims.loading}
-              />
             </div>
             <Show when={failed()}>
               {(why) => (
@@ -156,19 +158,31 @@ export function NoToolCard(props: {
           </>
         )}
       </Show>
-      <Show when={props.anything}>
-        {(tool) => (
-          <p class="doc-card__aside">
-            or{" "}
-            <button
-              type="button"
-              class="doc-card__link"
-              onClick={() => props.onPeek(tool().id)}
-            >
-              look inside with {tool().name}
-            </button>
-          </p>
-        )}
+      <Show when={props.suggestion || props.anything}>
+        <p class="doc-card__links">
+          <Show when={props.suggestion}>
+            {(url) => (
+              <PackageDetails
+                url={url()}
+                repo={props.repo}
+                claims={claims()}
+                claimsLoading={claims.loading}
+              />
+            )}
+          </Show>
+          <Show when={props.anything}>
+            {(tool) => (
+              <button
+                type="button"
+                class="doc-card__link"
+                title={`open it with ${tool().name}`}
+                onClick={() => props.onPeek(tool().id)}
+              >
+                raw data
+              </button>
+            )}
+          </Show>
+        </p>
       </Show>
     </Card>
   );
@@ -184,7 +198,8 @@ type Connected = {
 
 /**
  * A doc the repo couldn't get from anywhere. Says why that tends to happen,
- * and how the sync server connection looks from here, when the repo knows.
+ * and, where the repo knows, colours "sync server" by how the connection to
+ * it looks from here.
  */
 export function UnavailableCard(props: {
   url: AutomergeUrl;
@@ -208,7 +223,7 @@ export function UnavailableCard(props: {
     onCleanup(() => repo.off!("subduction-connection", onConnection));
   }
   // the event only fires when the connection flips, and a wrapped repo might
-  // not pass it on, so read it again every so often too: the readout should
+  // not pass it on, so read it again every so often too: the colour should
   // never be telling you about a while ago
   if (knowsConnection) {
     const poll = setInterval(() => update(repo.isSubductionConnected!()), 2000);
@@ -221,26 +236,47 @@ export function UnavailableCard(props: {
       <ul class="doc-card__reasons">
         <li>the person who sent you the link hasn't given you access yet</li>
         <li>it hasn't finished syncing from their device yet</li>
-        <li>something's wrong with the sync server</li>
+        <li>
+          something's wrong with the{" "}
+          <Show when={connected() !== undefined} fallback="sync server">
+            <SyncServer connected={connected()!} />
+          </Show>
+        </li>
       </ul>
-      <Show when={connected() !== undefined}>
-        <p
-          class="doc-card__readout"
-          role="status"
-          data-connected={connected() ? "" : undefined}
-        >
-          <span class="doc-card__readout-label">Sync Server Status:</span>{" "}
-          <span class="doc-card__readout-value">
-            (<span class="doc-card__status-dot" />){" "}
-            {connected() ? "Connected" : "Disconnected"}
-          </span>
-        </p>
-      </Show>
       <p>we'll keep looking. if it turns up, it'll open right here.</p>
-      <p class="doc-card__aside">
-        <code class="doc-card__code doc-card__url">{props.url}</code>
-      </p>
     </Card>
+  );
+}
+
+/**
+ * The words "sync server", coloured by the live connection. Hovering says
+ * which in a title; a title never shows on a phone, so tapping (or Enter)
+ * says it inline too.
+ */
+function SyncServer(props: { connected: boolean }) {
+  const [told, setTold] = createSignal(false);
+  const status = () =>
+    `sync server: ${props.connected ? "connected" : "disconnected"}`;
+  return (
+    <>
+      <button
+        type="button"
+        class="doc-card__sync"
+        data-connected={props.connected ? "" : undefined}
+        title={status()}
+        aria-label={status()}
+        aria-expanded={told()}
+        onClick={() => setTold((t) => !t)}
+      >
+        sync server
+      </button>
+      <Show when={told()}>
+        <span class="doc-card__sync-told" role="status">
+          {" "}
+          ({props.connected ? "connected" : "disconnected"})
+        </span>
+      </Show>
+    </>
   );
 }
 

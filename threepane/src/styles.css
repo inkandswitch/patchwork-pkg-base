@@ -457,41 +457,25 @@
 }
 
 /* how the sync server looks from here */
-/* the sync server's connection, read off the repo as it stands: a line of
-   machine readout among the prose, so it reads as a fact, not a guess */
-.doc-card__readout {
-  display: inline-block;
-  margin: 0 auto 12px !important;
-  padding: 4px 10px;
-  border: 1px solid var(--doc-card-line);
-  border-radius: var(--doc-card-radius);
-  background: color-mix(in oklab, var(--doc-card-ink) 5%, var(--doc-card-sheet));
-  color: var(--doc-card-ink) !important;
-  font: 12px/1.4 var(--doc-card-mono);
-  white-space: nowrap;
-}
-
-.doc-card__readout-label {
-  color: var(--doc-card-muted);
-}
-
-.doc-card__readout-value {
-  font-weight: 600;
+/* "sync server", in the colour of the connection as it stands. a button, so
+   a tap can say which on a phone, where a title never shows */
+.doc-card__sync {
+  padding: 0;
+  border: none;
+  background: none;
   color: var(--doc-card-danger);
+  font: inherit;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: help;
 
-  .doc-card__readout[data-connected] & {
+  &[data-connected] {
     color: var(--doc-card-good);
   }
 }
 
-.doc-card__status-dot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  margin: 0 2px;
-  border-radius: 50%;
-  background: currentColor;
-  vertical-align: 0.05em;
+.doc-card__sync-told {
+  color: var(--doc-card-ink);
 }
 
 .doc-card__actions {
@@ -562,9 +546,28 @@
   color: var(--doc-card-ink);
 }
 
-.pkg-line__version,
-.pkg-line__description {
+.pkg-line__version {
   color: var(--doc-card-muted);
+}
+
+/* the card's quieter ways on, side by side: "details · raw data" */
+.doc-card__links {
+  display: flex;
+  justify-content: center;
+  gap: 0 10px;
+  font-size: 0.9em;
+
+  & > * + *::before {
+    content: "·";
+    margin-right: 10px;
+    color: var(--doc-card-muted);
+    text-decoration: none;
+    display: inline-block;
+  }
+
+  &:last-child {
+    margin-bottom: 0;
+  }
 }
 
 /* everything known about a suggested package. a popover, so it sits in the
@@ -634,11 +637,19 @@
   background: color-mix(in oklab, var(--doc-card-highlighter) 35%, transparent);
 }
 
-.pkg-about__caveat {
-  margin: 0 0 8px;
+.pkg-about__version {
   color: var(--doc-card-muted);
-  font-size: 0.92em;
-  font-style: italic;
+  font-size: 0.7em;
+}
+
+/* the claims are the package's own: say so where they're headed */
+.pkg-about__tag {
+  margin-left: 4px;
+  padding: 0 5px;
+  border: 1px dashed currentColor;
+  border-radius: var(--doc-card-radius);
+  font-weight: 400;
+  letter-spacing: 0.04em;
 }
 
 .pkg-about__quiet {

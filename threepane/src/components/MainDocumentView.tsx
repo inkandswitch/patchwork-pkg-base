@@ -1,4 +1,9 @@
-import type { AutomergeUrl, Repo } from "@automerge/automerge-repo/slim";
+import {
+  parseAutomergeUrl,
+  type AutomergeUrl,
+  type DocumentId,
+  type Repo,
+} from "@automerge/automerge-repo/slim";
 import type { RepoProviderElement } from "@inkandswitch/patchwork-providers";
 import {
   getSuggestedImportUrl,
@@ -8,6 +13,7 @@ import {
 import { getFallbackTool, getRegistry } from "@inkandswitch/patchwork-plugins";
 import type { Accessor } from "solid-js";
 import {
+  createEffect,
   createMemo,
   createSignal,
   onCleanup,
@@ -134,9 +140,14 @@ function DocumentView(props: {
     } catch (error) {
       if (disposed) return;
       // a url the repo can't even parse won't turn up however long we wait
-      setLookup({ state: isInvalidUrlError(error) ? "invalid" : "unavailable" });
+      const invalid = isInvalidUrlError(error);
+      setLookup({ state: invalid ? "invalid" : "unavailable" });
+      if (!invalid) setMisses((n) => n + 1);
     }
   }
+
+  // how many times in a row we've come up empty, which spaces out the asking
+  const [misses, setMisses] = createSignal(0);
 
   // an unavailable doc can still turn up: a peer connects and has it, or the
   // sender finishes syncing. the repo's progress says when, so look again then
@@ -154,19 +165,40 @@ function DocumentView(props: {
   void find();
   watch();
 
-  // asking again: an unavailable lookup answers straight away from what it
-  // already knows, so forget it first and the repo asks its peers afresh
-  // (patchwork-view does the same when it retries). the card stays up while
+  // asking again: once the repo has settled on "unavailable", `find` answers
+  // from that verdict without asking anyone. so first have it ask the sync
+  // server afresh (the round starts a macrotask later), then look a moment
+  // after. resyncing, rather than deleting the stale handle, matters under a
+  // remapping provider: its `delete` goes to the base repo with the url we
+  // were given, which there may be another doc's. the card stays up while
   // we ask, rather than flickering away and back
-  function retry() {
-    if (progress?.peek().state === "unavailable") {
-      try {
-        props.repo.delete(props.url);
-      } catch {}
-    }
-    void find();
-    watch();
+  function askAgain() {
+    const repo = props.repo as Repo & {
+      resyncSubduction?: (documentId: DocumentId) => void;
+    };
+    if (typeof repo.resyncSubduction !== "function") return;
+    try {
+      repo.resyncSubduction(parseAutomergeUrl(props.url).documentId);
+    } catch {}
   }
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => clearTimeout(retryTimer));
+  function retry(after = 1_000) {
+    askAgain();
+    clearTimeout(retryTimer);
+    retryTimer = setTimeout(() => void find(), after);
+  }
+
+  // and ask again by ourselves, every so often, for as long as the card is up.
+  // nothing else would notice a sender who finishes syncing while we sit here
+  // connected: the server doesn't tell us about a doc we already gave up on.
+  // 3s, 6s, 12s, then every 30s
+  createEffect(() => {
+    const n = misses();
+    if (n === 0 || lookup().state !== "unavailable" || mounted()) return;
+    retry(Math.min(30_000, 3_000 * 2 ** (n - 1)));
+    onCleanup(() => clearTimeout(retryTimer));
+  });
 
   const view = createMemo(() => {
     toolsChanged();
