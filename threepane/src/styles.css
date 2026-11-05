@@ -353,6 +353,222 @@
   color: var(--threepane-fg);
 }
 
+/* the main doc, and what's said in its place when it can't be shown. the
+   cards lie over the patchwork-view (which may still be recovering) */
+.doc-stack {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* a card in place of a doc: the sheet lattice and knit draw, in the theme's
+   colours, with its serif drawn a little by hand (but holding still) */
+.doc-card {
+  --doc-card-ink: var(--studio-line, #1c1a17);
+  --doc-card-muted: var(--studio-line-offset-50, color-mix(in oklab, var(--doc-card-ink) 55%, transparent));
+  --doc-card-line: var(--studio-chrome-line, var(--doc-card-ink));
+  --doc-card-sheet: var(--editor-fill, var(--text-editor-fill, var(--studio-fill, #fffdf5)));
+  --doc-card-highlighter: var(--studio-selection-fill, #ffee8888);
+  --doc-card-accent: var(--studio-primary-fill, var(--studio-primary, #ff2284));
+  --doc-card-accent-ink: var(--studio-primary-line, #fff);
+  --doc-card-danger: var(--studio-danger-text, var(--studio-danger, #d33a4c));
+  --doc-card-good: var(--studio-added, #40dcba);
+  --doc-card-radius: var(--studio-radius-sm, 3px);
+  --doc-card-serif: "Fraunces", "Iowan Old Style", Palatino, Georgia, serif;
+  --doc-card-mono: var(--studio-family-code, Monaco, ui-monospace, monospace);
+
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  box-sizing: border-box;
+  place-items: center;
+  overflow: auto;
+  padding: 16px;
+  background: var(--threepane-bg);
+  color: var(--doc-card-ink);
+  font-family: var(--studio-family-ui, var(--threepane-family));
+  /* a doc that's only slow shouldn't flash a card on its way in */
+  animation: doc-card-in var(--studio-duration-slow, 0.3s) ease 0.4s both;
+}
+
+@keyframes doc-card-in {
+  from { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .doc-card {
+    animation-duration: 0.01s;
+  }
+}
+
+.doc-card__defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+.doc-card__sheet {
+  box-sizing: border-box;
+  max-width: 340px;
+  padding: 24px 28px 20px;
+  border: 1px solid var(--doc-card-line);
+  border-radius: 0.5em;
+  background: var(--doc-card-sheet);
+  box-shadow: 0 0 10px 2px #66003322;
+  text-align: center;
+
+  & p {
+    margin: 0 0 12px;
+    color: var(--doc-card-muted);
+  }
+}
+
+.doc-card__rough {
+  margin: 0 0 6px;
+  font: 400 28px/1.1 var(--doc-card-serif);
+  filter: url(#doc-card-rough);
+}
+
+.doc-card__code {
+  padding: 1px 5px;
+  border-radius: var(--doc-card-radius);
+  background: var(--doc-card-highlighter);
+  color: var(--doc-card-ink);
+  font: 11px var(--doc-card-mono);
+}
+
+.doc-card__url {
+  display: inline-block;
+  max-width: 100%;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.doc-card__reasons {
+  margin: 0 0 12px;
+  padding: 0 0 0 1.2em;
+  color: var(--doc-card-muted);
+  text-align: left;
+
+  & li + li {
+    margin-top: 4px;
+  }
+}
+
+/* how the sync server looks from here */
+.doc-card__status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  color: var(--doc-card-ink);
+  font-size: 0.9em;
+}
+
+.doc-card__status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--doc-card-danger);
+
+  .doc-card__status[data-connected] & {
+    background: var(--doc-card-good);
+  }
+}
+
+.doc-card__actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.doc-card__button {
+  padding: 2px 10px;
+  border: 1px solid var(--doc-card-line);
+  border-radius: 2px;
+  background: var(--doc-card-sheet);
+  box-shadow: 1px 1px 0 var(--doc-card-line);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    translate: -1px -1px;
+    box-shadow: 2px 2px 0 var(--doc-card-line);
+  }
+
+  &:active:not(:disabled) {
+    translate: 1px 1px;
+    box-shadow: none;
+  }
+
+  &:disabled {
+    cursor: progress;
+    opacity: 0.7;
+  }
+}
+
+.doc-card__button--primary {
+  min-width: 5em;
+  background: var(--doc-card-accent);
+  color: var(--doc-card-accent-ink);
+  font-weight: 600;
+}
+
+.doc-card__link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.doc-card__aside {
+  font-size: 0.9em;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.doc-card__notice {
+  color: var(--doc-card-danger) !important;
+}
+
+/* still finding it: a quiet dot, once it's been a moment */
+.doc-card--finding {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  color: var(--doc-card-muted);
+  font-size: 0.9em;
+  animation-delay: 1.5s;
+}
+
+.doc-card__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: doc-card-pulse 2s ease-in-out infinite;
+}
+
+@keyframes doc-card-pulse {
+  0%, 100% { opacity: 0.25; transform: scale(0.6); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .doc-card__dot {
+    animation: none;
+  }
+}
+
 .sidebar patchwork-view {
   display: block;
   width: 100%;
