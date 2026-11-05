@@ -214,7 +214,10 @@ export function DocumentAreaRoot(props: DocumentAreaRootProps) {
                 <DraftDocumentArea
                   host={host()}
                   setMainDocElement={props.setMainDocElement}
-                  selectedDocUrl={props.selectedDocUrl}
+                  // The scope's doc, not the live selection: a newly
+                  // selected doc must not render inside the previous doc's
+                  // overlay while it unmounts.
+                  selectedDocUrl={() => current.docUrl}
                   selectedToolId={props.selectedToolId}
                   doctitleSlots={props.doctitleSlots}
                   isLeftCollapsed={props.isLeftCollapsed}
