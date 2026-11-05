@@ -1,5 +1,4 @@
 import {
-  encodeHeads,
   isValidAutomergeUrl,
   type AutomergeUrl,
   type DocHandle,
@@ -18,19 +17,15 @@ import type {
   DraftSummary,
   HasDrafts,
 } from "../draft-types.js";
-import { SKIPPED_DATATYPES, canonicalUrl } from "../clone-policy.js";
+import { canonicalUrl } from "../clone-policy.js";
 import {
   createActorRecorder,
   ensureActorAttribution,
 } from "../actor-attribution.js";
 import { createDraftRouter } from "../draft-routing.js";
 import { ensureMainDraft } from "../draft-docs.js";
+import { watchDocTree } from "../doc-tree.js";
 import { isContainerType, isWorkspaceFolder } from "../folder-links.js";
-import type { MountTracker } from "../mount-tracker.js";
-
-// Fork point recorded for the main draft's identity clones: empty heads means
-// "from the start", so `getChangesMetaSince(doc, [])` yields the full history.
-const EMPTY_HEADS: UrlHeads = encodeHeads([]);
 
 export type DraftStateOptions = {
   repo: Repo;
@@ -39,7 +34,6 @@ export type DraftStateOptions = {
   checkedOutHandle: DocHandle<CheckedOutDraft>;
   // Where the actor recorder subscribes for the current contact.
   element: HTMLElement;
-  mounts: MountTracker;
 };
 
 export type DraftState = {
@@ -55,9 +49,8 @@ export type DraftState = {
 // subscriptions:
 //   - `draft:list` → DraftList: the read-only main entry plus one
 //     `DraftSummary` per non-merged draft, each carrying its member docs (on a
-//     draft, the forked docs from `DraftDoc.clones`; on main, the main draft's
-//     identity clones, or — before the first draft — the member docs mounted
-//     beneath the provider, fork fields `null`).
+//     draft, the docs it has cloned; on main, every doc in the root's tree,
+//     fork fields `null`).
 //   - `draft:baseline` → the checkpoint's per-doc `from` for one doc.
 //
 // The link from a root to its drafts is `@patchwork.mainDraftUrl` → the main
@@ -70,13 +63,12 @@ export type DraftState = {
 // member doc. A folder only gets it once it has been made a workspace, so
 // looking at a folder doesn't make it one.
 export function createDraftState(options: DraftStateOptions): DraftState {
-  const { repo, docUrl, checkedOutHandle, mounts } = options;
+  const { repo, docUrl, checkedOutHandle } = options;
 
   let hostDocHandle: DocHandle<HasDrafts> | null = null;
   const trackedDrafts = new Map<AutomergeUrl, DocHandle<DraftDoc>>();
   // The root's single main draft (bookkeeping only). Resolved lazily from
-  // `@patchwork.mainDraftUrl`; its `drafts` roots the draft tree and its
-  // identity `clones` back the "main" member list.
+  // `@patchwork.mainDraftUrl`; its `drafts` roots the draft tree.
   let mainDraftHandle: DocHandle<DraftDoc> | null = null;
 
   const draftRouter = createDraftRouter(checkedOutHandle);
@@ -112,15 +104,12 @@ export function createDraftState(options: DraftStateOptions): DraftState {
     repo,
     ensureAttribution
   );
-  // Cached "is this an app-global datatype we skip?" verdict per mounted url,
-  // resolved lazily since reading `@patchwork.type` means loading the doc.
-  // Absent = unresolved, treated as not-skipped (visible) until known.
-  const skipVerdicts = new Map<AutomergeUrl, boolean>();
+  // Main's members: the root and everything beneath it.
+  const mainTree = watchDocTree(repo, docUrl, { onChange: () => reconcile() });
 
   let disposed = false;
   let rewalkInFlight = false;
   let rewalkPending = false;
-  let cloneSyncTimer: ReturnType<typeof setTimeout> | null = null;
   let mainDraftReady: Promise<DocHandle<DraftDoc> | null> | null = null;
   let attributionReady: Promise<DocHandle<ActorAttributionDoc> | null> | null =
     null;
@@ -140,12 +129,6 @@ export function createDraftState(options: DraftStateOptions): DraftState {
     notifyBaselines();
     reconcile();
   };
-  // Mounts arrive one doc at a time.
-  const onMountsChange = () => {
-    for (const url of mounts.urls()) ensureSkipVerdict(url);
-    scheduleCloneSync();
-    reconcile();
-  };
 
   const ready: Promise<void> = (async () => {
     const handle = await repo.find<HasDrafts>(docUrl);
@@ -160,8 +143,6 @@ export function createDraftState(options: DraftStateOptions): DraftState {
   });
 
   checkedOutHandle.on("change", onCheckedOutChange);
-  const offMounts = mounts.onChange(onMountsChange);
-  onMountsChange();
 
   return {
     subscribeList(respond) {
@@ -193,10 +174,9 @@ export function createDraftState(options: DraftStateOptions): DraftState {
   function dispose(): void {
     if (disposed) return;
     disposed = true;
-    if (cloneSyncTimer !== null) clearTimeout(cloneSyncTimer);
+    mainTree.dispose();
     actorRecorder.dispose();
     draftRouter.dispose();
-    offMounts();
     hostDocHandle?.off("change", onHostDocChange);
     mainDraftHandle?.off("change", onTrackedChange);
     for (const [, h] of trackedDrafts) h.off("change", onTrackedChange);
@@ -206,30 +186,24 @@ export function createDraftState(options: DraftStateOptions): DraftState {
     listSubscribers.clear();
     baselineSubscribers.clear();
     sentBaselines.clear();
-    skipVerdicts.clear();
     hostDocHandle = null;
   }
 
-  // The sidebar is open: make sure the root has its main draft (so the Main
-  // timeline has a home) and record what's mounted as main's members.
+  // The sidebar is open: make sure the root has its main draft, so the Main
+  // timeline has a home.
   function activate(): void {
     ensureMainDraftDoc().then(
-      () => {
-        scheduleCloneSync();
-        reconcile();
-      },
+      () => reconcile(),
       (err) => console.warn("[drafts] failed to create main draft:", err)
     );
     reconcile();
   }
 
-  // Resolve (creating on first use) the root's main draft. Main's clones are
-  // identity mappings — nothing is forked; the only root-doc side effect is
-  // the `mainDraftUrl` scalar, which the timeline's `@patchwork` path skip
-  // filters out. App-global datatypes the draft machinery never treats as
-  // content are left alone (`null`), and so are containers that aren't
-  // workspaces yet — drafting one is what makes it a workspace. A failed
-  // attempt is retried next time.
+  // Resolve (creating on first use) the root's main draft. The only root-doc
+  // side effect is the `mainDraftUrl` scalar, which the timeline's
+  // `@patchwork` path skip filters out. Containers that aren't workspaces
+  // yet are left alone (`null`) — drafting one is what makes it a
+  // workspace. A failed attempt is retried next time.
   function ensureMainDraftDoc(): Promise<DocHandle<DraftDoc> | null> {
     if (mainDraftReady) return mainDraftReady;
     const attempt = (async () => {
@@ -237,7 +211,6 @@ export function createDraftState(options: DraftStateOptions): DraftState {
       if (disposed || !hostDocHandle) return null;
       const hostDoc = hostDocHandle.doc();
       const hostType = hostDoc?.["@patchwork"]?.type;
-      if (hostType != null && SKIPPED_DATATYPES.has(hostType)) return null;
       if (
         isContainerType(hostType) &&
         !isWorkspaceFolder(hostDoc) &&
@@ -343,19 +316,16 @@ export function createDraftState(options: DraftStateOptions): DraftState {
     for (const respond of listSubscribers) respond(next);
   }
 
-  // The docs the user can write to right now: the mounted member originals
-  // on main, plus the checked-out draft's clones, where the overlay routes
-  // edits.
+  // The docs the user can write to right now: main's members, plus the
+  // checked-out draft's clones, where the overlay routes edits.
   function writableDocUrls(): AutomergeUrl[] {
-    const urls = mounts.urls().filter(
-      (url) => skipVerdicts.get(url) === false
-    );
+    const urls = [...mainTree.urls()];
     const selected = checkedOutHandle.doc()?.checkedOut ?? null;
     const clones = selected
       ? trackedDrafts.get(selected)?.doc()?.clones
       : undefined;
     for (const entry of Object.values(clones ?? {})) {
-      urls.push(canonicalUrl(entry.cloneUrl));
+      if (entry.cloneUrl) urls.push(canonicalUrl(entry.cloneUrl));
     }
     return urls;
   }
@@ -402,32 +372,20 @@ export function createDraftState(options: DraftStateOptions): DraftState {
     return cursor;
   }
 
-  // Main's summary. Its members come from the main draft's identity clones once
-  // it exists; before the first draft is created (no main draft) we fall back to
-  // the member docs mounted beneath us, minus the app-global datatypes the
-  // overlay would never fork. Members are sorted by url so the diff above is
-  // positional.
+  // Main's summary: every doc in the root's tree, sorted by url so the
+  // diff above is positional.
   function computeMainSummary(): DraftSummary {
-    const url = mainDraftHandle?.url ?? docUrl;
-    const childCount = mainDraftHandle?.doc()?.drafts.length ?? 0;
-    const name = mainDraftHandle?.doc()?.name ?? null;
-
-    const mainClones = mainDraftHandle?.doc()?.clones;
-    if (mainClones && Object.keys(mainClones).length > 0) {
-      return {
-        url,
-        parent: null,
-        members: clonesToMembers(mainClones),
-        childCount,
-        name,
-      };
-    }
-
-    const members = mounts.urls()
-      .filter((u) => skipVerdicts.get(u) !== true)
-      .map((u) => ({ url: u, cloneUrl: null, clonedAt: null }))
+    const members = mainTree
+      .urls()
+      .map((url) => ({ url, cloneUrl: null, clonedAt: null }))
       .sort(byMemberUrl);
-    return { url, parent: null, members, childCount, name };
+    return {
+      url: mainDraftHandle?.url ?? docUrl,
+      parent: null,
+      members,
+      childCount: mainDraftHandle?.doc()?.drafts.length ?? 0,
+      name: mainDraftHandle?.doc()?.name ?? null,
+    };
   }
 
   // The diff baseline for `target`: the checkpoint's per-doc `from`, written
@@ -453,32 +411,10 @@ export function createDraftState(options: DraftStateOptions): DraftState {
     }
   }
 
-  // Resolve (once, cached) whether a mounted doc is an app-global datatype we
-  // exclude from the main-case membership. On failure we leave it unresolved,
-  // so the doc stays visible — mirroring the overlay's "fall back to forking".
-  function ensureSkipVerdict(url: AutomergeUrl): void {
-    if (skipVerdicts.has(url)) return;
-    void (async () => {
-      try {
-        const handle = await repo.find<HasDrafts>(url);
-        if (disposed) return;
-        const type = handle.doc()?.["@patchwork"]?.type;
-        const skipped = type != null && SKIPPED_DATATYPES.has(type);
-        if (skipVerdicts.get(url) === skipped) return;
-        skipVerdicts.set(url, skipped);
-        // A now-confirmed not-skipped doc may belong in the main draft.
-        scheduleCloneSync();
-        reconcile();
-      } catch {
-        // Leave unresolved: the doc keeps showing up, which is the safe default.
-      }
-    })();
-  }
-
   // Resolve and start tracking the root's main draft, if any. Returns the
   // handle, or null when the root has no `mainDraftUrl` yet. Re-resolves when
   // the pointer changes and attaches `onTrackedChange` so the main draft's
-  // `drafts` (tree shape) and `clones` (main membership) stay live.
+  // `drafts` (tree shape) stays live.
   async function ensureMainDraftTracked(): Promise<DocHandle<DraftDoc> | null> {
     if (!hostDocHandle) return null;
     const mainDraftUrl = hostDocHandle.doc()?.["@patchwork"]?.mainDraftUrl;
@@ -491,40 +427,7 @@ export function createDraftState(options: DraftStateOptions): DraftState {
     if (disposed) return null;
     mainDraftHandle = handle;
     handle.on("change", onTrackedChange);
-    syncMainDraftClones();
     return handle;
-  }
-
-  // Mounts and skip verdicts arrive one doc at a time; batch them into a single
-  // main-draft write (each write would otherwise rewalk).
-  function scheduleCloneSync(): void {
-    if (disposed || cloneSyncTimer !== null) return;
-    cloneSyncTimer = setTimeout(() => {
-      cloneSyncTimer = null;
-      syncMainDraftClones();
-    }, 0);
-  }
-
-  // Keep the main draft's identity clone map in step with the live mounted
-  // members while the sidebar is open: every confirmed not-skipped member
-  // gets an identity entry (`cloneUrl === url`, empty fork heads). Additive
-  // only — entries are never removed, so main's membership (and history) is
-  // stable across unmounts. Writes are diffed, so this is a no-op once
-  // everything mounted is already recorded.
-  function syncMainDraftClones(): void {
-    if (disposed || !mainDraftHandle || listSubscribers.size === 0) return;
-    const existing = mainDraftHandle.doc()?.clones ?? {};
-    const toAdd = mounts.urls().filter(
-      (url) => skipVerdicts.get(url) === false && !existing[url]
-    );
-    if (toAdd.length === 0) return;
-    mainDraftHandle.change((d) => {
-      for (const url of toAdd) {
-        if (!d.clones[url]) {
-          d.clones[url] = { cloneUrl: url, clonedAt: EMPTY_HEADS };
-        }
-      }
-    });
   }
 }
 
@@ -559,18 +462,22 @@ async function collectAllDrafts(
   return order;
 }
 
-// Project a clone map into member-doc entries, sorted by url so the positional
-// equality checks below stay valid.
+// The docs a draft has cloned, as member-doc entries sorted by url so the
+// positional equality checks below stay valid. Docs it only recorded a fork
+// point for have no changes of their own yet.
 function clonesToMembers(
   clones: Record<AutomergeUrl, CloneEntry>
 ): DraftMemberDoc[] {
-  return Object.entries(clones)
-    .map(([url, entry]) => ({
+  const members: DraftMemberDoc[] = [];
+  for (const [url, entry] of Object.entries(clones)) {
+    if (!entry.cloneUrl) continue;
+    members.push({
       url: url as AutomergeUrl,
       cloneUrl: entry.cloneUrl,
       clonedAt: entry.clonedAt,
-    }))
-    .sort(byMemberUrl);
+    });
+  }
+  return members.sort(byMemberUrl);
 }
 
 function draftListsEqual(a: DraftList, b: DraftList): boolean {

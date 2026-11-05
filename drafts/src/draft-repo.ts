@@ -1,4 +1,5 @@
 import {
+  encodeHeads,
   interpretAsDocumentId,
   isValidAutomergeUrl,
   parseAutomergeUrl,
@@ -13,9 +14,10 @@ import {
   type UrlHeads,
 } from "@automerge/automerge-repo/slim";
 
-import type { DraftCheckpoint, DraftDoc } from "./draft-types.js";
+import type { CloneEntry, DraftCheckpoint, DraftDoc } from "./draft-types.js";
 import { canonicalUrl } from "./clone-policy.js";
-import { isSkippedDoc } from "./draft-clones.js";
+import { cloneAt } from "./draft-clones.js";
+import { watchDocTree, type DocTree } from "./doc-tree.js";
 import { DraftHandle, forwardingProxy } from "./draft-handle.js";
 
 /** What a `DraftRepo` resolves against. A null `draft` is main. */
@@ -24,15 +26,17 @@ export type DraftCheckout = {
   at: DraftCheckpoint | null;
 };
 
-// The members a draft repo changes. Everything else (create, clone, delete,
-// flush, the event emitter, ...) forwards to the base repo: a doc created
-// on a draft isn't anyone else's, so it needs no clone.
+// The members a draft repo changes. Everything else (clone, delete, flush,
+// the event emitter, ...) forwards to the base repo.
 const OWNED: ReadonlySet<PropertyKey> = new Set<PropertyKey>([
   "base",
   "handles",
   "find",
   "findWithProgress",
+  "create",
+  "create2",
   "checkout",
+  "setRoot",
   "dispose",
 ]);
 
@@ -53,12 +57,17 @@ type Entry = {
  * keep the url they were asked for but read and write the checked-out draft:
  *
  * - On main, the original doc.
- * - On a draft, the draft's clone of the doc once it has one, else the
- *   original. The first write to a doc on a draft forks it and records the
- *   clone in `DraftDoc.clones`, so a draft only owns the docs it changed.
+ * - On a draft, the draft's clone of the doc once it has one; before that,
+ *   the version the fork recorded (see `CloneEntry`), or the live original
+ *   for docs the fork didn't know about.
  * - With a checkpoint, the same doc pinned to that checkpoint's `to` heads.
- * - Docs that are never drafted (accounts, contacts; see `SKIPPED_DATATYPES`)
- *   come straight from the base repo.
+ *
+ * The first write to a doc on a draft clones it at the version the draft
+ * reads and records the clone in `DraftDoc.clones`, so a draft only owns the
+ * docs it changed. Only docs that belong to the draft fork: ones it already
+ * has an entry for, and ones in the tree under its root (`setRoot`). Writes
+ * to anything else (accounts, contacts, ...) land on the doc itself. With no
+ * root every doc forks.
  *
  * `checkout` re-points every live handle in place, so switching drafts or
  * scrubbing history remounts nothing.
@@ -68,6 +77,11 @@ export class DraftRepo {
   #checkout: DraftCheckout = { draft: null, at: null };
   readonly #entries = new Map<AutomergeUrl, Entry>();
   readonly #resolving = new Map<AutomergeUrl, Promise<DocHandle<unknown>>>();
+  #root: AutomergeUrl | null = null;
+  #tree: DocTree | null = null;
+  // Docs created while a draft was checked out, by draft: they're the
+  // draft's own, so they become its clone instead of being cloned.
+  readonly #created = new Map<AutomergeUrl, AutomergeUrl>();
   #disposed = false;
 
   constructor(base: Repo) {
@@ -132,6 +146,18 @@ export class DraftRepo {
     } as DocumentProgress<T>;
   }
 
+  create<T>(initialValue?: T): DocHandle<T> {
+    const handle = this.base.create<T>(initialValue);
+    this.#noteCreated(handle.url);
+    return handle;
+  }
+
+  async create2<T>(initialValue?: T): Promise<DocHandle<T>> {
+    const handle = await this.base.create2<T>(initialValue);
+    this.#noteCreated(handle.url);
+    return handle;
+  }
+
   /** Re-point every live handle at `next`. */
   checkout(next: DraftCheckout): void {
     if (this.#disposed) return;
@@ -142,11 +168,28 @@ export class DraftRepo {
       next.draft?.on("change", this.#onDraftChange);
     }
     this.#repointAll();
+    this.#tree?.refresh();
+  }
+
+  /** The doc whose tree makes up a draft. */
+  setRoot(root: AutomergeUrl | null): void {
+    if (this.#disposed) return;
+    const next = root ? canonicalUrl(root) : null;
+    if (next === this.#root) return;
+    this.#root = next;
+    this.#tree?.dispose();
+    this.#tree = next
+      ? watchDocTree(this.base, next, {
+          readUrl: (url) => this.#backingUrl(url, [], undefined),
+        })
+      : null;
   }
 
   dispose(): void {
     if (this.#disposed) return;
     this.#disposed = true;
+    this.#tree?.dispose();
+    this.#tree = null;
     this.#checkout.draft?.off("change", this.#onDraftChange);
     for (const entry of this.#entries.values()) entry.handle.dispose();
     this.#entries.clear();
@@ -155,13 +198,19 @@ export class DraftRepo {
 
   // Someone else may have cloned a doc into this draft, or a fork may have
   // pre-populated its clones.
-  #onDraftChange = () => this.#repointAll();
+  #onDraftChange = () => {
+    this.#repointAll();
+    this.#tree?.refresh();
+  };
+
+  #noteCreated(url: AutomergeUrl): void {
+    const draft = this.#checkout.draft;
+    if (draft) this.#created.set(canonicalUrl(url), draft.url);
+  }
 
   async #open(presented: AutomergeUrl): Promise<DocHandle<unknown>> {
     const { documentId, segments, heads } = parseAutomergeUrl(presented);
     const root = stringifyAutomergeUrl({ documentId });
-    if (await isSkippedDoc(this.base, root)) return this.base.find(presented);
-
     const applied = this.#backingUrl(root, segments ?? [], heads);
     const backing = await this.base.find<unknown>(applied);
     if (this.#disposed) throw new Error(`[drafts] repo disposed: ${presented}`);
@@ -191,12 +240,13 @@ export class DraftRepo {
     segments: unknown[],
     heads: UrlHeads | undefined
   ): AutomergeUrl {
-    const clone = this.#checkout.draft?.doc()?.clones?.[root]?.cloneUrl;
-    const documentId = parseAutomergeUrl(clone ?? root).documentId;
+    const entry = this.#checkout.draft?.doc()?.clones?.[root];
+    const pinned = heads ?? this.#checkout.at?.[root]?.to ?? undefined;
+    const read = entry?.cloneUrl ?? entry?.source ?? root;
     return stringifyAutomergeUrl({
-      documentId,
+      documentId: parseAutomergeUrl(read).documentId,
       segments: segments.length ? (segments as never) : undefined,
-      heads: heads ?? this.#checkout.at?.[root]?.to ?? undefined,
+      heads: pinned ?? (entry && !entry.cloneUrl ? entry.clonedAt : undefined),
     });
   }
 
@@ -219,29 +269,66 @@ export class DraftRepo {
   }
 
   // Runs synchronously inside the write, so the write itself lands on the
-  // clone. The clone shares the original's history, so the handles moving
-  // onto it see the same document and are swapped quietly.
+  // clone. The clone is made at the version the handles were reading, so
+  // they move onto it quietly.
   #cloneOnWrite(root: AutomergeUrl): void {
     const draft = this.#checkout.draft;
     if (!draft || this.#checkout.at?.[root]?.to) return;
 
     const recorded = draft.doc()?.clones?.[root];
-    if (recorded) {
+    if (recorded?.cloneUrl) {
       // Recorded but not re-pointed yet: move now if the clone is loaded, so
       // the write can't land on the original.
-      const clone = this.base.handles[parseAutomergeUrl(recorded.cloneUrl).documentId];
-      if (clone?.isReady()) this.#moveOnto(root, clone, { sameContent: false });
+      const clone = this.#loaded(recorded.cloneUrl);
+      if (clone) this.#moveOnto(root, clone, { sameContent: false });
+      return;
+    }
+    if (!recorded && !this.#belongs(root)) return;
+
+    if (!recorded && this.#created.get(root) === draft.url) {
+      draft.change((d) => {
+        d.clones[root] = { cloneUrl: root, clonedAt: encodeHeads([]) };
+      });
       return;
     }
 
-    const original = this.base.handles[parseAutomergeUrl(root).documentId];
-    if (!original?.isReady()) return;
-    const clonedAt = original.heads();
-    const clone = this.base.clone(original);
-    this.#moveOnto(root, clone, { sameContent: true });
+    const clone = this.#forkFor(root, recorded);
+    if (!clone) return;
+    this.#moveOnto(root, clone.handle, { sameContent: true });
+    const cloneUrl = canonicalUrl(clone.handle.url);
     draft.change((d) => {
-      d.clones[root] = { cloneUrl: canonicalUrl(clone.url), clonedAt };
+      const entry = d.clones[root];
+      if (entry) entry.cloneUrl = cloneUrl;
+      else d.clones[root] = { cloneUrl, clonedAt: clone.clonedAt };
     });
+  }
+
+  // A clone of `root` at the version the draft reads it: the recorded fork
+  // point, or the original as it is now.
+  #forkFor(
+    root: AutomergeUrl,
+    recorded: CloneEntry | undefined
+  ): { handle: DocHandle<unknown>; clonedAt: UrlHeads } | null {
+    const source = this.#loaded(recorded?.source ?? root);
+    if (!source) return null;
+    const clonedAt = recorded?.clonedAt ?? source.heads();
+    try {
+      return { handle: cloneAt(this.base, source, clonedAt), clonedAt };
+    } catch (err) {
+      console.error(`[drafts] failed to fork ${root}:`, err);
+      return null;
+    }
+  }
+
+  // Unknown while the tree is still being walked; erring on forking is safe.
+  #belongs(root: AutomergeUrl): boolean {
+    const tree = this.#tree;
+    return !tree || !tree.isSettled() || tree.has(root);
+  }
+
+  #loaded(url: AutomergeUrl): DocHandle<unknown> | null {
+    const handle = this.base.handles[parseAutomergeUrl(url).documentId];
+    return handle?.isReady() ? handle : null;
   }
 
   #moveOnto(

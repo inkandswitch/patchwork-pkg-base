@@ -14,7 +14,6 @@ import type {
 } from "../draft-types.js";
 import { canonicalUrl } from "../clone-policy.js";
 import { baseRepo } from "../draft-repo.js";
-import { createMountTracker } from "../mount-tracker.js";
 import { ensureWorkspaceCheckouts } from "../workspace-docs.js";
 import { createDraftState } from "./draft-state.js";
 
@@ -88,13 +87,11 @@ export const DraftStateProvider = (element: HTMLElement, inherited: Repo) => {
     docUrl,
     checkedOutHandle
   );
-  const mounts = createMountTracker(element);
   const state = createDraftState({
     repo,
     docUrl,
     checkedOutHandle,
     element,
-    mounts,
   });
 
   const onSubscribe = (event: SubscribeEvent) => {
@@ -141,7 +138,6 @@ export const DraftStateProvider = (element: HTMLElement, inherited: Repo) => {
     element.removeEventListener("patchwork:subscribe", onSubscribe);
     stopPersisting();
     state.dispose();
-    mounts.dispose();
   };
 };
 

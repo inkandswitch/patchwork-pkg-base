@@ -1,12 +1,17 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+// Initializes the wasm the overlay's slim automerge shares.
+import "@automerge/automerge";
 import {
   Repo,
   initSubduction,
   type DocHandle,
 } from "@automerge/automerge-repo";
 
-import { DraftRepo } from "./draft-repo";
 import type { DraftDoc } from "./draft-types";
+
+vi.mock("@inkandswitch/patchwork-plugins", () => import("./test-registry"));
+
+const { DraftRepo } = await import("./draft-repo");
 
 type Note = { "@patchwork": { type: string }; text: string; items: string[] };
 
@@ -34,6 +39,8 @@ function changes(handle: DocHandle<unknown>) {
 }
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+// Long enough for the overlay's document tree to finish walking.
+const walked = () => new Promise((resolve) => setTimeout(resolve, 100));
 
 beforeAll(() => initSubduction());
 
@@ -128,11 +135,94 @@ describe("DraftRepo", () => {
     expect(handle.doc()?.text).toBe("theirs");
   });
 
-  it("passes skipped docs straight through", async () => {
-    const { base, draft, repo } = setup();
-    const account = base.create({ "@patchwork": { type: "account" } });
+  it("writes straight through to docs outside the draft's tree", async () => {
+    const { base, original, draft, repo } = setup();
+    const folder = base.create({
+      "@patchwork": { type: "folder" },
+      docs: [{ url: original.url, type: "note" }],
+    });
+    const account = base.create<{ name: string }>({ name: "me" });
+    repo.setRoot(folder.url);
     repo.checkout({ draft, at: null });
-    const handle = await repo.find(account.url);
-    expect(handle).toBe(account);
+    await walked();
+
+    const handle = await repo.find<{ name: string }>(account.url);
+    handle.change((d) => {
+      d.name = "renamed";
+    });
+    const note = await repo.find<Note>(original.url);
+    note.change((d) => {
+      d.text = "draft";
+    });
+
+    expect(account.doc()?.name).toBe("renamed");
+    expect(Object.keys(draft.doc()?.clones ?? {})).toEqual([original.url]);
+    expect(original.doc()?.text).toBe("main");
+  });
+
+  it("reads a recorded fork point until the first write, then clones there", async () => {
+    const { original, draft, repo } = setup();
+    const clonedAt = original.heads();
+    original.change((d) => {
+      d.text = "main later";
+    });
+    draft.change((d) => {
+      d.clones[original.url] = { clonedAt };
+    });
+    repo.checkout({ draft, at: null });
+    const handle = await repo.find<Note>(original.url);
+    expect(handle.doc()?.text).toBe("main");
+
+    handle.change((d) => {
+      d.items.push("draft");
+    });
+
+    const entry = draft.doc()?.clones[original.url];
+    expect(entry?.cloneUrl).toBeDefined();
+    expect(entry?.clonedAt).toEqual(clonedAt);
+    expect(handle.doc()).toMatchObject({ text: "main", items: ["draft"] });
+    expect(original.doc()).toMatchObject({ text: "main later", items: [] });
+  });
+
+  it("forks off the recorded source", async () => {
+    const { base, original, draft, repo } = setup();
+    const parentClone = base.clone(original);
+    parentClone.change((d) => {
+      d.text = "parent";
+    });
+    draft.change((d) => {
+      d.clones[original.url] = {
+        source: parentClone.url,
+        clonedAt: parentClone.heads(),
+      };
+    });
+    repo.checkout({ draft, at: null });
+    const handle = await repo.find<Note>(original.url);
+    expect(handle.doc()?.text).toBe("parent");
+
+    handle.change((d) => {
+      d.items.push("child");
+    });
+
+    expect(handle.doc()).toMatchObject({ text: "parent", items: ["child"] });
+    expect(parentClone.doc()?.items).toEqual([]);
+  });
+
+  it("records a doc created on the draft as its own clone", async () => {
+    const { draft, repo } = setup();
+    repo.checkout({ draft, at: null });
+    const created = repo.create<Note>({
+      "@patchwork": { type: "note" },
+      text: "new",
+      items: [],
+    });
+    const handle = await repo.find<Note>(created.url);
+
+    handle.change((d) => {
+      d.text = "edited";
+    });
+
+    expect(draft.doc()?.clones[created.url]?.cloneUrl).toBe(created.url);
+    expect(created.doc()?.text).toBe("edited");
   });
 });

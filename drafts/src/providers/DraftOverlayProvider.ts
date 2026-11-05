@@ -14,6 +14,7 @@ import type {
 import { DraftRepo } from "../draft-repo.js";
 
 const CHECKED_OUT_SELECTOR = "draft:checked-out";
+const ROOT_DOC_SELECTOR = "draft:root-doc";
 
 // Hands everything beneath it a `DraftRepo`, so documents resolve onto the
 // checked-out draft (see `DraftRepo` for what that means per doc) and edits
@@ -22,7 +23,8 @@ const CHECKED_OUT_SELECTOR = "draft:checked-out";
 //
 // The selection comes from the ancestor draft-state provider's
 // `draft:checked-out` doc: `checkedOut` is the draft (null for main) and `at`
-// the checkpoint, whose per-doc `to` heads pin each doc.
+// the checkpoint, whose per-doc `to` heads pin each doc. Its `draft:root-doc`
+// is the doc whose tree the draft covers; only docs in it fork on write.
 //
 // A `url` attribute, when present, seeds the selection. That is how the chat
 // preview iframe (see chat's `preview-frame.ts`) pins a self-bootstrapped
@@ -51,6 +53,14 @@ export const DraftOverlayProvider = (
     }
   }
 
+  const unsubscribeRoot = subscribe<AutomergeUrl>(
+    element,
+    { type: ROOT_DOC_SELECTOR },
+    (url) => {
+      if (!disposed && isValidAutomergeUrl(url)) draftRepo.setRoot(url);
+    }
+  );
+
   let checkedOutHandle: DocHandle<CheckedOutDraft> | null = null;
   const onCheckedOutChange = () => {
     const doc = checkedOutHandle?.doc();
@@ -73,6 +83,7 @@ export const DraftOverlayProvider = (
 
   return () => {
     disposed = true;
+    unsubscribeRoot();
     unsubscribeCheckedOut();
     checkedOutHandle?.off("change", onCheckedOutChange);
     checkedOutHandle = null;

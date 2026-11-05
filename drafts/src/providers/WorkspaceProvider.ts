@@ -16,6 +16,7 @@ import type {
   WorkspaceCheckoutsDoc,
 } from "../draft-types.js";
 import { canonicalUrl } from "../clone-policy.js";
+import { entryReadUrl } from "../draft-clones.js";
 import { baseRepo } from "../draft-repo.js";
 import { createWorkspaceIndex } from "../workspace-index.js";
 
@@ -192,8 +193,8 @@ export const WorkspaceProvider = (element: HTMLElement, inherited: Repo) => {
     const draftUrl = await liveDraft(root);
     if (!draftUrl) return url;
     const draft = await repo.find<DraftDoc>(draftUrl);
-    const clone = draft.doc()?.clones?.[url];
-    return clone ? canonicalUrl(clone.cloneUrl) : url;
+    const entry = draft.doc()?.clones?.[url];
+    return entry ? entryReadUrl(url, entry) : url;
   }
 };
 

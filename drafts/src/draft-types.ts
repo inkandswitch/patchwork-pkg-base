@@ -1,11 +1,15 @@
 import type { AutomergeUrl, UrlHeads } from "@automerge/automerge-repo/slim";
 
-// One COW relationship between an original doc and the per-draft clone we
-// write to. `clonedAt`/`mergedAt` capture the fork and join points on the
-// original — together they describe what the draft contributed to that doc.
+// A draft's version of one doc. Forking records where the draft branches
+// off — `source` (the parent draft's clone; absent for the original) at
+// `clonedAt` — and the draft reads that snapshot until its first write
+// clones it there into `cloneUrl`. A doc created on the draft is its own
+// clone (`cloneUrl` the doc itself, `clonedAt` empty). `mergedAt` is the
+// target's heads after the clone merged back.
 export type CloneEntry = {
-  cloneUrl: AutomergeUrl;
+  source?: AutomergeUrl;
   clonedAt: UrlHeads;
+  cloneUrl?: AutomergeUrl;
   mergedAt?: UrlHeads;
 };
 
@@ -15,9 +19,9 @@ export type CloneEntry = {
 //
 // `isMain` marks the single "main draft" a host doc points at via
 // `@patchwork.mainDraftUrl`. The main draft is bookkeeping only: it is never
-// resolved through (the overlay stays a no-op for main), its `clones` are
-// identity mappings (`cloneUrl === url`, `clonedAt === []`), and its `drafts`
-// holds the user-visible top-level draft list.
+// resolved through (the overlay stays a no-op for main), and its `drafts`
+// holds the user-visible top-level draft list. Its `clones` are unused (older
+// builds kept identity mappings there).
 //
 // `mergedAt` is a wall-clock timestamp set when the draft is merged into
 // its parent; absent means "still open". The sidebar uses it to filter
@@ -125,14 +129,12 @@ export type Baseline = {
 
 // One document that makes up a draft (or main), nested inside `DraftSummary`.
 //
-// On a draft these are the docs the overlay has forked — `cloneUrl` is the
+// On a draft these are the docs the draft has cloned — `cloneUrl` is the
 // per-draft clone and `clonedAt` its fork point (mirrors `CloneEntry`). On
-// "main" they come from the main draft's identity clones (`cloneUrl === url`,
-// `clonedAt === []`) once it exists; before the first draft is created there is
-// no main draft, so membership is observed from `patchwork:mounted` events and
-// both fields are `null`. Like `Baseline`, the nullable fields use `null`
-// rather than optional so the value stays a valid structured-cloneable
-// `JSONValue` crossing the provider channel.
+// "main" they are every doc in the root's tree, with both fields `null`. Like
+// `Baseline`, the nullable fields use `null` rather than optional so the value
+// stays a valid structured-cloneable `JSONValue` crossing the provider
+// channel.
 export type DraftMemberDoc = {
   url: AutomergeUrl;
   cloneUrl: AutomergeUrl | null;
