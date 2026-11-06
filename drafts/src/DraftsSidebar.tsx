@@ -74,6 +74,10 @@ const EMPTY_DRAFT_LIST: DraftList = {
 
 const MAIN_SELECTION: DraftSelection = { checkedOut: null, at: null };
 
+// Past this many docs beneath a folder, reading their history is too slow
+// to show a timeline.
+const HISTORY_CHILD_LIMIT = 100;
+
 // Shown in the panel footer, logged on load, and stamped into fork
 // diagnostics; bump on deploy to tell builds apart.
 const DRAFTS_VERSION = "0.0.47";
@@ -182,6 +186,10 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
   // beneath it.
   const isFolder = createMemo(
     () => hostDoc()?.["@patchwork"]?.type === "folder"
+  );
+  // Main's members are the folder and every doc beneath it.
+  const historyOff = createMemo(
+    () => isFolder() && list().main.members.length - 1 > HISTORY_CHILD_LIMIT
   );
 
   // Switching drafts (or to main) returns to the live latest heads.
@@ -558,6 +566,7 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
             isSelected={isMainSelected()}
             members={() => list().main.members}
             element={props.element}
+            historyOff={historyOff()}
             name={list().main.name}
             onRename={(name) => void onRename(null, name)}
             onSelect={() => selectDraft(null)}
@@ -586,6 +595,7 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
                 url={summary.url}
                 members={summary.members}
                 element={props.element}
+                historyOff={historyOff()}
                 mainDocUrl={hostDocHandle()?.url}
                 isSelected={selected() === summary.url}
                 name={summary.name}
@@ -637,6 +647,7 @@ function MainCard(props: {
   isSelected: boolean;
   members: Accessor<DraftMemberDoc[]>;
   element: HTMLElement;
+  historyOff: boolean;
   name: string | null;
   onRename: (name: string | null) => void;
   onSelect: () => void;
@@ -712,18 +723,20 @@ function MainCard(props: {
         </div>
       </div>
       <Show when={props.isSelected}>
-        <DraftChangesList
-          members={props.members}
-          element={props.element}
-          mainDocUrl={props.hostDocUrl}
-          onScrub={props.onScrub}
-          scrubber={props.scrubber}
-          onBaselineScrub={props.onBaselineScrub}
-          baseliner={props.baseliner}
-          eyeOpen={() => props.eyeOpen}
-          checkpoint={props.checkpoint}
-          onReturnToLatest={props.onReturnToLatest}
-        />
+        <Show when={!props.historyOff} fallback={<HistoryOff />}>
+          <DraftChangesList
+            members={props.members}
+            element={props.element}
+            mainDocUrl={props.hostDocUrl}
+            onScrub={props.onScrub}
+            scrubber={props.scrubber}
+            onBaselineScrub={props.onBaselineScrub}
+            baseliner={props.baseliner}
+            eyeOpen={() => props.eyeOpen}
+            checkpoint={props.checkpoint}
+            onReturnToLatest={props.onReturnToLatest}
+          />
+        </Show>
       </Show>
     </div>
   );
@@ -733,6 +746,7 @@ function DraftCard(props: {
   url: AutomergeUrl;
   members: DraftMemberDoc[];
   element: HTMLElement;
+  historyOff: boolean;
   mainDocUrl: AutomergeUrl | undefined;
   isSelected: boolean;
   name: string | null;
@@ -827,19 +841,32 @@ function DraftCard(props: {
         </div>
       </div>
       <Show when={props.isSelected}>
-        <DraftChangesList
-          members={() => props.members}
-          element={props.element}
-          mainDocUrl={props.mainDocUrl}
-          onScrub={props.onScrub}
-          scrubber={props.scrubber}
-          onBaselineScrub={props.onBaselineScrub}
-          baseliner={props.baseliner}
-          eyeOpen={() => props.eyeOpen}
-          checkpoint={props.checkpoint}
-          onReturnToLatest={props.onReturnToLatest}
-        />
+        <Show when={!props.historyOff} fallback={<HistoryOff />}>
+          <DraftChangesList
+            members={() => props.members}
+            element={props.element}
+            mainDocUrl={props.mainDocUrl}
+            onScrub={props.onScrub}
+            scrubber={props.scrubber}
+            onBaselineScrub={props.onBaselineScrub}
+            baseliner={props.baseliner}
+            eyeOpen={() => props.eyeOpen}
+            checkpoint={props.checkpoint}
+            onReturnToLatest={props.onReturnToLatest}
+          />
+        </Show>
       </Show>
+    </div>
+  );
+}
+
+function HistoryOff() {
+  return (
+    <div class="draft-card-changes">
+      <div class="draft-changes-empty">
+        History is off for folders with more than {HISTORY_CHILD_LIMIT}{" "}
+        documents.
+      </div>
     </div>
   );
 }
