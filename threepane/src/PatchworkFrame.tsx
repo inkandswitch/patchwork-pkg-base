@@ -389,11 +389,10 @@ function PatchworkFrameInner(props: {
   );
 }
 
-// Tells the document area which workspace the selected doc belongs to (and
-// which draft the account has checked out there), so its drafts are scoped
-// to the workspace rather than the doc. Its children wait for the provider,
-// because a `workspace:root` subscription sent before it is listening would
-// never be answered. Under isolation the document area lives in the iframe,
+// Tells the document area which workspace the selected doc belongs to, so its
+// drafts are scoped to the workspace rather than the doc. Its children wait
+// for the provider, because a `workspace:root` subscription sent before it is
+// listening would never be answered. Under isolation the document area lives in the iframe,
 // which can't see the account or folder tree, so drafts stay per-document
 // there instead.
 function WorkspaceScope(props: {

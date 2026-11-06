@@ -5,25 +5,23 @@
 // the originals. A normal preview iframe (`/#doc=…&frame=…`) boots a fresh host
 // runtime with no draft overlay, so it resolves the originals and shows Main's
 // source. To preview drafted source we self-bootstrap the iframe: fetch the
-// host page, wrap its `#root` view in the draft overlay provider pointed at the
+// host page, wrap its `#root` view in the draft provider pointed at the
 // active draft, and inject the routing hash. The iframe then forks the tool
 // folder + source into the same draft clones the chat is editing.
 
-const OVERLAY_PROVIDER_SELECTOR =
-	'patchwork-view[component="patchwork-draft-overlay-provider"]'
+const DRAFT_PROVIDER_SELECTOR =
+	'patchwork-view[component="patchwork-draft-provider"]'
 
 /**
  * The automerge URL of the draft the chat is currently scoped to, or "" for
- * Main. Read straight off the overlay provider the frame mounts as an ancestor
+ * Main. Read straight off the draft provider the frame mounts as an ancestor
  * of the tool — no extra dependency or subscription needed. The provider
- * mirrors its live selection onto `draft-url` (it follows the draft list
- * itself); `url` is the seed
- * attribute for self-bootstrapped frames. Returns "" if the host has no
- * drafts overlay (drafts plugin absent) so callers fall back to the plain
- * preview path.
+ * mirrors its live selection onto `draft-url`; `url` is the seed attribute
+ * for self-bootstrapped frames. Returns "" if the host has no draft provider
+ * (drafts plugin absent) so callers fall back to the plain preview path.
  */
 export function getActiveDraftUrl(element: HTMLElement): string {
-	const provider = element.closest(OVERLAY_PROVIDER_SELECTOR)
+	const provider = element.closest(DRAFT_PROVIDER_SELECTOR)
 	if (!provider) return ""
 	return (
 		provider.getAttribute("draft-url")?.trim() ||
@@ -73,13 +71,13 @@ export async function buildPreviewSrcdoc(
 	base.setAttribute("href", location.origin + "/")
 	parsed.head.prepend(base)
 
-	// Wrap the root view in the draft overlay provider so the previewed doc and
-	// its tool source resolve to this draft's clones.
-	const overlay = parsed.createElement("patchwork-view")
-	overlay.setAttribute("component", "patchwork-draft-overlay-provider")
-	overlay.setAttribute("url", draftUrl)
-	root.replaceWith(overlay)
-	overlay.appendChild(root)
+	// Wrap the root view in the draft provider so the previewed doc and its
+	// tool source resolve to this draft's clones.
+	const provider = parsed.createElement("patchwork-view")
+	provider.setAttribute("component", "patchwork-draft-provider")
+	provider.setAttribute("url", draftUrl)
+	root.replaceWith(provider)
+	provider.appendChild(root)
 
 	// Before the deferred module entry runs (classic inline scripts execute
 	// during parse, ahead of modules), do two things:

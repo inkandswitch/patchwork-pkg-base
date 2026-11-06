@@ -26,7 +26,6 @@ import {
   onCleanup,
   onMount,
   Show,
-  untrack,
   type Accessor,
 } from "solid-js";
 import type { ToolSlot } from "../types";
@@ -70,7 +69,7 @@ export interface DocumentAreaRootProps extends DocumentAreaInputs {
   /**
    * Set when an ancestor `patchwork-workspace-provider` can say which
    * workspace the selected doc belongs to. Drafts are then scoped to that
-   * workspace, and the checked-out draft is persisted to `accountDocUrl`.
+   * workspace, and the checked-out draft is remembered in `accountDocUrl`.
    * Inside the isolation iframe there is no such ancestor, so drafts stay
    * scoped to the document.
    */
@@ -82,7 +81,6 @@ export interface DocumentAreaRootProps extends DocumentAreaInputs {
 type WorkspaceRoot = {
   docUrl: string;
   rootUrl: AutomergeUrl;
-  draftUrl: AutomergeUrl | null;
 };
 
 type DraftScope = { docUrl: AutomergeUrl; rootUrl: AutomergeUrl };
@@ -153,9 +151,9 @@ export function DocumentAreaRoot(props: DocumentAreaRootProps) {
     { name: SIDEBAR_KEYS.contextToolId }
   );
 
-  // The workspace the selected doc belongs to. Only an answer for the doc
-  // that's selected *now* counts, so a doc is never mounted under the
-  // previous doc's drafts while its own root is still on the way.
+  // The selected doc and the root its drafts hang off. Only an answer for
+  // the doc that's selected *now* counts: until it arrives the previous doc
+  // stays up, so a doc is never shown under another root's drafts.
   let anchor!: HTMLDivElement;
   const [workspaceRoot, setWorkspaceRoot] = createSignal<WorkspaceRoot | null>(
     null
@@ -169,89 +167,66 @@ export function DocumentAreaRoot(props: DocumentAreaRootProps) {
     );
   });
   const scope = createMemo<DraftScope | undefined>(
-    () => {
+    (previous) => {
       const docUrl = props.selectedDocUrl();
       if (!docUrl) return undefined;
       if (!props.workspaceScoped) return { docUrl, rootUrl: docUrl };
       const root = workspaceRoot();
       return root?.docUrl === docUrl
         ? { docUrl, rootUrl: root.rootUrl }
-        : undefined;
+        : previous;
     },
     undefined,
     {
       equals: (a, b) => a?.docUrl === b?.docUrl && a?.rootUrl === b?.rootUrl,
     }
   );
+  const rootUrl = createMemo(() => scope()?.rootUrl);
 
-  // Draft scope: the selected doc's workspace root (the doc itself when it
-  // isn't in one). Keyed on doc *and* root so the whole draft tree remounts
-  // when either changes: the draft-state provider reads its attributes once
-  // at mount (attribute changes are ignored while a `component` attribute is
-  // set), so it cannot re-point in place.
-  const [draftStateProviderHost, setDraftStateProviderHost] =
-    createSignal<HTMLElement>();
-  const isDraftStateProviderReady = useProviderReady(
-    "patchwork-draft-state-provider",
-    draftStateProviderHost
-  );
-  const readyDraftStateHost = () =>
-    isDraftStateProviderReady() ? draftStateProviderHost() : undefined;
-
+  // Keyed on the root alone: the draft provider reads its attributes once at
+  // mount (attribute changes are ignored while a `component` attribute is
+  // set), so a new root needs a new provider, while moving between docs of
+  // one workspace keeps it, with its checkout and draft list.
   return (
     <div ref={anchor} style={{ display: "contents" }}>
-      <Show when={scope()} keyed>
-        {(current) => (
-          <patchwork-view
-            component="patchwork-draft-state-provider"
-            doc-url={current.rootUrl}
-            attr:account-url={props.accountDocUrl}
-            attr:checked-out={untrack(workspaceRoot)?.draftUrl ?? undefined}
-            ref={setDraftStateProviderHost}
-          >
-            <Show when={readyDraftStateHost()}>
-              {(host) => (
-                <DraftDocumentArea
-                  host={host()}
-                  setMainDocElement={props.setMainDocElement}
-                  // The scope's doc, not the live selection: a newly
-                  // selected doc must not render inside the previous doc's
-                  // overlay while it unmounts.
-                  selectedDocUrl={() => current.docUrl}
-                  selectedToolId={props.selectedToolId}
-                  doctitleSlots={props.doctitleSlots}
-                  isLeftCollapsed={props.isLeftCollapsed}
-                  isRightSidebarCollapsed={isRightSidebarCollapsed}
-                  setIsRightSidebarCollapsed={setIsRightSidebarCollapsed}
-                  rightSidebarWidth={rightSidebarWidth}
-                  handleMouseDown={sidebarResize.handleMouseDown}
-                  handleToggleClick={sidebarResize.handleToggleClick}
-                  selectedContextToolId={selectedContextToolId}
-                  setSelectedContextToolId={setSelectedContextToolId}
-                />
-              )}
-            </Show>
-          </patchwork-view>
+      <Show when={rootUrl()} keyed>
+        {(root) => (
+          <DraftDocumentArea
+            rootUrl={root}
+            accountDocUrl={props.accountDocUrl}
+            setMainDocElement={props.setMainDocElement}
+            selectedDocUrl={() => scope()?.docUrl}
+            selectedToolId={props.selectedToolId}
+            doctitleSlots={props.doctitleSlots}
+            isLeftCollapsed={props.isLeftCollapsed}
+            isRightSidebarCollapsed={isRightSidebarCollapsed}
+            setIsRightSidebarCollapsed={setIsRightSidebarCollapsed}
+            rightSidebarWidth={rightSidebarWidth}
+            handleMouseDown={sidebarResize.handleMouseDown}
+            handleToggleClick={sidebarResize.handleToggleClick}
+            selectedContextToolId={selectedContextToolId}
+            setSelectedContextToolId={setSelectedContextToolId}
+          />
         )}
       </Show>
     </div>
   );
 }
 
-// Renders the main document inside the draft-overlay provider. The provider
-// mounts once and follows the checked-out draft itself (via the draft-state
-// provider's `draft:checked-out` doc), re-pointing live document handles in
-// place — so neither a draft switch nor a history checkpoint move remounts
-// anything here. Checkpoint pins live in the overlay's repo, which re-points
-// each handle at the pinned heads (see `DraftRepo`), so the doc url the view
-// is keyed on stays stable while scrubbing.
+// Renders the main document inside the draft provider for its root. The
+// provider follows the checked-out draft itself, re-pointing live document
+// handles in place — so neither a draft switch nor a history checkpoint move
+// remounts anything here. Checkpoint pins live in the provider's repo, which
+// re-points each handle at the pinned heads (see `DraftRepo`), so the doc url
+// the view is keyed on stays stable while scrubbing.
 //
 // The comments + focus providers and the context (right) sidebar live *inside*
-// the overlay so that, on a draft, comment threads / selection resolve against
-// the draft's clone. The document toolbar (top bar) is in that scope too — it
-// targets the same selected doc as the editor.
+// the draft provider so that, on a draft, comment threads / selection resolve
+// against the draft's clone. The document toolbar (top bar) is in that scope
+// too — it targets the same selected doc as the editor.
 function DraftDocumentArea(props: {
-  host: HTMLElement;
+  rootUrl: AutomergeUrl;
+  accountDocUrl?: AutomergeUrl;
   setMainDocElement?: (el: HTMLElement) => void;
   selectedDocUrl: Accessor<AutomergeUrl | undefined>;
   selectedToolId: Accessor<string | undefined>;
@@ -271,7 +246,7 @@ function DraftDocumentArea(props: {
   const contextItems = useTaggedComponents("context-tool");
   const hasContext = () => contextItems().length > 0;
 
-  // Remount key for the main view: just the selected doc. The overlay's repo
+  // Remount key for the main view: just the selected doc. The draft repo
   // swaps handle backings in place for checkpoint pins, so scrubbing history
   // must not change this key. Stamping heads here would also override the
   // pin: in `DraftRepo`, heads on the requested url win over the checkpoint's.
@@ -279,11 +254,11 @@ function DraftDocumentArea(props: {
     props.selectedDocUrl()
   );
 
-  const [draftOverlayProviderHost, setDraftOverlayProviderHost] =
+  const [draftProviderHost, setDraftProviderHost] =
     createSignal<HTMLElement>();
-  const isDraftOverlayProviderReady = useProviderReady(
-    "patchwork-draft-overlay-provider",
-    draftOverlayProviderHost
+  const isDraftProviderReady = useProviderReady(
+    "patchwork-draft-provider",
+    draftProviderHost
   );
 
   const [commentsProviderElement, setCommentsProviderElement] =
@@ -302,15 +277,17 @@ function DraftDocumentArea(props: {
 
   const areDocProvidersReady = createMemo(
     () =>
-      isDraftOverlayProviderReady() &&
+      isDraftProviderReady() &&
       isCommentsProviderReady() &&
       isFocusProviderReady()
   );
 
   return (
     <patchwork-view
-      component="patchwork-draft-overlay-provider"
-      ref={setDraftOverlayProviderHost}
+      component="patchwork-draft-provider"
+      doc-url={props.rootUrl}
+      attr:account-url={props.accountDocUrl}
+      ref={setDraftProviderHost}
     >
       <patchwork-view
         component="patchwork-comments-provider"

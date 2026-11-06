@@ -18,6 +18,7 @@ import type {
 import { canonicalUrl } from "../clone-policy.js";
 import { entryReadUrl } from "../draft-clones.js";
 import { baseRepo } from "../draft-repo.js";
+import { liveCheckout } from "../workspace-docs.js";
 import { createWorkspaceIndex } from "../workspace-index.js";
 
 const WORKSPACE_ROOT_SELECTOR = "workspace:root";
@@ -35,19 +36,17 @@ const STARTUP_WAIT_MS = 1500;
 //     it, so the frame can tell which selection an answer is for.
 //   - `rootUrl`: the topmost workspace folder on the doc's first path through
 //     the account's folder tree, or the doc itself when it isn't in one.
-//   - `draftUrl`: the draft the account has checked out on that root, or
-//     null for main (a draft merged since reads as main).
 export type WorkspaceRoot = {
   docUrl: string;
   rootUrl: AutomergeUrl;
-  draftUrl: AutomergeUrl | null;
 };
 
 // Answers `workspace:root` for the frame's selected doc, re-answering when
-// the selection, the folder tree or the account's checkouts change. Read-only:
-// it never creates or edits a document. The frame mounts the per-root
-// draft-state and overlay providers from the answer, and the draft-state
-// provider persists the checkout.
+// the selection or the folder tree changes. Read-only: it never creates or
+// edits a document. The frame mounts a draft provider per root from the
+// answer, which restores and persists the root's checkout itself. Folders
+// are read through the account's checked-out drafts, so their checkouts are
+// followed here too.
 export const WorkspaceProvider = (element: HTMLElement, inherited: Repo) => {
   const rawAccountUrl = element.getAttribute(ATTR_ACCOUNT_URL);
   if (!rawAccountUrl || !isValidAutomergeUrl(rawAccountUrl)) {
@@ -67,13 +66,12 @@ export const WorkspaceProvider = (element: HTMLElement, inherited: Repo) => {
   let selectedUrl: string | null = null;
   let started = false;
   let latest: WorkspaceRoot | null = null;
-  let answerSeq = 0;
   const subscribers = new Set<(root: WorkspaceRoot) => void>();
 
   const index = createWorkspaceIndex(repo, {
     rootFolderUrl: () => accountHandle?.doc()?.rootFolderUrl,
     readUrlFor,
-    onChange: () => void update(),
+    onChange: () => update(),
   });
 
   const onAccountChange = () => {
@@ -82,7 +80,6 @@ export const WorkspaceProvider = (element: HTMLElement, inherited: Repo) => {
   };
   const onCheckoutsChange = () => {
     index.refresh();
-    void update();
   };
 
   const ready = (async () => {
@@ -101,7 +98,7 @@ export const WorkspaceProvider = (element: HTMLElement, inherited: Repo) => {
   });
   void within(firstWalk, STARTUP_WAIT_MS).then(() => {
     started = true;
-    void update();
+    update();
   });
 
   const unsubscribeSelectedView = subscribe<{ url?: string } | null>(
@@ -110,7 +107,7 @@ export const WorkspaceProvider = (element: HTMLElement, inherited: Repo) => {
     (view) => {
       const url = view?.url;
       selectedUrl = typeof url === "string" && isValidAutomergeUrl(url) ? url : null;
-      void update();
+      update();
     }
   );
 
@@ -137,27 +134,18 @@ export const WorkspaceProvider = (element: HTMLElement, inherited: Repo) => {
   };
 
   // Recompute the selected doc's answer and push it if anything moved.
-  async function update(): Promise<void> {
+  function update(): void {
     if (disposed || !started || !selectedUrl) return;
-    const seq = ++answerSeq;
     const docUrl = selectedUrl;
     const doc = canonicalUrl(docUrl as AutomergeUrl);
     const rootUrl = index.rootOf(doc) ?? doc;
-    const draftUrl = await liveDraft(rootUrl);
-    if (disposed || seq !== answerSeq) return;
-    if (
-      latest?.docUrl === docUrl &&
-      latest.rootUrl === rootUrl &&
-      latest.draftUrl === draftUrl
-    ) {
-      return;
-    }
-    latest = { docUrl, rootUrl, draftUrl };
+    if (latest?.docUrl === docUrl && latest.rootUrl === rootUrl) return;
+    latest = { docUrl, rootUrl };
     for (const respond of subscribers) respond(latest);
   }
 
   // Start watching the account's checkouts doc once it's linked. Nothing is
-  // created here; until the draft-state provider first persists a checkout
+  // created here; until a draft provider first persists a checkout
   // there's nothing to read.
   async function followCheckouts(): Promise<void> {
     const url = accountHandle?.doc()?.workspaceCheckoutsUrl;
@@ -172,17 +160,6 @@ export const WorkspaceProvider = (element: HTMLElement, inherited: Repo) => {
     onCheckoutsChange();
   }
 
-  async function liveDraft(root: AutomergeUrl): Promise<AutomergeUrl | null> {
-    const draftUrl = checkoutsHandle?.doc()?.checkedOut?.[root];
-    if (!draftUrl || !isValidAutomergeUrl(draftUrl)) return null;
-    try {
-      const draft = await repo.find<DraftDoc>(draftUrl);
-      return draft.doc()?.mergedAt === undefined ? draftUrl : null;
-    } catch {
-      return null;
-    }
-  }
-
   // Inside a workspace the folder tree is read through the checked-out
   // draft's clones, so folders reorganized on a draft index as they look
   // there.
@@ -190,7 +167,7 @@ export const WorkspaceProvider = (element: HTMLElement, inherited: Repo) => {
     root: AutomergeUrl,
     url: AutomergeUrl
   ): Promise<AutomergeUrl> {
-    const draftUrl = await liveDraft(root);
+    const draftUrl = await liveCheckout(repo, checkoutsHandle, root);
     if (!draftUrl) return url;
     const draft = await repo.find<DraftDoc>(draftUrl);
     const entry = draft.doc()?.clones?.[url];

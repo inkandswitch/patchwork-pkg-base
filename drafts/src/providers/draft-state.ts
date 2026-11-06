@@ -9,11 +9,11 @@ import {
 import type {
   ActorAttributionDoc,
   Baseline,
-  CheckedOutDraft,
   CloneEntry,
   DraftDoc,
   DraftList,
   DraftMemberDoc,
+  DraftSelection,
   DraftSummary,
   HasDrafts,
 } from "../draft-types.js";
@@ -31,7 +31,9 @@ export type DraftStateOptions = {
   repo: Repo;
   // The draft root: a single doc, or a workspace folder.
   docUrl: AutomergeUrl;
-  checkedOutHandle: DocHandle<CheckedOutDraft>;
+  selection: () => DraftSelection;
+  // Check out a draft (null for main) at its live heads.
+  select: (draftUrl: AutomergeUrl | null) => void;
   // Where the actor recorder subscribes for the current contact.
   element: HTMLElement;
 };
@@ -42,6 +44,10 @@ export type DraftState = {
     target: AutomergeUrl,
     respond: (baseline: Baseline) => void
   ) => () => void;
+  // The user moved the selection; it's reflected into the `draft=` URL.
+  selectionChanged: () => void;
+  // The selection was set without the user choosing it (restored at mount).
+  refresh: () => void;
   dispose: () => void;
 };
 
@@ -63,7 +69,7 @@ export type DraftState = {
 // member doc. A folder only gets it once it has been made a workspace, so
 // looking at a folder doesn't make it one.
 export function createDraftState(options: DraftStateOptions): DraftState {
-  const { repo, docUrl, checkedOutHandle } = options;
+  const { repo, docUrl, selection } = options;
 
   let hostDocHandle: DocHandle<HasDrafts> | null = null;
   const trackedDrafts = new Map<AutomergeUrl, DocHandle<DraftDoc>>();
@@ -71,11 +77,15 @@ export function createDraftState(options: DraftStateOptions): DraftState {
   // `@patchwork.mainDraftUrl`; its `drafts` roots the draft tree.
   let mainDraftHandle: DocHandle<DraftDoc> | null = null;
 
-  const draftRouter = createDraftRouter(checkedOutHandle);
+  const draftRouter = createDraftRouter({
+    checkedOut: () => selection().checkedOut,
+    select: options.select,
+    covers: (url) => mainTree.has(canonicalUrl(url)),
+  });
 
   // `draft:baseline` subscribers, keyed by canonical target url. Each is served the
   // checkpoint's per-doc `from` (see `currentBaseline`). Re-emitted whenever
-  // the checkout doc changes.
+  // the selection changes.
   const baselineSubscribers = new Map<
     AutomergeUrl,
     Set<(baseline: Baseline) => void>
@@ -123,12 +133,6 @@ export function createDraftState(options: DraftStateOptions): DraftState {
     const url = hostDocHandle?.doc()?.["@patchwork"]?.mainDraftUrl ?? null;
     if (url !== (mainDraftHandle?.url ?? null)) scheduleRewalk();
   };
-  // The checkout doc changed: its checkpoint may have moved, so re-publish
-  // every live `draft:baseline` subscriber.
-  const onCheckedOutChange = () => {
-    notifyBaselines();
-    reconcile();
-  };
 
   const ready: Promise<void> = (async () => {
     const handle = await repo.find<HasDrafts>(docUrl);
@@ -141,8 +145,6 @@ export function createDraftState(options: DraftStateOptions): DraftState {
   ready.catch((err) => {
     console.error(`[drafts] failed to initialize draft state:`, err);
   });
-
-  checkedOutHandle.on("change", onCheckedOutChange);
 
   return {
     subscribeList(respond) {
@@ -168,8 +170,22 @@ export function createDraftState(options: DraftStateOptions): DraftState {
         }
       };
     },
+    selectionChanged() {
+      if (disposed) return;
+      draftRouter.selectionChanged();
+      refresh();
+    },
+    refresh,
     dispose,
   };
+
+  // The selection may have moved: re-publish baselines whose checkpoint
+  // entry changed, and the docs the actor recorder watches.
+  function refresh(): void {
+    if (disposed) return;
+    notifyBaselines();
+    reconcile();
+  }
 
   function dispose(): void {
     if (disposed) return;
@@ -180,7 +196,6 @@ export function createDraftState(options: DraftStateOptions): DraftState {
     hostDocHandle?.off("change", onHostDocChange);
     mainDraftHandle?.off("change", onTrackedChange);
     for (const [, h] of trackedDrafts) h.off("change", onTrackedChange);
-    checkedOutHandle.off("change", onCheckedOutChange);
     mainDraftHandle = null;
     trackedDrafts.clear();
     listSubscribers.clear();
@@ -320,7 +335,7 @@ export function createDraftState(options: DraftStateOptions): DraftState {
   // checked-out draft's clones, where the overlay routes edits.
   function writableDocUrls(): AutomergeUrl[] {
     const urls = [...mainTree.urls()];
-    const selected = checkedOutHandle.doc()?.checkedOut ?? null;
+    const selected = selection().checkedOut;
     const clones = selected
       ? trackedDrafts.get(selected)?.doc()?.clones
       : undefined;
@@ -394,7 +409,7 @@ export function createDraftState(options: DraftStateOptions): DraftState {
   // fork-point fallback: baselines exist only when explicitly written into
   // the checkpoint, so "diffs hidden" is simply their absence.
   function currentBaseline(target: AutomergeUrl): Baseline {
-    const entry = checkedOutHandle.doc()?.at?.[target];
+    const entry = selection().at?.[target];
     return { heads: entry?.from ?? null };
   }
 

@@ -101,22 +101,21 @@ export type DocCheckpoint = {
 // absent from the map — they didn't exist yet, so they fall through to live.
 export type DraftCheckpoint = Record<AutomergeUrl, DocCheckpoint>;
 
-// Ephemeral, writeable state owned by the draft-state provider and handed to
-// the sidebar via `draft:checked-out`. It holds the selection: which draft is
-// currently checked out. `checkedOut = null` means "main" — i.e. the host doc
-// itself, no draft overlay. The derived drafts list lives separately in the
-// read-only `draft:list` push (`DraftList`).
+// What the draft provider has checked out, answered for `draft:selection` and
+// set with `draft:select`. In memory only: the account's
+// WorkspaceCheckoutsDoc remembers `checkedOut` across reloads, `at` is never
+// stored. `checkedOut = null` means main, the root itself.
 //
-// `at` carries the checkout's checkpoint (see DraftCheckpoint): per-doc pinned
-// heads (`to`) and/or diff baselines (`from`). Absent/null means the live
-// latest heads with no diff (the default). Entries with only `from` leave the
-// docs live but diffing — the sidebar's eye toggle on an unpinned draft.
-export type CheckedOutDraft = {
+// `at` is the checkpoint (see DraftCheckpoint): per-doc pinned heads (`to`)
+// and/or diff baselines (`from`). Null means the live latest heads with no
+// diff. Entries with only `from` leave the docs live but diffing — the
+// sidebar's eye toggle on an unpinned draft.
+export type DraftSelection = {
   checkedOut: AutomergeUrl | null;
-  at?: DraftCheckpoint | null;
+  at: DraftCheckpoint | null;
 };
 
-// Response shape for `draft:baseline { url }`, served by the draft-state provider
+// Response shape for `draft:baseline { url }`, served by the draft provider
 // (see `currentBaseline`). `heads` is the doc's diff baseline: the checkpoint's
 // per-doc `from`, written by the sidebar's eye toggle and scrubber. `heads` is
 // `null` when the checkpoint has no entry for the doc or the entry carries no
@@ -162,7 +161,7 @@ export type DraftSummary = {
 
 // Response shape for `draft:list`: the host doc's `main` entry plus the flat,
 // tree-ordered list of its (non-merged) drafts. Read-only and recomputed by
-// the provider; selection lives separately in `CheckedOutDraft`.
+// the provider; selection lives separately in `DraftSelection`.
 export type DraftList = {
   main: DraftSummary;
   drafts: DraftSummary[];

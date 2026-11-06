@@ -3,22 +3,11 @@ import type { Plugin, ToolElement } from "@inkandswitch/patchwork-plugins";
 export const plugins: Plugin<any>[] = [
   {
     type: "patchwork:component",
-    id: "patchwork-draft-state-provider",
-    name: "Draft State Provider",
+    id: "patchwork-draft-provider",
+    name: "Draft Provider",
     async load() {
-      const { DraftStateProvider } =
-        await import("./providers/DraftStateProvider.js");
-      return DraftStateProvider;
-    },
-  },
-  {
-    type: "patchwork:component",
-    id: "patchwork-draft-overlay-provider",
-    name: "Draft Overlay Provider",
-    async load() {
-      const { DraftOverlayProvider } =
-        await import("./providers/DraftOverlayProvider.js");
-      return DraftOverlayProvider;
+      const { DraftProvider } = await import("./providers/DraftProvider.js");
+      return DraftProvider;
     },
   },
   {
@@ -82,11 +71,11 @@ export type {
   ActorAttributionDoc,
   Baseline,
   ChangeGroup,
-  CheckedOutDraft,
   CloneEntry,
   DraftDoc,
   DraftList,
   DraftMemberDoc,
+  DraftSelection,
   DraftSummary,
   WorkspaceCheckoutsDoc,
 } from "./draft-types.js";

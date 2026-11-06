@@ -8,7 +8,7 @@ import {
   Show,
   type Accessor,
 } from "solid-js";
-import { createDocSignal, useRepo } from "solid-automerge";
+import { useRepo } from "solid-automerge";
 import type {
   AutomergeUrl,
   DocHandle,
@@ -19,17 +19,21 @@ import * as Automerge from "@automerge/automerge/slim";
 // Declares <patchwork-view> for JSX.
 import type {} from "@inkandswitch/patchwork-elements";
 import {
+  request,
+  subscribe as subscribeOnce,
+} from "@inkandswitch/patchwork-providers";
+import {
   subscribe,
   subscribeDoc,
 } from "@inkandswitch/patchwork-providers-solid";
 import type {
   ActorAttributionDoc,
   ChangeGroup,
-  CheckedOutDraft,
   DraftCheckpoint,
   DraftDoc,
   DraftList,
   DraftMemberDoc,
+  DraftSelection,
   DraftSummary,
   HasDrafts,
 } from "./draft-types";
@@ -68,6 +72,8 @@ const EMPTY_DRAFT_LIST: DraftList = {
   actorAttributionUrl: null,
 };
 
+const MAIN_SELECTION: DraftSelection = { checkedOut: null, at: null };
+
 // Shown in the panel footer, logged on load, and stamped into fork
 // diagnostics; bump on deploy to tell builds apart.
 const DRAFTS_VERSION = "0.0.47";
@@ -81,47 +87,55 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     type: "draft:root-doc",
   });
 
-  // Selection only: which draft is checked out (writeable).
-  const [, checkedOutHandle] = subscribeDoc<CheckedOutDraft>(props.element, {
-    type: "draft:checked-out",
-  });
-
-  // Read the checkout doc coarsely from the live handle (handle.doc()) rather
-  // than a fine-grained patch-replay projection: the projection can render a
-  // whole-value write doubled, whereas handle.doc() is always the correct
-  // materialized document.
-  const checkedOut = createDocSignal(checkedOutHandle);
-  const selected = createMemo<AutomergeUrl | null>(
-    () => checkedOut()?.checkedOut ?? null
+  // What's checked out. Writes show here at once and go to the provider,
+  // whose answers bring in selections made elsewhere (the `draft=` URL).
+  const [selection, setSelection] =
+    createSignal<DraftSelection>(MAIN_SELECTION);
+  onCleanup(
+    subscribeOnce<DraftSelection>(
+      props.element,
+      { type: "draft:selection" },
+      setSelection
+    )
   );
+  const select = (next: DraftSelection) => {
+    if (disposed) return;
+    setSelection(next);
+    void request(props.element, { type: "draft:select", ...next });
+  };
+  const selected = createMemo<AutomergeUrl | null>(
+    () => selection().checkedOut
+  );
+  const checkpoint = () => selection().at;
+  const setCheckpoint = (at: DraftCheckpoint | null) =>
+    select({ checkedOut: selected(), at });
 
   // The eye toggle's state, derived from the checkpoint itself (no separate
   // flag): the eye is open — diffs showing — iff the current checkpoint
   // carries any diff baseline (`from`).
   const eyeOpen = createMemo<boolean>(() => {
-    const at = checkedOut()?.at;
+    const at = checkpoint();
     return !!at && Object.values(at).some((e) => e.from !== undefined);
   });
 
   // Whether the view is actually pinned to history (any member has a `to`),
   // as opposed to live-with-baseline (eye open, nothing pinned).
   const isPinned = createMemo<boolean>(() => {
-    const at = checkedOut()?.at;
+    const at = checkpoint();
     return !!at && Object.values(at).some((e) => e.to !== undefined);
   });
 
-  // Where the scrubber sits: the change whose heads are displayed. Ephemeral,
-  // client-only state: the stored checkpoint (`checkedOut.at`) is what
-  // actually pins the view; this mirrors it to render the token and the
-  // group highlight. Not persisted, so it resets on reload (the pinned view
-  // survives).
+  // Where the scrubber sits: the change whose heads are displayed. The
+  // checkpoint is what actually pins the view; this mirrors it to render the
+  // token and the group highlight. Resets when the sidebar remounts, while
+  // the provider keeps the pinned view.
   const [scrubber, setScrubber] = createSignal<ScrubberState | null>(null);
 
   // Where the diff baseline handle sits: an absolute point in history the
-  // diff is measured from, independent of the head (`scrubber`). Ephemeral
-  // like the head — resets on reload, while the persisted `from` keeps
-  // driving the editor diff. Non-null only while the eye is open and a
-  // version is pinned; that is also exactly when the handle renders.
+  // diff is measured from, independent of the head (`scrubber`). Resets with
+  // the head, while the checkpoint's `from` keeps driving the editor diff.
+  // Non-null only while the eye is open and a version is pinned; that is
+  // also exactly when the handle renders.
   const [baseliner, setBaseliner] = createSignal<BaselineState | null>(null);
 
   // The derived drafts list (read-only): main plus each draft with its member
@@ -170,16 +184,11 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     () => hostDoc()?.["@patchwork"]?.type === "folder"
   );
 
+  // Switching drafts (or to main) returns to the live latest heads.
   const selectDraft = (url: AutomergeUrl | null) => {
-    const handle = checkedOutHandle();
-    if (!handle || disposed) return;
     setScrubber(null);
     setBaseliner(null);
-    handle.change((d) => {
-      d.checkedOut = url;
-      // Switching drafts (or to main) returns to the live latest heads.
-      d.at = null;
-    });
+    select({ checkedOut: url, at: null });
   };
 
   const contextRepo = useRepo();
@@ -188,15 +197,15 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
   // Monotonic counter so a slow checkpoint computation can't overwrite a newer
   // scrub position (a drag fires one recompute per snapped change).
   let scrubSeq = 0;
-  // The checkout doc outlives this sidebar (the provider reuses it across
-  // mounts), so work still in flight at unmount must not write into it.
+  // The provider outlives this sidebar, so work still in flight at unmount
+  // must not move its selection.
   let disposed = false;
   onCleanup(() => {
     disposed = true;
     scrubSeq++;
   });
 
-  // Recompute and persist the checkpoint from the current head (`scrubber`)
+  // Recompute and select the checkpoint from the current head (`scrubber`)
   // and baseline (`baseliner`) signals: `to`s follow the head, `from`s follow
   // the baseline (absolute, independent of the head). With the eye closed the
   // baseline is null and no `from` is written. The token and row highlight
@@ -207,22 +216,18 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     draftUrl: AutomergeUrl | null,
     members: DraftMemberDoc[]
   ) => {
-    const handle = checkedOutHandle();
     const repo = getRepo();
-    if (!handle || !repo) return;
+    if (!repo) return;
     const head = scrubber();
     if (!head) return;
     const bl = baseliner();
     const base: CheckpointBase = bl ? { beforeTime: bl.time } : "none";
     const seq = ++scrubSeq;
     void (async () => {
-      const checkpoint = await computeCheckpoint(repo, members, head.head, base);
+      const at = await computeCheckpoint(repo, members, head.head, base);
       // A newer scrub landed while this one was computing; drop it.
       if (seq !== scrubSeq) return;
-      handle.change((d) => {
-        d.checkedOut = draftUrl;
-        d.at = checkpoint;
-      });
+      select({ checkedOut: draftUrl, at });
     })();
   };
 
@@ -269,17 +274,14 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
   // live but keeps showing what changed since the fork point. (A live main
   // has nothing to diff against, so there the eye closes with the pin.)
   const clearCheckpoint = () => {
-    const handle = checkedOutHandle();
-    if (!handle) return;
     setScrubber(null);
     // Unpinned: the baseline handle only shows while pinned, so drop it.
     setBaseliner(null);
     const draftUrl = selected();
     const baselines = eyeOpen() && draftUrl ? forkBaselines(draftUrl) : null;
-    handle.change((d) => {
-      d.at =
-        baselines && Object.keys(baselines).length > 0 ? baselines : null;
-    });
+    setCheckpoint(
+      baselines && Object.keys(baselines).length > 0 ? baselines : null
+    );
   };
 
   // The eye toggle: show or hide diff highlighting. The eye holds no state of
@@ -287,28 +289,20 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
   // provider serves as `draft:baseline`), and its open/closed state is read
   // back off the checkpoint (`eyeOpen`).
   const toggleEye = () => {
-    const handle = checkedOutHandle();
     const repo = getRepo();
-    if (!handle || !repo) return;
+    if (!repo) return;
 
     if (eyeOpen()) {
       // Close: strip the baselines; a pin (`to`) stays untouched. Baseline-
       // only entries disappear entirely, so a live view's `at` goes to null.
       setBaseliner(null);
-      handle.change((d) => {
-        if (!d.at) return;
-        const urls = Object.keys(d.at) as AutomergeUrl[];
-        if (!urls.some((u) => d.at?.[u]?.to !== undefined)) {
-          d.at = null;
-          return;
-        }
-        for (const url of urls) {
-          const entry = d.at[url];
-          if (!entry) continue;
-          if (entry.to === undefined) delete d.at[url];
-          else delete entry.from;
-        }
-      });
+      const at = checkpoint();
+      if (!at) return;
+      const pinned: DraftCheckpoint = {};
+      for (const [url, entry] of Object.entries(at)) {
+        if (entry.to !== undefined) pinned[url as AutomergeUrl] = { to: entry.to };
+      }
+      setCheckpoint(Object.keys(pinned).length > 0 ? pinned : null);
       return;
     }
 
@@ -327,13 +321,11 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
       const members = membersFor(draftUrl);
       const seq = ++scrubSeq;
       void (async () => {
-        const checkpoint = await computeCheckpoint(repo, members, s.head, {
+        const at = await computeCheckpoint(repo, members, s.head, {
           beforeTime: s.groupStartTime,
         });
         if (seq !== scrubSeq) return;
-        handle.change((d) => {
-          d.at = checkpoint;
-        });
+        setCheckpoint(at);
       })();
       return;
     }
@@ -345,14 +337,12 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
       const clonedAt = new Map(
         membersFor(draftUrl).map((m) => [m.url, m.clonedAt])
       );
-      handle.change((d) => {
-        if (!d.at) return;
-        for (const url of Object.keys(d.at) as AutomergeUrl[]) {
-          const entry = d.at[url];
-          if (!entry) continue;
-          entry.from = clonedAt.get(url) ?? encodeHeads([]);
-        }
-      });
+      const at: DraftCheckpoint = {};
+      for (const [url, entry] of Object.entries(checkpoint() ?? {})) {
+        const from = clonedAt.get(url as AutomergeUrl) ?? encodeHeads([]);
+        at[url as AutomergeUrl] = { ...entry, from };
+      }
+      setCheckpoint(at);
       return;
     }
 
@@ -361,9 +351,7 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     if (!draftUrl) return;
     const baselines = forkBaselines(draftUrl);
     if (Object.keys(baselines).length === 0) return;
-    handle.change((d) => {
-      d.at = baselines;
-    });
+    setCheckpoint(baselines);
   };
 
   // While the eye is open on a live (unpinned) draft, keep the baseline map
@@ -371,10 +359,9 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
   // its fork-point baseline added here. (The provider serves baselines only
   // from the checkpoint — there is no implicit fallback to cover it.)
   createEffect(() => {
-    const at = checkedOut()?.at;
+    const at = checkpoint();
     const draftUrl = selected();
-    const handle = checkedOutHandle();
-    if (!at || !draftUrl || !handle) return;
+    if (!at || !draftUrl) return;
     const entries = Object.values(at);
     if (entries.length === 0) return;
     if (entries.some((e) => e.to !== undefined)) return; // pinned: onScrub owns it
@@ -383,12 +370,11 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
       (m) => m.clonedAt !== null && !at[m.url]
     );
     if (missing.length === 0) return;
-    handle.change((d) => {
-      if (!d.at) return;
-      for (const m of missing) {
-        if (m.clonedAt) d.at[m.url] = { from: m.clonedAt };
-      }
-    });
+    const next: DraftCheckpoint = { ...at };
+    for (const m of missing) {
+      if (m.clonedAt) next[m.url] = { from: m.clonedAt };
+    }
+    setCheckpoint(next);
   });
 
   // Fork the current selection as a new child draft. `atVersion` picks the
@@ -581,7 +567,7 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
               onBaselineScrub(null, list().main.members, base)
             }
             baseliner={() => (isMainSelected() ? baseliner() : null)}
-            checkpoint={() => (isMainSelected() ? (checkedOut()?.at ?? null) : null)}
+            checkpoint={() => (isMainSelected() ? checkpoint() : null)}
             hasCheckpoint={isMainSelected() && isPinned()}
             onReturnToLatest={clearCheckpoint}
             eyeOpen={isMainSelected() && eyeOpen()}
@@ -619,7 +605,7 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
                   selected() === summary.url ? baseliner() : null
                 }
                 checkpoint={() =>
-                  selected() === summary.url ? (checkedOut()?.at ?? null) : null
+                  selected() === summary.url ? checkpoint() : null
                 }
                 hasCheckpoint={selected() === summary.url && isPinned()}
                 onReturnToLatest={clearCheckpoint}
@@ -1292,7 +1278,7 @@ function DraftChangesList(props: {
   onBaselineScrub: (base: BaselineState) => void;
   baseliner: Accessor<BaselineState | null>;
   eyeOpen: Accessor<boolean>;
-  // The live checkpoint (`CheckedOutDraft.at`): per-member `to`/`from`
+  // The live checkpoint (`DraftSelection.at`): per-member `to`/`from`
   // heads, read for the sticker's whole-range diff counts.
   checkpoint: Accessor<DraftCheckpoint | null>;
   onReturnToLatest: () => void;

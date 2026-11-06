@@ -70,10 +70,12 @@ type Entry = {
  * root every doc forks.
  *
  * `checkout` re-points every live handle in place, so switching drafts or
- * scrubbing history remounts nothing.
+ * scrubbing history remounts nothing. Finds wait for `ready`, so a doc opened
+ * before the first checkout is known doesn't show main first.
  */
 export class DraftRepo {
   readonly base: Repo;
+  readonly #ready: Promise<unknown>;
   #checkout: DraftCheckout = { draft: null, at: null };
   readonly #entries = new Map<AutomergeUrl, Entry>();
   readonly #resolving = new Map<AutomergeUrl, Promise<DocHandle<unknown>>>();
@@ -84,8 +86,9 @@ export class DraftRepo {
   readonly #created = new Map<AutomergeUrl, AutomergeUrl>();
   #disposed = false;
 
-  constructor(base: Repo) {
+  constructor(base: Repo, ready: Promise<unknown> = Promise.resolve()) {
     this.base = base;
+    this.#ready = ready.catch(() => {});
     return forwardingProxy<DraftRepo>(this, base, OWNED);
   }
 
@@ -209,6 +212,7 @@ export class DraftRepo {
   }
 
   async #open(presented: AutomergeUrl): Promise<DocHandle<unknown>> {
+    await this.#ready;
     const { documentId, segments, heads } = parseAutomergeUrl(presented);
     const root = stringifyAutomergeUrl({ documentId });
     const applied = this.#backingUrl(root, segments ?? [], heads);
