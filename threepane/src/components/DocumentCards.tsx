@@ -285,6 +285,47 @@ function SyncServer(props: { connected: boolean }) {
 }
 
 /**
+ * A doc that's here but not shared with this identity: keyhive won't let
+ * patchwork-view open it, which otherwise leaves the pane blank. The one thing
+ * the reader can do is get their card to the owner, so that's the button.
+ * `card` is the contact card as the phonebook copies it (base64), when there's
+ * one to give.
+ */
+export function NotSharedCard(props: { url: AutomergeUrl; card?: string }) {
+  const [copied, setCopied] = createSignal(false);
+  let reset: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => clearTimeout(reset));
+  const copy = async () => {
+    if (!props.card) return;
+    await navigator.clipboard.writeText(props.card);
+    setCopied(true);
+    clearTimeout(reset);
+    reset = setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <Card url={props.url} title="not shared with you yet">
+      <p>found it, but it's private.</p>
+      <p>
+        ask the owner to share it. if you're not in their phonebook, send them
+        your card.
+      </p>
+      <p>it'll open right here once they do.</p>
+      <Show when={props.card}>
+        <div class="doc-card__actions">
+          <button
+            type="button"
+            class="doc-card__button doc-card__button--primary"
+            onClick={() => void copy()}
+          >
+            {copied() ? "copied" : "copy my card"}
+          </button>
+        </div>
+      </Show>
+    </Card>
+  );
+}
+
+/**
  * A tool that's registered but whose code didn't load: an import that
  * failed, a file that didn't arrive. patchwork-view only shows its loading dot
  * then, for good, so this says which tool, what went wrong, and lets you ask

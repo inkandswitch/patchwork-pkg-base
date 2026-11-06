@@ -24,9 +24,11 @@ import {
   Finding,
   InvalidUrlCard,
   NoToolCard,
+  NotSharedCard,
   ToolFailedCard,
   UnavailableCard,
 } from "./DocumentCards";
+import { canOpen, cardText, onKeyhiveOps, pageHive } from "./keyhiveAccess";
 
 interface MainDocumentViewProps {
   viewKey: Accessor<string | undefined>;
@@ -262,6 +264,30 @@ function DocumentView(props: {
     setToolError(undefined);
     if (id) void loadTool(id);
   });
+  // a doc that's here but not shared with this identity: patchwork-view's
+  // gate holds the tool back and the pane stays blank, so say so. checked
+  // again whenever keyhive takes in ops, so a share that lands clears it
+  const hive = pageHive();
+  const [shared, setShared] = createSignal<boolean>();
+  createEffect(() => {
+    if (!hive || state() !== "open") {
+      setShared(undefined);
+      return;
+    }
+    const url = props.url;
+    let live = true;
+    const check = () =>
+      void canOpen(hive, url).then((open) => {
+        if (live) setShared(open);
+      });
+    check();
+    const off = onKeyhiveOps(hive, check);
+    onCleanup(() => {
+      live = false;
+      off();
+    });
+  });
+
   // the registry forgets a failed load, so this asks again; patchwork-view
   // gave up on it, so it gets a fresh start once the tool is here
   async function retryTool() {
@@ -302,6 +328,9 @@ function DocumentView(props: {
       </Show>
       <Show when={state() === "finding"}>
         <Finding />
+      </Show>
+      <Show when={state() === "open" && shared() === false}>
+        <NotSharedCard url={props.url} card={hive && cardText(hive)} />
       </Show>
       <Show when={toolError()}>
         {(failed) => (
