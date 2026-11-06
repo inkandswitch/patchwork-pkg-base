@@ -121,7 +121,10 @@ export class DraftHandle<T> {
     const after = next.doc();
     this.emit("change", {
       handle: this.#self,
-      doc: after,
+      // A copy: solid-automerge reconciles its store against `doc` and keeps
+      // references into it, and later edits to the store would then write
+      // straight into the backing handle's cached document.
+      doc: structuredClone(after),
       patches: [],
       scopeReplaced: true,
       patchInfo: { before, after, source: "change" },
