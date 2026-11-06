@@ -5,10 +5,7 @@ import {
   type DocHandle,
   type Repo,
 } from "@automerge/automerge-repo/slim";
-import type {
-  OpenDocumentEventDetail,
-  PatchworkViewElement,
-} from "@inkandswitch/patchwork-elements";
+import type { PatchworkViewElement } from "@inkandswitch/patchwork-elements";
 import type {
   DocLink,
   FolderDoc,
@@ -35,6 +32,7 @@ import {
   setPendingNewDoc,
 } from "../state.ts";
 import { markMounted } from "./auto-expand.ts";
+import type { Open } from "../events.ts";
 import Folder from "./folder.tsx";
 import Item from "./item.tsx";
 import { ItemName } from "./name.tsx";
@@ -51,7 +49,7 @@ export interface DocumentListProps {
   docs?: DocLink[];
   depth: number;
   repo: Repo;
-  open(detail: OpenDocumentEventDetail): void;
+  open: Open;
   isSelected(url: AutomergeUrl): boolean;
   visitedFolders?: Set<AutomergeUrl>;
   element: PatchworkViewElement;

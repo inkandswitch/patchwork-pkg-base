@@ -46,8 +46,6 @@ export type DraftState = {
   ) => () => void;
   // The user moved the selection; it's reflected into the `draft=` URL.
   selectionChanged: () => void;
-  // The selection was set without the user choosing it (restored at mount).
-  refresh: () => void;
   dispose: () => void;
 };
 
@@ -80,7 +78,6 @@ export function createDraftState(options: DraftStateOptions): DraftState {
   const draftRouter = createDraftRouter({
     checkedOut: () => selection().checkedOut,
     select: options.select,
-    covers: (url) => mainTree.has(canonicalUrl(url)),
   });
 
   // `draft:baseline` subscribers, keyed by canonical target url. Each is served the
@@ -175,7 +172,6 @@ export function createDraftState(options: DraftStateOptions): DraftState {
       draftRouter.selectionChanged();
       refresh();
     },
-    refresh,
     dispose,
   };
 
@@ -303,7 +299,11 @@ export function createDraftState(options: DraftStateOptions): DraftState {
           trackedDrafts.delete(url);
         }
         orderedDraftUrls = allDrafts;
-        draftRouter.updateAvailableDrafts(allDrafts);
+        draftRouter.updateAvailableDrafts(
+          allDrafts.filter(
+            (url) => trackedDrafts.get(url)?.doc()?.mergedAt === undefined
+          )
+        );
       } catch (err) {
         console.error("[drafts] rewalk failed:", err);
       } finally {

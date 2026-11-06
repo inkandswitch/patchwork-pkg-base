@@ -5,53 +5,8 @@ import {
   type Repo,
 } from "@automerge/automerge-repo/slim";
 
-import type {
-  DraftDoc,
-  HasDrafts,
-  HasWorkspaceCheckouts,
-  WorkspaceCheckoutsDoc,
-} from "./draft-types.js";
+import type { DraftDoc, HasDrafts } from "./draft-types.js";
 import { walkDocTree } from "./doc-tree.js";
-
-// Resolve the account's WorkspaceCheckoutsDoc, creating it and linking it via
-// `workspaceCheckoutsUrl` the first time.
-export async function ensureWorkspaceCheckouts(
-  repo: Repo,
-  account: DocHandle<HasWorkspaceCheckouts>
-): Promise<DocHandle<WorkspaceCheckoutsDoc>> {
-  const existing = account.doc()?.workspaceCheckoutsUrl;
-  if (existing && isValidAutomergeUrl(existing)) {
-    return repo.find<WorkspaceCheckoutsDoc>(existing);
-  }
-  const created = repo.create<WorkspaceCheckoutsDoc>({
-    "@patchwork": { type: "workspace-checkouts" },
-    checkedOut: {},
-  });
-  account.change((d) => {
-    if (!d.workspaceCheckoutsUrl) d.workspaceCheckoutsUrl = created.url;
-  });
-  const linked = account.doc()?.workspaceCheckoutsUrl;
-  return linked && linked !== created.url
-    ? repo.find<WorkspaceCheckoutsDoc>(linked)
-    : created;
-}
-
-// The draft `checkouts` has checked out on `root`, or null for main. A draft
-// merged since reads as main.
-export async function liveCheckout(
-  repo: Repo,
-  checkouts: DocHandle<WorkspaceCheckoutsDoc> | null,
-  root: AutomergeUrl
-): Promise<AutomergeUrl | null> {
-  const draftUrl = checkouts?.doc()?.checkedOut?.[root];
-  if (!draftUrl || !isValidAutomergeUrl(draftUrl)) return null;
-  try {
-    const draft = await repo.find<DraftDoc>(draftUrl);
-    return draft.doc()?.mergedAt === undefined ? draftUrl : null;
-  } catch {
-    return null;
-  }
-}
 
 // Turn a folder into a workspace: from now on its drafts cover every doc
 // beneath it. Docs beneath it that were drafted on their own would be hidden

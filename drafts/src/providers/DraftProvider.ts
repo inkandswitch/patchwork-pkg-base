@@ -4,7 +4,11 @@ import {
   type DocHandle,
   type Repo,
 } from "@automerge/automerge-repo/slim";
-import { accept, type SubscribeEvent } from "@inkandswitch/patchwork-providers";
+import {
+  accept,
+  request,
+  type SubscribeEvent,
+} from "@inkandswitch/patchwork-providers";
 
 import type {
   Baseline,
@@ -12,37 +16,41 @@ import type {
   DraftDoc,
   DraftList,
   DraftSelection,
-  HasWorkspaceCheckouts,
-  WorkspaceCheckoutsDoc,
+  DraftStatus,
 } from "../draft-types.js";
 import { canonicalUrl } from "../clone-policy.js";
 import { DraftRepo, baseRepo } from "../draft-repo.js";
-import { ensureWorkspaceCheckouts, liveCheckout } from "../workspace-docs.js";
+import { readHashParam } from "../hash-params.js";
 import { createDraftState, type DraftState } from "./draft-state.js";
 
 const ROOT_DOC_SELECTOR = "draft:root-doc";
+const STATUS_SELECTOR = "draft:status";
 const SELECTION_SELECTOR = "draft:selection";
 const SELECT_SELECTOR = "draft:select";
 const DRAFT_LIST_SELECTOR = "draft:list";
 const BASELINE_SELECTOR = "draft:baseline";
+const WORKSPACE_DRAFT_SELECTOR = "workspace:draft";
 
-// How long documents wait for the account's remembered checkout before
-// opening on main.
-const CHECKOUT_WAIT_MS = 1500;
+// How long a `draft=` from the URL gets to show up among the root's drafts
+// before it's reported unavailable. It's still taken if it shows up later.
+const VERIFY_TIMEOUT_MS = 5000;
 
 // Mounts on a draft root — a document, or the workspace folder a document
 // belongs to (see `WorkspaceProvider`) — and hands everything beneath it a
 // `DraftRepo`, so documents resolve onto the checked-out draft and edits stay
 // inside it. Answers:
 //   - `draft:root-doc`  → the root's AutomergeUrl
+//   - `draft:status`    → DraftStatus, pushed on every change
 //   - `draft:selection` → DraftSelection, pushed on every change
 //   - `draft:select { checkedOut, at }` → sets the selection, answers it
 //   - `draft:list`      → DraftList (see `createDraftState`)
 //   - `draft:baseline { url }` → Baseline for one doc
 //
-// The selection lives here, in memory. With an `account-url`, the checked-out
-// draft is read from and written to the account's WorkspaceCheckoutsDoc;
-// nothing is written while main stays checked out.
+// The URL is the only record of the checked-out draft: the selection starts
+// from `draft=` and the draft router writes it back. Until a `draft=` is
+// confirmed as a live draft of this root, documents beneath wait and the
+// status is `verifying`; past VERIFY_TIMEOUT_MS it's `unavailable`, until the
+// draft shows up or something else is selected.
 //
 // Without a `doc-url` there is no root: every doc forks and there is no draft
 // list. That is how the chat preview iframe (see chat's `preview-frame.ts`)
@@ -54,17 +62,19 @@ export const DraftProvider = (
 ) => {
   const repo = baseRepo(inherited);
   const rootUrl = urlAttribute(element, "doc-url");
-  const accountUrl = urlAttribute(element, "account-url");
   const seed = urlAttribute(element, "url");
+  const urlDraft = rootUrl ? readHashParam("draft") : null;
 
   let disposed = false;
   let selection: DraftSelection = { checkedOut: seed, at: null };
-  let chosen = false;
+  let status: DraftStatus = urlDraft ? "verifying" : "ready";
   let draft: DocHandle<DraftDoc> | null = null;
   let applySeq = 0;
-  const subscribers = new Set<(selection: DraftSelection) => void>();
+  const selectionSubscribers = new Set<(selection: DraftSelection) => void>();
+  const statusSubscribers = new Set<(status: DraftStatus) => void>();
 
-  const ready = restoreCheckout();
+  let release!: () => void;
+  const ready = new Promise<void>((resolve) => (release = resolve));
   const draftRepo = new DraftRepo(inherited, ready);
   element.repo = draftRepo as unknown as Repo;
   if (rootUrl) draftRepo.setRoot(rootUrl);
@@ -79,6 +89,13 @@ export const DraftProvider = (
       })
     : null;
 
+  const verifyTimer = urlDraft
+    ? setTimeout(() => {
+        if (status === "verifying") setStatus("unavailable");
+      }, VERIFY_TIMEOUT_MS)
+    : null;
+  if (!urlDraft) void settle();
+
   const onSubscribe = (event: SubscribeEvent) => {
     const { selector } = event.detail;
 
@@ -90,14 +107,25 @@ export const DraftProvider = (
       return;
     }
 
+    if (selector.type === STATUS_SELECTOR) {
+      accept<DraftStatus>(event, (respond) => {
+        respond(status);
+        statusSubscribers.add(respond);
+        return () => {
+          statusSubscribers.delete(respond);
+        };
+      });
+      return;
+    }
+
     if (selector.type === SELECTION_SELECTOR) {
       accept<DraftSelection>(event, (respond) => {
-        subscribers.add(respond);
+        selectionSubscribers.add(respond);
         void ready.then(() => {
-          if (subscribers.has(respond)) respond(selection);
+          if (selectionSubscribers.has(respond)) respond(selection);
         });
         return () => {
-          subscribers.delete(respond);
+          selectionSubscribers.delete(respond);
         };
       });
       return;
@@ -133,25 +161,35 @@ export const DraftProvider = (
 
   return () => {
     disposed = true;
+    if (verifyTimer !== null) clearTimeout(verifyTimer);
     element.removeEventListener("patchwork:subscribe", onSubscribe);
-    subscribers.clear();
+    selectionSubscribers.clear();
+    statusSubscribers.clear();
     state?.dispose();
     draftRepo.dispose();
   };
 
+  // Both the draft router (a deep-linked draft confirmed, or a draft gone)
+  // and the user end up here. Any selection settles a pending `draft=`.
   function select(next: DraftSelection): void {
     if (disposed) return;
-    chosen = true;
     const moved = next.checkedOut !== selection.checkedOut;
     selection = next;
-    void apply();
+    if (status === "ready") void apply();
+    else void settle();
     state?.selectionChanged();
-    for (const respond of subscribers) respond(selection);
-    if (moved) {
-      void persistCheckout(next.checkedOut).catch((err) => {
-        console.warn("[drafts] failed to persist the checked-out draft:", err);
-      });
-    }
+    for (const respond of selectionSubscribers) respond(selection);
+    if (moved) tellWorkspace();
+  }
+
+  // Apply the first confirmed selection, then let documents load.
+  async function settle(): Promise<void> {
+    if (verifyTimer !== null) clearTimeout(verifyTimer);
+    await apply();
+    if (disposed) return;
+    setStatus("ready");
+    tellWorkspace();
+    release();
   }
 
   // Point the draft repo at the selection. Scrubbing keeps the draft, so
@@ -172,52 +210,20 @@ export const DraftProvider = (
     draftRepo.checkout({ draft, at });
   }
 
-  // Start on the draft the account last had checked out here, unless
-  // something was selected in the meantime. Settles within CHECKOUT_WAIT_MS.
-  async function restoreCheckout(): Promise<void> {
-    if (rootUrl && accountUrl && !seed) {
-      const remembered = await within(
-        rememberedCheckout(accountUrl, rootUrl),
-        CHECKOUT_WAIT_MS
-      );
-      if (disposed) return;
-      if (remembered && !chosen) {
-        selection = { checkedOut: remembered, at: null };
-        state?.refresh();
-      }
-    }
-    await apply();
+  function setStatus(next: DraftStatus): void {
+    if (status === next) return;
+    status = next;
+    for (const respond of statusSubscribers) respond(status);
   }
 
-  async function rememberedCheckout(
-    account: AutomergeUrl,
-    root: AutomergeUrl
-  ): Promise<AutomergeUrl | null> {
-    const accountHandle = await repo.find<HasWorkspaceCheckouts>(account);
-    const url = accountHandle.doc()?.workspaceCheckoutsUrl;
-    if (!url || !isValidAutomergeUrl(url)) return null;
-    const checkouts = await repo.find<WorkspaceCheckoutsDoc>(url);
-    return liveCheckout(repo, checkouts, root);
-  }
-
-  // Remember the checked-out draft in the account's WorkspaceCheckoutsDoc.
-  // Main is the absence of an entry, so going back to main on an account
-  // that never checked out a draft writes nothing.
-  async function persistCheckout(
-    checkedOut: AutomergeUrl | null
-  ): Promise<void> {
-    if (!rootUrl || !accountUrl) return;
-    const root = rootUrl;
-    const account = await repo.find<HasWorkspaceCheckouts>(accountUrl);
-    if (disposed) return;
-    if (!checkedOut && !account.doc()?.workspaceCheckoutsUrl) return;
-    const checkouts = await ensureWorkspaceCheckouts(repo, account);
-    if (disposed) return;
-    if ((checkouts.doc()?.checkedOut?.[root] ?? null) === checkedOut) return;
-    checkouts.change((d) => {
-      if (!d.checkedOut) d.checkedOut = {};
-      if (checkedOut) d.checkedOut[root] = checkedOut;
-      else delete d.checkedOut[root];
+  // The workspace provider reads its folder tree through the checked-out
+  // draft, so docs that only exist on it still count as in the workspace.
+  function tellWorkspace(): void {
+    if (!rootUrl || status !== "ready") return;
+    void request(element, {
+      type: WORKSPACE_DRAFT_SELECTOR,
+      root: rootUrl,
+      draft: selection.checkedOut,
     });
   }
 };
@@ -240,21 +246,4 @@ function selectionFrom(
   if (checkedOut !== null && !isValidAutomergeUrl(checkedOut)) return null;
   if (typeof at !== "object") return null;
   return { checkedOut, at: at as DraftCheckpoint | null };
-}
-
-// Resolves with `promise`'s value, or null after `ms`; never rejects.
-function within<T>(promise: Promise<T>, ms: number): Promise<T | null> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(null), ms);
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      () => {
-        clearTimeout(timer);
-        resolve(null);
-      }
-    );
-  });
 }

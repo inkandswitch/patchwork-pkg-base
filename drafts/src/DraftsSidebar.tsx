@@ -80,7 +80,7 @@ const HISTORY_CHILD_LIMIT = 100;
 
 // Shown in the panel footer, logged on load, and stamped into fork
 // diagnostics; bump on deploy to tell builds apart.
-const DRAFTS_VERSION = "0.0.48";
+const DRAFTS_VERSION = "0.0.49";
 
 // Logged at module load so the console shows which build is running even
 // before the panel renders.

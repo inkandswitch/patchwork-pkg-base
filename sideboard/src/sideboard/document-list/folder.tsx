@@ -5,10 +5,7 @@ import {
   type DocHandle,
 } from "@automerge/automerge-repo/slim";
 import { useDocument } from "solid-automerge";
-import type {
-  OpenDocumentEventDetail,
-  PatchworkViewElement,
-} from "@inkandswitch/patchwork-elements";
+import type { PatchworkViewElement } from "@inkandswitch/patchwork-elements";
 import type { FolderDoc } from "@inkandswitch/patchwork-filesystem";
 import {
   createEffect,
@@ -41,13 +38,14 @@ import {
 } from "../dnd/dnd.ts";
 import { dropInto } from "../dnd/drop-into.ts";
 import { createHoverTimer } from "../lib/hover-timer.ts";
+import { isWorkspace, openInside, type Open } from "../events.ts";
 
 export default function Folder(props: {
   url: AutomergeUrl;
   repo: Repo;
   depth?: number;
   removeFromParent(): void;
-  open(detail: OpenDocumentEventDetail): void;
+  open: Open;
   name?: string;
   isSelected(url: AutomergeUrl): boolean;
   visitedFolders?: Set<AutomergeUrl>;
@@ -64,6 +62,7 @@ export default function Folder(props: {
   createEffect(() => {
     if (handle.latest) watchFolder(handle.latest);
   });
+  const open = openInside((detail) => props.open(detail), props.url, folder);
 
   // Create a new Set with the current folder URL to prevent circular references
   const nextVisitedFolders = new Set(props.visitedFolders ?? []);
@@ -121,7 +120,7 @@ export default function Folder(props: {
     });
     props.clearFilter();
     setExpanded(true);
-    props.open(freshy);
+    open(freshy);
     setRenaming(h.url + "/" + newIndex);
   }
 
@@ -203,6 +202,7 @@ export default function Folder(props: {
             toolId,
             title: folder()?.title ?? props.name,
             type: "folder",
+            workspace: isWorkspace(folder()) ? props.url : undefined,
           });
         }}
       >
@@ -247,7 +247,7 @@ export default function Folder(props: {
               repo={props.repo}
               depth={depth() + 1}
               handle={handle.latest!}
-              open={props.open}
+              open={open}
               isSelected={props.isSelected}
               visitedFolders={nextVisitedFolders}
               element={props.element}

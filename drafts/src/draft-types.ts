@@ -102,9 +102,9 @@ export type DocCheckpoint = {
 export type DraftCheckpoint = Record<AutomergeUrl, DocCheckpoint>;
 
 // What the draft provider has checked out, answered for `draft:selection` and
-// set with `draft:select`. In memory only: the account's
-// WorkspaceCheckoutsDoc remembers `checkedOut` across reloads, `at` is never
-// stored. `checkedOut = null` means main, the root itself.
+// set with `draft:select`. In memory only: the `draft=` URL parameter carries
+// `checkedOut` across reloads, `at` is never stored. `checkedOut = null`
+// means main, the root itself.
 //
 // `at` is the checkpoint (see DraftCheckpoint): per-doc pinned heads (`to`)
 // and/or diff baselines (`from`). Null means the live latest heads with no
@@ -114,6 +114,11 @@ export type DraftSelection = {
   checkedOut: AutomergeUrl | null;
   at: DraftCheckpoint | null;
 };
+
+// Answered for `draft:status`. `verifying` while a `draft=` from the URL
+// hasn't been confirmed as a live draft of the root yet (documents wait),
+// `unavailable` once that has taken too long, `ready` once a selection holds.
+export type DraftStatus = "verifying" | "ready" | "unavailable";
 
 // Response shape for `draft:baseline { url }`, served by the draft provider
 // (see `currentBaseline`). `heads` is the doc's diff baseline: the checkpoint's
@@ -186,19 +191,6 @@ export type HasDrafts = {
     mainDraftUrl?: AutomergeUrl;
     workspace?: boolean;
   };
-};
-
-// Which draft is checked out per workspace root, linked from the account doc
-// via `workspaceCheckoutsUrl`. A workspace root is a folder marked
-// `@patchwork.workspace` or any single doc not inside one. Absent = main.
-export type WorkspaceCheckoutsDoc = {
-  "@patchwork": { type: "workspace-checkouts" };
-  checkedOut: Record<AutomergeUrl, AutomergeUrl>;
-};
-
-export type HasWorkspaceCheckouts = {
-  workspaceCheckoutsUrl?: AutomergeUrl;
-  rootFolderUrl?: AutomergeUrl;
 };
 
 export function isDraftDoc(value: unknown): value is DraftDoc {

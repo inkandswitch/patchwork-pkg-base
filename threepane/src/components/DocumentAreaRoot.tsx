@@ -16,7 +16,7 @@
  */
 
 import { type AutomergeUrl } from "@automerge/automerge-repo/slim";
-import { subscribe } from "@inkandswitch/patchwork-providers";
+import { request, subscribe } from "@inkandswitch/patchwork-providers";
 import { makePersisted } from "@solid-primitives/storage";
 import {
   createEffect,
@@ -69,12 +69,10 @@ export interface DocumentAreaRootProps extends DocumentAreaInputs {
   /**
    * Set when an ancestor `patchwork-workspace-provider` can say which
    * workspace the selected doc belongs to. Drafts are then scoped to that
-   * workspace, and the checked-out draft is remembered in `accountDocUrl`.
-   * Inside the isolation iframe there is no such ancestor, so drafts stay
-   * scoped to the document.
+   * workspace. Inside the isolation iframe there is no such ancestor, so
+   * drafts stay scoped to the document.
    */
   workspaceScoped?: boolean;
-  accountDocUrl?: AutomergeUrl;
 }
 
 // What `patchwork-workspace-provider` answers for the selected doc.
@@ -84,6 +82,9 @@ type WorkspaceRoot = {
 };
 
 type DraftScope = { docUrl: AutomergeUrl; rootUrl: AutomergeUrl };
+
+// What `patchwork-draft-provider` answers for `draft:status`.
+type DraftStatus = "verifying" | "ready" | "unavailable";
 
 export function DocumentAreaRoot(props: DocumentAreaRootProps) {
   // ── Right-sidebar state (document-area-local) ──────────────────
@@ -193,7 +194,6 @@ export function DocumentAreaRoot(props: DocumentAreaRootProps) {
         {(root) => (
           <DraftDocumentArea
             rootUrl={root}
-            accountDocUrl={props.accountDocUrl}
             setMainDocElement={props.setMainDocElement}
             selectedDocUrl={() => scope()?.docUrl}
             selectedToolId={props.selectedToolId}
@@ -224,9 +224,12 @@ export function DocumentAreaRoot(props: DocumentAreaRootProps) {
 // the draft provider so that, on a draft, comment threads / selection resolve
 // against the draft's clone. The document toolbar (top bar) is in that scope
 // too — it targets the same selected doc as the editor.
+//
+// Nothing shows until the provider has confirmed the URL's draft: while it
+// checks the column stays empty, and if the draft never turns up it says so
+// and offers main instead.
 function DraftDocumentArea(props: {
   rootUrl: AutomergeUrl;
-  accountDocUrl?: AutomergeUrl;
   setMainDocElement?: (el: HTMLElement) => void;
   selectedDocUrl: Accessor<AutomergeUrl | undefined>;
   selectedToolId: Accessor<string | undefined>;
@@ -275,20 +278,43 @@ function DraftDocumentArea(props: {
     focusProviderElement
   );
 
+  const [draftStatus, setDraftStatus] = createSignal<DraftStatus>("verifying");
+  createEffect(() => {
+    const host = draftProviderHost();
+    if (!host || !isDraftProviderReady()) return;
+    onCleanup(
+      subscribe<DraftStatus>(host, { type: "draft:status" }, setDraftStatus)
+    );
+  });
+  const openMain = () => {
+    const host = draftProviderHost();
+    if (host) {
+      void request(host, { type: "draft:select", checkedOut: null, at: null });
+    }
+  };
+
   const areDocProvidersReady = createMemo(
     () =>
       isDraftProviderReady() &&
       isCommentsProviderReady() &&
-      isFocusProviderReady()
+      isFocusProviderReady() &&
+      draftStatus() === "ready"
   );
 
   return (
     <patchwork-view
       component="patchwork-draft-provider"
       doc-url={props.rootUrl}
-      attr:account-url={props.accountDocUrl}
       ref={setDraftProviderHost}
     >
+      <Show when={draftStatus() === "unavailable"}>
+        <div class="frame__main-column frame__draft-unavailable">
+          <p>This draft isn't available.</p>
+          <button type="button" onClick={openMain}>
+            Open main
+          </button>
+        </div>
+      </Show>
       <patchwork-view
         component="patchwork-comments-provider"
         ref={setCommentsProviderElement}

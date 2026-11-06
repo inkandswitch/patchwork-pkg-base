@@ -76,7 +76,7 @@ export type {
   DraftList,
   DraftMemberDoc,
   DraftSelection,
+  DraftStatus,
   DraftSummary,
-  WorkspaceCheckoutsDoc,
 } from "./draft-types.js";
 export { isDraftDoc } from "./draft-types.js";

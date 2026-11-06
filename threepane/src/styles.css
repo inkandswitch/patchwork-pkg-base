@@ -353,6 +353,18 @@
   color: var(--threepane-fg);
 }
 
+.frame__draft-unavailable {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--threepane-space-sm);
+  color: var(--threepane-muted);
+}
+
+.frame__draft-unavailable p {
+  margin: 0;
+}
+
 .sidebar patchwork-view {
   display: block;
   width: 100%;

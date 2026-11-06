@@ -305,7 +305,7 @@ function PatchworkFrameInner(props: {
 
   return (
     <div ref={element} style={{ display: "contents" }}>
-      <WorkspaceScope enabled={!props.isolation} accountDocUrl={accountDocUrl}>
+      <WorkspaceScope enabled={!props.isolation}>
         {/*
           FrameLayout (the left sidebar + its toggle) is rendered ONCE, outside
           the doc-selection Show. Selecting the first document only swaps the
@@ -355,7 +355,6 @@ function PatchworkFrameInner(props: {
               fallback={
                 <DocumentAreaRoot
                   workspaceScoped
-                  accountDocUrl={accountDocUrl}
                   setMainDocElement={setMainDocElement}
                   selectedDocUrl={selectedDocUrl}
                   selectedToolId={selectedToolId}
@@ -390,16 +389,14 @@ function PatchworkFrameInner(props: {
 }
 
 // Tells the document area which workspace the selected doc belongs to, so its
-// drafts are scoped to the workspace rather than the doc. Its children wait
-// for the provider, because a `workspace:root` subscription sent before it is
-// listening would never be answered. Under isolation the document area lives in the iframe,
-// which can't see the account or folder tree, so drafts stay per-document
+// drafts are scoped to the workspace rather than the doc. It wraps the left
+// sidebar too: the sidebar's opens say which workspace they're in, and the
+// provider checks that before letting them through. Its children wait for the
+// provider, because a `workspace:root` subscription sent before it is
+// listening would never be answered. Under isolation the document area lives
+// in the iframe, which can't see the folder tree, so drafts stay per-document
 // there instead.
-function WorkspaceScope(props: {
-  enabled: boolean;
-  accountDocUrl: AutomergeUrl;
-  children: JSX.Element;
-}) {
+function WorkspaceScope(props: { enabled: boolean; children: JSX.Element }) {
   const [providerElement, setProviderElement] = createSignal<HTMLElement>();
   const isProviderReady = useFrameProviderReady(
     "patchwork-workspace-provider",
@@ -409,7 +406,6 @@ function WorkspaceScope(props: {
     <Show when={props.enabled} fallback={props.children}>
       <patchwork-view
         component="patchwork-workspace-provider"
-        attr:account-url={props.accountDocUrl}
         ref={setProviderElement}
       >
         <Show when={isProviderReady()}>{props.children}</Show>

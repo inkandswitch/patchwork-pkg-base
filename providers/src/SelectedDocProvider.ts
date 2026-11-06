@@ -8,12 +8,17 @@ const SELECTED_VIEW_SELECTOR = "patchwork:selected-view";
 type SelectedView = {
   url: AutomergeUrl;
   toolId: string | null;
+  workspace: AutomergeUrl | null;
 };
+
+type OpenDetail = OpenDocumentEvent["detail"] & { workspace?: AutomergeUrl };
 
 /**
  * Broadcasts the set of currently-selected document urls to any
  * `patchwork:selected-doc` subscriber, and the primary selected view
- * (`{ url, toolId }`) to any `patchwork:selected-view` subscriber.
+ * (`{ url, toolId, workspace }`) to any `patchwork:selected-view` subscriber.
+ * `workspace` is whatever the open event or the `workspace=` hash param
+ * claims; checking it is up to the drafts workspace provider.
  *
  * Selection is driven by `patchwork:open-document` events bubbling up from
  * descendant views (the sidebar, links inside the main view, etc). Opening a
@@ -37,7 +42,8 @@ export const SelectedDocProvider = (element: HTMLElement) => {
   const updateSelectedView = (next: SelectedView) => {
     if (
       selectedView?.url === next.url &&
-      selectedView?.toolId === next.toolId
+      selectedView?.toolId === next.toolId &&
+      selectedView?.workspace === next.workspace
     ) {
       return;
     }
@@ -51,11 +57,12 @@ export const SelectedDocProvider = (element: HTMLElement) => {
   };
 
   const onOpenDocument = (event: OpenDocumentEvent) => {
-    const url = event.detail.url;
-    if (!url) return;
+    const detail = event.detail as OpenDetail;
+    if (!detail.url) return;
     updateSelectedView({
-      url,
-      toolId: event.detail.toolId ?? null,
+      url: detail.url,
+      toolId: detail.toolId ?? null,
+      workspace: detail.workspace ?? null,
     });
   };
 
@@ -107,5 +114,6 @@ const selectedViewFromLocation = (): SelectedView | null => {
   return {
     url: url as AutomergeUrl,
     toolId: params.get("tool"),
+    workspace: (params.get("workspace") as AutomergeUrl | null) ?? null,
   };
 };
