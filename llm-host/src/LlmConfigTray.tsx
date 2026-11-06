@@ -21,7 +21,10 @@ const loadLlm = () => import("@chee/patchwork-llm");
 // A per-tool (and optionally per-doc) config scope. No scope = the global default.
 type Scope = { toolId: string; docId?: string; toolName?: string; docName?: string };
 
-export function LlmConfigTray(element: HTMLElement) {
+// The library's own Repo type, so it can't drift from the copy it was built against.
+type Repo = NonNullable<Parameters<typeof import("@chee/patchwork-llm").ensureSettingsDoc>[1]>;
+
+export function LlmConfigTray(element: HTMLElement, repo: Repo) {
   const style = document.createElement("style");
   style.textContent = `
 		.llm-config-tray { position: relative; display: inline-flex; align-items: center; }
@@ -103,10 +106,11 @@ export function LlmConfigTray(element: HTMLElement) {
     const sc = scope();
     const p = payload() || {};
     const llm = await loadLlm();
-    await llm.ensureConfig(sc, element);
+    await llm.ensureConfig(sc, element, repo);
     if (!pickerHost) return;
     pickerHost.replaceChildren();
     currentPicker = llm.dom({
+      repo,
       source: sourceFor(sc, llm),
       scope: sc,
       toolName: sc?.toolName || p.toolName,

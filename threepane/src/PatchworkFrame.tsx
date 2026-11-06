@@ -171,13 +171,20 @@ export function PatchworkFrame({
                 element is the ctx a worker spec's open(ctx) gets.
               */}
               <patchwork-view component="patchwork-worker-provider">
-                <Show when={areProvidersReady()}>
-                  <PatchworkFrameInner
-                    handle={handle}
-                    repo={repo}
-                    isolation={props.isolation}
-                  />
-                </Show>
+                {/*
+                  Answers history:groups with each document's history grouped
+                  per actor, indexed in a worker. Not waited on either: the
+                  drafts timeline asks again until it answers.
+                */}
+                <patchwork-view component="patchwork-history-provider">
+                  <Show when={areProvidersReady()}>
+                    <PatchworkFrameInner
+                      handle={handle}
+                      repo={repo}
+                      isolation={props.isolation}
+                    />
+                  </Show>
+                </patchwork-view>
               </patchwork-view>
             </patchwork-view>
           </patchwork-view>
@@ -298,54 +305,69 @@ function PatchworkFrameInner(props: {
 
   return (
     <div ref={element} style={{ display: "contents" }}>
-      {/*
-        FrameLayout (the left sidebar + its toggle) is rendered ONCE, outside
-        the doc-selection Show. Selecting the first document only swaps the main
-        column below; it must not tear down and rebuild the entire left sidebar
-        (widgets, account bar) — that's a full-world remount on first click.
-      */}
-      <FrameLayout
-        accountDocUrl={accountDocUrl}
-        sidebarState={sidebarState}
-        sidebarResize={sidebarResize}
-        sidebarWidgets={sidebarWidgets}
-        traySlots={traySlots}
-        configHandle={threepaneConfigHandle}
-        rootFolderUrl={rootFolderUrl}
-        widgetsReady={widgetsReady}
-        contactUrl={() => accountDoc()?.contactUrl}
-        moduleSettingsUrl={() => accountDoc()?.moduleSettingsUrl}
-        isolation={props.isolation}
-        onInterceptOpen={setPopoverView}
-      >
-        <Show
-          when={selectedDocUrl()}
-          fallback={
-            <div class="main-area">
-              <MainDocumentView
-                viewKey={selectedDocUrl}
-                selectedDocUrl={selectedDocUrl}
-                toolId={selectedToolId}
-                ref={setMainDocElement}
-              />
-            </div>
-          }
+      <WorkspaceScope enabled={!props.isolation} accountDocUrl={accountDocUrl}>
+        {/*
+          FrameLayout (the left sidebar + its toggle) is rendered ONCE, outside
+          the doc-selection Show. Selecting the first document only swaps the
+          main column below; it must not tear down and rebuild the entire left
+          sidebar (widgets, account bar) — that's a full-world remount on first
+          click.
+        */}
+        <FrameLayout
+          accountDocUrl={accountDocUrl}
+          sidebarState={sidebarState}
+          sidebarResize={sidebarResize}
+          sidebarWidgets={sidebarWidgets}
+          traySlots={traySlots}
+          configHandle={threepaneConfigHandle}
+          rootFolderUrl={rootFolderUrl}
+          widgetsReady={widgetsReady}
+          contactUrl={() => accountDoc()?.contactUrl}
+          moduleSettingsUrl={() => accountDoc()?.moduleSettingsUrl}
+          isolation={props.isolation}
+          onInterceptOpen={setPopoverView}
         >
-          {/*
-            Document area: isolated (rendered inside a sandboxed iframe) or local
-            (rendered directly). `isolation` is fixed per tool instance. Both
-            paths render the whole main column (doc column + context sidebar) and
-            own the right-sidebar state, seeded from the host localStorage reads
-            above — so under isolation the context sidebar lives *inside* the
-            iframe, sandboxed with the main view. The local path additionally
-            threads `setMainDocElement` for the host's widgetsReady race (the
-            iframe can't drive that host ref).
-          */}
           <Show
-            when={props.isolation}
+            when={selectedDocUrl()}
             fallback={
-              <DocumentAreaRoot
-                setMainDocElement={setMainDocElement}
+              <div class="main-area">
+                <MainDocumentView
+                  viewKey={selectedDocUrl}
+                  selectedDocUrl={selectedDocUrl}
+                  toolId={selectedToolId}
+                  ref={setMainDocElement}
+                />
+              </div>
+            }
+          >
+            {/*
+              Document area: isolated (rendered inside a sandboxed iframe) or
+              local (rendered directly). `isolation` is fixed per tool
+              instance. Both paths render the whole main column (doc column +
+              context sidebar) and own the right-sidebar state, seeded from the
+              host localStorage reads above — so under isolation the context
+              sidebar lives *inside* the iframe, sandboxed with the main view.
+              The local path additionally threads `setMainDocElement` for the
+              host's widgetsReady race (the iframe can't drive that host ref).
+            */}
+            <Show
+              when={props.isolation}
+              fallback={
+                <DocumentAreaRoot
+                  workspaceScoped
+                  accountDocUrl={accountDocUrl}
+                  setMainDocElement={setMainDocElement}
+                  selectedDocUrl={selectedDocUrl}
+                  selectedToolId={selectedToolId}
+                  doctitleSlots={doctitleSlots}
+                  isLeftCollapsed={sidebarState.isSidebarCollapsed}
+                  initialRightWidth={initialRightWidth}
+                  initialRightCollapsed={initialRightCollapsed}
+                />
+              }
+            >
+              <IsolatedDocumentArea
+                contactUrl={accountDoc()?.contactUrl}
                 selectedDocUrl={selectedDocUrl}
                 selectedToolId={selectedToolId}
                 doctitleSlots={doctitleSlots}
@@ -353,20 +375,10 @@ function PatchworkFrameInner(props: {
                 initialRightWidth={initialRightWidth}
                 initialRightCollapsed={initialRightCollapsed}
               />
-            }
-          >
-            <IsolatedDocumentArea
-              contactUrl={accountDoc()?.contactUrl}
-              selectedDocUrl={selectedDocUrl}
-              selectedToolId={selectedToolId}
-              doctitleSlots={doctitleSlots}
-              isLeftCollapsed={sidebarState.isSidebarCollapsed}
-              initialRightWidth={initialRightWidth}
-              initialRightCollapsed={initialRightCollapsed}
-            />
+            </Show>
           </Show>
-        </Show>
-      </FrameLayout>
+        </FrameLayout>
+      </WorkspaceScope>
 
       <Show when={popoverView()}>
         {(view) => (
@@ -374,6 +386,35 @@ function PatchworkFrameInner(props: {
         )}
       </Show>
     </div>
+  );
+}
+
+// Tells the document area which workspace the selected doc belongs to, so its
+// drafts are scoped to the workspace rather than the doc. Its children wait
+// for the provider, because a `workspace:root` subscription sent before it is
+// listening would never be answered. Under isolation the document area lives in the iframe,
+// which can't see the account or folder tree, so drafts stay per-document
+// there instead.
+function WorkspaceScope(props: {
+  enabled: boolean;
+  accountDocUrl: AutomergeUrl;
+  children: JSX.Element;
+}) {
+  const [providerElement, setProviderElement] = createSignal<HTMLElement>();
+  const isProviderReady = useFrameProviderReady(
+    "patchwork-workspace-provider",
+    providerElement
+  );
+  return (
+    <Show when={props.enabled} fallback={props.children}>
+      <patchwork-view
+        component="patchwork-workspace-provider"
+        attr:account-url={props.accountDocUrl}
+        ref={setProviderElement}
+      >
+        <Show when={isProviderReady()}>{props.children}</Show>
+      </patchwork-view>
+    </Show>
   );
 }
 

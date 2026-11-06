@@ -21,6 +21,26 @@ export const plugins = [
     },
   },
   {
+    type: 'patchwork:children',
+    id: 'folder-children',
+    name: 'Folder children',
+    datatypes: ['folder'],
+    async load() {
+      const { folderChildren } = await import('./children.js');
+      return folderChildren;
+    },
+  },
+  {
+    type: 'patchwork:children',
+    id: 'directory-children',
+    name: 'Directory children',
+    datatypes: ['directory'],
+    async load() {
+      const { directoryChildren } = await import('./children.js');
+      return directoryChildren;
+    },
+  },
+  {
     type: 'patchwork:tool',
     id: 'folder-viewer',
     name: 'Folder Viewer',

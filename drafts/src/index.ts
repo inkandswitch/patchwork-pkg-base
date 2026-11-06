@@ -3,22 +3,30 @@ import type { Plugin, ToolElement } from "@inkandswitch/patchwork-plugins";
 export const plugins: Plugin<any>[] = [
   {
     type: "patchwork:component",
-    id: "patchwork-draft-state-provider",
-    name: "Draft State Provider",
+    id: "patchwork-draft-provider",
+    name: "Draft Provider",
     async load() {
-      const { DraftStateProvider } =
-        await import("./providers/DraftStateProvider.js");
-      return DraftStateProvider;
+      const { DraftProvider } = await import("./providers/DraftProvider.js");
+      return DraftProvider;
     },
   },
   {
     type: "patchwork:component",
-    id: "patchwork-draft-overlay-provider",
-    name: "Draft Overlay Provider",
+    id: "patchwork-workspace-provider",
+    name: "Workspace Provider",
     async load() {
-      const { DraftOverlayProvider } =
-        await import("./providers/DraftOverlayProvider.js");
-      return DraftOverlayProvider;
+      const { WorkspaceProvider } =
+        await import("./providers/WorkspaceProvider.js");
+      return WorkspaceProvider;
+    },
+  },
+  {
+    type: "patchwork:component",
+    id: "patchwork-history-provider",
+    name: "History Provider",
+    async load() {
+      const { HistoryProvider } = await import("./history/HistoryProvider.js");
+      return HistoryProvider;
     },
   },
   {
@@ -63,12 +71,12 @@ export type {
   ActorAttributionDoc,
   Baseline,
   ChangeGroup,
-  ChangeGroupDoc,
-  CheckedOutDraft,
   CloneEntry,
   DraftDoc,
   DraftList,
   DraftMemberDoc,
+  DraftSelection,
   DraftSummary,
+  WorkspaceCheckoutsDoc,
 } from "./draft-types.js";
 export { isDraftDoc } from "./draft-types.js";

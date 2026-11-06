@@ -1,22 +1,25 @@
 import {
   isValidAutomergeUrl,
   type AutomergeUrl,
-  type DocHandle,
 } from "@automerge/automerge-repo/slim";
 
-import type { CheckedOutDraft } from "./draft-types.js";
+export type DraftRouterOptions = {
+  checkedOut: () => AutomergeUrl | null;
+  select: (draftUrl: AutomergeUrl | null) => void;
+  // Whether the root's tree has `docUrl`, so opening it stays on the draft.
+  covers: (docUrl: AutomergeUrl) => boolean;
+};
 
-// Keeps the ephemeral checkout selection and the `draft=` URL parameter in
-// sync. Deep links remain pending until their draft appears in the synced tree.
-export function createDraftRouter(
-  checkedOutHandle: DocHandle<CheckedOutDraft>
-): DraftRouter {
+// Keeps the checked-out draft and the `draft=` URL parameter in sync. Deep
+// links remain pending until their draft appears in the synced tree. Opening
+// another doc drops the parameter from the URL without leaving the draft.
+export function createDraftRouter(options: DraftRouterOptions): DraftRouter {
   let availableDrafts = new Set<AutomergeUrl>();
   let pendingUrlDraft: AutomergeUrl | null = readDraftParam();
   let lastCheckedOut: AutomergeUrl | null = null;
+  let lastDoc = readDocParam();
   let disposed = false;
 
-  checkedOutHandle.on("change", syncSelectionToUrl);
   window.addEventListener("hashchange", onHashChange);
 
   return {
@@ -25,9 +28,9 @@ export function createDraftRouter(
       availableDrafts = new Set(draftUrls);
       reconcileSelection();
     },
+    selectionChanged: syncSelectionToUrl,
     dispose() {
       disposed = true;
-      checkedOutHandle.off("change", syncSelectionToUrl);
       window.removeEventListener("hashchange", onHashChange);
     },
   };
@@ -35,9 +38,16 @@ export function createDraftRouter(
   function onHashChange(): void {
     if (disposed) return;
     const urlDraft = readDraftParam();
-    const selected = checkedOutHandle.doc()?.checkedOut ?? null;
+    const doc = readDocParam();
+    const navigated = doc !== lastDoc;
+    lastDoc = doc;
+    const selected = options.checkedOut();
     if (urlDraft === selected) {
       pendingUrlDraft = null;
+      return;
+    }
+    if (urlDraft === null && navigated) {
+      if (doc && options.covers(doc)) writeDraftParam(selected);
       return;
     }
     if (urlDraft === null) {
@@ -60,20 +70,18 @@ export function createDraftRouter(
       selectDraft(target);
       return;
     }
-    const selected = checkedOutHandle.doc()?.checkedOut ?? null;
+    const selected = options.checkedOut();
     if (selected && !availableDrafts.has(selected)) selectDraft(null);
   }
 
   function selectDraft(selected: AutomergeUrl | null): void {
-    if (checkedOutHandle.doc()?.checkedOut === selected) return;
-    checkedOutHandle.change((d) => {
-      d.checkedOut = selected;
-    });
+    if (options.checkedOut() === selected) return;
+    options.select(selected);
   }
 
   function syncSelectionToUrl(): void {
     if (disposed) return;
-    const selected = checkedOutHandle.doc()?.checkedOut ?? null;
+    const selected = options.checkedOut();
     if (selected === lastCheckedOut) return;
     lastCheckedOut = selected;
     if (pendingUrlDraft && selected !== pendingUrlDraft) pendingUrlDraft = null;
@@ -83,6 +91,7 @@ export function createDraftRouter(
 
 export type DraftRouter = {
   updateAvailableDrafts: (draftUrls: readonly AutomergeUrl[]) => void;
+  selectionChanged: () => void;
   dispose: () => void;
 };
 
@@ -94,6 +103,14 @@ function readDraftParam(): AutomergeUrl | null {
     DRAFT_PARAM
   );
   return raw && isValidAutomergeUrl(raw) ? raw : null;
+}
+
+// The hash carries the doc as a bare document id.
+function readDocParam(): AutomergeUrl | null {
+  const raw = new URLSearchParams(window.location.hash.slice(1)).get("doc");
+  if (!raw) return null;
+  const url = raw.startsWith("automerge:") ? raw : `automerge:${raw}`;
+  return isValidAutomergeUrl(url) ? url : null;
 }
 
 function writeDraftParam(selected: AutomergeUrl | null): void {

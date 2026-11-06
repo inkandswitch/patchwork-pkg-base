@@ -53,6 +53,7 @@
  *      package listen on their mount element; this one deliberately differs.)
  */
 
+import type { Repo } from "@automerge/automerge-repo/slim";
 import { getRegistry, type PluginDescription, type PluginRegistry } from "@inkandswitch/patchwork-plugins";
 import { accept, type SubscribeEvent } from "@inkandswitch/patchwork-providers";
 import { CHANNEL_SELECTOR, WORKER_PLUGIN_TYPE } from "@grjte/patchwork-worker/connect.js";
@@ -78,12 +79,13 @@ type WorkerChannelSelector = { type: string; kind?: string };
  * Mount the worker provider on `element`. Returns a cleanup function
  * (the `patchwork:component` render contract).
  *
- * `element` is never read for `repo` or attributes; it is only the host-realm
- * context handed to a spec's `open(ctx)`, so a worker can resolve things that
- * need a mounted view (a settings doc, say). Hence `HTMLElement`, not
- * `PatchworkViewElement`.
+ * `element` and `repo` (the base repo every component is rendered with) are
+ * only the host-realm context handed to a spec's `open(ctx)` and `io.ctx`, so a
+ * worker can resolve things that need a mounted view and a repo (a settings
+ * doc, say). `element` is never read for `repo` or attributes, hence
+ * `HTMLElement`, not `PatchworkViewElement`.
  */
-export const WorkerProvider = (element: HTMLElement): (() => void) => {
+export const WorkerProvider = (element: HTMLElement, repo: Repo): (() => void) => {
   const workers: PluginRegistry<PluginDescription, WorkerSpec> = getRegistry(WORKER_PLUGIN_TYPE);
 
   const onSubscribe = (event: Event) => {
@@ -135,12 +137,15 @@ export const WorkerProvider = (element: HTMLElement): (() => void) => {
         throw new Error(`worker plugin "${kind}" did not resolve to a WorkerSpec`);
       }
 
-      // The element is what lets a worker resolve host-realm context it needs
-      // (e.g. a settings doc via the patchwork:tool-storage provider) without
-      // this provider knowing anything about that service. serveWorkerSpec owns
-      // the streams, the per-connection worker, and the id demux; the spec owns
-      // the service vocabulary.
-      const streams = serveWorkerSpec(spec, { element });
+      // The element and repo are what let a worker resolve host-realm context
+      // it needs (e.g. a settings doc via the patchwork:tool-storage provider)
+      // without this provider knowing anything about that service.
+      // serveWorkerSpec owns the streams, the per-connection worker, and the id
+      // demux; the spec owns the service vocabulary. `ctx` is a variable, not
+      // an inline literal, so it also type-checks against transport versions
+      // whose ctx type predates `repo`.
+      const ctx = { element, repo };
+      const streams = serveWorkerSpec(spec, ctx);
 
       // The streams ride IN the value; naming them in the transfer list only
       // upgrades the structured clone to a move. Both are required — a

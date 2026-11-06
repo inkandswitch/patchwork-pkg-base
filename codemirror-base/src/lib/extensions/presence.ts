@@ -150,7 +150,10 @@ function presence(
     markers(view) {
       // Stable order, so the layer's pairwise DOM reuse matches each marker
       // with the same peer's existing element across redraws.
-      const selections = [...view.state.field(remoteSelectionField)].sort(
+      // A measure can still be queued when the compartment reconfigures
+      // presence away, leaving this layer reading a state without its field.
+      const current = view.state.field(remoteSelectionField, false) ?? [];
+      const selections = [...current].sort(
         (a, b) => (a.peerId < b.peerId ? -1 : a.peerId > b.peerId ? 1 : 0)
       );
       const markers: PresenceCaretMarker[] = [];

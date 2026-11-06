@@ -17,6 +17,7 @@ let myContactUrl = null
 const sessions = new Map()
 let currentDocUrl = null
 let unsubscribeView = null
+let repo = null
 
 let loadingSelf = null
 function loadSelf() {
@@ -26,11 +27,12 @@ function loadSelf() {
 
 async function loadSelfOnce() {
 	let contactUrl
-	while (!(contactUrl = window.accountDocHandle?.doc()?.contactUrl)) {
+	// The repo arrives with the first mounted tool, possibly after the account.
+	while (!repo || !(contactUrl = window.accountDocHandle?.doc()?.contactUrl)) {
 		await new Promise(resolve => setTimeout(resolve, 250))
 	}
 	myContactUrl = contactUrl
-	const contactHandle = await window.repo.find(myContactUrl)
+	const contactHandle = await repo.find(myContactUrl)
 	function refresh() {
 		const c = contactHandle.doc()
 		if (!c) return
@@ -145,20 +147,34 @@ async function onSelectedDocChange(newUrl) {
 
 	currentDocUrl = newUrl
 
-	if (newUrl && window.repo) {
+	if (newUrl && repo) {
 		loadSelf()
-		const handle = await window.repo.find(newUrl)
+		const handle = await repo.find(newUrl)
 		// selection may have moved on while we awaited; don't join a stale doc
 		if (currentDocUrl !== newUrl) return
 		joinDoc(handle)
 	}
 }
 
+// Follows the latest mounted view: an earlier one's repo (a draft overlay)
+// is disposed along with it.
+let viewElement = null
 function connectToSelectedDocProvider(element) {
-	if (unsubscribeView) return
+	if (viewElement === element) return
+	unsubscribeView?.()
+	viewElement = element
+	repo = element.repo
 	unsubscribeView = subscribe(element, {type: "patchwork:selected-view"}, view => {
 		onSelectedDocChange(view?.url)
 	})
+}
+
+function disconnectFromSelectedDocProvider(element) {
+	if (viewElement !== element) return
+	unsubscribeView?.()
+	unsubscribeView = null
+	viewElement = null
+	repo = null
 }
 
 loadSelf()
@@ -233,6 +249,7 @@ function DocPresence(handle, element) {
 	)
 
 	return () => {
+		disconnectFromSelectedDocProvider(element)
 		leaveDoc(handle)
 		style.remove()
 		dispose()

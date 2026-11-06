@@ -1,11 +1,15 @@
 import type { AutomergeUrl, UrlHeads } from "@automerge/automerge-repo/slim";
 
-// One COW relationship between an original doc and the per-draft clone we
-// write to. `clonedAt`/`mergedAt` capture the fork and join points on the
-// original — together they describe what the draft contributed to that doc.
+// A draft's version of one doc. Forking records where the draft branches
+// off — `source` (the parent draft's clone; absent for the original) at
+// `clonedAt` — and the draft reads that snapshot until its first write
+// clones it there into `cloneUrl`. A doc created on the draft is its own
+// clone (`cloneUrl` the doc itself, `clonedAt` empty). `mergedAt` is the
+// target's heads after the clone merged back.
 export type CloneEntry = {
-  cloneUrl: AutomergeUrl;
+  source?: AutomergeUrl;
   clonedAt: UrlHeads;
+  cloneUrl?: AutomergeUrl;
   mergedAt?: UrlHeads;
 };
 
@@ -15,9 +19,9 @@ export type CloneEntry = {
 //
 // `isMain` marks the single "main draft" a host doc points at via
 // `@patchwork.mainDraftUrl`. The main draft is bookkeeping only: it is never
-// resolved through (the overlay stays a no-op for main), its `clones` are
-// identity mappings (`cloneUrl === url`, `clonedAt === []`), and its `drafts`
-// holds the user-visible top-level draft list.
+// resolved through (the overlay stays a no-op for main), and its `drafts`
+// holds the user-visible top-level draft list. Its `clones` are unused (older
+// builds kept identity mappings there).
 //
 // `mergedAt` is a wall-clock timestamp set when the draft is merged into
 // its parent; absent means "still open". The sidebar uses it to filter
@@ -34,10 +38,6 @@ export type DraftDoc = {
   drafts: AutomergeUrl[];
   clones: Record<AutomergeUrl, CloneEntry>;
   mergedAt?: number;
-  // Points at this draft's ChangeGroupDoc, holding the precomputed activity
-  // groups for its timeline. Stamped lazily by the ChangeGrouper the first
-  // time it touches the timeline (see change-group-cache.ts).
-  changeGroupDocUrl?: AutomergeUrl;
   // Main draft only: points at the host doc's ActorAttributionDoc, mapping
   // actor ids to contact urls for author display. Stamped by the list
   // provider alongside the eager main-draft creation.
@@ -59,11 +59,10 @@ export type ActorAttributionDoc = {
   actors: Record<string, AutomergeUrl>;
 };
 
-// One persisted burst of activity in a draft's timeline: consecutive changes
-// (interleaved across the draft's member docs) separated by no more than the
-// inactivity gap, aggregated down to what a timeline row renders. Computed
-// once per change by the ChangeGrouper and persisted, so the sidebar never
-// has to re-diff history.
+// One burst of activity in a draft's timeline: consecutive changes
+// (interleaved across the draft's member docs and their actors) separated by
+// no more than the timeline gap, aggregated down to what a timeline row
+// renders. Stitched from each member's history groups (see timeline.ts).
 export type ChangeGroup = {
   id: string; // `tg-${newestHash}` — stable group identity
   startTime: number; // span covered, seconds (automerge change time)
@@ -77,20 +76,6 @@ export type ChangeGroup = {
   additions: number; // summed across ALL member docs in the span
   deletions: number;
   changeCount: number; // for scrubber band geometry
-};
-
-// Self-contained: one group doc per DraftDoc, holding that draft's timeline.
-export type ChangeGroupDoc = {
-  "@patchwork": { type: "change-group" };
-  version: number; // document format; mismatch = rebuild
-  inactivityGapMs: number; // grouping param baked in; changed = rebuild
-  // Keyed by group id, ordered on read by endTime desc. A map (not array) so
-  // concurrent writers converge per-group instead of duplicating rows.
-  groups: Record<string, ChangeGroup>;
-  // Per member: heads the grouping has consumed. getChangesMetaSince(doc,
-  // these) yields exactly the unconsumed tail — including late-syncing
-  // changes with old timestamps, which is what makes invalidation detectable.
-  computedThrough: Record<AutomergeUrl, UrlHeads>;
 };
 
 // One member doc's pinned view within a checkpoint. `to` is the heads to render
@@ -116,22 +101,21 @@ export type DocCheckpoint = {
 // absent from the map — they didn't exist yet, so they fall through to live.
 export type DraftCheckpoint = Record<AutomergeUrl, DocCheckpoint>;
 
-// Ephemeral, writeable state owned by the draft-state provider and handed to
-// the sidebar via `draft:checked-out`. It holds the selection: which draft is
-// currently checked out. `checkedOut = null` means "main" — i.e. the host doc
-// itself, no draft overlay. The derived drafts list lives separately in the
-// read-only `draft:list` push (`DraftList`).
+// What the draft provider has checked out, answered for `draft:selection` and
+// set with `draft:select`. In memory only: the account's
+// WorkspaceCheckoutsDoc remembers `checkedOut` across reloads, `at` is never
+// stored. `checkedOut = null` means main, the root itself.
 //
-// `at` carries the checkout's checkpoint (see DraftCheckpoint): per-doc pinned
-// heads (`to`) and/or diff baselines (`from`). Absent/null means the live
-// latest heads with no diff (the default). Entries with only `from` leave the
-// docs live but diffing — the sidebar's eye toggle on an unpinned draft.
-export type CheckedOutDraft = {
+// `at` is the checkpoint (see DraftCheckpoint): per-doc pinned heads (`to`)
+// and/or diff baselines (`from`). Null means the live latest heads with no
+// diff. Entries with only `from` leave the docs live but diffing — the
+// sidebar's eye toggle on an unpinned draft.
+export type DraftSelection = {
   checkedOut: AutomergeUrl | null;
-  at?: DraftCheckpoint | null;
+  at: DraftCheckpoint | null;
 };
 
-// Response shape for `draft:baseline { url }`, served by the draft-state provider
+// Response shape for `draft:baseline { url }`, served by the draft provider
 // (see `currentBaseline`). `heads` is the doc's diff baseline: the checkpoint's
 // per-doc `from`, written by the sidebar's eye toggle and scrubber. `heads` is
 // `null` when the checkpoint has no entry for the doc or the entry carries no
@@ -144,14 +128,12 @@ export type Baseline = {
 
 // One document that makes up a draft (or main), nested inside `DraftSummary`.
 //
-// On a draft these are the docs the overlay has forked — `cloneUrl` is the
+// On a draft these are the docs the draft has cloned — `cloneUrl` is the
 // per-draft clone and `clonedAt` its fork point (mirrors `CloneEntry`). On
-// "main" they come from the main draft's identity clones (`cloneUrl === url`,
-// `clonedAt === []`) once it exists; before the first draft is created there is
-// no main draft, so membership is observed from `patchwork:mounted` events and
-// both fields are `null`. Like `Baseline`, the nullable fields use `null`
-// rather than optional so the value stays a valid structured-cloneable
-// `JSONValue` crossing the provider channel.
+// "main" they are every doc in the root's tree, with both fields `null`. Like
+// `Baseline`, the nullable fields use `null` rather than optional so the value
+// stays a valid structured-cloneable `JSONValue` crossing the provider
+// channel.
 export type DraftMemberDoc = {
   url: AutomergeUrl;
   cloneUrl: AutomergeUrl | null;
@@ -175,15 +157,11 @@ export type DraftSummary = {
   // User-given display name (`DraftDoc.name`); `null` (not optional, to stay
   // structured-cloneable) means unnamed — the card shows its default label.
   name: string | null;
-  // The draft's ChangeGroupDoc url (`DraftDoc.changeGroupDocUrl`); `null`
-  // until the ChangeGrouper stamps it. Cards read their timeline's groups
-  // straight from this doc.
-  changeGroupDocUrl: AutomergeUrl | null;
 };
 
 // Response shape for `draft:list`: the host doc's `main` entry plus the flat,
 // tree-ordered list of its (non-merged) drafts. Read-only and recomputed by
-// the provider; selection lives separately in `CheckedOutDraft`.
+// the provider; selection lives separately in `DraftSelection`.
 export type DraftList = {
   main: DraftSummary;
   drafts: DraftSummary[];
@@ -197,11 +175,30 @@ export type DraftList = {
 // pointing at its single "main draft" — a `DraftDoc` (with `isMain`) whose
 // `drafts` lists the top-level drafts that branch off of it. The pointer is
 // created lazily on the first draft, so it is absent until then.
+//
+// `workspace` marks a folder whose drafts cover everything beneath it (see
+// WorkspaceProvider). It is stamped when the folder is first drafted, not
+// when the main draft is created — older builds created main drafts for every
+// doc the sidebar looked at, so `mainDraftUrl` alone doesn't mean "drafted".
 export type HasDrafts = {
   "@patchwork"?: {
     type?: string;
     mainDraftUrl?: AutomergeUrl;
+    workspace?: boolean;
   };
+};
+
+// Which draft is checked out per workspace root, linked from the account doc
+// via `workspaceCheckoutsUrl`. A workspace root is a folder marked
+// `@patchwork.workspace` or any single doc not inside one. Absent = main.
+export type WorkspaceCheckoutsDoc = {
+  "@patchwork": { type: "workspace-checkouts" };
+  checkedOut: Record<AutomergeUrl, AutomergeUrl>;
+};
+
+export type HasWorkspaceCheckouts = {
+  workspaceCheckoutsUrl?: AutomergeUrl;
+  rootFolderUrl?: AutomergeUrl;
 };
 
 export function isDraftDoc(value: unknown): value is DraftDoc {

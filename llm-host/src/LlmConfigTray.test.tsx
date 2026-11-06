@@ -24,7 +24,7 @@ describe("model picker position", () => {
     vi.spyOn(window, "innerWidth", "get").mockReturnValue(1024);
     const host = document.createElement("div");
     document.body.append(host);
-    const dispose = LlmConfigTray(host);
+    const dispose = LlmConfigTray(host, {} as Parameters<typeof LlmConfigTray>[1]);
     const button = host.querySelector("button")!;
     vi.spyOn(button, "getBoundingClientRect").mockReturnValue(rect as DOMRect);
 
@@ -33,6 +33,24 @@ describe("model picker position", () => {
     expect(popover.style.top).toBe(top);
     expect(popover.style.transform).toBe(transform);
     expect(parseFloat(popover.style.maxHeight)).toBeCloseTo(614.4);
+    dispose();
+  });
+});
+
+describe("model picker repo", () => {
+  it("hands the repo it was rendered with to the library", async () => {
+    const llm = await import("@chee/patchwork-llm");
+    vi.mocked(llm.dom).mockClear();
+    vi.mocked(llm.ensureConfig).mockClear();
+    const repo = { id: "tray-repo" } as unknown as Parameters<typeof LlmConfigTray>[1];
+    const host = document.createElement("div");
+    document.body.append(host);
+    const dispose = LlmConfigTray(host, repo);
+
+    host.querySelector("button")!.click();
+    await vi.waitFor(() => expect(llm.dom).toHaveBeenCalled());
+    expect(vi.mocked(llm.dom).mock.calls[0][0].repo).toBe(repo);
+    expect(llm.ensureConfig).toHaveBeenCalledWith(undefined, host, repo);
     dispose();
   });
 });

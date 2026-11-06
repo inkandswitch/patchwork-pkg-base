@@ -8,19 +8,20 @@ import {
   Show,
   type Accessor,
 } from "solid-js";
-import { createDocSignal } from "solid-automerge";
+import { useRepo } from "solid-automerge";
 import type {
   AutomergeUrl,
   DocHandle,
   Repo,
-  UrlHeads,
 } from "@automerge/automerge-repo/slim";
-import {
-  decodeHeads,
-  encodeHeads,
-  isValidAutomergeUrl,
-} from "@automerge/automerge-repo/slim";
+import { decodeHeads, encodeHeads } from "@automerge/automerge-repo/slim";
 import * as Automerge from "@automerge/automerge/slim";
+// Declares <patchwork-view> for JSX.
+import type {} from "@inkandswitch/patchwork-elements";
+import {
+  request,
+  subscribe as subscribeOnce,
+} from "@inkandswitch/patchwork-providers";
 import {
   subscribe,
   subscribeDoc,
@@ -28,13 +29,11 @@ import {
 import type {
   ActorAttributionDoc,
   ChangeGroup,
-  ChangeGroupDoc,
-  CheckedOutDraft,
-  CloneEntry,
   DraftCheckpoint,
   DraftDoc,
   DraftList,
   DraftMemberDoc,
+  DraftSelection,
   DraftSummary,
   HasDrafts,
 } from "./draft-types";
@@ -42,9 +41,22 @@ import {
   computeEditCounts,
   computeRangeEditCounts,
   getDocCreationTime,
-  sameHeads,
-} from "./change-group-cache";
+} from "./edit-counts";
+import {
+  combineHistories,
+  sameMembers,
+  watchMemberHistories,
+  type MemberHistory,
+} from "./timeline";
+import {
+  computeCheckpoint,
+  type ChangeRef,
+  type CheckpointBase,
+} from "./checkpoint";
+import { forkPoints, mergeDraft } from "./draft-forks";
 import { ensureMainDraft } from "./draft-docs";
+import { isWorkspaceFolder } from "./folder-links";
+import { makeWorkspace } from "./workspace-docs";
 
 // Seed for the read-only `draft:list` subscription until the provider answers.
 // `main.url` is a placeholder; the Main card displays the host doc url instead.
@@ -55,15 +67,20 @@ const EMPTY_DRAFT_LIST: DraftList = {
     members: [],
     childCount: 0,
     name: null,
-    changeGroupDocUrl: null,
   },
   drafts: [],
   actorAttributionUrl: null,
 };
 
+const MAIN_SELECTION: DraftSelection = { checkedOut: null, at: null };
+
+// Past this many docs beneath a folder, reading their history is too slow
+// to show a timeline.
+const HISTORY_CHILD_LIMIT = 100;
+
 // Shown in the panel footer, logged on load, and stamped into fork
 // diagnostics; bump on deploy to tell builds apart.
-const DRAFTS_VERSION = "0.0.45";
+const DRAFTS_VERSION = "0.0.48";
 
 // Logged at module load so the console shows which build is running even
 // before the panel renders.
@@ -74,47 +91,55 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     type: "draft:root-doc",
   });
 
-  // Selection only: which draft is checked out (writeable).
-  const [, checkedOutHandle] = subscribeDoc<CheckedOutDraft>(props.element, {
-    type: "draft:checked-out",
-  });
-
-  // Read the checkout doc coarsely from the live handle (handle.doc()) rather
-  // than a fine-grained patch-replay projection: the projection can render a
-  // whole-value write doubled, whereas handle.doc() is always the correct
-  // materialized document.
-  const checkedOut = createDocSignal(checkedOutHandle);
-  const selected = createMemo<AutomergeUrl | null>(
-    () => checkedOut()?.checkedOut ?? null
+  // What's checked out. Writes show here at once and go to the provider,
+  // whose answers bring in selections made elsewhere (the `draft=` URL).
+  const [selection, setSelection] =
+    createSignal<DraftSelection>(MAIN_SELECTION);
+  onCleanup(
+    subscribeOnce<DraftSelection>(
+      props.element,
+      { type: "draft:selection" },
+      setSelection
+    )
   );
+  const select = (next: DraftSelection) => {
+    if (disposed) return;
+    setSelection(next);
+    void request(props.element, { type: "draft:select", ...next });
+  };
+  const selected = createMemo<AutomergeUrl | null>(
+    () => selection().checkedOut
+  );
+  const checkpoint = () => selection().at;
+  const setCheckpoint = (at: DraftCheckpoint | null) =>
+    select({ checkedOut: selected(), at });
 
   // The eye toggle's state, derived from the checkpoint itself (no separate
   // flag): the eye is open — diffs showing — iff the current checkpoint
   // carries any diff baseline (`from`).
   const eyeOpen = createMemo<boolean>(() => {
-    const at = checkedOut()?.at;
+    const at = checkpoint();
     return !!at && Object.values(at).some((e) => e.from !== undefined);
   });
 
   // Whether the view is actually pinned to history (any member has a `to`),
   // as opposed to live-with-baseline (eye open, nothing pinned).
   const isPinned = createMemo<boolean>(() => {
-    const at = checkedOut()?.at;
+    const at = checkpoint();
     return !!at && Object.values(at).some((e) => e.to !== undefined);
   });
 
-  // Where the scrubber sits: the change whose heads are displayed. Ephemeral,
-  // client-only state: the stored checkpoint (`checkedOut.at`) is what
-  // actually pins the view; this mirrors it to render the token and the
-  // group highlight. Not persisted, so it resets on reload (the pinned view
-  // survives).
+  // Where the scrubber sits: the change whose heads are displayed. The
+  // checkpoint is what actually pins the view; this mirrors it to render the
+  // token and the group highlight. Resets when the sidebar remounts, while
+  // the provider keeps the pinned view.
   const [scrubber, setScrubber] = createSignal<ScrubberState | null>(null);
 
   // Where the diff baseline handle sits: an absolute point in history the
-  // diff is measured from, independent of the head (`scrubber`). Ephemeral
-  // like the head — resets on reload, while the persisted `from` keeps
-  // driving the editor diff. Non-null only while the eye is open and a
-  // version is pinned; that is also exactly when the handle renders.
+  // diff is measured from, independent of the head (`scrubber`). Resets with
+  // the head, while the checkpoint's `from` keeps driving the editor diff.
+  // Non-null only while the eye is open and a version is pinned; that is
+  // also exactly when the handle renders.
   const [baseliner, setBaseliner] = createSignal<BaselineState | null>(null);
 
   // The derived drafts list (read-only): main plus each draft with its member
@@ -157,39 +182,38 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
   });
 
   const isMainSelected = createMemo(() => selected() === null);
-  // Drafting off a folder isn't supported yet, so creating a draft is disabled
-  // while viewing a folder on Main.
+  // Drafting a folder makes it a workspace: its drafts then cover every doc
+  // beneath it.
   const isFolder = createMemo(
     () => hostDoc()?.["@patchwork"]?.type === "folder"
   );
+  // Main's members are the folder and every doc beneath it.
+  const historyOff = createMemo(
+    () => isFolder() && list().main.members.length - 1 > HISTORY_CHILD_LIMIT
+  );
 
+  // Switching drafts (or to main) returns to the live latest heads.
   const selectDraft = (url: AutomergeUrl | null) => {
-    const handle = checkedOutHandle();
-    if (!handle || disposed) return;
     setScrubber(null);
     setBaseliner(null);
-    handle.change((d) => {
-      d.checkedOut = url;
-      // Switching drafts (or to main) returns to the live latest heads.
-      d.at = null;
-    });
+    select({ checkedOut: url, at: null });
   };
 
-  const getRepo = (): Repo | undefined =>
-    "repo" in window ? window.repo : undefined;
+  const contextRepo = useRepo();
+  const getRepo = (): Repo | undefined => contextRepo;
 
   // Monotonic counter so a slow checkpoint computation can't overwrite a newer
   // scrub position (a drag fires one recompute per snapped change).
   let scrubSeq = 0;
-  // The checkout doc outlives this sidebar (the provider reuses it across
-  // mounts), so work still in flight at unmount must not write into it.
+  // The provider outlives this sidebar, so work still in flight at unmount
+  // must not move its selection.
   let disposed = false;
   onCleanup(() => {
     disposed = true;
     scrubSeq++;
   });
 
-  // Recompute and persist the checkpoint from the current head (`scrubber`)
+  // Recompute and select the checkpoint from the current head (`scrubber`)
   // and baseline (`baseliner`) signals: `to`s follow the head, `from`s follow
   // the baseline (absolute, independent of the head). With the eye closed the
   // baseline is null and no `from` is written. The token and row highlight
@@ -200,22 +224,18 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     draftUrl: AutomergeUrl | null,
     members: DraftMemberDoc[]
   ) => {
-    const handle = checkedOutHandle();
     const repo = getRepo();
-    if (!handle || !repo) return;
+    if (!repo) return;
     const head = scrubber();
     if (!head) return;
     const bl = baseliner();
     const base: CheckpointBase = bl ? { beforeTime: bl.time } : "none";
     const seq = ++scrubSeq;
     void (async () => {
-      const checkpoint = await computeCheckpoint(repo, members, head.head, base);
+      const at = await computeCheckpoint(repo, members, head.head, base);
       // A newer scrub landed while this one was computing; drop it.
       if (seq !== scrubSeq) return;
-      handle.change((d) => {
-        d.checkedOut = draftUrl;
-        d.at = checkpoint;
-      });
+      select({ checkedOut: draftUrl, at });
     })();
   };
 
@@ -262,17 +282,14 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
   // live but keeps showing what changed since the fork point. (A live main
   // has nothing to diff against, so there the eye closes with the pin.)
   const clearCheckpoint = () => {
-    const handle = checkedOutHandle();
-    if (!handle) return;
     setScrubber(null);
     // Unpinned: the baseline handle only shows while pinned, so drop it.
     setBaseliner(null);
     const draftUrl = selected();
     const baselines = eyeOpen() && draftUrl ? forkBaselines(draftUrl) : null;
-    handle.change((d) => {
-      d.at =
-        baselines && Object.keys(baselines).length > 0 ? baselines : null;
-    });
+    setCheckpoint(
+      baselines && Object.keys(baselines).length > 0 ? baselines : null
+    );
   };
 
   // The eye toggle: show or hide diff highlighting. The eye holds no state of
@@ -280,28 +297,20 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
   // provider serves as `draft:baseline`), and its open/closed state is read
   // back off the checkpoint (`eyeOpen`).
   const toggleEye = () => {
-    const handle = checkedOutHandle();
     const repo = getRepo();
-    if (!handle || !repo) return;
+    if (!repo) return;
 
     if (eyeOpen()) {
       // Close: strip the baselines; a pin (`to`) stays untouched. Baseline-
       // only entries disappear entirely, so a live view's `at` goes to null.
       setBaseliner(null);
-      handle.change((d) => {
-        if (!d.at) return;
-        const urls = Object.keys(d.at) as AutomergeUrl[];
-        if (!urls.some((u) => d.at?.[u]?.to !== undefined)) {
-          d.at = null;
-          return;
-        }
-        for (const url of urls) {
-          const entry = d.at[url];
-          if (!entry) continue;
-          if (entry.to === undefined) delete d.at[url];
-          else delete entry.from;
-        }
-      });
+      const at = checkpoint();
+      if (!at) return;
+      const pinned: DraftCheckpoint = {};
+      for (const [url, entry] of Object.entries(at)) {
+        if (entry.to !== undefined) pinned[url as AutomergeUrl] = { to: entry.to };
+      }
+      setCheckpoint(Object.keys(pinned).length > 0 ? pinned : null);
       return;
     }
 
@@ -320,13 +329,11 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
       const members = membersFor(draftUrl);
       const seq = ++scrubSeq;
       void (async () => {
-        const checkpoint = await computeCheckpoint(repo, members, s.head, {
+        const at = await computeCheckpoint(repo, members, s.head, {
           beforeTime: s.groupStartTime,
         });
         if (seq !== scrubSeq) return;
-        handle.change((d) => {
-          d.at = checkpoint;
-        });
+        setCheckpoint(at);
       })();
       return;
     }
@@ -338,14 +345,12 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
       const clonedAt = new Map(
         membersFor(draftUrl).map((m) => [m.url, m.clonedAt])
       );
-      handle.change((d) => {
-        if (!d.at) return;
-        for (const url of Object.keys(d.at) as AutomergeUrl[]) {
-          const entry = d.at[url];
-          if (!entry) continue;
-          entry.from = clonedAt.get(url) ?? encodeHeads([]);
-        }
-      });
+      const at: DraftCheckpoint = {};
+      for (const [url, entry] of Object.entries(checkpoint() ?? {})) {
+        const from = clonedAt.get(url as AutomergeUrl) ?? encodeHeads([]);
+        at[url as AutomergeUrl] = { ...entry, from };
+      }
+      setCheckpoint(at);
       return;
     }
 
@@ -354,9 +359,7 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     if (!draftUrl) return;
     const baselines = forkBaselines(draftUrl);
     if (Object.keys(baselines).length === 0) return;
-    handle.change((d) => {
-      d.at = baselines;
-    });
+    setCheckpoint(baselines);
   };
 
   // While the eye is open on a live (unpinned) draft, keep the baseline map
@@ -364,10 +367,9 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
   // its fork-point baseline added here. (The provider serves baselines only
   // from the checkpoint — there is no implicit fallback to cover it.)
   createEffect(() => {
-    const at = checkedOut()?.at;
+    const at = checkpoint();
     const draftUrl = selected();
-    const handle = checkedOutHandle();
-    if (!at || !draftUrl || !handle) return;
+    if (!at || !draftUrl) return;
     const entries = Object.values(at);
     if (entries.length === 0) return;
     if (entries.some((e) => e.to !== undefined)) return; // pinned: onScrub owns it
@@ -376,81 +378,37 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
       (m) => m.clonedAt !== null && !at[m.url]
     );
     if (missing.length === 0) return;
-    handle.change((d) => {
-      if (!d.at) return;
-      for (const m of missing) {
-        if (m.clonedAt) d.at[m.url] = { from: m.clonedAt };
-      }
-    });
+    const next: DraftCheckpoint = { ...at };
+    for (const m of missing) {
+      if (m.clonedAt) next[m.url] = { from: m.clonedAt };
+    }
+    setCheckpoint(next);
   });
 
   // Fork the current selection as a new child draft. `atVersion` picks the
-  // fork point (the two menu items): true clones every member doc at the
-  // heads it had as of the scrubbed version, false forks at the latest
-  // heads. The new draft is parented to the selection — merging it later
-  // lands back here, not on main. Pre-populating `DraftDoc.clones` means the
-  // overlay's lazy `resolveClone` reuses these entries instead of forking
-  // the originals at current heads (which matters when forking off a draft:
-  // the clones must branch off the draft's clones). Forking main live needs
-  // no eager clones — main's members are the originals, so the lazy path is
-  // exactly right. Members with no changes at or before a pinned version
-  // (created later) are left out; the version's docs don't reference them
-  // yet, so they are normally never resolved beneath the draft.
+  // fork point (the two menu items): the scrubbed version, or now. Forking
+  // clones nothing: the new draft records, per doc, which version it branches
+  // off — the parent draft's clone where it has one, else the original — and
+  // the overlay reads that until the doc's first edit clones it there. Docs
+  // with no changes at or before a pinned version (created later) are left
+  // out; the version's docs don't reference them yet.
   const onForkSelection = async (atVersion: boolean) => {
-    if (isFolder()) return;
     const docHandle = hostDocHandle();
     if (!docHandle) return;
     const repo = getRepo();
     if (!repo) {
-      console.warn("[drafts] window.repo is not set");
+      console.warn("[drafts] no repo");
       return;
     }
 
     const parentUrl = selected(); // null = main
-    const members = membersFor(parentUrl);
     const head = atVersion ? (scrubber()?.head ?? null) : null;
-
-    const clones: Record<AutomergeUrl, CloneEntry> = {};
-    if (head) {
-      // Reuse the scrub machinery to resolve per-doc heads at this version
-      // (only the `to`s are read, so no diff baseline).
-      const checkpoint = await computeCheckpoint(repo, members, head, "none");
-      for (const member of members) {
-        const to = checkpoint[member.url]?.to;
-        if (!to) continue;
-        let handle: DocHandle<unknown> | null = null;
-        try {
-          // Clone the doc the timeline read its changes from (the draft's
-          // clone when forking off a draft), pinned to the version's heads.
-          // Keyed by the original url so baselines and merge-back resolve.
-          handle = await repo.find<unknown>(member.cloneUrl ?? member.url);
-          const clone = cloneAtVersion(repo, handle, to);
-          clones[member.url] = { cloneUrl: clone.url, clonedAt: to };
-        } catch (err) {
-          reportForkFailure(
-            handle ? collectForkDiagnostic(handle, member, to) : null,
-            err
-          );
-        }
-      }
-    } else if (parentUrl) {
-      // Forking a draft at its latest heads: branch each member off the
-      // draft's clone (not the original, which lacks the draft's changes).
-      for (const member of members) {
-        try {
-          const source = await repo.find<unknown>(
-            member.cloneUrl ?? member.url
-          );
-          const clonedAt = source.heads();
-          const clone = repo.clone(source);
-          clones[member.url] = { cloneUrl: clone.url, clonedAt };
-        } catch (err) {
-          console.warn("[drafts] failed to fork member:", member, err);
-        }
-      }
-    }
+    const clones = await forkPoints(repo, docHandle.url, parentUrl, head);
 
     const mainDraft = await ensureMainDraft(repo, docHandle);
+    if (isFolder() && !isWorkspaceFolder(docHandle.doc())) {
+      await makeWorkspace(repo, docHandle, mainDraft);
+    }
     const parentHandle = parentUrl
       ? await repo.find<DraftDoc>(parentUrl)
       : mainDraft;
@@ -553,7 +511,7 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
       return;
     const repo = getRepo();
     if (!repo) {
-      console.warn("[drafts] window.repo is not set");
+      console.warn("[drafts] no repo");
       return;
     }
     const draftHandle = await repo.find<DraftDoc>(draftUrl);
@@ -576,7 +534,7 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     if (!window.confirm(warning)) return;
     const repo = getRepo();
     if (!repo) {
-      console.warn("[drafts] window.repo is not set");
+      console.warn("[drafts] no repo");
       return;
     }
     const parentUrl = mergeParentUrl();
@@ -607,7 +565,8 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
             hostDocUrl={hostDocHandle()?.url}
             isSelected={isMainSelected()}
             members={() => list().main.members}
-            changeGroupDocUrl={list().main.changeGroupDocUrl}
+            element={props.element}
+            historyOff={historyOff()}
             name={list().main.name}
             onRename={(name) => void onRename(null, name)}
             onSelect={() => selectDraft(null)}
@@ -617,13 +576,12 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
               onBaselineScrub(null, list().main.members, base)
             }
             baseliner={() => (isMainSelected() ? baseliner() : null)}
-            checkpoint={() => (isMainSelected() ? (checkedOut()?.at ?? null) : null)}
+            checkpoint={() => (isMainSelected() ? checkpoint() : null)}
             hasCheckpoint={isMainSelected() && isPinned()}
             onReturnToLatest={clearCheckpoint}
             eyeOpen={isMainSelected() && eyeOpen()}
             eyeDisabled={!isPinned()}
             onToggleEye={toggleEye}
-            forkDisabled={isFolder()}
             onFork={() => void onForkSelection(false)}
             forkAtLabel={forkAtLabel()}
             onForkAt={() => void onForkSelection(true)}
@@ -636,7 +594,8 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
               <DraftCard
                 url={summary.url}
                 members={summary.members}
-                changeGroupDocUrl={summary.changeGroupDocUrl}
+                element={props.element}
+                historyOff={historyOff()}
                 mainDocUrl={hostDocHandle()?.url}
                 isSelected={selected() === summary.url}
                 name={summary.name}
@@ -656,7 +615,7 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
                   selected() === summary.url ? baseliner() : null
                 }
                 checkpoint={() =>
-                  selected() === summary.url ? (checkedOut()?.at ?? null) : null
+                  selected() === summary.url ? checkpoint() : null
                 }
                 hasCheckpoint={selected() === summary.url && isPinned()}
                 onReturnToLatest={clearCheckpoint}
@@ -683,400 +642,12 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
   );
 }
 
-// Merges every cloned doc back into the parent draft's copy of it — the
-// parent's clone when it has one, the original otherwise (the main draft's
-// identity clones make those the same thing, so a top-level draft merges
-// into the originals) — recording per-clone merge heads for auditing, and
-// marks the draft as merged (which hides it from the list). The merged
-// draft's children are handed up to the merge target, so they never dangle
-// under a hidden draft.
-async function mergeDraft(
-  repo: Repo,
-  draftHandle: DocHandle<DraftDoc>
-): Promise<void> {
-  const doc = draftHandle.doc();
-  const parentHandle = await findMergeTarget(repo, doc?.parent);
-  const parentClones = parentHandle?.doc()?.clones ?? {};
-  const entries = Object.entries(doc?.clones ?? {}) as [
-    AutomergeUrl,
-    CloneEntry,
-  ][];
-  for (const [originalUrl, entry] of entries) {
-    const targetUrl = parentClones[originalUrl]?.cloneUrl ?? originalUrl;
-    if (entry.cloneUrl === targetUrl) continue;
-    const [target, clone] = await Promise.all([
-      repo.find<unknown>(targetUrl),
-      repo.find<unknown>(entry.cloneUrl),
-    ]);
-    target.merge(clone);
-    const mergedAt = target.heads();
-    draftHandle.change((d) => {
-      const e = d.clones[originalUrl];
-      if (e) e.mergedAt = mergedAt;
-    });
-  }
-  draftHandle.change((d) => {
-    d.mergedAt = Date.now();
-  });
-
-  // Re-parent the merged draft's children onto the merge target: they list
-  // under it and their own merges land there (where this draft's changes
-  // now live). Their clones branched off this draft's clones, whose history
-  // was just merged into the target, so they still merge back cleanly.
-  if (parentHandle) {
-    const children = (draftHandle.doc()?.drafts ?? []).filter(
-      isValidAutomergeUrl
-    );
-    for (const childUrl of children) {
-      try {
-        const child = await repo.find<DraftDoc>(childUrl);
-        child.change((d) => {
-          d.parent = parentHandle.url;
-        });
-        parentHandle.change((d) => {
-          if (!d.drafts.includes(childUrl)) d.drafts.push(childUrl);
-        });
-        draftHandle.change((d) => {
-          const i = d.drafts.indexOf(childUrl);
-          if (i >= 0) d.drafts.splice(i, 1);
-        });
-      } catch (err) {
-        console.warn(
-          "[drafts] failed to re-parent child draft after merge:",
-          childUrl,
-          err
-        );
-      }
-    }
-  }
-}
-
-// Resolve the draft the merge should land in: the nearest non-merged
-// ancestor. A parent that was itself merged away hands its role up the
-// chain (its changes live in *its* merge target), ending at the main draft,
-// which is never merged. Null when the chain can't be resolved — the caller
-// then falls back to merging into the originals.
-async function findMergeTarget(
-  repo: Repo,
-  parentUrl: AutomergeUrl | undefined
-): Promise<DocHandle<DraftDoc> | null> {
-  const seen = new Set<AutomergeUrl>();
-  let cursor = parentUrl;
-  while (cursor && isValidAutomergeUrl(cursor) && !seen.has(cursor)) {
-    seen.add(cursor);
-    try {
-      const candidate = await repo.find<DraftDoc>(cursor);
-      if (candidate.doc()?.mergedAt === undefined) return candidate;
-      cursor = candidate.doc()?.parent;
-    } catch (err) {
-      console.warn(
-        "[drafts] failed to load ancestor draft for merge; " +
-          "falling back to merging into the originals:",
-        cursor,
-        err
-      );
-      return null;
-    }
-  }
-  return null;
-}
-
-// --- Cloning a member at a version -------------------------------------------
-// The obvious way — `repo.clone(handle.view(to))`, i.e. wasm `fork_at` — is
-// broken upstream: on documents whose history contains certain concurrent
-// merge changes (as anything synced through subduction ends up with),
-// `fork_at` panics with `MissingOps` in `ChangeCollector::from_build_meta`
-// at *any* heads, and the panic poisons the doc object for the rest of the
-// session (every later call throws "recursive use of an object detected").
-// Confirmed offline against automerge 3.3.0-fragments.1 and .2 with a
-// 26-change minimal repro.
-//
-// So the version clone is built without `fork_at`: collect the ancestor
-// closure of the pin heads from the change metadata, bundle exactly those
-// changes (`saveBundle`), hydrate a fresh doc from the bundle
-// (`loadIncremental`), and install it into a new repo handle — the same move
-// `repo.clone` performs internally, minus the panicking wasm path. The
-// resulting doc's heads are exactly `to`, it shares history with the
-// original, and merges back cleanly.
-
-// Build a clone of `handle`'s doc pinned to the `to` heads and register it
-// with the repo. Throws (a plain JS error, no wasm panic) when the pin's
-// ancestry can't be resolved from the doc's change metadata.
-function cloneAtVersion(
-  repo: Repo,
-  handle: DocHandle<unknown>,
-  to: UrlHeads
-): DocHandle<unknown> {
-  const doc = handle.doc() as Automerge.Doc<unknown>;
-  const pinHeads = decodeHeads(to);
-
-  // Ancestor closure of the pin heads, walked over the full change metadata.
-  const metas = Automerge.getChangesMetaSince(doc, []);
-  const byHash = new Map(metas.map((m) => [m.hash, m]));
-  const closure = new Set<string>();
-  const stack = [...pinHeads];
-  while (stack.length > 0) {
-    const hash = stack.pop()!;
-    if (closure.has(hash)) continue;
-    const meta = byHash.get(hash);
-    if (!meta) {
-      throw new Error(
-        `[drafts] change ${hash} is not in the doc's history metadata`
-      );
-    }
-    closure.add(hash);
-    stack.push(...meta.deps);
-  }
-
-  const bundle = Automerge.saveBundle(doc, [...closure]);
-  const pinned = Automerge.loadIncremental(Automerge.init<unknown>(), bundle);
-
-  const gotHeads = [...Automerge.getHeads(pinned)].sort();
-  const wantHeads = [...pinHeads].sort();
-  if (JSON.stringify(gotHeads) !== JSON.stringify(wantHeads)) {
-    throw new Error(
-      `[drafts] version clone heads mismatch: wanted ${wantHeads}, got ${gotHeads}`
-    );
-  }
-
-  const clone = repo.create<unknown>();
-  clone.update(() => pinned);
-  return clone;
-}
-
-// --- Fork-at-version diagnostics --------------------------------------------
-// When `cloneAtVersion` fails, everything we can learn about the member and
-// the pinned heads is dumped as one JSON block tagged
-// [drafts][fork-diagnostic]; paste that back when reporting.
-
-// Everything we could learn about the member and the pinned heads, plus the
-// final error.
-type ForkDiagnostic = {
-  draftsVersion: string;
-  memberUrl: AutomergeUrl;
-  sourceUrl: AutomergeUrl;
-  memberClonedAt: UrlHeads | null;
-  // The version being forked at, as url-encoded heads and as hex hashes.
-  to: UrlHeads;
-  toHex: string[];
-  // The doc's live frontier (hex), for comparison with `toHex`.
-  currentHeads: string[] | null;
-  // Does the doc itself consider `toHex` a valid point in its history?
-  hasHeads: boolean | null;
-  // Change hashes the doc knows it is missing ops for, as of `toHex`.
-  missingDeps: string[] | null;
-  stats: { numChanges: number; numOps: number } | null;
-  automerge: {
-    jsGitHead: string;
-    wasmGitHead: string | null;
-    wasmVersion: string | null;
-  } | null;
-  // Where each pinned hash sits in the doc's history: its topological index,
-  // metadata, and whether it is a live head. `known: false` means the doc has
-  // no change with that hash at all.
-  pinnedChanges: {
-    hash: string;
-    known: boolean;
-    topoIndex: number | null;
-    time: number | null;
-    actor: string | null;
-    seq: number | null;
-    deps: string[] | null;
-    isCurrentHead: boolean;
-  }[];
-  // Sedimentree fragment coverage: how the doc's history is bundled.
-  // `topoRange` is the [min, max] topological index of the fragment's member
-  // changes and `containsPin` whether a pinned hash is one of them — so a
-  // fork-depth failure boundary can be read directly against bundle
-  // boundaries. A pinned hash buried inside a higher-level bundle is the
-  // prime MissingOps suspect.
-  fragments:
-    | {
-        level: number;
-        head: string;
-        memberCount: number;
-        topoRange: [number, number] | null;
-        containsPin: boolean;
-      }[]
-    | null;
-  probeErrors: string[];
-  failure?: { message: string; stack?: string };
-};
-
-// The saved doc bytes captured before the failing fork, kept out of the JSON
-// report (too big) and exposed on `window.__draftsForkRepro` instead, so the
-// exact failing document can be reproduced offline.
-type ForkRepro = {
-  url: AutomergeUrl;
-  toHex: string[];
-  docBase64: string;
-};
-
-// Snapshot everything we can read about `handle`'s doc and the pinned heads.
-// Every probe is individually guarded so one bad call doesn't lose the rest.
-function collectForkDiagnostic(
-  handle: DocHandle<unknown>,
-  member: DraftMemberDoc,
-  to: UrlHeads
-): ForkDiagnostic {
-  const diagnostic: ForkDiagnostic = {
-    draftsVersion: DRAFTS_VERSION,
-    memberUrl: member.url,
-    sourceUrl: member.cloneUrl ?? member.url,
-    memberClonedAt: member.clonedAt,
-    to,
-    toHex: [],
-    currentHeads: null,
-    hasHeads: null,
-    missingDeps: null,
-    stats: null,
-    automerge: null,
-    pinnedChanges: [],
-    fragments: null,
-    probeErrors: [],
-  };
-  const probe = (name: string, run: () => void) => {
-    try {
-      run();
-    } catch (err) {
-      diagnostic.probeErrors.push(`${name}: ${String(err)}`);
-    }
-  };
-
-  probe("decodeHeads", () => {
-    diagnostic.toHex = decodeHeads(to);
-  });
-
-  const doc = handle.doc() as Automerge.Doc<unknown>;
-
-  probe("getHeads", () => {
-    diagnostic.currentHeads = Automerge.getHeads(doc);
-  });
-  probe("hasHeads", () => {
-    diagnostic.hasHeads = Automerge.hasHeads(doc, diagnostic.toHex);
-  });
-  probe("getMissingDeps", () => {
-    diagnostic.missingDeps = Automerge.getMissingDeps(doc, diagnostic.toHex);
-  });
-  probe("stats", () => {
-    const s = Automerge.stats(doc);
-    diagnostic.stats = { numChanges: s.numChanges, numOps: s.numOps };
-  });
-  probe("releaseInfo", () => {
-    const info = Automerge.releaseInfo();
-    diagnostic.automerge = {
-      jsGitHead: info.js.gitHead,
-      wasmGitHead: info.wasm?.gitHead ?? null,
-      wasmVersion: info.wasm?.cargoPackageVersion ?? null,
-    };
-  });
-  probe("pinnedChanges", () => {
-    const topo = Automerge.topoHistoryTraversal(doc);
-    const metas = Automerge.getChangesMetaSince(doc, []);
-    const metaByHash = new Map(metas.map((m) => [m.hash, m]));
-    diagnostic.pinnedChanges = diagnostic.toHex.map((hash) => {
-      const meta = metaByHash.get(hash);
-      const topoIndex = topo.indexOf(hash);
-      return {
-        hash,
-        known: !!meta || topoIndex >= 0,
-        topoIndex: topoIndex >= 0 ? topoIndex : null,
-        time: meta?.time ?? null,
-        actor: meta?.actor ?? null,
-        seq: meta?.seq ?? null,
-        deps: meta?.deps ?? null,
-        isCurrentHead: diagnostic.currentHeads?.includes(hash) ?? false,
-      };
-    });
-  });
-  probe("fragments", () => {
-    const topo = Automerge.topoHistoryTraversal(doc);
-    const topoIndex = new Map(topo.map((h, i) => [h, i]));
-    const pinned = new Set(diagnostic.toHex);
-    diagnostic.fragments = Automerge.getFragmentMetadata(doc).map((f) => {
-      let min = Infinity;
-      let max = -Infinity;
-      let containsPin = false;
-      for (const h of f.members) {
-        const i = topoIndex.get(h);
-        if (i !== undefined) {
-          if (i < min) min = i;
-          if (i > max) max = i;
-        }
-        if (pinned.has(h)) containsPin = true;
-      }
-      return {
-        level: f.level,
-        head: f.head,
-        memberCount: f.members.length,
-        topoRange: min <= max ? ([min, max] as [number, number]) : null,
-        containsPin,
-      };
-    });
-  });
-  probe("saveDoc", () => {
-    // Capture the full doc bytes for an offline repro; published to
-    // `window.__draftsForkRepro` by `reportForkFailure`.
-    const bytes = Automerge.save(doc);
-    let binary = "";
-    const CHUNK = 0x8000;
-    for (let i = 0; i < bytes.length; i += CHUNK) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-    }
-    lastForkRepro = {
-      url: member.url,
-      toHex: diagnostic.toHex,
-      docBase64: btoa(binary),
-    };
-  });
-
-  return diagnostic;
-}
-
-// The most recent member's saved bytes, captured by `collectForkDiagnostic`
-// and published by `reportForkFailure` when its member's fork fails.
-let lastForkRepro: ForkRepro | null = null;
-
-// Dump the diagnostic and the error as one copy-pasteable JSON block.
-function reportForkFailure(
-  diagnostic: ForkDiagnostic | null,
-  err: unknown
-): void {
-  const failure = {
-    message: err instanceof Error ? err.message : String(err),
-    stack: err instanceof Error ? err.stack : undefined,
-  };
-  if (!diagnostic) {
-    console.error(
-      "[drafts][fork-diagnostic] failed before diagnostics could be gathered:",
-      failure
-    );
-    return;
-  }
-  diagnostic.failure = failure;
-  if (lastForkRepro && lastForkRepro.url === diagnostic.memberUrl) {
-    (window as unknown as Record<string, unknown>).__draftsForkRepro =
-      lastForkRepro;
-  }
-  console.error(
-    "[drafts][fork-diagnostic] failed to fork member at version — paste this block back:\n" +
-      JSON.stringify(diagnostic, null, 2) +
-      "\n[drafts][fork-diagnostic] the failing doc's bytes are on " +
-      "window.__draftsForkRepro — to save them for an offline repro, run:\n" +
-      "  const r = window.__draftsForkRepro;\n" +
-      "  const bytes = Uint8Array.from(atob(r.docBase64), c => c.charCodeAt(0));\n" +
-      "  const a = document.createElement('a');\n" +
-      "  a.href = URL.createObjectURL(new Blob([bytes]));\n" +
-      "  a.download = 'fork-repro.automerge'; a.click();\n" +
-      "  console.log('pin heads:', r.toHex);"
-  );
-}
-
 function MainCard(props: {
   hostDocUrl: AutomergeUrl | undefined;
   isSelected: boolean;
   members: Accessor<DraftMemberDoc[]>;
-  changeGroupDocUrl: AutomergeUrl | null;
+  element: HTMLElement;
+  historyOff: boolean;
   name: string | null;
   onRename: (name: string | null) => void;
   onSelect: () => void;
@@ -1090,7 +661,6 @@ function MainCard(props: {
   eyeOpen: boolean;
   eyeDisabled: boolean;
   onToggleEye: () => void;
-  forkDisabled: boolean;
   onFork: () => void;
   forkAtLabel: string | null;
   onForkAt: () => void;
@@ -1143,7 +713,6 @@ function MainCard(props: {
                 onToggle={props.onToggleEye}
               />
               <CardMenu
-                forkDisabled={props.forkDisabled}
                 onFork={props.onFork}
                 forkAtLabel={props.forkAtLabel}
                 onForkAt={props.onForkAt}
@@ -1154,18 +723,20 @@ function MainCard(props: {
         </div>
       </div>
       <Show when={props.isSelected}>
-        <DraftChangesList
-          members={props.members}
-          changeGroupDocUrl={props.changeGroupDocUrl}
-          mainDocUrl={props.hostDocUrl}
-          onScrub={props.onScrub}
-          scrubber={props.scrubber}
-          onBaselineScrub={props.onBaselineScrub}
-          baseliner={props.baseliner}
-          eyeOpen={() => props.eyeOpen}
-          checkpoint={props.checkpoint}
-          onReturnToLatest={props.onReturnToLatest}
-        />
+        <Show when={!props.historyOff} fallback={<HistoryOff />}>
+          <DraftChangesList
+            members={props.members}
+            element={props.element}
+            mainDocUrl={props.hostDocUrl}
+            onScrub={props.onScrub}
+            scrubber={props.scrubber}
+            onBaselineScrub={props.onBaselineScrub}
+            baseliner={props.baseliner}
+            eyeOpen={() => props.eyeOpen}
+            checkpoint={props.checkpoint}
+            onReturnToLatest={props.onReturnToLatest}
+          />
+        </Show>
       </Show>
     </div>
   );
@@ -1174,7 +745,8 @@ function MainCard(props: {
 function DraftCard(props: {
   url: AutomergeUrl;
   members: DraftMemberDoc[];
-  changeGroupDocUrl: AutomergeUrl | null;
+  element: HTMLElement;
+  historyOff: boolean;
   mainDocUrl: AutomergeUrl | undefined;
   isSelected: boolean;
   name: string | null;
@@ -1269,19 +841,32 @@ function DraftCard(props: {
         </div>
       </div>
       <Show when={props.isSelected}>
-        <DraftChangesList
-          members={() => props.members}
-          changeGroupDocUrl={props.changeGroupDocUrl}
-          mainDocUrl={props.mainDocUrl}
-          onScrub={props.onScrub}
-          scrubber={props.scrubber}
-          onBaselineScrub={props.onBaselineScrub}
-          baseliner={props.baseliner}
-          eyeOpen={() => props.eyeOpen}
-          checkpoint={props.checkpoint}
-          onReturnToLatest={props.onReturnToLatest}
-        />
+        <Show when={!props.historyOff} fallback={<HistoryOff />}>
+          <DraftChangesList
+            members={() => props.members}
+            element={props.element}
+            mainDocUrl={props.mainDocUrl}
+            onScrub={props.onScrub}
+            scrubber={props.scrubber}
+            onBaselineScrub={props.onBaselineScrub}
+            baseliner={props.baseliner}
+            eyeOpen={() => props.eyeOpen}
+            checkpoint={props.checkpoint}
+            onReturnToLatest={props.onReturnToLatest}
+          />
+        </Show>
       </Show>
+    </div>
+  );
+}
+
+function HistoryOff() {
+  return (
+    <div class="draft-card-changes">
+      <div class="draft-changes-empty">
+        History is off for folders with more than {HISTORY_CHILD_LIMIT}{" "}
+        documents.
+      </div>
     </div>
   );
 }
@@ -1293,7 +878,6 @@ function DraftCard(props: {
 // is anchored to the trigger; `onOpenChange` mirrors the open state up so
 // the card can lift its overflow clipping while the list is showing.
 function CardMenu(props: {
-  forkDisabled?: boolean;
   onFork: () => void;
   // "Fork from Jul 24, 3:12 PM" while pinned; null hides the item.
   forkAtLabel: string | null;
@@ -1362,12 +946,7 @@ function CardMenu(props: {
           <button
             type="button"
             class="draft-menu-item"
-            disabled={props.forkDisabled}
-            title={
-              props.forkDisabled
-                ? "Drafts aren't supported for folders yet"
-                : "Fork a new draft from the latest version"
-            }
+            title="Fork a new draft from the latest version"
             onClick={(e) => pick(e, props.onFork)}
           >
             <GitBranchIcon />
@@ -1661,12 +1240,6 @@ function EyeOffIcon() {
 // A reference to one change in the interleaved timeline, by document and
 // hash. `time` steers how the *other* member docs' heads are resolved around
 // it (see `computeCheckpoint`).
-type ChangeRef = {
-  docUrl: AutomergeUrl;
-  hash: string;
-  time: number;
-};
-
 // Where the scrubber sits: the change whose heads the view displays,
 // anchored to its persisted group. `offset` is the change's position within the
 // group, 0 = the group's newest change (what the scrubber geometry snaps
@@ -1710,11 +1283,10 @@ type ScanChange = {
   seq: number;
 };
 
-// Renders a draft's (or main's) timeline straight from its ChangeGroupDoc.
-// The ChangeGrouper computes and persists activity groups (newest first, older
-// history backfilling), and this component is a pure reader: it paints before
-// the member docs even load, and live edits arrive through the group doc's
-// change signal. A gutter on
+// Renders a draft's (or main's) timeline from its members' history groups,
+// which the history provider indexes per document and this stitches into
+// rows (see timeline.ts). It paints before the member docs even load, and
+// live edits arrive as the provider's updates. A gutter on
 // the left spans the whole history (top = latest version, bottom = first);
 // the indicator — a calendar-style dot + line — marks the version being
 // looked at and paints *on top* of everything in the changes area.
@@ -1726,49 +1298,32 @@ type ScanChange = {
 // time span (no diffs), memoized per group so dragging stays snappy.
 function DraftChangesList(props: {
   members: Accessor<DraftMemberDoc[]>;
-  changeGroupDocUrl: AutomergeUrl | null;
+  element: HTMLElement;
   mainDocUrl: AutomergeUrl | undefined;
   onScrub: (scrub: ScrubberState) => void;
   scrubber: Accessor<ScrubberState | null>;
   onBaselineScrub: (base: BaselineState) => void;
   baseliner: Accessor<BaselineState | null>;
   eyeOpen: Accessor<boolean>;
-  // The live checkpoint (`CheckedOutDraft.at`): per-member `to`/`from`
+  // The live checkpoint (`DraftSelection.at`): per-member `to`/`from`
   // heads, read for the sticker's whole-range diff counts.
   checkpoint: Accessor<DraftCheckpoint | null>;
   onReturnToLatest: () => void;
 }) {
-  const repo = "repo" in window ? window.repo : undefined;
+  const repo = useRepo();
 
-  // The group doc is read live, so ChangeGrouper writes stream in as rows.
-  const [changeGroupHandle, setChangeGroupHandle] =
-    createSignal<DocHandle<ChangeGroupDoc>>();
-  createEffect(() => {
-    const url = props.changeGroupDocUrl;
-    setChangeGroupHandle(undefined);
-    if (!url || !repo) return;
-    let disposed = false;
-    void repo.find<ChangeGroupDoc>(url).then(
-      (handle) => {
-        if (!disposed) setChangeGroupHandle(handle);
-      },
-      (err) => {
-        console.warn("[drafts] failed to load change-group doc:", url, err);
-      }
-    );
-    onCleanup(() => {
-      disposed = true;
-    });
-  });
-  const changeGroupDoc = createDocSignal(changeGroupHandle);
-
-  // The rendered groups, newest-first. Metadata-only groups are retained so
-  // the ChangeGrouper can extend the newest one, but filtered from the UI.
-  const timeGroups = createMemo<ChangeGroup[]>(() =>
-    Object.values(changeGroupDoc()?.groups ?? {})
-      .filter((g) => g.additions > 0 || g.deletions > 0)
-      .sort((a, b) => b.endTime - a.endTime || (a.id < b.id ? -1 : 1))
+  // Resubscribe only when the membership itself changes, not on every
+  // `draft:list` push.
+  const memberSet = createMemo(
+    () => props.members(),
+    undefined,
+    { equals: sameMembers }
   );
+  const [histories, setHistories] = createSignal<MemberHistory[]>([]);
+  createEffect(() => {
+    const members = memberSet();
+    onCleanup(watchMemberHistories(props.element, members, setHistories));
+  });
 
   // Member doc handles (plus the creation-time cutoff), resolved once per
   // member set — only needed to *scrub*, never to render the rows.
@@ -1809,31 +1364,27 @@ function DraftChangesList(props: {
     });
   });
 
-  // Grouping is caught up when every member's live heads match the group
-  // doc's consumed marker (`computedThrough` — written only when a pass
-  // completes, while groups flush incrementally during it). A running build
-  // keeps writing to the group doc, so this re-evaluates live; it also reads
-  // true while another peer does the building, since the group doc syncs.
-  // Checkpoint pins don't interfere: they bake heads onto overlay urls, the
-  // handles here always sit at the live frontier.
-  const isBuilding = createMemo<boolean>(() => {
-    const consumed = changeGroupDoc()?.computedThrough ?? {};
-    const srcs = sources();
-    if (!srcs || srcs.length === 0) return false;
-    return srcs.some(({ member, handle }) => {
-      const heads = handle.heads();
-      return heads ? !sameHeads(heads, consumed[member.url]) : false;
-    });
-  });
+  // The rendered groups, newest-first. Metadata-only groups are filtered
+  // from the UI.
+  const timeGroups = createMemo<ChangeGroup[]>(() =>
+    combineHistories(histories(), { createdAt: createdAt() }).filter(
+      (g) => g.additions > 0 || g.deletions > 0
+    )
+  );
+
+  // A member's index is still catching up with its document.
+  const isBuilding = createMemo<boolean>(() =>
+    histories().some((h) => h.pending)
+  );
 
   // Recover a group's member changes on demand: scan each member's post-fork
-  // change metadata filtered to the group's span (spans are disjoint — groups
+  // change metadata filtered to the group's span (rows are disjoint — they
   // are separated by >gap lulls, so time containment recovers exactly the
-  // group's changes) and interleave with the ChangeGrouper's ordering.
-  // Metadata only, no diffs. Memoized per group identity so dragging
-  // stays snappy; returns null until the member handles resolve. It must apply
-  // the same filters as grouping (notably the pre-creation cutoff), or the
-  // scrubber's index math drifts from the persisted changeCount.
+  // row's changes), newest first. Metadata only, no diffs. Memoized per group
+  // identity so dragging stays snappy; returns null until the member handles
+  // resolve. It must cover the same changes as the history groups (each
+  // member's changes since its fork point), or the scrubber's index math
+  // drifts from `changeCount`.
   const scanCache = new Map<string, ScanChange[]>();
   const resolveGroupChanges = (group: ChangeGroup): ScanChange[] | null => {
     const key = `${group.id}:${group.changeCount}`;
@@ -1841,7 +1392,6 @@ function DraftChangesList(props: {
     if (hit) return hit;
     const srcs = sources();
     if (!srcs) return null;
-    const cutoff = createdAt();
     const rows: ScanChange[] = [];
     for (const { member, handle } of srcs) {
       const doc = handle.doc() as Automerge.Doc<unknown> | undefined;
@@ -1850,7 +1400,6 @@ function DraftChangesList(props: {
         const since = member.clonedAt ? decodeHeads(member.clonedAt) : [];
         const metas = Automerge.getChangesMetaSince(doc, since);
         metas.forEach((meta, seq) => {
-          if (cutoff !== undefined && meta.time && meta.time < cutoff) return;
           if (meta.time < group.startTime || meta.time > group.endTime) return;
           rows.push({
             docUrl: member.url,
@@ -2453,91 +2002,6 @@ function EditCounts(props: { additions: number; deletions: number }) {
       </Show>
     </span>
   );
-}
-
-// Diff baseline mode for a checkpoint. `"none"` writes no `from` (no diff);
-// `{ beforeTime }` anchors each member's `from` at its state just before that
-// absolute time — the draggable baseline handle's position — so everything
-// from there up to the head reads as the diff. The baseline is independent of
-// the head (see `onScrub`/`onBaselineScrub`): the two are resolved separately
-// and only clamped so the baseline stays at or older than the head.
-type CheckpointBase = "none" | { beforeTime: number };
-
-// Build the checkpoint map for a scrub position. Each member's displayed
-// version (`to`) is its heads as of `head`: the doc that owns that change is
-// pinned exactly to it, every other member to its latest change at or before
-// it (approximate but good enough). The diff baseline (`from`) follows
-// `base`: omitted for `"none"`, or the member's heads just before
-// `beforeTime` (falling back to the fork point — empty heads on main — when
-// no post-fork change precedes it). Members with no change at or before
-// `head` are omitted entirely: they didn't exist yet, so they fall through to
-// live.
-async function computeCheckpoint(
-  repo: Repo,
-  members: DraftMemberDoc[],
-  head: ChangeRef,
-  base: CheckpointBase
-): Promise<DraftCheckpoint> {
-  const checkpoint: DraftCheckpoint = {};
-  for (const member of members) {
-    try {
-      const handle = await repo.find<unknown>(member.cloneUrl ?? member.url);
-      const doc = handle.doc();
-      if (!doc) continue;
-      const since = member.clonedAt ? decodeHeads(member.clonedAt) : [];
-      const metas = Automerge.getChangesMetaSince(doc, since);
-
-      // Displayed version: exactly the head change for the doc that owns it,
-      // otherwise the member's latest change at or before it.
-      let to: UrlHeads;
-      if (member.url === head.docUrl) {
-        // Pin the head's doc exactly even if it falls outside the metas
-        // window (robust against a mismatched fork point).
-        to = encodeHeads([head.hash]);
-      } else {
-        let pinnedIndex = -1;
-        let bestTime = -Infinity;
-        metas.forEach((m, i) => {
-          if (m.time <= head.time && m.time >= bestTime) {
-            bestTime = m.time;
-            pinnedIndex = i;
-          }
-        });
-        if (pinnedIndex < 0) continue;
-        to = encodeHeads([metas[pinnedIndex].hash]);
-      }
-
-      if (base === "none") {
-        checkpoint[member.url] = { to };
-        continue;
-      }
-
-      // Diff baseline: the member's newest change strictly before the
-      // baseline's time. None post-fork means the baseline sits at or before
-      // the start of the member's history in this timeline, so diff against
-      // the fork point (empty heads on main — the whole doc reads as added).
-      let fromIndex = -1;
-      let fromTime = -Infinity;
-      metas.forEach((m, i) => {
-        if (m.time < base.beforeTime && m.time >= fromTime) {
-          fromTime = m.time;
-          fromIndex = i;
-        }
-      });
-      const from =
-        fromIndex >= 0
-          ? encodeHeads([metas[fromIndex].hash])
-          : (member.clonedAt ?? encodeHeads([]));
-      checkpoint[member.url] = { from, to };
-    } catch (err) {
-      console.warn(
-        "[drafts] failed to compute checkpoint for member:",
-        member,
-        err
-      );
-    }
-  }
-  return checkpoint;
 }
 
 // ---- Author attribution ----------------------------------------------------

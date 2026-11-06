@@ -140,9 +140,9 @@ function buildEntry(docLink, enter) {
         "Open"
       );
 
-  // The nested view names the doc without heads; resolution (the drafts
-  // `repo:handle-descriptor` answer) pins it to the active checkpoint when one
-  // is checked out, so the entry freezes with the folder it lives in.
+  // The nested view names the doc without heads; the drafts overlay's repo
+  // pins it to the active checkpoint when one is checked out, so the entry
+  // freezes with the folder it lives in.
   const node = el(
     "div",
     { className: "folder-entry", "data-type": docLink.type },

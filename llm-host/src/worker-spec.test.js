@@ -38,6 +38,8 @@ function fakeLib(cfg = {provider: "local", toolToggles: {}}) {
 	}
 }
 
+const repo = {find: () => {}}
+
 function fakeIO() {
 	/** @type {any} */
 	const io = {
@@ -49,6 +51,7 @@ function fakeIO() {
 		},
 		workerId: "w1",
 		state: null,
+		ctx: {repo},
 	}
 	return io
 }
@@ -62,6 +65,18 @@ describe("makeLLMWorkerSpec · generate", () => {
 		lib = fakeLib()
 		spec = makeLLMWorkerSpec(lib)
 		io = fakeIO()
+	})
+
+	it("resolves config and prompts against the connection's repo", async () => {
+		await spec.handle({op: "generate", messages: [], scope: {toolId: "t"}}, io)
+		expect(lib.ensureConfig).toHaveBeenCalledWith({toolId: "t"}, null, repo)
+		expect(lib.prepareGenerate.mock.calls[0][1].repo).toBe(repo)
+	})
+
+	it("warms the settings doc with the connection's element and repo", async () => {
+		const element = document.createElement("div")
+		await spec.open({element, repo})
+		expect(lib.ensureSettingsDoc).toHaveBeenCalledWith(element, repo)
 	})
 
 	it("parses <tool_call> text host-side when the request offered tools", async () => {
@@ -191,6 +206,7 @@ describe("makeLLMWorkerSpec · the user's own tools", () => {
 
 	it("are appended after the consumer's tools, which win a name clash", async () => {
 		await spec.handle({op: "generate", messages: [], tools: [{name: "x"}], userTools: true}, io)
+		expect(lib.resolveTools).toHaveBeenCalledWith(expect.anything(), repo)
 		const [, opts] = lib.prepareGenerate.mock.calls[0]
 		expect(opts.tools).toEqual([
 			{name: "x", description: undefined, parameters: undefined},
@@ -210,7 +226,7 @@ describe("makeLLMWorkerSpec · the user's own tools", () => {
 
 	it("run on the host, always sandboxed", async () => {
 		await spec.handle({op: "run-tool", name: "Weather_now", args: {city: "x"}}, io)
-		expect(lib.runTool).toHaveBeenCalledWith(expect.objectContaining({handlerUrl: "h1"}), {city: "x"}, {sandbox: true})
+		expect(lib.runTool).toHaveBeenCalledWith(expect.objectContaining({handlerUrl: "h1"}), {city: "x"}, {repo, sandbox: true})
 		expect(emitted(io, "tool-result")).toEqual([{type: "tool-result", result: "ran"}])
 	})
 

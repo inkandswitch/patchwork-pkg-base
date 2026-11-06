@@ -49,15 +49,19 @@ The package lives at `libraries/llm` and is named `@patchwork/llm`.
 ```js
 import { popup, stream, generate, readConfig } from "@patchwork/llm"
 
+// Every call that reads documents (the settings doc, saved prompts, tools)
+// takes an explicit repo — the one your tool was given, never window.repo.
+const repo = element.repo
+
 // 1. Let the user choose a model / paste their OpenRouter key.
-const el = popup()
+const el = popup({ repo })
 document.body.append(el)
 el.showPopover()
 await el.result            // resolves to the config on close (null if cancelled)
 
 // 2a. Stream with telemetry (async iterator):
 let text = ""
-for await (const ev of stream(messages, { topk: 5 })) {
+for await (const ev of stream(messages, { repo, topk: 5 })) {
   switch (ev.type) {
     case "status":     setStatus(ev.message); break        // model loading…
     case "token":      text += ev.delta; render(text); break
@@ -69,6 +73,7 @@ for await (const ev of stream(messages, { topk: 5 })) {
 
 // 2b. …or callback style:
 const { text, stats } = await generate(messages, {
+  repo,
   topk: 5,
   temperature: 0.7,
   onToken:      (delta, full) => render(full),
@@ -113,6 +118,7 @@ library over a stream to sandboxed tools) prepares requests exactly the way
 import { prepareGenerate, buildGeneratePayload } from "@patchwork/llm"
 
 const { cfg, config, extraSystem, builtin, input } = await prepareGenerate(cfg0, {
+  repo,              // where the selected prompt docs are read from
   messages,          // chat messages or a string
   system,            // extra system prompt, already provider-resolved
   tools,             // tool descriptors, already filtered

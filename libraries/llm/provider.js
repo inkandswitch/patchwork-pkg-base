@@ -12,8 +12,8 @@
  * Configure it three ways:
  *   - attributes: `provider`, `model`, `temperature`
  *   - the `.config` property (a full/partial LLM config object)
- *   - `el.configure()` — opens the picker scoped to THIS element (writes back
- *     here, not the account doc), returns a Promise<config|null>
+ *   - `el.configure(repo)` — opens the picker scoped to THIS element (writes
+ *     back here, not the account doc), returns a Promise<config|null>
  *
  * A bare provider (no config set) does NOT answer — consumers fall through to
  * the account doc as usual.
@@ -85,10 +85,14 @@ export class PatchworkLLMConfigProvider extends HTMLElement {
 		this._emit()
 	}
 
-	/** Open the picker scoped to this provider (writes back here). */
-	configure() {
+	/**
+	 * Open the picker scoped to this provider (writes back here).
+	 * @param {import("@automerge/automerge-repo").Repo} repo  where the picker's prompt / tool docs live
+	 */
+	configure(repo) {
 		const node = /** @type {any} */ (
 			dom({
+				repo,
 				source: {
 					read: () => this._config ?? normalizeConfig({}),
 					write: (/** @type {any} */ cfg) => (this.config = cfg),

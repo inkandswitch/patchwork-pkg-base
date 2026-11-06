@@ -21,6 +21,7 @@ import {CrossOriginWorker as Worker} from "./cross-origin-worker.js"
  * Per-call options. A superset of every option any exported function accepts;
  * individual functions document the subset they use. Open-ended on purpose.
  * @typedef {Object} GenOpts
+ * @property {import("@automerge/automerge-repo").Repo} [repo]
  * @property {import("./config.js").LLMConfig} [config]
  * @property {import("./config.js").Scope} [scope]
  * @property {boolean} [continuation]
@@ -40,6 +41,12 @@ import {CrossOriginWorker as Worker} from "./cross-origin-worker.js"
  * @property {(stats:any)=>void} [onStats]
  * @property {(message:string)=>void} [onStatus]
  * @property {(info:{name?:string,tool?:string,args?:any,result?:any,error?:any})=>void} [onToolCall]
+ */
+
+/**
+ * GenOpts for calls that read documents: `repo` is where the settings doc and
+ * the prompt / tool docs it points at are found.
+ * @typedef {GenOpts & {repo: import("@automerge/automerge-repo").Repo}} RepoOpts
  */
 
 /**
@@ -185,16 +192,17 @@ function getConnection() {
  *     instruction. (This is what Loom uses; everyone else gets plain chat.)
  *
  * @param {Array<any>|string} messages  chat messages, or a string
- * @param {GenOpts} [opts]
+ * @param {RepoOpts} opts
  * @returns {Promise<{text:string, toolCalls:object[]|null, toolMode?:string, stats:object|null}>}
  */
-export async function generate(messages, opts = {}) {
-	const cfg0 = opts.config ?? (await ensureConfig(opts.scope))
+export async function generate(messages, opts) {
+	const cfg0 = opts.config ?? (await ensureConfig(opts.scope, null, opts.repo))
 	// Prompt resolution, CallConfig, the tools decision, the builtin detour and
 	// the chat-vs-continuation input shape all live in request.js, shared with
 	// host-side worker specs. The whole opts is passed as overrides: a same-realm
 	// caller legitimately owns provider/model/apiKey overrides.
 	const {cfg, config, extraSystem, builtin, input} = await prepareGenerate(cfg0, {
+		repo: opts.repo,
 		messages,
 		system: opts.system,
 		tools: opts.tools,
@@ -280,9 +288,9 @@ export async function generate(messages, opts = {}) {
  */
 /**
  * @param {Array<any>|string} messages
- * @param {GenOpts} [opts]
+ * @param {RepoOpts} opts
  */
-export async function* stream(messages, opts = {}) {
+export async function* stream(messages, opts) {
 	/** @type {any[]} */
 	const queue = []
 	/** @type {((v?:any) => void)|null} */
@@ -328,16 +336,16 @@ export async function* stream(messages, opts = {}) {
  * (chat-only models return `[]`); Ollama returns `[]`.
  *
  * @param {string} text
- * @param {GenOpts} [opts]
+ * @param {RepoOpts} opts
  * @returns {Promise<{token:string,p:number}[]>}
  */
-export async function predict(text, opts = {}) {
-	const base = opts.config ?? (await ensureConfig(opts.scope))
+export async function predict(text, opts) {
+	const base = opts.config ?? (await ensureConfig(opts.scope, null, opts.repo))
 	// A config provider can carry an in-memory handler that intercepts the request
 	// on the main thread (e.g. choochoo runs a base model and adds a live LoRA
 	// delta). Opt-in — no handler means normal worker dispatch below.
 	if (typeof base?.handler?.predict === "function") return base.handler.predict(text, opts)
-	const cfg = await resolveCfgPrompts(base)
+	const cfg = await resolveCfgPrompts(base, opts.repo)
 	/** @type {CallConfigExt} */
 	const config = callConfig(/** @type {any} */ (cfg), /** @type {any} */ ({...opts, topk: opts.topk || 10}))
 	// continuation → frame chat-only providers (OpenRouter) to predict the
@@ -388,11 +396,11 @@ export async function predict(text, opts = {}) {
  *   { type:"done", scores:[{token, p, rank, entropy, topk:[{token,p}]}] }
  *
  * @param {string} text
- * @param {GenOpts} [opts]
+ * @param {RepoOpts} opts
  * @returns {AsyncGenerator}
  */
-export async function* scoreTokens(text, opts = {}) {
-	const cfg = await resolveCfgPrompts(opts.config ?? (await ensureConfig(opts.scope)))
+export async function* scoreTokens(text, opts) {
+	const cfg = await resolveCfgPrompts(opts.config ?? (await ensureConfig(opts.scope, null, opts.repo)), opts.repo)
 	const config = callConfig(/** @type {any} */ (cfg), /** @type {any} */ (opts))
 	if (config.provider !== "local") return // only local models expose raw logits
 	const conn = getConnection()
@@ -461,11 +469,11 @@ export async function* scoreTokens(text, opts = {}) {
  * works for local models (others resolve to null).
  *
  * @param {string} text
- * @param {GenOpts} [opts]
+ * @param {RepoOpts} opts
  * @returns {Promise<{decoded:string, spans:Array<any>}|null>}
  */
-export async function computeImportance(text, opts = {}) {
-	const cfg = await resolveCfgPrompts(opts.config ?? (await ensureConfig(opts.scope)))
+export async function computeImportance(text, opts) {
+	const cfg = await resolveCfgPrompts(opts.config ?? (await ensureConfig(opts.scope, null, opts.repo)), opts.repo)
 	const config = callConfig(/** @type {any} */ (cfg), /** @type {any} */ (opts))
 	if (config.provider !== "local") return null
 	const conn = getConnection()
@@ -500,11 +508,11 @@ export async function computeImportance(text, opts = {}) {
  * output, or null for non-local providers.
  *
  * @param {string} text
- * @param {GenOpts} [opts]
+ * @param {RepoOpts} opts
  * @returns {Promise<Object|null>}
  */
-export async function computeAttentionWeights(text, opts = {}) {
-	const cfg = await resolveCfgPrompts(opts.config ?? (await ensureConfig(opts.scope)))
+export async function computeAttentionWeights(text, opts) {
+	const cfg = await resolveCfgPrompts(opts.config ?? (await ensureConfig(opts.scope, null, opts.repo)), opts.repo)
 	const config = callConfig(/** @type {any} */ (cfg), /** @type {any} */ (opts))
 	if (config.provider !== "local") return null
 	const conn = getConnection()
@@ -543,10 +551,10 @@ export async function computeAttentionWeights(text, opts = {}) {
  * { supported:false, message } if the model lacks the hidden-state output.
  *
  * @param {string} text
- * @param {GenOpts} [opts]
+ * @param {RepoOpts} opts
  */
-export async function extractFeatures(text, opts = {}) {
-	const cfg = await resolveCfgPrompts(opts.config ?? (await ensureConfig(opts.scope)))
+export async function extractFeatures(text, opts) {
+	const cfg = await resolveCfgPrompts(opts.config ?? (await ensureConfig(opts.scope, null, opts.repo)), opts.repo)
 	const config = callConfig(/** @type {any} */ (cfg), /** @type {any} */ (opts))
 	if (config.provider !== "local") return null
 	const conn = getConnection()
@@ -578,10 +586,10 @@ export async function extractFeatures(text, opts = {}) {
  * string[] aligned with `ids`, or null for non-local providers.
  *
  * @param {any} ids
- * @param {GenOpts} [opts]
+ * @param {RepoOpts} opts
  */
-export async function decodeTokens(ids, opts = {}) {
-	const cfg = await resolveCfgPrompts(opts.config ?? (await ensureConfig(opts.scope)))
+export async function decodeTokens(ids, opts) {
+	const cfg = await resolveCfgPrompts(opts.config ?? (await ensureConfig(opts.scope, null, opts.repo)), opts.repo)
 	const config = callConfig(/** @type {any} */ (cfg), /** @type {any} */ (opts))
 	if (config.provider !== "local") return null
 	const conn = getConnection()
@@ -602,10 +610,10 @@ export async function decodeTokens(ids, opts = {}) {
  * { supported, seq, d, ids, tokens, spans, decoded, hidden: Float32Array(seq*d) }.
  *
  * @param {string} text
- * @param {GenOpts} [opts]
+ * @param {RepoOpts} opts
  */
-export async function extractCutFeatures(text, opts = {}) {
-	const cfg = await resolveCfgPrompts(opts.config ?? (await ensureConfig(opts.scope)))
+export async function extractCutFeatures(text, opts) {
+	const cfg = await resolveCfgPrompts(opts.config ?? (await ensureConfig(opts.scope, null, opts.repo)), opts.repo)
 	const config = callConfig(/** @type {any} */ (cfg), /** @type {any} */ (opts))
 	if (config.provider !== "local") return null
 	const conn = getConnection()
@@ -629,7 +637,7 @@ export async function extractCutFeatures(text, opts = {}) {
  * @param {GenOpts} [opts]
  */
 export async function probeAttention(text = "Hello world", opts = {}) {
-	const cfg = opts.config ?? (await ensureConfig(opts.scope))
+	const cfg = opts.config ?? (await ensureConfig(opts.scope, null, opts.repo))
 	const config = callConfig(/** @type {any} */ (cfg), /** @type {any} */ (opts))
 	const conn = getConnection()
 	const id = nextId()
@@ -652,16 +660,16 @@ export async function probeAttention(text = "Hello world", opts = {}) {
  * always run as given.
  *
  * @param {Array<any>|string} messages  chat messages (or a string → one user turn)
- * @param {GenOpts} [opts]  same as generate(), plus onToolCall / maxRounds / sandbox
+ * @param {RepoOpts} opts  same as generate(), plus onToolCall / maxRounds / sandbox
  * @returns {Promise<{text:string, messages:Array<any>}>}
  */
-export async function generateWithTools(messages, opts = {}) {
-	const cfg = opts.config ?? (await ensureConfig(opts.scope))
+export async function generateWithTools(messages, opts) {
+	const cfg = opts.config ?? (await ensureConfig(opts.scope, null, opts.repo))
 	// Folder-tool handlers run sandboxed when the call or the config asks for it.
 	const sandbox = opts.sandbox ?? cfg.toolSandbox ?? false
 	// Inline tools (each with a `handler(args)` fn) + the user's folder tools.
 	const inline = (opts.tools || []).map((/** @type {any} */ t) => ({...t}))
-	const folder = await resolveTools(cfg)
+	const folder = await resolveTools(cfg, opts.repo)
 	const tools = [...inline, ...folder]
 	const convo = Array.isArray(messages)
 		? [...messages]
@@ -683,7 +691,7 @@ export async function generateWithTools(messages, opts = {}) {
 		try {
 			const result = tool.handler
 				? await tool.handler(call.args || {})
-				: await runTool(tool, call.args, {sandbox})
+				: await runTool(tool, call.args, {repo: opts.repo, sandbox})
 			opts.onToolCall?.({name: call.name, args: call.args, result})
 			return typeof result === "string" ? result : JSON.stringify(result)
 		} catch (e) {
@@ -706,7 +714,7 @@ export async function generateWithTools(messages, opts = {}) {
 
 	for (let round = 0; round < maxRounds; round++) {
 		const cb = opts.onToken
-		/** @type {GenOpts} */
+		/** @type {RepoOpts} */
 		const genOpts = {
 			...opts,
 			config: cfg,

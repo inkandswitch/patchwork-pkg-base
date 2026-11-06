@@ -4,9 +4,9 @@
  * `patchwork-base/providers`) under the shared id `"llm"` — every LLM-touching
  * tool resolves the same doc, the same way any other tool could park its own
  * settings under a different id. The provider lazily creates the doc and
- * scopes it to the current account, so this needs no `window.accountDocHandle`
- * global: just a DOM node inside a mounted `<patchwork-view>` subtree (any
- * element passed to `ensureSettingsDoc`/`subscribeConfig`/etc). See
+ * scopes it to the current account, so this needs no globals: just a DOM node
+ * inside a mounted `<patchwork-view>` subtree and the `Repo` to find the doc in
+ * (passed to `ensureSettingsDoc`/`subscribeConfig`/etc). See
  * `ensureSettingsDoc()` for resolution/creation.
  *
  * @typedef {"local"|"openrouter"|"ollama"|"webllm"|"builtin"} ProviderId
@@ -76,6 +76,7 @@
  * @property {CustomModel[]} [custom]
  *
  * @typedef {import("@automerge/automerge-repo").DocHandle<any>} DocHandle
+ * @typedef {import("@automerge/automerge-repo").Repo} Repo
  */
 
 import {subscribe, request} from "@inkandswitch/patchwork-providers"
@@ -215,10 +216,6 @@ export function capNote(provider, key) {
 	)
 }
 
-function repoRef() {
-	return (typeof window !== "undefined" && window.repo) || null
-}
-
 // --- settings doc -----------------------------------------------------------
 // The config lives in its own doc (its body IS the config), requested from the
 // `patchwork:tool-storage` provider under `TOOL_STORAGE_ID`. That provider
@@ -226,13 +223,13 @@ function repoRef() {
 // it and caches the handle so reads/writes stay synchronous afterwards.
 //
 // Resolving needs *some* DOM node inside a mounted `<patchwork-view>` subtree
-// (to dispatch the `patchwork:subscribe` request against) — most callers here
-// (client.js, tools.js, picker.js) have no element of their own. Rather than
-// fall back to a global, we remember the most recent element any caller *did*
-// supply (`lastElement`, warmed by whichever tool's UI mounted first — chat
-// view, loom, the picker, …) and let elementless callers piggyback on that
-// bootstrap. Until one has happened, resolution simply isn't ready yet — the
-// same as any other not-yet-loaded doc.
+// (to dispatch the `patchwork:subscribe` request against) and the `Repo` to
+// find the doc in. Some internal callers (writeConfig, the picker's start) have
+// neither, so we remember the most recent element and repo any caller *did*
+// supply (`lastElement`/`lastRepo`, warmed by whichever tool's UI mounted first
+// — chat view, loom, the picker, …) and let them piggyback on that bootstrap.
+// Until one has happened, resolution simply isn't ready yet — the same as any
+// other not-yet-loaded doc.
 
 /** @type {DocHandle|null} */
 let settingsHandle = null
@@ -240,6 +237,8 @@ let settingsHandle = null
 let settingsReady = null // de-dupes concurrent ensureSettingsDoc() calls
 /** @type {HTMLElement|null} */
 let lastElement = null
+/** @type {Repo|null} */
+let lastRepo = null
 
 /** The cached settings DocHandle, or null until ensureSettingsDoc() resolves. */
 export function settingsDocHandle() {
@@ -249,26 +248,28 @@ export function settingsDocHandle() {
 /**
  * Resolve (or lazily create, via the `patchwork:tool-storage` provider) the
  * settings doc and cache its handle. Idempotent and concurrency-safe. Pass an
- * `element` the first time it's available (any node inside a mounted
- * `<patchwork-view>`); later elementless calls reuse whichever element a
- * caller most recently supplied.
+ * `element` (any node inside a mounted `<patchwork-view>`) and the `repo` the
+ * first time they're available; later calls without them reuse whichever ones
+ * a caller most recently supplied.
  * @param {HTMLElement|null} [element]
+ * @param {Repo|null} [repo]
  * @returns {Promise<DocHandle|null>}
  */
-export function ensureSettingsDoc(element) {
+export function ensureSettingsDoc(element, repo) {
 	if (element) lastElement = element
+	if (repo) lastRepo = repo
 	if (settingsHandle) return Promise.resolve(settingsHandle)
 	if (settingsReady) return settingsReady
 	const el = element ?? lastElement
-	const repo = repoRef()
-	if (!repo || !el) return Promise.resolve(null) // not bootstrapped yet; don't cache — a later call with an element can still resolve
+	const r = repo ?? lastRepo
+	if (!r || !el) return Promise.resolve(null) // not bootstrapped yet; don't cache — a later call with both can still resolve
 	settingsReady = (async () => {
 		const url = await request(el, {type: "patchwork:tool-storage", toolId: TOOL_STORAGE_ID})
 		if (!url) {
 			settingsReady = null
 			return null
 		}
-		settingsHandle = await repo.find(/** @type {any} */ (url))
+		settingsHandle = await r.find(/** @type {any} */ (url))
 		return settingsHandle
 	})()
 	return settingsReady
@@ -278,9 +279,10 @@ export function ensureSettingsDoc(element) {
  * Ensure the settings doc is resolved, then return the normalized config.
  * @param {Scope} [scope]
  * @param {HTMLElement|null} [element]
+ * @param {Repo|null} [repo]
  */
-export async function ensureConfig(scope, element) {
-	await ensureSettingsDoc(element)
+export async function ensureConfig(scope, element, repo) {
+	await ensureSettingsDoc(element, repo)
 	return scope ? readScopedConfig(scope) : readConfig()
 }
 
@@ -526,16 +528,18 @@ export function applyPrompts(input, cfg, extraSystem) {
  * (request/provide — lets a future provider element scope config per tool/view)
  * wins; if no provider answers within `timeoutMs`, we fall back to this tool's
  * `patchwork:tool-storage` settings doc (and keep it live by listening for
- * changes to it). If a provider appears later, it takes over. Always pass a
- * real `element` when you have one — it's also how the settings doc itself
- * gets resolved (see `ensureSettingsDoc`), even for later callers that don't.
+ * changes to it). If a provider appears later, it takes over. The `element`
+ * and `repo` are also how the settings doc itself gets resolved (see
+ * `ensureSettingsDoc`), even for later callers that don't pass them.
  *
  * @param {HTMLElement} element  a node inside a <patchwork-view>
  * @param {(config: import("./config.js").LLMConfig) => void} callback
+ * @param {{repo: Repo, timeoutMs?: number}} opts
  * @returns {() => void} unsubscribe
  */
-export function subscribeConfig(element, callback, {timeoutMs = 50} = {}) {
+export function subscribeConfig(element, callback, {repo, timeoutMs = 50}) {
 	if (!element) throw new TypeError("subscribeConfig requires an element")
+	if (!repo) throw new TypeError("subscribeConfig requires a repo")
 	let providerAnswered = false
 	/** @type {(() => void)|null} */
 	let fallbackOff = null
@@ -547,7 +551,7 @@ export function subscribeConfig(element, callback, {timeoutMs = 50} = {}) {
 	const startFallback = () => {
 		if (providerAnswered || cancelled) return
 		callback(readConfig()) // immediate sync value (defaults) so UI isn't blank
-		ensureSettingsDoc(element).then((handle) => {
+		ensureSettingsDoc(element, repo).then((handle) => {
 			if (providerAnswered || cancelled || !handle) return
 			callback(readConfig()) // real config now that the settings doc resolved
 			const onChange = () => {
@@ -578,7 +582,7 @@ export function subscribeConfig(element, callback, {timeoutMs = 50} = {}) {
 /**
  * One-shot resolve of the active config (request + account-doc fallback).
  * @param {HTMLElement} element
- * @param {{timeoutMs?: number}} [opts]
+ * @param {{repo: Repo, timeoutMs?: number}} opts
  * @returns {Promise<LLMConfig>}
  */
 export function resolveConfig(element, opts) {

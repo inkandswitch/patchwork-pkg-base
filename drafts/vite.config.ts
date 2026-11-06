@@ -6,6 +6,9 @@ import externals from "@inkandswitch/patchwork-bootloader/externals";
 export default defineConfig({
   base: "./",
   plugins: [solid(), cssInjectedByJsPlugin({ relativeCSSInjection: true })],
+  // The history worker bundles its own automerge: workers don't see the
+  // page's import map.
+  worker: { format: "es" },
 
   build: {
     sourcemap: true,
