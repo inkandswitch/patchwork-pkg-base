@@ -115,6 +115,34 @@ export type DraftSelection = {
   at: DraftCheckpoint | null;
 };
 
+// What a draft overlay answers for `draft:changes`: how its root's docs
+// differ between each doc's diff baseline (`from`) and the version shown
+// (`to`, or live), per the checkpoint. Empty while no doc has a baseline.
+//   - `changed`: docs added to a folder (or created) and docs whose content
+//     changed, by url.
+//   - `removed`: per folder url, the entries it had at its baseline and no
+//     longer has.
+//   - `containing`: folders with a change somewhere beneath them.
+export type DraftChanges = {
+  changed: Record<AutomergeUrl, DocChange>;
+  removed: Record<AutomergeUrl, RemovedEntry[]>;
+  containing: AutomergeUrl[];
+};
+
+export type DocChange = "added" | "modified";
+
+// A folder entry that's gone since the folder's baseline.
+//   - `url`: the doc, pinned to the heads it's at now (opens read-only).
+//   - `folder`: the folder, pinned to its baseline, where it still lists it.
+//   - `after`: the entry it followed that's still there, or null for the top.
+export type RemovedEntry = {
+  url: AutomergeUrl;
+  name: string;
+  type: string;
+  folder: AutomergeUrl;
+  after: AutomergeUrl | null;
+};
+
 // Answered for `draft:status`. `verifying` while a `draft=` from the URL
 // hasn't been confirmed as a live draft of the root yet (documents wait),
 // `unavailable` once that has taken too long, `ready` once a selection holds.

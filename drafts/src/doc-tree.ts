@@ -32,6 +32,8 @@ export type DocTree = {
   // root first, then depth-first in entry order
   urls: () => AutomergeUrl[];
   has: (url: AutomergeUrl) => boolean;
+  // The doc `url` was first reached from; null for the root and strangers.
+  parentOf: (url: AutomergeUrl) => AutomergeUrl | null;
   // Resolves once the first walk has finished.
   settled: () => Promise<void>;
   isSettled: () => boolean;
@@ -59,6 +61,7 @@ export function watchDocTree(
   const readUrl = options.readUrl ?? ((url) => url);
   let order: AutomergeUrl[] = [];
   let members = new Set<AutomergeUrl>();
+  let parents = new Map<AutomergeUrl, AutomergeUrl>();
   const watched = new Map<AutomergeUrl, DocHandle<unknown>>();
   let disposed = false;
   let settled = false;
@@ -77,6 +80,7 @@ export function watchDocTree(
   return {
     urls: () => order,
     has: (url) => members.has(canonicalUrl(url)),
+    parentOf: (url) => parents.get(canonicalUrl(url)) ?? null,
     settled: () => settledPromise,
     isSettled: () => settled,
     refresh: schedule,
@@ -111,6 +115,7 @@ export function watchDocTree(
       const changed = !sameList(order, next.urls);
       order = next.urls;
       members = new Set(next.urls);
+      parents = next.parents;
       rewatch(next.read);
       settled = true;
       if (changed) options.onChange?.();
@@ -146,9 +151,14 @@ export async function walkDocTree(
   repo: Repo,
   root: AutomergeUrl,
   readUrl: (url: AutomergeUrl) => AutomergeUrl = (url) => url
-): Promise<{ urls: AutomergeUrl[]; read: Map<AutomergeUrl, DocHandle<unknown>> }> {
+): Promise<{
+  urls: AutomergeUrl[];
+  read: Map<AutomergeUrl, DocHandle<unknown>>;
+  parents: Map<AutomergeUrl, AutomergeUrl>;
+}> {
   const urls: AutomergeUrl[] = [];
   const read = new Map<AutomergeUrl, DocHandle<unknown>>();
+  const parents = new Map<AutomergeUrl, AutomergeUrl>();
   const visited = new Set<AutomergeUrl>();
   const loads = new Map<AutomergeUrl, Promise<DocHandle<unknown> | null>>();
 
@@ -176,6 +186,7 @@ export async function walkDocTree(
     );
     for (const child of children) {
       visited.add(child.url);
+      parents.set(child.url, url);
       if (mayHaveChildren(child.type)) void load(child.url);
     }
     for (const child of children) {
@@ -186,7 +197,7 @@ export async function walkDocTree(
 
   visited.add(root);
   await visit(root);
-  return { urls, read };
+  return { urls, read, parents };
 }
 
 // The children of a materialized doc, from every children plugin for its

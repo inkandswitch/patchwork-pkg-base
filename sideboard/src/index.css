@@ -57,6 +57,7 @@
      chrome ink, so it tracks the palette and reads correctly light/dark). */
   --document-list-divider: var(--studio-chrome-offset-20, #d4d4d4);
   --document-list-added: var(--studio-added, #35f7ca);
+  --document-list-modified: var(--studio-modified, #f5b400);
   --document-list-danger: var(--studio-danger-text, var(--studio-danger, #ff6a90));
   --document-list-toggle-hover: color-mix(in oklch, var(--studio-line, black), transparent 93%);
   --account-bar-fill: var(--studio-chrome-offset-10);
@@ -464,6 +465,33 @@ button {
     padding: 4px;
     margin: -4px;
   }
+  /* the change dot sits right after the name, not at the row's end */
+  &:is(span):has(+ .document-list-item__change) {
+    flex: 0 1 auto;
+  }
+}
+
+/* what changed on the checked-out draft, against the drafts sidebar's
+   baseline (see draft-overlay.tsx) */
+.document-list-item__change {
+  flex: none;
+  align-self: center;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-left: 0.5ch;
+  border-radius: 50%;
+  background: var(--document-list-modified);
+  &[data-change="added"] {
+    background: var(--document-list-added);
+  }
+  &[data-change="removed"] {
+    background: var(--document-list-danger);
+  }
+}
+
+.document-list-item--removed .document-list-item__name {
+  color: var(--document-list-muted);
+  text-decoration: line-through;
 }
 
 .document-list-folder__toggle {

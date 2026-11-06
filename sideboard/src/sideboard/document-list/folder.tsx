@@ -39,8 +39,9 @@ import {
 import { dropInto } from "../dnd/drop-into.ts";
 import { createHoverTimer } from "../lib/hover-timer.ts";
 import { isWorkspace, openInside, type Open } from "../events.ts";
+import { useChanges, WorkspaceOverlay } from "./draft-overlay.tsx";
 
-export default function Folder(props: {
+type FolderProps = {
   url: AutomergeUrl;
   repo: Repo;
   depth?: number;
@@ -55,7 +56,28 @@ export default function Folder(props: {
   itemIndex?: number;
   filter: string;
   clearFilter(): void;
-}) {
+};
+
+// A workspace folder shows (and edits) the draft it has checked out, through
+// a draft overlay. Folders inside one are already covered by it: a second
+// overlay on the same draft would fork a doc on its first write.
+export default function Folder(props: FolderProps) {
+  if (useChanges()) return <FolderView {...props} />;
+  const [folder] = useDocument<FolderDoc>(() => props.url, props);
+  return (
+    <Show when={isWorkspace(folder())} fallback={<FolderView {...props} />}>
+      <WorkspaceOverlay
+        url={props.url}
+        repo={props.repo}
+        loading={<LoadingRow depth={props.depth ?? 0} />}
+      >
+        {(repo) => <FolderView {...props} repo={repo} />}
+      </WorkspaceOverlay>
+    </Show>
+  );
+}
+
+function FolderView(props: FolderProps) {
   const [expanded, setExpanded] = createSignal(false);
 
   const [folder, handle] = useDocument<FolderDoc>(() => props.url, props);

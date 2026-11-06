@@ -37,6 +37,8 @@ import Folder from "./folder.tsx";
 import Item from "./item.tsx";
 import { ItemName } from "./name.tsx";
 import { LoadingRow } from "./loading-row.tsx";
+import { canonical, useChanges } from "./draft-overlay.tsx";
+import { RemovedItem } from "./removed-item.tsx";
 
 const NewDocPlaceholder = lazy(() =>
   import("../create-new-menu.tsx").then((m) => ({
@@ -88,6 +90,21 @@ export function DocumentList(props: DocumentListProps) {
     return all.length > limit() ? all.slice(0, limit()) : all;
   });
 
+  // Entries this folder had at its diff baseline and no longer has, shown
+  // where they were: after the entry they followed, or at the top.
+  const changes = useChanges();
+  const removedAfter = (url: AutomergeUrl | null) =>
+    (changes && props.handle ? changes.removedFrom(props.handle.url) : []).filter(
+      (entry) => entry.after === (url && canonical(url))
+    );
+  const removedRows = (url: AutomergeUrl | null) => (
+    <For each={removedAfter(url)}>
+      {(entry) => (
+        <RemovedItem entry={entry} open={props.open} filter={props.filter} />
+      )}
+    </For>
+  );
+
   function removeItem(index: number) {
     props.handle.change((folder) => deleteAt(folder.docs, index));
   }
@@ -121,6 +138,7 @@ export function DocumentList(props: DocumentListProps) {
 
   return (
     <>
+      {removedRows(null)}
       <For each={docs()}>
         {(doc, index) => {
           const visible = () =>
@@ -291,6 +309,7 @@ export function DocumentList(props: DocumentListProps) {
                 </Switch>
                 </Suspense>
               </div>
+              {removedRows(doc.url)}
             </>
           );
         }}

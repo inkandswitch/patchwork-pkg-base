@@ -29,7 +29,7 @@ const SELECTION_SELECTOR = "draft:selection";
 const SELECT_SELECTOR = "draft:select";
 const DRAFT_LIST_SELECTOR = "draft:list";
 const BASELINE_SELECTOR = "draft:baseline";
-const WORKSPACE_DRAFT_SELECTOR = "workspace:draft";
+const SET_CHECKOUT_SELECTOR = "checkout:set";
 
 // How long a `draft=` from the URL gets to show up among the root's drafts
 // before it's reported unavailable. It's still taken if it shows up later.
@@ -46,11 +46,18 @@ const VERIFY_TIMEOUT_MS = 5000;
 //   - `draft:list`      → DraftList (see `createDraftState`)
 //   - `draft:baseline { url }` → Baseline for one doc
 //
-// The URL is the only record of the checked-out draft: the selection starts
-// from `draft=` and the draft router writes it back. Until a `draft=` is
+// The selection starts from `draft=` and the draft router writes it back
+// (coming back to a root, the workspace provider has already put the draft
+// it had checked out into the URL). Until a `draft=` is
 // confirmed as a live draft of this root, documents beneath wait and the
 // status is `verifying`; past VERIFY_TIMEOUT_MS it's `unavailable`, until the
 // draft shows up or something else is selected.
+//
+// With a `shared-checkout` attribute, every settled selection is also handed
+// to the frame's checkout provider (`checkout:set`), so the sidebar's
+// overlays on this root (see `DraftOverlay`) show the same draft. It builds
+// on the base repo rather than the one it inherits: two draft repos stacked
+// on one draft would each fork a doc on its first write.
 //
 // Without a `doc-url` there is no root: every doc forks and there is no draft
 // list. That is how the chat preview iframe (see chat's `preview-frame.ts`)
@@ -64,6 +71,7 @@ export const DraftProvider = (
   const rootUrl = urlAttribute(element, "doc-url");
   const seed = urlAttribute(element, "url");
   const urlDraft = rootUrl ? readHashParam("draft") : null;
+  const shared = !!rootUrl && element.hasAttribute("shared-checkout");
 
   let disposed = false;
   let selection: DraftSelection = { checkedOut: seed, at: null };
@@ -75,7 +83,7 @@ export const DraftProvider = (
 
   let release!: () => void;
   const ready = new Promise<void>((resolve) => (release = resolve));
-  const draftRepo = new DraftRepo(inherited, ready);
+  const draftRepo = new DraftRepo(repo, ready);
   element.repo = draftRepo as unknown as Repo;
   if (rootUrl) draftRepo.setRoot(rootUrl);
 
@@ -173,13 +181,12 @@ export const DraftProvider = (
   // and the user end up here. Any selection settles a pending `draft=`.
   function select(next: DraftSelection): void {
     if (disposed) return;
-    const moved = next.checkedOut !== selection.checkedOut;
     selection = next;
     if (status === "ready") void apply();
     else void settle();
     state?.selectionChanged();
     for (const respond of selectionSubscribers) respond(selection);
-    if (moved) tellWorkspace();
+    share();
   }
 
   // Apply the first confirmed selection, then let documents load.
@@ -188,7 +195,7 @@ export const DraftProvider = (
     await apply();
     if (disposed) return;
     setStatus("ready");
-    tellWorkspace();
+    share();
     release();
   }
 
@@ -216,14 +223,13 @@ export const DraftProvider = (
     for (const respond of statusSubscribers) respond(status);
   }
 
-  // The workspace provider reads its folder tree through the checked-out
-  // draft, so docs that only exist on it still count as in the workspace.
-  function tellWorkspace(): void {
-    if (!rootUrl || status !== "ready") return;
+  function share(): void {
+    if (!shared || status !== "ready") return;
     void request(element, {
-      type: WORKSPACE_DRAFT_SELECTOR,
+      type: SET_CHECKOUT_SELECTOR,
       root: rootUrl,
-      draft: selection.checkedOut,
+      checkedOut: selection.checkedOut,
+      at: selection.at,
     });
   }
 };

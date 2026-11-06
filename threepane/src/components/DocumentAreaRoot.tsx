@@ -194,6 +194,7 @@ export function DocumentAreaRoot(props: DocumentAreaRootProps) {
         {(root) => (
           <DraftDocumentArea
             rootUrl={root}
+            sharedCheckout={!!props.workspaceScoped}
             setMainDocElement={props.setMainDocElement}
             selectedDocUrl={() => scope()?.docUrl}
             selectedToolId={props.selectedToolId}
@@ -230,6 +231,8 @@ export function DocumentAreaRoot(props: DocumentAreaRootProps) {
 // and offers main instead.
 function DraftDocumentArea(props: {
   rootUrl: AutomergeUrl;
+  // Hand the checkout to the frame's checkout provider, for the sidebar.
+  sharedCheckout: boolean;
   setMainDocElement?: (el: HTMLElement) => void;
   selectedDocUrl: Accessor<AutomergeUrl | undefined>;
   selectedToolId: Accessor<string | undefined>;
@@ -305,6 +308,7 @@ function DraftDocumentArea(props: {
     <patchwork-view
       component="patchwork-draft-provider"
       doc-url={props.rootUrl}
+      attr:shared-checkout={props.sharedCheckout ? "" : undefined}
       ref={setDraftProviderHost}
     >
       <Show when={draftStatus() === "unavailable"}>

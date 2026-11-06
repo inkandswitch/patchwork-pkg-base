@@ -12,6 +12,25 @@ export const plugins: Plugin<any>[] = [
   },
   {
     type: "patchwork:component",
+    id: "patchwork-draft-overlay",
+    name: "Draft Overlay",
+    async load() {
+      const { DraftOverlay } = await import("./providers/DraftOverlay.js");
+      return DraftOverlay;
+    },
+  },
+  {
+    type: "patchwork:component",
+    id: "patchwork-checkout-provider",
+    name: "Checkout Provider",
+    async load() {
+      const { CheckoutProvider } =
+        await import("./providers/CheckoutProvider.js");
+      return CheckoutProvider;
+    },
+  },
+  {
+    type: "patchwork:component",
     id: "patchwork-workspace-provider",
     name: "Workspace Provider",
     async load() {
@@ -72,11 +91,14 @@ export type {
   Baseline,
   ChangeGroup,
   CloneEntry,
+  DocChange,
+  DraftChanges,
   DraftDoc,
   DraftList,
   DraftMemberDoc,
   DraftSelection,
   DraftStatus,
   DraftSummary,
+  RemovedEntry,
 } from "./draft-types.js";
 export { isDraftDoc } from "./draft-types.js";

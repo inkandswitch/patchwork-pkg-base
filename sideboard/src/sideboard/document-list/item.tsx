@@ -1,4 +1,4 @@
-import { createEffect, onCleanup, type JSX } from "solid-js";
+import { createEffect, onCleanup, Show, type JSX } from "solid-js";
 import type {
   DatatypeDescription,
   Plugin,
@@ -32,6 +32,7 @@ import { startDrag } from "../dnd/drag-start.ts";
 import { createDragOut } from "../dnd/drag-out.ts";
 import { createHoverTimer } from "../lib/hover-timer.ts";
 import { revealSelectedRow } from "./reveal.ts";
+import { ChangeDot, useChanges } from "./draft-overlay.tsx";
 
 // Spring-loading: while a drag is in progress, hovering it over a document
 // row for a moment opens that document in the main view *without ending the
@@ -70,6 +71,8 @@ export default function Item(props: {
     (props.parentFolderHandle ?? props.rootFolderHandle).url;
 
   const dragOut = createDragOut(props);
+  const changes = useChanges();
+  const change = () => changes?.of(props.url);
 
   createEffect((prev) => {
     if (props.pressed && !prev && row) revealSelectedRow(row);
@@ -290,6 +293,7 @@ export default function Item(props: {
       }}
     >
       {props.children}
+      <Show when={change()}>{(c) => <ChangeDot change={c()} />}</Show>
     </div>
   );
 }

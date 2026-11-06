@@ -396,21 +396,37 @@ function PatchworkFrameInner(props: {
 // listening would never be answered. Under isolation the document area lives
 // in the iframe, which can't see the folder tree, so drafts stay per-document
 // there instead.
+//
+// Around it, the checkout provider holds what every draft root has checked
+// out, so the sidebar's draft overlays on a workspace folder show the same
+// draft as the document area.
 function WorkspaceScope(props: { enabled: boolean; children: JSX.Element }) {
+  const [checkoutElement, setCheckoutElement] = createSignal<HTMLElement>();
+  const isCheckoutReady = useFrameProviderReady(
+    "patchwork-checkout-provider",
+    checkoutElement
+  );
   const [providerElement, setProviderElement] = createSignal<HTMLElement>();
   const isProviderReady = useFrameProviderReady(
     "patchwork-workspace-provider",
     providerElement
   );
   return (
-    <Show when={props.enabled} fallback={props.children}>
-      <patchwork-view
-        component="patchwork-workspace-provider"
-        ref={setProviderElement}
-      >
-        <Show when={isProviderReady()}>{props.children}</Show>
-      </patchwork-view>
-    </Show>
+    <patchwork-view
+      component="patchwork-checkout-provider"
+      ref={setCheckoutElement}
+    >
+      <Show when={props.enabled} fallback={props.children}>
+        <Show when={isCheckoutReady()}>
+          <patchwork-view
+            component="patchwork-workspace-provider"
+            ref={setProviderElement}
+          >
+            <Show when={isProviderReady()}>{props.children}</Show>
+          </patchwork-view>
+        </Show>
+      </Show>
+    </patchwork-view>
   );
 }
 

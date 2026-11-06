@@ -21,6 +21,24 @@ export function entryReadUrl(url: AutomergeUrl, entry: CloneEntry): AutomergeUrl
   });
 }
 
+// Where a draft reads `url`, keeping any heads it's pinned to: the draft's
+// version shares the original's history, so the same heads name the same
+// version in it.
+export function draftReadUrl(
+  clones: Record<AutomergeUrl, CloneEntry> | undefined,
+  url: AutomergeUrl
+): AutomergeUrl {
+  const { documentId, heads } = parseAutomergeUrl(url);
+  const entry = clones?.[stringifyAutomergeUrl({ documentId })];
+  if (!entry) return url;
+  if (!heads) return entryReadUrl(url, entry);
+  const read = entry.cloneUrl ?? entry.source ?? url;
+  return stringifyAutomergeUrl({
+    documentId: parseAutomergeUrl(read).documentId,
+    heads,
+  });
+}
+
 // Clone `handle`'s doc as of `to`. When `to` is where the doc already is,
 // that's a plain clone.
 export function cloneAt(

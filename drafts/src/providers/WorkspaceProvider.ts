@@ -12,14 +12,14 @@ import {
 
 import type { DraftDoc, HasDrafts } from "../draft-types.js";
 import { canonicalUrl } from "../clone-policy.js";
-import { entryReadUrl } from "../draft-clones.js";
+import { draftReadUrl, entryReadUrl } from "../draft-clones.js";
 import { baseRepo } from "../draft-repo.js";
 import { childrenOf, watchDocTree, type DocTree } from "../doc-tree.js";
 import { isWorkspaceFolder } from "../folder-links.js";
 import { readHashParam, writeHashParams } from "../hash-params.js";
 
 const WORKSPACE_ROOT_SELECTOR = "workspace:root";
-const WORKSPACE_DRAFT_SELECTOR = "workspace:draft";
+const CHECKOUTS_SELECTOR = "checkouts";
 const SELECTED_VIEW_SELECTOR = "patchwork:selected-view";
 const OPEN_DOCUMENT_EVENT = "patchwork:open-document";
 
@@ -53,20 +53,21 @@ type OpenDetail = {
 //     current workspace if the doc is in it, and is otherwise its own root.
 // Nothing is answered until that's settled, so a doc never shows in the wrong
 // root first. The answer is stamped back into the URL as `workspace=`, and
-// when the root stayed, the draft its provider has checked out goes back
-// into `draft=` (core's router drops it whenever another doc opens).
+// unless the URL already names a draft, the one the frame's checkout provider
+// has for the root goes into `draft=` (core's router drops it whenever
+// another doc opens).
 //
-// Read-only: it never creates or edits a document. Draft providers send up
-// their checked-out draft as `workspace:draft`; the current workspace's tree
-// is read through it, so docs that only exist on that draft count too.
+// Read-only: it never creates or edits a document. Workspace trees, and the
+// folders an open went through, are read through the draft each workspace
+// has checked out, so docs that only exist on that draft count too.
 export const WorkspaceProvider = (element: HTMLElement, inherited: Repo) => {
   const repo = baseRepo(inherited);
 
   let disposed = false;
   let latest: WorkspaceRoot | null = null;
   let current: Workspace | null = null;
-  let checkedOut: { root: AutomergeUrl; draft: AutomergeUrl | null } | null =
-    null;
+  // What each root has checked out, from the checkout provider.
+  let checkouts: Record<AutomergeUrl, AutomergeUrl | null> = {};
   let resolving = 0;
   // `${workspace} ${doc}` for every open let through, so its selection
   // doesn't walk the workspace again.
@@ -83,12 +84,21 @@ export const WorkspaceProvider = (element: HTMLElement, inherited: Repo) => {
     { type: SELECTED_VIEW_SELECTOR },
     (view) => void select(view)
   );
+  const unsubscribeCheckouts = subscribe<Record<AutomergeUrl, AutomergeUrl | null>>(
+    element,
+    { type: CHECKOUTS_SELECTOR },
+    (next) => {
+      checkouts = next;
+      if (current) current.readThrough(checkouts[current.root] ?? null);
+    }
+  );
 
   return () => {
     disposed = true;
     element.removeEventListener(OPEN_DOCUMENT_EVENT, onOpen);
     element.removeEventListener("patchwork:subscribe", onSubscribe);
     unsubscribeSelectedView();
+    unsubscribeCheckouts();
     current?.dispose();
     subscribers.clear();
   };
@@ -122,30 +132,14 @@ export const WorkspaceProvider = (element: HTMLElement, inherited: Repo) => {
   }
 
   function onSubscribe(event: SubscribeEvent): void {
-    const { selector } = event.detail;
-    if (selector.type === WORKSPACE_ROOT_SELECTOR) {
-      accept<WorkspaceRoot>(event, (respond) => {
-        subscribers.add(respond);
-        if (latest) respond(latest);
-        return () => {
-          subscribers.delete(respond);
-        };
-      });
-      return;
-    }
-    if (selector.type === WORKSPACE_DRAFT_SELECTOR) {
-      const { root, draft } = selector as { root?: unknown; draft?: unknown };
-      if (typeof root !== "string" || !isValidAutomergeUrl(root)) return;
-      accept<boolean>(event, (respond) => {
-        checkedOut = {
-          root,
-          draft:
-            typeof draft === "string" && isValidAutomergeUrl(draft) ? draft : null,
-        };
-        if (current?.root === root) current.readThrough(checkedOut.draft);
-        respond(true);
-      });
-    }
+    if (event.detail.selector.type !== WORKSPACE_ROOT_SELECTOR) return;
+    accept<WorkspaceRoot>(event, (respond) => {
+      subscribers.add(respond);
+      if (latest) respond(latest);
+      return () => {
+        subscribers.delete(respond);
+      };
+    });
   }
 
   async function select(view: SelectedView | null): Promise<void> {
@@ -194,10 +188,10 @@ export const WorkspaceProvider = (element: HTMLElement, inherited: Repo) => {
       current?.dispose();
       current = workspace;
     }
-    const stayed = checkedOut?.root === rootUrl && !readHashParam("draft");
+    const remembered = readHashParam("draft") ? null : checkouts[rootUrl];
     writeHashParams({
       workspace: workspace?.root ?? null,
-      ...(stayed ? { draft: checkedOut!.draft } : {}),
+      ...(remembered ? { draft: remembered } : {}),
     });
     if (latest?.docUrl === docUrl && latest.rootUrl === rootUrl) return;
     latest = { docUrl, rootUrl };
@@ -208,8 +202,10 @@ export const WorkspaceProvider = (element: HTMLElement, inherited: Repo) => {
   // went through, each has to link the next, and the topmost workspace among
   // them (or the doc itself) is the one it's in: read here rather than taken
   // from the claim, since the sidebar's copy of a folder can lag behind it
-  // becoming a workspace. Without them, the claimed workspace has to have the
-  // doc in its tree.
+  // becoming a workspace. Everything beneath that workspace is read through
+  // the draft it has checked out, as the sidebar shows it, and a folder in
+  // the path may be pinned to the version that still lists a removed doc.
+  // Without a path, the claimed workspace has to have the doc in its tree.
   async function placed(
     detail: OpenDetail
   ): Promise<{ workspace: AutomergeUrl | null } | null> {
@@ -222,16 +218,25 @@ export const WorkspaceProvider = (element: HTMLElement, inherited: Repo) => {
         if (workspace !== current) workspace.dispose();
         return ok ? { workspace: root } : null;
       }
-      const chain = [...detail.path.map(canonicalUrl), doc];
-      const docs = await Promise.all(
-        chain.map((url) => repo.find<HasDrafts>(url).then((h) => h.doc()))
-      );
-      for (let i = 0; i < chain.length - 1; i++) {
-        const children = await childrenOf(docs[i]);
-        if (!children.some((child) => child.url === chain[i + 1])) return null;
+      const chain = [...detail.path, doc];
+      const docs: HasDrafts[] = [];
+      let workspace: AutomergeUrl | null = null;
+      let clones: DraftDoc["clones"] | undefined;
+      for (const url of chain) {
+        if (!workspace && (await isWorkspace(canonicalUrl(url)))) {
+          workspace = canonicalUrl(url);
+          const draft = checkouts[workspace];
+          if (draft) clones = (await repo.find<DraftDoc>(draft)).doc()?.clones;
+        }
+        const read = clones ? draftReadUrl(clones, url) : url;
+        docs.push((await repo.find<HasDrafts>(read)).doc());
       }
-      const at = docs.findIndex(isWorkspaceFolder);
-      return { workspace: at < 0 ? null : chain[at] };
+      for (let i = 0; i < chain.length - 1; i++) {
+        const next = canonicalUrl(chain[i + 1]);
+        const children = await childrenOf(docs[i]);
+        if (!children.some((child) => child.url === next)) return null;
+      }
+      return { workspace };
     } catch {
       return null;
     }
@@ -246,7 +251,8 @@ export const WorkspaceProvider = (element: HTMLElement, inherited: Repo) => {
   }
 
   function openWorkspace(root: AutomergeUrl): Workspace {
-    return watchWorkspace(repo, root, readHashParam("draft"));
+    const draft = root in checkouts ? checkouts[root] : readHashParam("draft");
+    return watchWorkspace(repo, root, draft);
   }
 };
 
