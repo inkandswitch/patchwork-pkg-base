@@ -285,6 +285,45 @@ function SyncServer(props: { connected: boolean }) {
 }
 
 /**
+ * A tool that's registered but whose code didn't load: an import that
+ * failed, a file that didn't arrive. patchwork-view only shows its loading dot
+ * then, for good, so this says which tool, what went wrong, and lets you ask
+ * again.
+ */
+export function ToolFailedCard(props: {
+  url: AutomergeUrl;
+  name: string;
+  error: string;
+  onRetry: () => Promise<void>;
+}) {
+  const [trying, setTrying] = createSignal(false);
+  const retry = async () => {
+    setTrying(true);
+    try {
+      await props.onRetry();
+    } finally {
+      setTrying(false);
+    }
+  };
+  return (
+    <Card url={props.url} title={`can't load ${props.name}`}>
+      <p>the doc is here, but the tool that shows it didn't load.</p>
+      <p class="doc-card__notice">{props.error}</p>
+      <div class="doc-card__actions">
+        <button
+          type="button"
+          class="doc-card__button doc-card__button--primary"
+          disabled={trying()}
+          onClick={() => void retry()}
+        >
+          {trying() ? "trying…" : "try again"}
+        </button>
+      </div>
+    </Card>
+  );
+}
+
+/**
  * A url the repo can't read as a doc's address at all. Nothing will make it
  * load, so there's nothing to try again: the link itself needs fixing.
  */

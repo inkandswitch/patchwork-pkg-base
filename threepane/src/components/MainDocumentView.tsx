@@ -24,6 +24,7 @@ import {
   Finding,
   InvalidUrlCard,
   NoToolCard,
+  ToolFailedCard,
   UnavailableCard,
 } from "./DocumentCards";
 
@@ -207,7 +208,7 @@ function DocumentView(props: {
     const doc = found.doc;
     const type = doc ? getType(doc) : undefined;
     // no datatype at all: patchwork-view says what's wrong with it
-    if (!type) return { state: "open" as const };
+    if (!type) return { state: "open" as const, toolId: undefined };
 
     let id = asked();
     let anything: { id: string; name: string } | undefined;
@@ -219,7 +220,7 @@ function DocumentView(props: {
         anything = { id: fallback.id, name: fallback.name };
       else if (fallback) id = fallback.id;
     }
-    if (id && tools.get(id)) return { state: "open" as const };
+    if (id && tools.get(id)) return { state: "open" as const, toolId: id };
     return {
       state: "no-tool" as const,
       type,
@@ -229,6 +230,44 @@ function DocumentView(props: {
   });
 
   const state = createMemo(() => view().state);
+
+  // the tool the doc opens with, once it's known
+  const openTool = createMemo(() => {
+    const v = view();
+    return v.state === "open" ? v.toolId : undefined;
+  });
+  // a tool whose code fails to load leaves patchwork-view on its loading dot
+  // for good, so it's loaded here too, and a failure gets a card instead
+  const [toolError, setToolError] = createSignal<{
+    id: string;
+    message: string;
+  }>();
+  async function loadTool(id: string): Promise<boolean> {
+    try {
+      await tools.load(id);
+      if (openTool() === id) setToolError(undefined);
+      return true;
+    } catch (error) {
+      if (openTool() === id) {
+        setToolError({
+          id,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return false;
+    }
+  }
+  createEffect(() => {
+    const id = openTool();
+    setToolError(undefined);
+    if (id) void loadTool(id);
+  });
+  // the registry forgets a failed load, so this asks again; patchwork-view
+  // gave up on it, so it gets a fresh start once the tool is here
+  async function retryTool() {
+    const id = toolError()?.id;
+    if (id && (await loadTool(id))) setAttempt((n) => n + 1);
+  }
   const noTool = createMemo(() => {
     const v = view();
     return v.state === "no-tool" ? v : undefined;
@@ -252,7 +291,9 @@ function DocumentView(props: {
       {/* the view stays put from unavailable through to open, so whatever it
           was doing to recover carries on. not keyed on the view memo (a new
           object on every registry change): it follows tool-id by itself */}
-      <Show when={state() === "open" || state() === "unavailable"}>
+      <Show
+        when={(state() === "open" && !toolError()) || state() === "unavailable"}
+      >
         <Show when={attempt() + 1} keyed>
           {(_attempt) => (
             <patchwork-view doc-url={props.url} tool-id={asked()} />
@@ -261,6 +302,16 @@ function DocumentView(props: {
       </Show>
       <Show when={state() === "finding"}>
         <Finding />
+      </Show>
+      <Show when={toolError()}>
+        {(failed) => (
+          <ToolFailedCard
+            url={props.url}
+            name={tools.get(failed().id)?.name ?? failed().id}
+            error={failed().message}
+            onRetry={retryTool}
+          />
+        )}
       </Show>
       <Show when={state() === "invalid"}>
         <InvalidUrlCard url={props.url} />
