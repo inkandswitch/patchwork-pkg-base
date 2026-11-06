@@ -177,6 +177,19 @@ export function LlmConfigTray(element: HTMLElement) {
   document.addEventListener("click", onDocClick);
   document.addEventListener("keydown", onKey);
 
+  // Loading on open makes the first click wait on the fetch, so warm it once
+  // things are idle (still off the boot path, so the button never waits on
+  // it). The button's hover/focus preload covers an idle that never comes.
+  const preload = () => void loadLlm().catch(() => {});
+  let cancelIdle: () => void;
+  if (typeof requestIdleCallback === "function") {
+    const id = requestIdleCallback(preload);
+    cancelIdle = () => cancelIdleCallback(id);
+  } else {
+    const id = setTimeout(preload, 0);
+    cancelIdle = () => clearTimeout(id);
+  }
+
   const dispose = render(
     () => (
       <div class="llm-config-tray">
@@ -185,6 +198,8 @@ export function LlmConfigTray(element: HTMLElement) {
           class="llm-config-tray-button"
           title="LLM model & config"
           aria-label="LLM model & config"
+          onPointerEnter={preload}
+          onFocus={preload}
           onClick={(event) => {
             event.stopPropagation();
             if (open()) closePicker();
@@ -236,6 +251,7 @@ export function LlmConfigTray(element: HTMLElement) {
   );
 
   return () => {
+    cancelIdle();
     closePicker();
     dispose();
     style.remove();

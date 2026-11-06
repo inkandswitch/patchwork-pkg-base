@@ -10,6 +10,7 @@ import {
   type JSX,
 } from "solid-js";
 import { Portal } from "solid-js/web";
+import { Chevron } from "./icons.tsx";
 
 export type Anchor = DOMRect | { x: number; y: number };
 export type Placement = "bottom-start" | "right-start";
@@ -230,6 +231,7 @@ export function SubMenu(props: { label: JSX.Element; children: JSX.Element }) {
         }}
       >
         {props.label}
+        <Chevron class="popmenu__sub-chevron" aria-hidden="true" />
       </div>
       <Show when={open()}>
         <Menu

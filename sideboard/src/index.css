@@ -601,6 +601,15 @@ button {
   outline: none;
   cursor: var(--studio-cursor-default, default);
 }
+/* says "there's more this way" on rows that open a submenu */
+.popmenu__sub-chevron {
+  margin-inline-start: auto;
+  margin-inline-end: -4px;
+  width: 14px;
+  height: 14px;
+  flex: none;
+  opacity: 0.6;
+}
 .popmenu__sub-trigger[data-expanded] {
   background-color: var(--document-list-fill-offset);
   color: var(--document-list-line);

@@ -10,6 +10,7 @@ import {
   createSignal,
   lazy,
   onCleanup,
+  onMount,
   Show,
   Suspense,
 } from "solid-js";
@@ -63,6 +64,21 @@ export function DocumentListPanel(props: {
     repo: props.repo,
   });
   const [filter, setFilter] = createSignal("");
+
+  // The row menu is split out to keep it off the initial load, but fetching it
+  // on the first right-click means that click does nothing until the chunk
+  // arrives (and with a slow module load, looks like it never opened). Fetch
+  // it once things are idle so it's there before anyone right-clicks.
+  onMount(() => {
+    const preload = () => void ItemMenu.preload();
+    if (typeof requestIdleCallback === "function") {
+      const id = requestIdleCallback(preload);
+      onCleanup(() => cancelIdleCallback(id));
+    } else {
+      const id = setTimeout(preload, 0);
+      onCleanup(() => clearTimeout(id));
+    }
+  });
 
   // Optimistic loading: show the skeleton from the moment the panel mounts and
   // keep it up until the root folder handle has actually resolved. Reading the
