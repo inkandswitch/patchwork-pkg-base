@@ -1,5 +1,14 @@
 import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
+import * as elements from "@inkandswitch/patchwork-elements";
 import { isKeyhiveDoc } from "@inkandswitch/patchwork-plugins";
+
+// patchwork-view's own access check, from a patchwork that has one to share:
+// it counts a doc made public, which this identity's keyhive can't see
+const gateCheck = (
+  elements as {
+    hasActiveAccess?: (hive: never, url: AutomergeUrl) => Promise<boolean>;
+  }
+).hasActiveAccess;
 
 /** The parts of the page's keyhive this reads. patchwork's setup() puts it on window.hive. */
 type Hive = {
@@ -20,9 +29,9 @@ export const pageHive = (): Hive | undefined =>
 
 /**
  * Whether this identity may open `url`, decided the way patchwork-view's gate
- * decides it (patchwork-elements' activeAccessForDoc), so a "not shared with
- * you" card shows exactly when the view won't open. Undefined when keyhive
- * doesn't govern the doc, or can't say.
+ * decides it, so a "not shared with you" card shows exactly when the view
+ * won't open. An older patchwork's gate only counts the identity's own
+ * access. Undefined when keyhive doesn't govern the doc, or can't say.
  */
 export async function canOpen(
   hive: Hive,
@@ -30,6 +39,7 @@ export async function canOpen(
 ): Promise<boolean | undefined> {
   if (!isKeyhiveDoc(url)) return undefined;
   try {
+    if (gateCheck) return await gateCheck(hive as never, url);
     const id = hive.active.individual.id;
     const access = hive.bestAccessForDoc
       ? await hive.bestAccessForDoc(id, url)

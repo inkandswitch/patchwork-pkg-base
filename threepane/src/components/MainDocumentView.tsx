@@ -30,6 +30,9 @@ import {
 } from "./DocumentCards";
 import { canOpen, cardText, onKeyhiveOps, pageHive } from "./keyhiveAccess";
 
+// how often a doc that isn't shared is checked again, besides on keyhive ops
+const RECHECK_NOT_SHARED_MS = 5_000;
+
 interface MainDocumentViewProps {
   viewKey: Accessor<string | undefined>;
   selectedDocUrl: Accessor<AutomergeUrl | undefined>;
@@ -282,9 +285,15 @@ function DocumentView(props: {
       });
     check();
     const off = onKeyhiveOps(hive, check);
+    // a doc going public isn't an op this identity's keyhive hears of, so
+    // while it says no, look again now and then too
+    const poll = setInterval(() => {
+      if (shared() === false) check();
+    }, RECHECK_NOT_SHARED_MS);
     onCleanup(() => {
       live = false;
       off();
+      clearInterval(poll);
     });
   });
 
