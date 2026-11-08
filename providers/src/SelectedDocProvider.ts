@@ -28,16 +28,16 @@ export const SelectedDocProvider = (element: HTMLElement) => {
   const docSubscribers = new Set<(urls: AutomergeUrl[]) => void>();
   const viewSubscribers = new Set<(view: SelectedView | null) => void>();
 
+  // The hash says what's open, so a hash with no doc in it (Back to the bare
+  // site, say) means nothing is.
   const updateSelectedViewFromLocation = () => {
-    const next = selectedViewFromLocation();
-    if (!next) return;
-    updateSelectedView(next);
+    updateSelectedView(selectedViewFromLocation());
   };
 
-  const updateSelectedView = (next: SelectedView) => {
+  const updateSelectedView = (next: SelectedView | null) => {
     if (
-      selectedView?.url === next.url &&
-      selectedView?.toolId === next.toolId
+      selectedView?.url === next?.url &&
+      selectedView?.toolId === next?.toolId
     ) {
       return;
     }
