@@ -1,16 +1,16 @@
-import {createMemo} from "solid-js"
 import type {FileDoc} from "../types"
-import {createBinaryUrl} from "../utils"
 import {isBinaryFileDoc} from "../datatype"
+import {createObjectUrl} from "./object-url"
 
 export type ImageFileDoc = FileDoc & {
 	extension: "svg" | "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp"
 }
 
 export function ImageFileViewer(props: {doc: FileDoc}) {
-	const imgUrl = createMemo(() => {
+	const imgUrl = createObjectUrl(() => {
 		if (isBinaryFileDoc(props.doc)) {
-			return createBinaryUrl(props.doc.content, props.doc.mimeType)
+			const type = props.doc.mimeType
+			return new Blob([props.doc.content as BlobPart], type ? {type} : {})
 		}
 		return undefined
 	})

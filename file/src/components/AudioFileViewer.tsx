@@ -1,6 +1,6 @@
-import {createMemo} from "solid-js"
 import type {FileDoc} from "../types"
 import {isBinaryFileDoc} from "../datatype"
+import {createObjectUrl} from "./object-url"
 
 export const isAudioFile = (doc: FileDoc) => {
 	// Require binary content: audio is inherently binary, so a string-backed doc
@@ -9,11 +9,11 @@ export const isAudioFile = (doc: FileDoc) => {
 }
 
 export function AudioFileViewer(props: {doc: FileDoc}) {
-	const audioUrl = createMemo(() => {
+	const audioUrl = createObjectUrl(() => {
 		if (isBinaryFileDoc(props.doc)) {
-			return URL.createObjectURL(
-				new Blob([props.doc.content as BlobPart], {type: props.doc.mimeType})
-			)
+			return new Blob([props.doc.content as BlobPart], {
+				type: props.doc.mimeType,
+			})
 		}
 		return undefined
 	})

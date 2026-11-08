@@ -1,7 +1,6 @@
-import {createMemo} from "solid-js"
 import type {FileDoc} from "../types"
-import {createBinaryUrl} from "../utils"
 import {isBinaryFileDoc} from "../datatype"
+import {createObjectUrl} from "./object-url"
 
 export type PDFFileDoc = FileDoc & {
 	extension: "pdf"
@@ -15,11 +14,13 @@ export const isPDFFile = (doc: FileDoc): doc is PDFFileDoc => {
 }
 
 export function PDFFileViewer(props: {doc: FileDoc}) {
-	const pdfUrl = createMemo(() => {
+	const pdfUrl = createObjectUrl(() => {
 		if (isBinaryFileDoc(props.doc)) {
 			// Not props.doc.mimeType: isPDFFile also matches on the extension
 			// alone, so the stored mimeType may be missing or octet-stream.
-			return createBinaryUrl(props.doc.content, "application/pdf")
+			return new Blob([props.doc.content as BlobPart], {
+				type: "application/pdf",
+			})
 		}
 		return undefined
 	})
