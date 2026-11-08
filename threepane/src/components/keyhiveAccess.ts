@@ -31,22 +31,23 @@ export const pageHive = (): Hive | undefined =>
  * Whether this identity may open `url`, decided the way patchwork-view's gate
  * decides it, so a "not shared with you" card shows exactly when the view
  * won't open. An older patchwork's gate only counts the identity's own
- * access. Undefined when keyhive doesn't govern the doc, or can't say.
+ * access. A doc keyhive doesn't govern is "shared" (nothing holds it back);
+ * "unknown" is when the check itself failed, which is not the same as yes.
  */
 export async function canOpen(
   hive: Hive,
   url: AutomergeUrl
-): Promise<boolean | undefined> {
-  if (!isKeyhiveDoc(url)) return undefined;
+): Promise<"shared" | "not-shared" | "unknown"> {
+  if (!isKeyhiveDoc(url)) return "shared";
   try {
-    if (gateCheck) return await gateCheck(hive as never, url);
+    if (gateCheck) return (await gateCheck(hive as never, url)) ? "shared" : "not-shared";
     const id = hive.active.individual.id;
     const access = hive.bestAccessForDoc
       ? await hive.bestAccessForDoc(id, url)
       : await hive.accessForDoc(id, url);
-    return !!access;
+    return access ? "shared" : "not-shared";
   } catch {
-    return undefined;
+    return "unknown";
   }
 }
 
