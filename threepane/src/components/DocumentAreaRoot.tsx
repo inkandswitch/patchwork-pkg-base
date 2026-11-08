@@ -26,6 +26,7 @@ import {
   onMount,
   Show,
   type Accessor,
+  type JSX,
 } from "solid-js";
 import type { ToolSlot } from "../types";
 import {
@@ -249,63 +250,104 @@ function DraftDocumentArea(props: {
       isFocusProviderReady()
   );
 
+  // Components tagged `document-provider` (patch layers, say) sit inside the
+  // draft overlay and above everything else, so they can remap what the
+  // document views resolve while stacking over the draft.
+  const documentProviders = useTaggedComponents("document-provider");
+  const documentProviderIds = createMemo(
+    () => documentProviders().map((c) => c.id),
+    [],
+    {
+      equals: (a, b) =>
+        a.length === b.length && a.every((id, i) => id === b[i]),
+    }
+  );
+
   return (
     <patchwork-view
       component="patchwork-draft-overlay-provider"
       ref={setDraftOverlayProviderHost}
     >
-      <patchwork-view
-        component="patchwork-comments-provider"
-        ref={setCommentsProviderElement}
-      >
-        <patchwork-view
-          component="patchwork-focus-provider"
-          ref={setFocusProviderElement}
-        >
-          <Show when={areDocProvidersReady()}>
-            <div class="frame__main-column">
-              <div class="frame__doc-column">
-                <FrameTopBar
-                  docUrl={props.selectedDocUrl}
-                  toolSlots={props.doctitleSlots}
-                  isLeftCollapsed={props.isLeftCollapsed}
-                  hasContext={hasContext}
-                  isRightCollapsed={props.isRightSidebarCollapsed}
-                  onToggleRight={() =>
-                    props.setIsRightSidebarCollapsed((v) => !v)
-                  }
-                />
+      <ProviderStack
+        ids={documentProviderIds()}
+        render={() => (
+          <patchwork-view
+            component="patchwork-comments-provider"
+            ref={setCommentsProviderElement}
+          >
+            <patchwork-view
+              component="patchwork-focus-provider"
+              ref={setFocusProviderElement}
+            >
+              <Show when={areDocProvidersReady()}>
+                <div class="frame__main-column">
+                  <div class="frame__doc-column">
+                    <FrameTopBar
+                      docUrl={props.selectedDocUrl}
+                      toolSlots={props.doctitleSlots}
+                      isLeftCollapsed={props.isLeftCollapsed}
+                      hasContext={hasContext}
+                      isRightCollapsed={props.isRightSidebarCollapsed}
+                      onToggleRight={() =>
+                        props.setIsRightSidebarCollapsed((v) => !v)
+                      }
+                    />
 
-                <div class="main-area">
-                  <MainDocumentView
-                    viewKey={mainViewKey}
-                    selectedDocUrl={props.selectedDocUrl}
-                    toolId={props.selectedToolId}
-                    // Always pass a function ref. Passing `ref={undefined}`
-                    // (the isolated path, where no host ref is threaded)
-                    // makes Solid's component-ref codegen fall back to
-                    // assigning the prop, which throws on the getter-only
-                    // reactive props object. A no-op wrapper avoids that.
-                    ref={(el) => props.setMainDocElement?.(el)}
-                  />
+                    <div class="main-area">
+                      <MainDocumentView
+                        viewKey={mainViewKey}
+                        selectedDocUrl={props.selectedDocUrl}
+                        toolId={props.selectedToolId}
+                        // Always pass a function ref. Passing `ref={undefined}`
+                        // (the isolated path, where no host ref is threaded)
+                        // makes Solid's component-ref codegen fall back to
+                        // assigning the prop, which throws on the getter-only
+                        // reactive props object. A no-op wrapper avoids that.
+                        ref={(el) => props.setMainDocElement?.(el)}
+                      />
+                    </div>
+                  </div>
+
+                  <Show when={hasContext()}>
+                    <ContextSidebar
+                      selectedToolId={props.selectedContextToolId}
+                      setSelectedToolId={props.setSelectedContextToolId}
+                      isCollapsed={props.isRightSidebarCollapsed}
+                      width={props.rightSidebarWidth}
+                      onMouseDown={props.handleMouseDown}
+                      onToggleClick={props.handleToggleClick}
+                      onCollapse={() => props.setIsRightSidebarCollapsed(true)}
+                    />
+                  </Show>
                 </div>
-              </div>
-
-              <Show when={hasContext()}>
-                <ContextSidebar
-                  selectedToolId={props.selectedContextToolId}
-                  setSelectedToolId={props.setSelectedContextToolId}
-                  isCollapsed={props.isRightSidebarCollapsed}
-                  width={props.rightSidebarWidth}
-                  onMouseDown={props.handleMouseDown}
-                  onToggleClick={props.handleToggleClick}
-                  onCollapse={() => props.setIsRightSidebarCollapsed(true)}
-                />
               </Show>
-            </div>
-          </Show>
-        </patchwork-view>
-      </patchwork-view>
+            </patchwork-view>
+          </patchwork-view>
+        )}
+      />
     </patchwork-view>
+  );
+}
+
+// Mounts each provider component inside the one before it, rendering what's
+// beneath only once each has mounted, so nothing resolves around it.
+function ProviderStack(props: {
+  ids: readonly string[];
+  render: () => JSX.Element;
+}): JSX.Element {
+  return (
+    <Show when={props.ids[0]} keyed fallback={props.render()}>
+      {(id) => {
+        const [host, setHost] = createSignal<HTMLElement>();
+        const ready = useProviderReady(id, host);
+        return (
+          <patchwork-view component={id} ref={setHost}>
+            <Show when={ready()}>
+              <ProviderStack ids={props.ids.slice(1)} render={props.render} />
+            </Show>
+          </patchwork-view>
+        );
+      }}
+    </Show>
   );
 }
