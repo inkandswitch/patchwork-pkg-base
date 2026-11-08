@@ -25,6 +25,13 @@ import {Lightbox} from "./Lightbox"
 // libraries/patchwork-worker/README.md.
 import {connectWorkerClient} from "@grjte/patchwork-worker/client.js"
 import {generateId} from "../lib/helpers"
+import {
+	step as stepComputerHost,
+	effectsOf as computerHostEffects,
+	type HostState,
+	type HostEvent,
+	type HostEffect,
+} from "../lib/computer-host-machine"
 import {automergeUrlToServiceWorkerUrl} from "@inkandswitch/patchwork-filesystem"
 import {transcribeVoiceNote} from "../lib/transcription"
 import {reloadPreviewIframe} from "../lib/preview-frame"
@@ -204,10 +211,9 @@ export function ChatRoot(props: {
 	let computerListenerCleanup: (() => void) | null = null
 	// Single-host: only one tab should respond as Computer
 	const myInstanceId = generateId()
-	let heartbeatInterval: any = null
-	let stalenessWatchInterval: any = null
+	let hostTimer: any = null // heartbeat (when hosting) / staleness check (when watching)
+	let pingTimer: any = null
 	const HEARTBEAT_INTERVAL = 15000
-	const STALE_THRESHOLD = 45000 // 3 missed heartbeats = stale
 	const PING_TIMEOUT = 2000 // wait 2s for pong before claiming
 	const RESPONSE_TIMEOUT = 8000 // wait 8s for computer to start responding
 
@@ -1968,15 +1974,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 			}
 			setComputerActive(false)
 			setComputerAutoMode(false)
-			if (heartbeatInterval) {
-				clearInterval(heartbeatInterval)
-				heartbeatInterval = null
-			}
-			if (computerListenerCleanup) {
-				computerListenerCleanup()
-				computerListenerCleanup = null
-			}
-			computerListenerActive = false
+			sendHost({type: "kicked"})
 			props.handle.change((d: any) => {
 				d.hasComputer = false
 				delete d.computerInstanceId
@@ -2039,8 +2037,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 				return
 			}
 			setComputerActive(true)
-			claimComputerHost()
-			startComputerListener()
+			takeComputerHost()
 			const verb = sub === "pwn" ? "pwned" : "took ownership of"
 			sendComputerMessage(
 				(me || "you") +
@@ -2062,7 +2059,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 			return
 		}
 		setComputerActive(true)
-		claimComputerHost()
+		takeComputerHost()
 		sendComputerMessage(
 			[
 				"hello! i'm computer, a computer program. mention @computer or reply to my messages and i'll respond.",
@@ -2073,9 +2070,10 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 				"• /computer kick — send me away",
 			].join("\n")
 		)
-		startComputerListener()
 	}
 
+	// Write our claim into the doc. The election itself lives in
+	// lib/computer-host-machine.ts; this is only the doc write.
 	function claimComputerHost() {
 		props.handle.change((d: any) => {
 			d.hasComputer = true
@@ -2086,20 +2084,6 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 			const m = modelLabel()
 			if (m) d.computerModel = m
 		})
-		// We're the host now, stop watching for staleness
-		if (stalenessWatchInterval) {
-			clearInterval(stalenessWatchInterval)
-			stalenessWatchInterval = null
-		}
-		if (heartbeatInterval) clearInterval(heartbeatInterval)
-		heartbeatInterval = setInterval(() => {
-			const d = props.handle.doc() as any
-			if (d?.computerInstanceId === myInstanceId) {
-				props.handle.change((dd: any) => {
-					dd.computerHeartbeat = Date.now()
-				})
-			}
-		}, HEARTBEAT_INTERVAL)
 	}
 
 	function isComputerHost(): boolean {
@@ -2107,9 +2091,39 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 		return d?.computerInstanceId === myInstanceId
 	}
 
+	// Timers started on behalf of the listener (claim waits, transcription
+	// watches). stopComputerListener cancels them all.
+	const computerTimers = new Set<() => void>()
+	let computerListenerGen = 0
+	function computerLater(ms: number, fn: () => void, onStop?: () => void) {
+		const t = setTimeout(() => {
+			computerTimers.delete(stop)
+			fn()
+		}, ms)
+		const stop = () => {
+			clearTimeout(t)
+			computerTimers.delete(stop)
+			onStop?.()
+		}
+		computerTimers.add(stop)
+	}
+	function cancelComputerTimers() {
+		for (const stop of [...computerTimers]) stop()
+	}
+	function stopComputerListener() {
+		computerListenerGen++
+		cancelComputerTimers()
+		if (computerListenerCleanup) {
+			computerListenerCleanup()
+			computerListenerCleanup = null
+		}
+		computerListenerActive = false
+	}
+
 	function startComputerListener() {
 		if (computerListenerActive) return
 		computerListenerActive = true
+		const gen = ++computerListenerGen
 		let lastCheckedIdx = (props.handle.doc() as any)?.messages?.length || 0
 		const pendingQueue: string[] = []
 		let processing = false
@@ -2120,6 +2134,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 			const repo = (props.element as any).repo
 			try {
 				while (pendingQueue.length > 0) {
+					if (gen !== computerListenerGen) break
 					const url = pendingQueue.shift()!
 					if (computerRespondedToIds.has(url) || !repo) continue
 					try {
@@ -2187,7 +2202,11 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 										}
 									}
 									rh.on("change", cb)
-									setTimeout(() => rh.off("change", cb), 30000)
+									computerLater(
+										30000,
+										() => rh.off("change", cb),
+										() => rh.off("change", cb)
+									)
 									continue // skip for now, will re-check when transcription arrives
 								}
 							} catch {}
@@ -2212,7 +2231,8 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 								d.computerClaimedBy = myInstanceId
 							})
 							// Brief delay for CRDT sync
-							await new Promise(r => setTimeout(r, 300))
+							await new Promise<void>(r => computerLater(300, r, r))
+							if (gen !== computerListenerGen) break // stopped meanwhile
 							// Re-check claim after sync
 							const fresh = mh.doc() as any
 							if (fresh.computerClaimedBy !== myInstanceId) {
@@ -2246,7 +2266,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 				processing = false
 			}
 			// Items may have arrived while we were processing — drain again
-			if (pendingQueue.length > 0) {
+			if (pendingQueue.length > 0 && gen === computerListenerGen) {
 				console.log(
 					"[Computer] draining",
 					pendingQueue.length,
@@ -2386,6 +2406,15 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 
 		let currentStreamHandle: any = null
 		let tokenThrottleTimer: any = null
+		// An abort (stop button, unmount, lost hosting) must not leave timers
+		// that write to the doc afterwards.
+		abortController.signal.addEventListener("abort", () => {
+			if (inactivityTimer) clearTimeout(inactivityTimer)
+			if (tokenThrottleTimer) {
+				clearTimeout(tokenThrottleTimer)
+				tokenThrottleTimer = null
+			}
+		})
 
 		try {
 			const context = await assembleContext()
@@ -2801,79 +2830,145 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 		watchMsgCount = msgs.length
 	}
 
-	// Check if computer was previously active — ping to verify host is alive
+	// ---- Computer host election ----
+	// The state machine is lib/computer-host-machine.ts (pure). Everything here
+	// is the driver: it runs effects and reports back only by sending events.
+	let hostState: HostState = {kind: "none"}
+	let hostEpoch = 0
+	const hostLog: {
+		at: number
+		from: HostState
+		event: HostEvent
+		to: HostState
+	}[] = []
+	let hostNotice = ""
+	const nextEpoch = () => ++hostEpoch
+
+	function docView() {
+		const d = props.handle.doc() as any
+		return {
+			hasComputer: !!d?.hasComputer,
+			hostId: (d?.computerInstanceId as string | undefined) || null,
+			heartbeat:
+				typeof d?.computerHeartbeat === "number"
+					? (d.computerHeartbeat as number)
+					: null,
+			me: myInstanceId,
+			now: Date.now(),
+		}
+	}
+
+	function sendHost(event: HostEvent) {
+		const from = hostState
+		const to = stepComputerHost(from, event)
+		if (to === from) return
+		hostState = to
+		hostLog.push({at: Date.now(), from, event, to})
+		if (hostLog.length > 50) hostLog.shift()
+		if (rootRef) {
+			rootRef.setAttribute("data-computer-host", to.kind)
+			;(rootRef as any).__computerHostLog = hostLog
+		}
+		if (from.kind === "pinging" && pingTimer) {
+			clearTimeout(pingTimer)
+			pingTimer = null
+		}
+		for (const fx of computerHostEffects(from, to)) runHostEffect(fx)
+	}
+
+	function runHostEffect(fx: HostEffect) {
+		switch (fx) {
+			case "claim": {
+				const epoch = (hostState as {epoch: number}).epoch
+				try {
+					claimComputerHost()
+				} catch (e: any) {
+					hostNotice =
+						"computer couldn't take over hosting: " + (e?.message || e)
+					setLlmStatus(hostNotice)
+					sendHost({type: "claim-failed", epoch, now: Date.now()})
+					return
+				}
+				if (hostNotice && llmStatus() === hostNotice) setLlmStatus("")
+				hostNotice = ""
+				sendHost({type: "claimed", epoch})
+				return
+			}
+			case "release": {
+				const d = props.handle.doc() as any
+				if (d?.computerInstanceId === myInstanceId) {
+					props.handle.change((dd: any) => {
+						delete dd.computerInstanceId
+						delete dd.computerHeartbeat
+					})
+				}
+				return
+			}
+			case "ping": {
+				const epoch = (hostState as {epoch: number}).epoch
+				props.handle.broadcast({type: "computer-ping", from: myInstanceId})
+				pingTimer = setTimeout(() => {
+					pingTimer = null
+					sendHost({type: "ping-timeout", epoch})
+				}, PING_TIMEOUT)
+				return
+			}
+			case "start-heartbeat":
+				if (hostTimer) clearInterval(hostTimer)
+				hostTimer = setInterval(() => {
+					sendHost({type: "tick", epoch: nextEpoch(), ...docView()})
+					if (hostState.kind === "hosting") {
+						props.handle.change((dd: any) => {
+							dd.computerHeartbeat = Date.now()
+						})
+					}
+				}, HEARTBEAT_INTERVAL)
+				return
+			case "stop-heartbeat":
+				if (hostTimer) clearInterval(hostTimer)
+				hostTimer = null
+				return
+			case "start-listener":
+				startComputerListener()
+				return
+			case "stop-listener":
+				stopComputerListener()
+				return
+			case "abort-response":
+				computerAbort()?.abort()
+				return
+		}
+	}
+
+	// /computer invite, /computer own: take the host role regardless of who has it
+	function takeComputerHost() {
+		if (hostState.kind === "hosting") {
+			claimComputerHost() // already host: refresh owner/model/heartbeat
+			return
+		}
+		sendHost({type: "take", epoch: nextEpoch()})
+	}
+
+	// Doc changes tell us about being ousted, a released claim, or a kick
+	function onHostDocChange() {
+		sendHost({type: "tick", epoch: nextEpoch(), ...docView()})
+	}
+
+	// If computer was previously active: ask the listed host if it's alive
+	// (the machine claims only if it's missing, silent, or stale).
 	onMount(() => {
 		if (!has("computer")) return // the minimal `chat` tool has no Computer
 		props.handle.on("ephemeral-message", handleComputerEphemeral)
 		props.handle.on("change", onDocChangeWatchdog)
+		props.handle.on("change", onHostDocChange)
 		watchMsgCount = (props.handle.doc() as any)?.messages?.length || 0
 
 		const d = props.handle.doc() as any
 		if (d?.hasComputer) {
 			setComputerActive(true)
-			const heartbeat = d.computerHeartbeat || 0
-			const instanceId = d.computerInstanceId
-			if (!instanceId || Date.now() - heartbeat > STALE_THRESHOLD) {
-				// Previous host is obviously gone, claim immediately
-				claimComputerHost()
-				startComputerListener()
-			} else {
-				// Another host might be alive — ping to verify
-				// Start listener immediately so we don't miss messages during ping wait
-				claimComputerHost()
-				startComputerListener()
-				pingComputerHost().then(alive => {
-					if (alive && !isComputerHost()) {
-						// Another tab answered and is the real host — stand down
-						// (they would have reclaimed via their heartbeat)
-						startStalenessWatch()
-					}
-				})
-			}
+			sendHost({type: "mounted", epoch: nextEpoch(), ...docView()})
 		}
 	})
-
-	// Watch for the current computer host going stale and auto-claim
-	function startStalenessWatch() {
-		if (stalenessWatchInterval) return
-		stalenessWatchInterval = setInterval(() => {
-			const d = props.handle.doc() as any
-			if (!d?.hasComputer) {
-				clearInterval(stalenessWatchInterval)
-				stalenessWatchInterval = null
-				return
-			}
-			// If we're already the host, no need to watch
-			if (d.computerInstanceId === myInstanceId) {
-				clearInterval(stalenessWatchInterval)
-				stalenessWatchInterval = null
-				return
-			}
-			const heartbeat = d.computerHeartbeat || 0
-			if (Date.now() - heartbeat > STALE_THRESHOLD) {
-				clearInterval(stalenessWatchInterval)
-				stalenessWatchInterval = null
-				claimComputerHost()
-				startComputerListener()
-			}
-		}, HEARTBEAT_INTERVAL)
-	}
-
-	// Ping/pong liveness: actively verify the computer host is alive
-	let pingResolve: ((alive: boolean) => void) | null = null
-
-	function pingComputerHost(): Promise<boolean> {
-		return new Promise(resolve => {
-			pingResolve = resolve
-			props.handle.broadcast({type: "computer-ping", from: myInstanceId})
-			setTimeout(() => {
-				if (pingResolve === resolve) {
-					pingResolve = null
-					resolve(false)
-				}
-			}, PING_TIMEOUT)
-		})
-	}
 
 	function handleComputerEphemeral(data: {message: any}) {
 		const msg = data.message
@@ -2889,15 +2984,9 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 			props.handle.broadcast({type: "computer-pong", from: myInstanceId})
 		}
 
-		// Non-host receives pong — the host is alive
-		if (
-			msg.type === "computer-pong" &&
-			msg.from !== myInstanceId &&
-			pingResolve
-		) {
-			const resolve = pingResolve
-			pingResolve = null
-			resolve(true)
+		// Pong: the host is alive (only matters while we're pinging)
+		if (msg.type === "computer-pong" && msg.from !== myInstanceId) {
+			sendHost({type: "pong", heartbeat: docView().heartbeat, now: Date.now()})
 		}
 
 		// Watch for @computer messages going unanswered (any non-host tab monitors this)
@@ -2916,27 +3005,27 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 	function watchForResponse() {
 		if (isComputerHost()) return // we're the host, we'll handle it
 		if (responseWatchdog) clearTimeout(responseWatchdog)
-		responseWatchdog = setTimeout(async () => {
+		responseWatchdog = setTimeout(() => {
 			responseWatchdog = null
 			const d = props.handle.doc() as any
 			if (!d?.hasComputer || d.computerInstanceId === myInstanceId) return
 			// Ping to verify — maybe the host is just slow
-			const alive = await pingComputerHost()
-			if (!alive) {
-				claimComputerHost()
-				startComputerListener()
-			}
+			sendHost({type: "host-silent", epoch: nextEpoch()})
 		}, RESPONSE_TIMEOUT)
 	}
 
 	onCleanup(() => {
-		if (heartbeatInterval) {
-			clearInterval(heartbeatInterval)
-			heartbeatInterval = null
+		// stopped: releases the claim if we host, aborts the response, stops
+		// the listener and its timers
+		sendHost({type: "unmount"})
+		cancelComputerTimers()
+		if (hostTimer) {
+			clearInterval(hostTimer)
+			hostTimer = null
 		}
-		if (stalenessWatchInterval) {
-			clearInterval(stalenessWatchInterval)
-			stalenessWatchInterval = null
+		if (pingTimer) {
+			clearTimeout(pingTimer)
+			pingTimer = null
 		}
 		if (computerListenerCleanup) {
 			computerListenerCleanup()
@@ -2948,6 +3037,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 		}
 		props.handle.off("ephemeral-message", handleComputerEphemeral)
 		props.handle.off("change", onDocChangeWatchdog)
+		props.handle.off("change", onHostDocChange)
 	})
 
 	// ---- Lightbox ----
@@ -3215,13 +3305,14 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 								<Show when={has("typing")}>
 									<TypingBar />
 								</Show>
-								<Show when={computerAbort()}>
+								<Show when={computerAbort() || llmStatus()}>
 									<div
 										class="chat-llm-status"
 										style="display:flex;align-items:center;gap:8px;">
 										<Show when={llmStatus()}>
 											<span>{llmStatus()}</span>
 										</Show>
+										<Show when={computerAbort()}>
 										<button
 											class="chat-stop-btn"
 											on:pointerdown={(e: PointerEvent) => {
@@ -3238,6 +3329,7 @@ Never overwrite an entire long field with a key-assign (range:"content") just to
 											</svg>
 											Stop
 										</button>
+										</Show>
 									</div>
 								</Show>
 								<InputArea

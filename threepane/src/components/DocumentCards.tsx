@@ -18,8 +18,21 @@ import { readClaims } from "./packageInfo";
  * wobble. Each settles the main view the way patchwork-view would, so the
  * sidebar widgets don't sit waiting on a doc that isn't coming.
  */
+// why a card is up. `patchwork:no-tool` is what the sidebar waits on to stop
+// waiting, so every card still sends it, but says the real reason in `detail`
+export type CardReason =
+  | "no-tool"
+  | "unavailable"
+  | "invalid"
+  | "deleted"
+  | "not-shared"
+  | "cant-tell"
+  | "tool-failed"
+  | "tool-timeout";
+
 function Card(props: {
   url: AutomergeUrl;
+  reason: CardReason;
   title: string;
   children: JSX.Element;
 }) {
@@ -29,7 +42,7 @@ function Card(props: {
       new CustomEvent("patchwork:no-tool", {
         bubbles: true,
         composed: true,
-        detail: { url: props.url },
+        detail: { url: props.url, reason: props.reason },
       })
     );
   });
@@ -55,11 +68,11 @@ function Card(props: {
 }
 
 /** Still looking: a quiet dot, and only once it's been a moment. */
-export function Finding() {
+export function Finding(props: { label?: string }) {
   return (
     <div class="doc-card doc-card--finding" role="status">
       <span class="doc-card__dot" />
-      <span class="doc-card__finding-label">finding this doc…</span>
+      <span class="doc-card__finding-label">{props.label ?? "finding this doc…"}</span>
     </div>
   );
 }
@@ -115,7 +128,7 @@ export function NoToolCard(props: {
   };
 
   return (
-    <Card url={props.url} title="no tool for this">
+    <Card url={props.url} reason="no-tool" title="no tool for this">
       <p>
         it's a <code class="doc-card__code">{props.type}</code>.
         <br />
@@ -231,7 +244,7 @@ export function UnavailableCard(props: {
   }
 
   return (
-    <Card url={props.url} title="can't load this doc">
+    <Card url={props.url} reason="unavailable" title="can't load this doc">
       <p>
         we couldn't get it from anywhere we looked.
         <br />
@@ -303,7 +316,7 @@ export function NotSharedCard(props: { url: AutomergeUrl; card?: string }) {
     reset = setTimeout(() => setCopied(false), 1500);
   };
   return (
-    <Card url={props.url} title="not shared with you yet">
+    <Card url={props.url} reason="not-shared" title="not shared with you yet">
       <p>found it, but it's private.</p>
       <p>
         ask the owner to share it. if you're not in their phonebook, send them
@@ -347,7 +360,7 @@ export function ToolFailedCard(props: {
     }
   };
   return (
-    <Card url={props.url} title={`can't load ${props.name}`}>
+    <Card url={props.url} reason="tool-failed" title={`can't load ${props.name}`}>
       <p>the doc is here, but the tool that shows it didn't load.</p>
       <p class="doc-card__notice">{props.error}</p>
       <div class="doc-card__actions">
@@ -365,12 +378,68 @@ export function ToolFailedCard(props: {
 }
 
 /**
+ * A tool whose code never finished loading, neither arriving nor failing.
+ * patchwork-view would sit on its loading dot for good, so this says so, and
+ * lets you ask again.
+ */
+export function ToolTimeoutCard(props: {
+  url: AutomergeUrl;
+  name: string;
+  onRetry: () => void;
+}) {
+  return (
+    <Card url={props.url} reason="tool-timeout" title={`${props.name} is taking too long`}>
+      <p>the doc is here, but the tool that shows it hasn't finished loading.</p>
+      <p>it may just be slow, or it may be stuck. if it turns up, it'll open right here.</p>
+      <div class="doc-card__actions">
+        <button
+          type="button"
+          class="doc-card__button doc-card__button--primary"
+          onClick={() => props.onRetry()}
+        >
+          try again
+        </button>
+      </div>
+    </Card>
+  );
+}
+
+/**
+ * We couldn't work out whether this doc is shared with you, so we can't say
+ * it isn't, and can't say it is.
+ */
+export function CantTellCard(props: { url: AutomergeUrl }) {
+  return (
+    <Card url={props.url} reason="cant-tell" title="can't tell if you can open this">
+      <p>the doc is here, but we couldn't check whether it's shared with you.</p>
+      <p>
+        if it's shared, it'll open right here. if this stays, ask the owner to
+        check that they've shared it with you.
+      </p>
+    </Card>
+  );
+}
+
+/** A doc that was there, and has since been deleted. */
+export function DeletedCard(props: { url: AutomergeUrl }) {
+  return (
+    <Card url={props.url} reason="deleted" title="this doc was deleted">
+      <p>it was here once, but it's been deleted, so there's nothing to open.</p>
+      <p>if you think that's a mistake, ask whoever shared it with you.</p>
+      <p class="doc-card__aside">
+        <code class="doc-card__code doc-card__url">{props.url}</code>
+      </p>
+    </Card>
+  );
+}
+
+/**
  * A url the repo can't read as a doc's address at all. Nothing will make it
  * load, so there's nothing to try again: the link itself needs fixing.
  */
 export function InvalidUrlCard(props: { url: AutomergeUrl }) {
   return (
-    <Card url={props.url} title="this link is broken">
+    <Card url={props.url} reason="invalid" title="this link is broken">
       <p>
         a bit of it got lost or changed on the way here, so it can't point at
         any doc. maybe a character dropped when it was copied, or the link got

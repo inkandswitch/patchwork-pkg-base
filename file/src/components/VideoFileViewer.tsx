@@ -1,6 +1,6 @@
-import {createMemo} from "solid-js"
 import type {FileDoc} from "../types"
 import {isBinaryFileDoc} from "../datatype"
+import {createObjectUrl} from "./object-url"
 
 export const isVideoFile = (doc: FileDoc) => {
 	// Require binary content: a video is inherently binary, so a string-backed
@@ -12,11 +12,11 @@ export const isVideoFile = (doc: FileDoc) => {
 }
 
 export function VideoFileViewer(props: {doc: FileDoc}) {
-	const videoUrl = createMemo(() => {
+	const videoUrl = createObjectUrl(() => {
 		if (isBinaryFileDoc(props.doc)) {
-			return URL.createObjectURL(
-				new Blob([props.doc.content as BlobPart], {type: props.doc.mimeType})
-			)
+			return new Blob([props.doc.content as BlobPart], {
+				type: props.doc.mimeType,
+			})
 		}
 		return undefined
 	})
