@@ -73,6 +73,7 @@ export type ChangeGroup = {
   newestMemberUrl: AutomergeUrl;
   newestHash: string;
   actors: string[]; // deduped authors, newest contributor first
+  memberUrls: AutomergeUrl[]; // the member docs the span edited, most recently edited first
   additions: number; // summed across ALL member docs in the span
   deletions: number;
   changeCount: number; // for scrubber band geometry

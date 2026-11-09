@@ -110,6 +110,7 @@ type Row = {
   newestMemberUrl: AutomergeUrl;
   newestHash: string;
   actorEnds: Map<string, number>;
+  memberEnds: Map<AutomergeUrl, number>;
   additions: number;
   deletions: number;
   changeCount: number;
@@ -122,10 +123,17 @@ function startRow(memberUrl: AutomergeUrl, group: HistoryGroup): Row {
     newestMemberUrl: memberUrl,
     newestHash: decodeHeads(group.toHeads)[0],
     actorEnds: new Map([[group.actor, group.endTime]]),
+    memberEnds: new Map(edits(group) ? [[memberUrl, group.endTime]] : []),
     additions: group.additions,
     deletions: group.deletions,
     changeCount: group.changeCount,
   };
+}
+
+// Metadata-only groups (titles, `@patchwork` stamps) don't name their doc
+// as one the row edited.
+function edits(group: HistoryGroup): boolean {
+  return group.additions > 0 || group.deletions > 0;
 }
 
 function addToRow(row: Row, memberUrl: AutomergeUrl, group: HistoryGroup): void {
@@ -138,6 +146,12 @@ function addToRow(row: Row, memberUrl: AutomergeUrl, group: HistoryGroup): void 
     group.actor,
     Math.max(row.actorEnds.get(group.actor) ?? -Infinity, group.endTime)
   );
+  if (edits(group)) {
+    row.memberEnds.set(
+      memberUrl,
+      Math.max(row.memberEnds.get(memberUrl) ?? -Infinity, group.endTime)
+    );
+  }
   row.additions += group.additions;
   row.deletions += group.deletions;
   row.changeCount += group.changeCount;
@@ -153,6 +167,9 @@ function finishRow(row: Row): ChangeGroup {
     actors: [...row.actorEnds.entries()]
       .sort((a, b) => b[1] - a[1] || compare(a[0], b[0]))
       .map(([actor]) => actor),
+    memberUrls: [...row.memberEnds.entries()]
+      .sort((a, b) => b[1] - a[1] || compare(a[0], b[0]))
+      .map(([url]) => url),
     additions: row.additions,
     deletions: row.deletions,
     changeCount: row.changeCount,

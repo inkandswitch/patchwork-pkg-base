@@ -42,6 +42,7 @@ import {
   computeRangeEditCounts,
   getDocCreationTime,
 } from "./edit-counts";
+import { watchDocTitles } from "./doc-titles";
 import {
   combineHistories,
   sameMembers,
@@ -80,7 +81,7 @@ const HISTORY_CHILD_LIMIT = 100;
 
 // Shown in the panel footer, logged on load, and stamped into fork
 // diagnostics; bump on deploy to tell builds apart.
-const DRAFTS_VERSION = "0.0.51";
+const DRAFTS_VERSION = "0.0.53";
 
 // Logged at module load so the console shows which build is running even
 // before the panel renders.
@@ -1364,6 +1365,22 @@ function DraftChangesList(props: {
     });
   });
 
+  // Rows name the docs they edited only when there's more than one to tell
+  // apart.
+  const [titles, setTitles] = createSignal(new Map<AutomergeUrl, string>());
+  createEffect(() => {
+    const srcs = sources();
+    if (!srcs || srcs.length < 2) return setTitles(new Map());
+    onCleanup(
+      watchDocTitles(
+        srcs.map(({ member, handle }) => ({ url: member.url, handle })),
+        setTitles
+      )
+    );
+  });
+  const editedTitles = (group: ChangeGroup): string[] =>
+    group.memberUrls.flatMap((url) => titles().get(url) ?? []);
+
   // The rendered groups, newest-first. Metadata-only groups are filtered
   // from the UI.
   const timeGroups = createMemo<ChangeGroup[]>(() =>
@@ -1524,7 +1541,7 @@ function DraftChangesList(props: {
 
   // Move the baseline to `offset` within `group`, clamped so it never crosses
   // above (newer than) the head — the diff always reads old -> new. When the
-  // clamp bites, the baseline snaps to the head (an empty diff).
+  // clamp bites, the baseline snaps to the head's change (a one-change diff).
   const baselineScrubTo = (group: ChangeGroup, offset: number) => {
     const head = props.scrubber();
     if (!head) return;
@@ -1603,6 +1620,35 @@ function DraftChangesList(props: {
     return band.top + (Math.min(offset, count - 1) / count) * band.height;
   };
 
+  // The baseline stands for the moment *before* its change (the checkpoint
+  // diffs from the newest change strictly older than it), so it sits at the
+  // bottom edge of the change's slot, where the head sits at the top edge.
+  const yForBaseline = (band: Band, offset: number): number => {
+    const count = Math.max(1, band.group.changeCount);
+    return band.top + ((Math.min(offset, count - 1) + 1) / count) * band.height;
+  };
+
+  // Inverse of `yForBaseline`: the baseline position nearest a pointer y.
+  const baselinePositionForY = (
+    y: number
+  ): { group: ChangeGroup; offset: number } | null => {
+    let best: { group: ChangeGroup; offset: number } | null = null;
+    let bestDistance = Infinity;
+    for (const b of bands()) {
+      const count = Math.max(1, b.group.changeCount);
+      const offset = Math.min(
+        Math.max(Math.round(((y - b.top) / b.height) * count) - 1, 0),
+        count - 1
+      );
+      const distance = Math.abs(yForBaseline(b, offset) - y);
+      if (distance < bestDistance) {
+        best = { group: b.group, offset };
+        bestDistance = distance;
+      }
+    }
+    return best;
+  };
+
   // Inverse: the (group, offset) position nearest a pointer y (in track
   // coordinates).
   const positionForY = (
@@ -1655,7 +1701,7 @@ function DraftChangesList(props: {
       bs.find((x) => x.group.id === b.groupId) ??
       bs.find((x) => b.time >= x.group.startTime && b.time <= x.group.endTime);
     if (!band) return null;
-    return { top: yForPosition(band, resolveOffset(band.group, b.offset)) };
+    return { top: yForBaseline(band, resolveOffset(band.group, b.offset)) };
   });
 
   let trackEl: HTMLDivElement | undefined;
@@ -1725,7 +1771,7 @@ function DraftChangesList(props: {
 
     let last: string | null = null;
     const onMove = (e: PointerEvent) => {
-      const pos = positionForY(yInTrack(e) - grabOffset);
+      const pos = baselinePositionForY(yInTrack(e) - grabOffset);
       if (!pos) return;
       const key = `${pos.group.id}:${pos.offset}`;
       if (key === last) return;
@@ -1828,6 +1874,7 @@ function DraftChangesList(props: {
               {(group) => (
                 <TimeGroupRow
                   group={group}
+                  docTitles={editedTitles(group)}
                   rowRef={(el) => rowEls.set(group.id, el)}
                   onSelect={() => selectGroup(group)}
                 />
@@ -1918,14 +1965,17 @@ function DraftChangesList(props: {
 }
 
 // One time group, rendered as a single non-expandable row: author avatars,
-// the group's newest timestamp, and the aggregated +/- counts. Clicking the
-// row parks the scrubber at the top of the group (the scrubber token is the
-// selection indicator — the row itself doesn't highlight).
+// the group's newest timestamp, the titles of the docs it edited, and the
+// aggregated +/- counts. Clicking the row parks the scrubber at the top of the
+// group (the scrubber token is the selection indicator — the row itself
+// doesn't highlight).
 function TimeGroupRow(props: {
   group: ChangeGroup;
+  docTitles: string[];
   rowRef: (el: HTMLElement) => void;
   onSelect: () => void;
 }) {
+  const docs = () => props.docTitles.join(", ");
   return (
     <button
       type="button"
@@ -1936,7 +1986,11 @@ function TimeGroupRow(props: {
     >
       <AuthorAvatars actors={props.group.actors} />
       <span class="draft-group-time">{formatTime(props.group.endTime)}</span>
-      <span class="draft-group-spacer" />
+      <Show when={docs()} fallback={<span class="draft-group-spacer" />}>
+        <span class="draft-group-docs" title={docs()}>
+          {docs()}
+        </span>
+      </Show>
       <EditCounts
         additions={props.group.additions}
         deletions={props.group.deletions}
