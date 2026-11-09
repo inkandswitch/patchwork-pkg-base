@@ -122,8 +122,8 @@ function OverlayContents(props: {
 const CHANGE_LABELS: Record<RowChange, string> = {
   added: "Added",
   modified: "Changed",
-  removed: "Removed",
-  contains: "Has changes",
+  removed: "Deleted",
+  contains: "Changed",
 };
 
 export function ChangeDot(props: { change: RowChange }) {

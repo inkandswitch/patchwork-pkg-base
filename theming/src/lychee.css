@@ -6,9 +6,9 @@
 	--studio-secondary: #10A1CF; /* bermuda cocktail #2 */
 	--studio-danger: #f12d00;
 	--studio-warning: #f8c43b;
-	--studio-added: #205b46;
-	--studio-deleted: #ec6ca7;
-	--studio-modified: #0cadd6;
+	--studio-added: #1f9d55;
+	--studio-deleted: #e0303a;
+	--studio-modified: #e0a800;
 	--studio-link: #3999ff;
 	--studio-selection-fill: #eeeeff;
 	--studio-offset-tint-amount: 8%;
@@ -106,9 +106,9 @@
 	--syntax-quote: #8899aa;
 	--syntax-list: #334455;
 
-	--syntax-inserted: #00cc66;
-	--syntax-deleted: #ec6ca7;
-	--syntax-changed: #0cadd6;
+	--syntax-inserted: var(--studio-added);
+	--syntax-deleted: var(--studio-deleted);
+	--syntax-changed: var(--studio-modified);
 
 	--syntax-content-separator: #000;
 }

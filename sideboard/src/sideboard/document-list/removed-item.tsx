@@ -31,7 +31,7 @@ export function RemovedItem(props: {
       <div
         role="treeitem"
         tabindex="-1"
-        aria-label={`${props.entry.name} (removed)`}
+        aria-label={`${props.entry.name} (deleted)`}
         class="document-list-item document-list-item--removed"
         on:click={open}
         onkeydown={(event: KeyboardEvent) => {
