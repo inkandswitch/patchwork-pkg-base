@@ -12,7 +12,10 @@ import type { AccountDoc } from "./you/contact";
 
 // settings, on the account doc: you, the theme, the frame, and then a
 // section for every package that's asked for one (patchwork:settings)
-function SettingsPage(props: { handle: DocHandle<AccountDoc>; element: ToolElement }) {
+function SettingsPage(props: {
+  handle: DocHandle<AccountDoc>;
+  element: ToolElement;
+}) {
   const [account] = useDocument<AccountDoc>(() => props.handle.url);
   const repo = props.element.repo as unknown as Repo;
 
@@ -22,7 +25,12 @@ function SettingsPage(props: { handle: DocHandle<AccountDoc>; element: ToolEleme
         <Show when={account()}>
           <You handle={props.handle} account={account} repo={repo} />
           <Theme element={props.element} account={account} />
-          <Frame element={props.element} handle={props.handle} account={account} repo={repo} />
+          <Frame
+            element={props.element}
+            handle={props.handle}
+            account={account}
+            repo={repo}
+          />
           <Contributed element={props.element} account={account} />
         </Show>
       </div>
@@ -30,14 +38,17 @@ function SettingsPage(props: { handle: DocHandle<AccountDoc>; element: ToolEleme
   );
 }
 
-export default function renderSettings(handle: DocHandle<AccountDoc>, element: ToolElement) {
+export default function renderSettings(
+  handle: DocHandle<AccountDoc>,
+  element: ToolElement
+) {
   const dispose = render(
     () => (
       <RepoContext.Provider value={element.repo as any}>
         <SettingsPage handle={handle} element={element} />
       </RepoContext.Provider>
     ),
-    element,
+    element
   );
   return () => dispose();
 }

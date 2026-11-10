@@ -6,7 +6,11 @@ import type { Crop } from "./contact";
 const VIEWPORT = 240;
 const MAX_ZOOM = 4;
 
-export function Cropper(props: { src: string; onCancel: () => void; onCrop: (crop: Crop) => void }) {
+export function Cropper(props: {
+  src: string;
+  onCancel: () => void;
+  onCrop: (crop: Crop) => void;
+}) {
   const [natural, setNatural] = createSignal<{ w: number; h: number }>();
   const [zoom, setZoom] = createSignal(1);
   const [offset, setOffset] = createSignal({ x: 0, y: 0 });
@@ -31,7 +35,10 @@ export function Cropper(props: { src: string; onCancel: () => void; onCrop: (cro
     const img = event.currentTarget;
     setNatural({ w: img.naturalWidth, h: img.naturalHeight });
     const s = scale();
-    setOffset({ x: (VIEWPORT - img.naturalWidth * s) / 2, y: (VIEWPORT - img.naturalHeight * s) / 2 });
+    setOffset({
+      x: (VIEWPORT - img.naturalWidth * s) / 2,
+      y: (VIEWPORT - img.naturalHeight * s) / 2,
+    });
   }
 
   function onPointerDown(event: PointerEvent & { currentTarget: HTMLElement }) {
@@ -40,7 +47,12 @@ export function Cropper(props: { src: string; onCancel: () => void; onCrop: (cro
     el.setPointerCapture(event.pointerId);
     const start = { ...offset(), px: event.clientX, py: event.clientY };
     const onMove = (move: PointerEvent) =>
-      setOffset(clamp({ x: start.x + move.clientX - start.px, y: start.y + move.clientY - start.py }));
+      setOffset(
+        clamp({
+          x: start.x + move.clientX - start.px,
+          y: start.y + move.clientY - start.py,
+        })
+      );
     const onUp = () => {
       el.removeEventListener("pointermove", onMove);
       el.removeEventListener("pointerup", onUp);
@@ -61,7 +73,7 @@ export function Cropper(props: { src: string; onCancel: () => void; onCrop: (cro
       clamp({
         x: VIEWPORT / 2 - (VIEWPORT / 2 - o.x) * ratio,
         y: VIEWPORT / 2 - (VIEWPORT / 2 - o.y) * ratio,
-      }),
+      })
     );
   }
 
@@ -78,7 +90,7 @@ export function Cropper(props: { src: string; onCancel: () => void; onCrop: (cro
     <dialog
       ref={dialog}
       class="settings-dialog settings-cropper"
-      aria-label="crop your picture"
+      aria-label="Crop picture"
       onCancel={(event) => {
         event.preventDefault();
         props.onCancel();
@@ -117,17 +129,23 @@ export function Cropper(props: { src: string; onCancel: () => void; onCrop: (cro
           min="1"
           max={MAX_ZOOM}
           step="0.01"
-          aria-label="zoom"
+          aria-label="Zoom"
           value={zoom()}
           onInput={(event) => zoomTo(event.currentTarget.valueAsNumber)}
         />
       </Show>
       <div class="settings-dialog-actions">
         <button type="button" class="settings-button" onClick={props.onCancel}>
-          cancel
+          Cancel
         </button>
-        <button type="button" class="settings-button" data-primary disabled={!natural()} onClick={crop}>
-          save
+        <button
+          type="button"
+          class="settings-button"
+          data-primary
+          disabled={!natural()}
+          onClick={crop}
+        >
+          Save
         </button>
       </div>
     </dialog>

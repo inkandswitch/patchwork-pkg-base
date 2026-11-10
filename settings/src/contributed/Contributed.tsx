@@ -1,9 +1,18 @@
 // a section for each `patchwork:settings` plugin: its JSON, drawn. nothing
 // of the plugin's runs here; the page only reads its description out of the
 // registry (it never calls load). values go in the plugin's tool storage
-import { createMemo, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js";
+import {
+  createMemo,
+  createSignal,
+  For,
+  Match,
+  onCleanup,
+  Show,
+  Switch,
+} from "solid-js";
 import { getRegistry } from "@inkandswitch/patchwork-plugins";
 import { useToolStorage } from "../storage";
+import { Toggle } from "../Toggle";
 import type { AccountDoc } from "../you/contact";
 import {
   clampNumber,
@@ -22,7 +31,9 @@ function useSettingsPlugins() {
   const read = () =>
     ((registry.all?.() ?? []) as unknown as SettingsPlugin[])
       .filter((plugin) => typeof plugin?.id === "string")
-      .sort((a, b) => String(a.name ?? a.id).localeCompare(String(b.name ?? b.id)));
+      .sort((a, b) =>
+        String(a.name ?? a.id).localeCompare(String(b.name ?? b.id))
+      );
   const [plugins, setPlugins] = createSignal(read());
   const off = registry.on("changed" as any, () => {
     setPlugins(read());
@@ -31,11 +42,20 @@ function useSettingsPlugins() {
   return plugins;
 }
 
-export function Contributed(props: { element: HTMLElement; account: () => AccountDoc | undefined }) {
+export function Contributed(props: {
+  element: HTMLElement;
+  account: () => AccountDoc | undefined;
+}) {
   const plugins = useSettingsPlugins();
   return (
     <For each={plugins()}>
-      {(plugin) => <PluginSection plugin={plugin} element={props.element} account={props.account} />}
+      {(plugin) => (
+        <PluginSection
+          plugin={plugin}
+          element={props.element}
+          account={props.account}
+        />
+      )}
     </For>
   );
 }
@@ -46,8 +66,13 @@ function PluginSection(props: {
   account: () => AccountDoc | undefined;
 }) {
   const settings = createMemo(() => settingsOf(props.plugin));
-  const [doc, change] = useToolStorage<Record<string, unknown>>(props.element, props.account, props.plugin.id);
-  const set = (key: string, value: unknown) => change((d) => setValueAt(d, key, value));
+  const [doc, change] = useToolStorage<Record<string, unknown>>(
+    props.element,
+    props.account,
+    props.plugin.id
+  );
+  const set = (key: string, value: unknown) =>
+    change((d) => setValueAt(d, key, value));
   const headingId = `settings-plugin-${props.plugin.id.replace(/[^\w-]/g, "-")}`;
 
   return (
@@ -56,18 +81,20 @@ function PluginSection(props: {
         <h2 id={headingId} title={props.plugin.description}>
           {props.plugin.name || props.plugin.id}
         </h2>
-        <For each={settings()}>
-          {([key, setting]) => (
-            <Field
-              id={`${headingId}-${key.replace(/\./g, "-")}`}
-              name={key}
-              setting={setting}
-              value={settingValue(doc(), key, setting)}
-              chosen={valueAt(doc(), key) !== undefined}
-              set={(value) => set(key, value)}
-            />
-          )}
-        </For>
+        <div class="settings-group">
+          <For each={settings()}>
+            {([key, setting]) => (
+              <Field
+                id={`${headingId}-${key.replace(/\./g, "-")}`}
+                name={key}
+                setting={setting}
+                value={settingValue(doc(), key, setting)}
+                chosen={valueAt(doc(), key) !== undefined}
+                set={(value) => set(key, value)}
+              />
+            )}
+          </For>
+        </div>
       </section>
     </Show>
   );
@@ -82,16 +109,16 @@ function Field(props: {
   set: (value: unknown) => void;
 }) {
   const label = () => props.setting.title || props.name;
-  const text = (value: unknown) => (value === undefined || value === null ? "" : String(value));
+  const text = (value: unknown) =>
+    value === undefined || value === null ? "" : String(value);
 
   const control = () => (
     <Switch>
       <Match when={props.setting.type === "boolean"}>
-        <input
+        <Toggle
           id={props.id}
-          type="checkbox"
           checked={props.value === true}
-          onChange={(event) => props.set(event.currentTarget.checked)}
+          onChange={(on) => props.set(on)}
         />
       </Match>
       <Match when={props.setting.type === "string" && props.setting}>
@@ -151,7 +178,9 @@ function Field(props: {
             <select
               id={props.id}
               class="settings-input"
-              onChange={(event) => props.set(event.currentTarget.value || undefined)}
+              onChange={(event) =>
+                props.set(event.currentTarget.value || undefined)
+              }
             >
               <Show when={s.default === undefined}>
                 <option value="" selected={!props.value}>
@@ -160,7 +189,10 @@ function Field(props: {
               </Show>
               <For each={optionsOf(s)}>
                 {(option) => (
-                  <option value={option.value} selected={props.value === option.value}>
+                  <option
+                    value={option.value}
+                    selected={props.value === option.value}
+                  >
                     {option.label}
                   </option>
                 )}
@@ -183,22 +215,26 @@ function Field(props: {
 
   return (
     <div class="settings-row" data-type={props.setting.type}>
-      <label class="settings-label" for={props.id} title={props.setting.description}>
+      <label
+        class="settings-label"
+        for={props.id}
+        title={props.setting.description}
+      >
         {label()}
       </label>
       <span class="settings-control">
-        {control()}
         <Show when={props.chosen}>
           <button
             type="button"
             class="settings-reset"
-            title="back to the default"
-            aria-label={`put ${label()} back to the default`}
+            title="Back to the default"
+            aria-label={`Reset ${label()}`}
             onClick={() => props.set(undefined)}
           >
-            reset
+            Reset
           </button>
         </Show>
+        {control()}
       </span>
     </div>
   );

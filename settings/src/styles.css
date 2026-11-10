@@ -9,12 +9,16 @@
     --settings-muted: var(--editor-line-offset-50, #888);
     --settings-rule: var(--editor-fill-offset-20, #ddd);
     --settings-hover: var(--editor-fill-offset-10, #f2f2f2);
+    /* a group of rows sits on a faint wash of the page's own ink */
+    --settings-group: color-mix(in oklch, var(--settings-fg) 4%, var(--settings-fill));
+    --settings-well: color-mix(in oklch, var(--settings-fg) 9%, var(--settings-fill));
     --settings-accent: var(--studio-primary, #35f7ca);
     --settings-danger: var(--studio-danger-text, var(--studio-danger, crimson));
     --settings-family: var(--editor-family-sans, system-ui, sans-serif);
     --settings-family-code: var(--editor-family-code, ui-monospace, monospace);
     --settings-quick: max(1ms, calc(120ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)));
     --settings-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --settings-switch-time: max(1ms, calc(180ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)));
 
     --settings-mini-chrome: var(--studio-chrome-fill, var(--studio-chrome, #eee));
     --settings-mini-chrome-line: var(--studio-chrome-line, var(--studio-line, black));
@@ -55,20 +59,18 @@
   padding: 32px 24px 64px;
 
   & h2 {
-    margin: 0;
-    color: var(--settings-muted);
-    font-size: 12px;
+    margin: 0 0 0 2px;
+    font-size: 13px;
     font-weight: 600;
   }
   & h3 {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     margin: 0;
+    color: var(--settings-muted);
     font-size: 12px;
     font-weight: 500;
-
-    & small {
-      color: var(--settings-muted);
-      font-weight: 400;
-    }
   }
   & :is(input, select, textarea, button):focus-visible {
     outline: 2px solid var(--settings-accent);
@@ -78,35 +80,139 @@
 
 .settings-section {
   display: grid;
-  gap: 12px;
+  gap: 8px;
 }
 
-/* a label down the left, its control beside it */
+/* rows of a kind, together on one soft panel. space keeps them apart */
+.settings-group {
+  display: grid;
+  padding: 2px 0;
+  border-radius: 10px;
+  background: var(--settings-group);
+}
+
+/* something bigger than a row in a group: theme cards, the title bar */
+.settings-group-block {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+/* what it is on the left, the thing that changes it on the right */
 .settings-row {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 6px 10px;
-  min-height: 28px;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 44px;
+  padding: 6px 14px;
+  box-sizing: border-box;
 }
 
 .settings-label {
-  flex: none;
-  width: 96px;
-  color: var(--settings-muted);
+  flex: 1;
+  min-width: 0;
+  text-wrap: pretty;
 }
 
 .settings-control {
   display: flex;
-  flex: 1;
+  flex: 0 1 auto;
   align-items: center;
-  gap: 8px;
+  justify-content: flex-end;
+  gap: 10px;
   min-width: 0;
 }
 
 @container (max-width: 420px) {
-  .settings-label {
-    width: 100%;
+  .settings-row:not(:has(.settings-switch)) {
+    flex-wrap: wrap;
+  }
+  .settings-row:not(:has(.settings-switch)) .settings-control {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
+}
+
+/* on and off, as a switch */
+.settings-switch {
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: var(--settings-well);
+  cursor: var(--studio-cursor-pointer, pointer);
+  transition: background-color var(--settings-switch-time) ease;
+
+  &[aria-checked="true"] {
+    background: var(--settings-accent);
+  }
+  &:focus-visible {
+    outline: 2px solid var(--settings-accent);
+    outline-offset: 2px;
+  }
+}
+
+.settings-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: white;
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 20%),
+    0 0 0 0.5px rgb(0 0 0 / 6%);
+  transition: transform var(--settings-switch-time) var(--settings-ease-out);
+
+  .settings-switch:active & {
+    width: 19px;
+  }
+  [aria-checked="true"] > & {
+    transform: translateX(14px);
+  }
+  .settings-switch[aria-checked="true"]:active & {
+    transform: translateX(11px);
+  }
+}
+
+/* one of a few, side by side in a well */
+.settings-segmented {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-self: start;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--settings-well);
+}
+
+.settings-segment {
+  padding: 4px 14px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: 500 12.5px var(--settings-family);
+  cursor: var(--studio-cursor-pointer, pointer);
+  transition:
+    background-color var(--settings-quick) ease,
+    box-shadow var(--settings-quick) ease;
+
+  @media (hover: hover) and (pointer: fine) {
+    &:hover:not([aria-checked="true"]) {
+      background: color-mix(in oklch, var(--settings-fill) 50%, transparent);
+    }
+  }
+  &[aria-checked="true"] {
+    background: var(--settings-fill);
+    box-shadow:
+      0 1px 2px rgb(0 0 0 / 12%),
+      0 0 0 0.5px rgb(0 0 0 / 6%);
   }
 }
 
@@ -254,15 +360,14 @@
   color: var(--settings-muted);
   font: inherit;
   font-size: 12px;
-  text-decoration: underline dotted;
   cursor: var(--studio-cursor-pointer, pointer);
-}
+  transition: color var(--settings-quick) ease;
 
-.settings-check {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--settings-muted);
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      color: var(--settings-fg);
+    }
+  }
 }
 
 /* ── you ───────────────────────────────────────────────────────────── */
@@ -645,9 +750,14 @@
 
 /* ── theme ─────────────────────────────────────────────────────────── */
 
-.settings-theme-mode {
-  display: grid;
-  gap: 8px;
+/* "now": which of the two the computer's showing */
+.settings-now {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--settings-accent) 30%, transparent);
+  color: var(--settings-fg);
+  font-size: 11px;
+  font-weight: 500;
 }
 
 .settings-theme-cards {
@@ -773,32 +883,6 @@
 }
 
 /* ── frame ─────────────────────────────────────────────────────────── */
-
-.settings-choices {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.settings-choice {
-  padding: 4px 10px;
-  border: var(--studio-border-width, 1px) solid var(--settings-rule);
-  border-radius: var(--studio-radius-round, 999px);
-  background: var(--settings-fill);
-  color: inherit;
-  font: inherit;
-  cursor: var(--studio-cursor-pointer, pointer);
-
-  @media (hover: hover) and (pointer: fine) {
-    &:hover {
-      background: var(--settings-hover);
-    }
-  }
-  &[aria-checked="true"] {
-    border-color: var(--settings-accent);
-    box-shadow: inset 0 0 0 1px var(--settings-accent);
-  }
-}
 
 .settings-strip {
   display: grid;

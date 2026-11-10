@@ -10,14 +10,20 @@ import type { AccountDoc } from "../you/contact";
 
 type ToolSlot = [toolId: string, docId: string] | string;
 type ThreepaneConfigDoc = { doctitle?: { tools?: ToolSlot[] } };
-type Describable = { id: string; name?: string; tags?: string[]; unlisted?: boolean };
+type Describable = {
+  id: string;
+  name?: string;
+  tags?: string[];
+  unlisted?: boolean;
+};
 type Option = { id: string; name: string };
 
 const FRAME_RELOAD_DELAY_MS = 250;
 
 function useRegistry(type: string) {
   const registry = getRegistry(type);
-  const read = () => ((registry.all?.() ?? []) as unknown as Describable[]).slice();
+  const read = () =>
+    ((registry.all?.() ?? []) as unknown as Describable[]).slice();
   const [tools, setTools] = createSignal(read());
   const off = registry.on("changed" as any, () => {
     setTools(read());
@@ -37,10 +43,14 @@ const slotId = (slot: ToolSlot) => (typeof slot === "string" ? slot : slot[0]);
 // the frame this page is in: the nearest patchwork-view around it that's one
 // of the frames. an account that's never chosen has no frameToolId, but it's
 // still in one
-function runningFrame(element: HTMLElement, frames: Option[]): string | undefined {
+function runningFrame(
+  element: HTMLElement,
+  frames: Option[]
+): string | undefined {
   const ids = new Set(frames.map((frame) => frame.id));
   for (let el = element.parentElement; el; el = el.parentElement) {
-    const id = el.tagName === "PATCHWORK-VIEW" ? el.getAttribute("tool-id") : null;
+    const id =
+      el.tagName === "PATCHWORK-VIEW" ? el.getAttribute("tool-id") : null;
     if (id && ids.has(id)) return id;
   }
 }
@@ -56,13 +66,22 @@ export function Frame(props: {
   // has a better name than its id
   const components = useRegistry("patchwork:component");
   const names = createMemo(
-    () => new Map([...components(), ...tools()].map((plugin) => [plugin.id, plugin.name || plugin.id])),
+    () =>
+      new Map(
+        [...components(), ...tools()].map((plugin) => [
+          plugin.id,
+          plugin.name || plugin.id,
+        ])
+      )
   );
   const frames = createMemo(() => tagged(tools(), "frame-tool"));
-  const current = () => props.account()?.frameToolId ?? runningFrame(props.element, frames());
+  const current = () =>
+    props.account()?.frameToolId ?? runningFrame(props.element, frames());
   const titlebar = createMemo(() => tagged(tools(), "titlebar-tool"));
 
-  const [threepane, threepaneHandle] = useDocument<ThreepaneConfigDoc>(() => props.account()?.tools?.threepane);
+  const [threepane, threepaneHandle] = useDocument<ThreepaneConfigDoc>(
+    () => props.account()?.tools?.threepane
+  );
   const doctitle = () => threepane()?.doctitle?.tools?.map(slotId);
 
   function chooseFrame(id: string) {
@@ -79,42 +98,54 @@ export function Frame(props: {
 
   return (
     <>
-      <section class="settings-section" aria-labelledby="settings-frame">
-        <h2 id="settings-frame">frame</h2>
-        <Show when={frames().length}>
-          <div class="settings-choices" role="radiogroup" aria-label="frame">
-            <For each={frames()}>
-              {(frame) => (
-                <button
-                  type="button"
-                  class="settings-choice"
-                  role="radio"
-                  aria-checked={current() === frame.id}
-                  onClick={() => chooseFrame(frame.id)}
-                >
-                  {frame.name}
-                </button>
-              )}
-            </For>
+      <Show when={frames().length}>
+        <section class="settings-section" aria-labelledby="settings-frame">
+          <h2 id="settings-frame">Frame</h2>
+          <div class="settings-group">
+            <div class="settings-group-block">
+              <div
+                class="settings-segmented"
+                role="radiogroup"
+                aria-label="Frame"
+              >
+                <For each={frames()}>
+                  {(frame) => (
+                    <button
+                      type="button"
+                      class="settings-segment"
+                      role="radio"
+                      aria-checked={current() === frame.id}
+                      onClick={() => chooseFrame(frame.id)}
+                    >
+                      {frame.name}
+                    </button>
+                  )}
+                </For>
+              </div>
+            </div>
           </div>
-        </Show>
-      </section>
+        </section>
+      </Show>
 
       <Show when={threepaneHandle()}>
         {(handle) => (
           <section class="settings-section" aria-labelledby="settings-titlebar">
-            <h2 id="settings-titlebar">title bar</h2>
-            <Strip
-              values={doctitle() ?? []}
-              options={titlebar()}
-              names={names()}
-              setValues={(next) =>
-                handle().change((doc) => {
-                  doc.doctitle ??= {};
-                  doc.doctitle.tools = next.slice();
-                })
-              }
-            />
+            <h2 id="settings-titlebar">Title bar</h2>
+            <div class="settings-group">
+              <div class="settings-group-block">
+                <Strip
+                  values={doctitle() ?? []}
+                  options={titlebar()}
+                  names={names()}
+                  setValues={(next) =>
+                    handle().change((doc) => {
+                      doc.doctitle ??= {};
+                      doc.doctitle.tools = next.slice();
+                    })
+                  }
+                />
+              </div>
+            </div>
           </section>
         )}
       </Show>
@@ -137,11 +168,14 @@ function Strip(props: {
   const [to, setTo] = createSignal<number | null>(null);
 
   const nameOf = (id: string) => props.names.get(id) ?? id;
-  const available = createMemo(() => props.options.filter((option) => !props.values.includes(option.id)));
+  const available = createMemo(() =>
+    props.options.filter((option) => !props.values.includes(option.id))
+  );
 
   const add = (id: string) => {
     const clean = id.trim();
-    if (clean && !props.values.includes(clean)) props.setValues([...props.values, clean]);
+    if (clean && !props.values.includes(clean))
+      props.setValues([...props.values, clean]);
   };
 
   function drop() {
@@ -165,7 +199,9 @@ function Strip(props: {
               class="settings-strip-item"
               draggable={true}
               data-dragging={from() === index() ? "" : undefined}
-              data-over={to() === index() && from() !== index() ? "" : undefined}
+              data-over={
+                to() === index() && from() !== index() ? "" : undefined
+              }
               onDragStart={(event) => {
                 event.dataTransfer!.effectAllowed = "move";
                 setFrom(index());
@@ -182,8 +218,10 @@ function Strip(props: {
               <button
                 type="button"
                 class="settings-strip-remove"
-                aria-label={`take out ${nameOf(id)}`}
-                onClick={() => props.setValues(props.values.filter((_, i) => i !== index()))}
+                aria-label={`Remove ${nameOf(id)}`}
+                onClick={() =>
+                  props.setValues(props.values.filter((_, i) => i !== index()))
+                }
               >
                 ×
               </button>
@@ -194,15 +232,26 @@ function Strip(props: {
       <Show
         when={adding()}
         fallback={
-          <button type="button" class="settings-button" onClick={() => setAdding(true)}>
-            + add
+          <button
+            type="button"
+            class="settings-button"
+            onClick={() => setAdding(true)}
+          >
+            Add…
           </button>
         }
       >
-        <div class="settings-strip-add" onKeyDown={(event) => event.key === "Escape" && setAdding(false)}>
+        <div
+          class="settings-strip-add"
+          onKeyDown={(event) => event.key === "Escape" && setAdding(false)}
+        >
           <For each={available()}>
             {(option) => (
-              <button type="button" class="settings-button" onClick={() => add(option.id)}>
+              <button
+                type="button"
+                class="settings-button"
+                onClick={() => add(option.id)}
+              >
                 + {option.name}
               </button>
             )}
@@ -217,17 +266,26 @@ function Strip(props: {
           >
             <input
               class="settings-input settings-code"
-              placeholder="or a tool id"
-              aria-label="a tool id"
+              placeholder="Tool id"
+              aria-label="Tool id"
               spellcheck={false}
               value={custom()}
               onInput={(event) => setCustom(event.currentTarget.value)}
             />
-            <button type="submit" class="settings-button" disabled={!custom().trim()}>
-              add
+            <button
+              type="submit"
+              class="settings-button"
+              disabled={!custom().trim()}
+            >
+              Add
             </button>
-            <button type="button" class="settings-button" onClick={() => setAdding(false)}>
-              done
+            <button
+              type="button"
+              class="settings-button"
+              data-primary
+              onClick={() => setAdding(false)}
+            >
+              Done
             </button>
           </form>
         </div>

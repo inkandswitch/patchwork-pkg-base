@@ -47,19 +47,25 @@ export function You(props: {
       });
     return making;
   }
-  const changeMe = async (fn: (doc: ContactDoc & Record<string, any>) => void) =>
-    (await myContact()).change((doc) => fn(doc as ContactDoc & Record<string, any>));
+  const changeMe = async (
+    fn: (doc: ContactDoc & Record<string, any>) => void
+  ) =>
+    (await myContact()).change((doc) =>
+      fn(doc as ContactDoc & Record<string, any>)
+    );
 
   const name = () => {
     const doc = me();
-    return doc?.type === "registered" ? doc.name ?? "" : "";
+    return doc?.type === "registered" ? (doc.name ?? "") : "";
   };
 
   function rename(value: string, done: boolean) {
     const next = done ? value.trim() : value;
     changeMe((doc) => {
-      if (next.trim() && doc.type !== "registered") (doc as { type: string }).type = "registered";
-      if (doc.type === "registered" && (doc.name ?? "") !== next) doc.name = next;
+      if (next.trim() && doc.type !== "registered")
+        (doc as { type: string }).type = "registered";
+      if (doc.type === "registered" && (doc.name ?? "") !== next)
+        doc.name = next;
     });
   }
 
@@ -112,21 +118,26 @@ export function You(props: {
           <button
             type="button"
             class="settings-you-picture"
-            title={avatarUrl() ? "change your picture" : "add a picture"}
-            aria-label={avatarUrl() ? "change your picture" : "add a picture"}
+            title={avatarUrl() ? "Change picture" : "Add a picture"}
+            aria-label={avatarUrl() ? "Change picture" : "Add a picture"}
             disabled={busy()}
             onClick={() => pictureInput.click()}
           >
-            <Show when={contactUrl()} fallback={<span class="settings-you-nobody">+</span>}>
-              {(url) => <patchwork-view doc-url={url()} tool-id="contact-avatar" />}
+            <Show
+              when={contactUrl()}
+              fallback={<span class="settings-you-nobody">+</span>}
+            >
+              {(url) => (
+                <patchwork-view doc-url={url()} tool-id="contact-avatar" />
+              )}
             </Show>
           </button>
           <Show when={avatarUrl()}>
             <button
               type="button"
               class="settings-you-unpicture"
-              title="remove your picture"
-              aria-label="remove your picture"
+              title="Remove picture"
+              aria-label="Remove picture"
               onClick={() =>
                 changeMe((doc) => {
                   delete doc.avatarUrl;
@@ -150,10 +161,10 @@ export function You(props: {
           <div class="settings-you-cursor">
             <Pointer
               color={myColor()}
-              name={name() || "you"}
+              name={name() || "You"}
               aria-expanded={choosingColor()}
               aria-haspopup="true"
-              title="change your colour"
+              title="Change colour"
               onClick={() => setChoosingColor((open) => !open)}
             />
             <Show when={choosingColor()}>
@@ -173,18 +184,20 @@ export function You(props: {
           <input
             class="settings-you-name"
             value={name()}
-            placeholder="your name"
-            aria-label="your name"
+            placeholder="Your name"
+            aria-label="Your name"
             aria-invalid={failed() || undefined}
             autocomplete="name"
             spellcheck={false}
             onInput={(event) => rename(event.currentTarget.value, false)}
             onChange={(event) => rename(event.currentTarget.value, true)}
-            onKeyDown={(event) => event.key === "Enter" && event.currentTarget.blur()}
+            onKeyDown={(event) =>
+              event.key === "Enter" && event.currentTarget.blur()
+            }
           />
           <Show when={failed()}>
             <p class="settings-error" role="alert">
-              couldn't read that picture
+              Couldn't read that picture
             </p>
           </Show>
         </div>
@@ -223,7 +236,11 @@ function Pointer(props: {
       aria-haspopup={props["aria-haspopup"]}
       onClick={props.onClick}
     >
-      <svg class="settings-pointer-arrow" viewBox="11 7 14 21" aria-hidden="true">
+      <svg
+        class="settings-pointer-arrow"
+        viewBox="11 7 14 21"
+        aria-hidden="true"
+      >
         <g fill="#fff">
           <path d="m12 24.4219v-16.015l11.591 11.619h-6.781l-.411.124z" />
           <path d="m21.0845 25.0962-3.605 1.535-4.682-11.089 3.686-1.553z" />
@@ -233,7 +250,10 @@ function Pointer(props: {
           <path d="m19.751 24.4155-1.844.774-3.1-7.374 1.841-.775z" />
         </g>
       </svg>
-      <span class="settings-pointer-tag" style={{ "background-color": props.color }}>
+      <span
+        class="settings-pointer-tag"
+        style={{ "background-color": props.color }}
+      >
         {props.name}
       </span>
     </button>
@@ -241,15 +261,21 @@ function Pointer(props: {
 }
 
 // the palette, and any colour you like
-function Colors(props: { value?: string; onChange: (color: string) => void; onClose: () => void }) {
+function Colors(props: {
+  value?: string;
+  onChange: (color: string) => void;
+  onClose: () => void;
+}) {
   let popup!: HTMLDivElement;
   createEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Element | null;
-      if (popup.contains(target) || target?.closest(".settings-pointer")) return;
+      if (popup.contains(target) || target?.closest(".settings-pointer"))
+        return;
       props.onClose();
     };
-    const onKeyDown = (event: KeyboardEvent) => event.key === "Escape" && props.onClose();
+    const onKeyDown = (event: KeyboardEvent) =>
+      event.key === "Escape" && props.onClose();
     document.addEventListener("pointerdown", onPointerDown, true);
     document.addEventListener("keydown", onKeyDown);
     onCleanup(() => {
@@ -257,10 +283,17 @@ function Colors(props: { value?: string; onChange: (color: string) => void; onCl
       document.removeEventListener("keydown", onKeyDown);
     });
   });
-  const custom = () => !!props.value && !USER_COLOR_PALETTE.some((color) => color.value === props.value);
+  const custom = () =>
+    !!props.value &&
+    !USER_COLOR_PALETTE.some((color) => color.value === props.value);
 
   return (
-    <div class="settings-colors" ref={popup} role="radiogroup" aria-label="your colour">
+    <div
+      class="settings-colors"
+      ref={popup}
+      role="radiogroup"
+      aria-label="Colour"
+    >
       <For each={USER_COLOR_PALETTE}>
         {(color) => (
           <button
@@ -278,10 +311,14 @@ function Colors(props: { value?: string; onChange: (color: string) => void; onCl
           />
         )}
       </For>
-      <label class="settings-swatch settings-swatch-custom" title="any colour" aria-checked={custom()}>
+      <label
+        class="settings-swatch settings-swatch-custom"
+        title="Any colour"
+        aria-checked={custom()}
+      >
         <input
           type="color"
-          aria-label="any colour"
+          aria-label="Any colour"
           value={hexColor(props.value || USER_COLOR_PALETTE[0].value)}
           onInput={(event) => props.onChange(event.currentTarget.value)}
         />
@@ -291,7 +328,10 @@ function Colors(props: { value?: string; onChange: (color: string) => void; onCl
 }
 
 // this account, elsewhere: its key, to use it on another computer; and leaving
-function AccountKey(props: { handle: DocHandle<AccountDoc>; name: () => string }) {
+function AccountKey(props: {
+  handle: DocHandle<AccountDoc>;
+  name: () => string;
+}) {
   const [leaving, setLeaving] = createSignal(false);
   const [copied, setCopied] = createSignal(false);
 
@@ -307,26 +347,39 @@ function AccountKey(props: { handle: DocHandle<AccountDoc>; name: () => string }
   }
 
   const copyButton = () => (
-    <button type="button" class="settings-button" onClick={copy}>
-      <CopyIcon />
-      {copied() ? "copied" : "copy account key"}
+    <button
+      type="button"
+      class="settings-button"
+      data-copied={copied() || undefined}
+      onClick={copy}
+    >
+      <Show when={copied()} fallback={<CopyIcon />}>
+        <CheckIcon />
+      </Show>
+      {copied() ? "Copied" : "Copy account key"}
     </button>
   );
-  const escape = (event: KeyboardEvent) => event.key === "Escape" && setLeaving(false);
+  const escape = (event: KeyboardEvent) =>
+    event.key === "Escape" && setLeaving(false);
 
   return (
     <div class="settings-account">
       <Show when={!leaving()}>
         <div class="settings-cluster">
           {copyButton()}
-          <button type="button" class="settings-button" data-leave onClick={() => setLeaving(true)}>
-            sign out
+          <button
+            type="button"
+            class="settings-button"
+            data-leave
+            onClick={() => setLeaving(true)}
+          >
+            Sign out
           </button>
         </div>
       </Show>
       <Show when={leaving()}>
         <div class="settings-cluster" onKeyDown={escape}>
-          <strong class="settings-ask">sign out?</strong>
+          <strong class="settings-ask">Sign out?</strong>
           {copyButton()}
           <button
             type="button"
@@ -334,10 +387,15 @@ function AccountKey(props: { handle: DocHandle<AccountDoc>; name: () => string }
             ref={(el) => queueMicrotask(() => el.focus())}
             onClick={() => setLeaving(false)}
           >
-            cancel
+            Cancel
           </button>
-          <button type="button" class="settings-button" data-danger onClick={signOut}>
-            sign out
+          <button
+            type="button"
+            class="settings-button"
+            data-danger
+            onClick={signOut}
+          >
+            Sign out
           </button>
         </div>
       </Show>
@@ -350,6 +408,14 @@ function CopyIcon() {
     <svg class="settings-icon" viewBox="0 0 24 24" aria-hidden="true">
       <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
       <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg class="settings-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M20 6 9 17l-5-5" />
     </svg>
   );
 }
