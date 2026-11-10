@@ -37,6 +37,7 @@ import { render } from "solid-js/web";
 import type { ToolImplementation } from "@inkandswitch/patchwork-plugins";
 import { ensureThreepaneConfig } from "./account/ensureThreepaneConfig";
 import { seedExampleDocuments } from "./account/seedExampleDocuments";
+import { handleAddToSidebar } from "./account/addToSidebar";
 import { ensureFrameStyles } from "./ensureFrameStyles";
 import { useHandleDoc } from "./hooks/useHandleDoc";
 
@@ -259,6 +260,7 @@ function PatchworkFrameInner(props: {
     );
 
     onCleanup(unsubscribeSelectedView);
+    onCleanup(handleAddToSidebar(element, props.repo, props.handle));
   });
 
   const selectedDocUrl = () => selectedView()?.url;
