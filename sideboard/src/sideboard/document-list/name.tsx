@@ -22,7 +22,9 @@ export function ItemName(props: {
   function finish(save: boolean, input?: HTMLInputElement) {
     if (done) return;
     done = true;
-    if (save) props.rename(next() ?? "");
+    // saving an untouched name would still write the title everywhere
+    const name = next() ?? "";
+    if (save && name !== (props.name ?? "")) props.rename(name);
     // hand focus back to the row, or it falls out of the tree entirely
     const row = input?.closest<HTMLElement>('[role="treeitem"]');
     if (isBeingRenamed(props.id)) setRenaming("");

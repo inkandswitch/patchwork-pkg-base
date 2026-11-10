@@ -1,5 +1,4 @@
 import {
-  updateText,
   type AutomergeUrl,
   type Repo,
   type DocHandle,
@@ -41,6 +40,7 @@ import {
 } from "../dnd/dnd.ts";
 import { dropInto } from "../dnd/drop-into.ts";
 import { createHoverTimer } from "../lib/hover-timer.ts";
+import { setText } from "../lib/text.ts";
 
 export default function Folder(props: {
   url: AutomergeUrl;
@@ -101,11 +101,11 @@ export default function Folder(props: {
   // Rename shows in two places: the folder's own title (what the row shows)
   // and the parent's docref name (what the filter matches), so change both.
   function rename(name: string) {
-    handle()?.change((doc) => updateText(doc, ["title"], name));
+    handle()?.change((doc) => setText(doc, ["title"], name));
     const index = props.itemIndex;
     props.parentFolderHandle?.change((parent) => {
       if (index != null && parent.docs[index]?.url === props.url) {
-        updateText(parent, ["docs", index, "name"], name);
+        setText(parent, ["docs", index, "name"], name);
       }
     });
   }

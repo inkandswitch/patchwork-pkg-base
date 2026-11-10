@@ -1,6 +1,5 @@
 import {
   deleteAt,
-  updateText,
   type AutomergeUrl,
   type DocHandle,
   type Repo,
@@ -34,6 +33,7 @@ import {
   pendingNewDoc,
   setPendingNewDoc,
 } from "../state.ts";
+import { asString, setText } from "../lib/text.ts";
 import { markMounted } from "./auto-expand.ts";
 import Folder from "./folder.tsx";
 import Item from "./item.tsx";
@@ -131,9 +131,9 @@ export function DocumentList(props: DocumentListProps) {
           const relid = () => props.handle.url + "/" + index();
           onCleanup(markMounted(props.element, doc.url));
           const rename = (name: string) => {
-            props.handle.change((doc) => {
-              updateText(doc, ["docs", index(), "name"], name);
-            });
+            props.handle.change((doc) =>
+              setText(doc, ["docs", index(), "name"], name)
+            );
             const datatypes = getRegistry<Datatype>("patchwork:datatype");
             props.repo
               .find<Partial<HasPatchworkMetadata>>(doc.url)
@@ -145,9 +145,9 @@ export function DocumentList(props: DocumentListProps) {
 
                   if (datatype) {
                     await datatypes.load(datatype.id);
-                    handle.change((doc) =>
-                      (datatype as any).module.setTitle?.(doc, name)
-                    );
+                    const module = (datatype as any).module;
+                    if (module.getTitle?.(handle.doc()) === name) return;
+                    handle.change((doc) => module.setTitle?.(doc, name));
                   }
                 }
               });
@@ -184,22 +184,21 @@ export function DocumentList(props: DocumentListProps) {
                   const title = datatype.module.getTitle(docData);
                   if (!title) return;
 
-                  // Update folder docref name if different
+                  // Update folder docref name and @patchwork.title if
+                  // different. Compare by value: pushwork stores these as
+                  // ImmutableStrings, which never === a plain string, and
+                  // an unguarded write would land on every open.
                   const currentFolder = props.handle.doc();
                   const currentName = currentFolder?.docs?.[index()]?.name;
-                  if (currentName !== title) {
-                    props.handle.change((folder) => {
-                      updateText(folder, ["docs", index(), "name"], title);
-                    });
+                  if (asString(currentName) !== title) {
+                    props.handle.change((folder) =>
+                      setText(folder, ["docs", index(), "name"], title)
+                    );
                   }
-
-                  // Set @patchwork.title on the doc if different
-                  if (metadata.title !== title) {
-                    docHandle.change((d: any) => {
-                      if (d["@patchwork"]) {
-                        d["@patchwork"].title = title;
-                      }
-                    });
+                  if (asString(metadata.title) !== title) {
+                    docHandle.change((d: any) =>
+                      setText(d, ["@patchwork", "title"], title)
+                    );
                   }
                 }
 
