@@ -1,5 +1,5 @@
 {
-  "name": "@tiny-patchwork/frame-configurator",
+  "name": "@tiny-patchwork/settings",
   "type": "module",
   "private": true,
   "main": "./dist/index.js",

@@ -229,6 +229,16 @@ function PatchworkFrameInner(props: {
   const traySlots = (): ToolSlot[] => threepaneConfig()?.tray ?? [];
   const rootFolderUrl = () => accountDoc()?.rootFolderUrl;
 
+  // your name, for the account bar: only a registered contact has one
+  const [contact] = useDocument<{ type?: string; name?: string }>(
+    () => accountDoc()?.contactUrl,
+    { repo: props.repo }
+  );
+  const contactName = () => {
+    const doc = contact();
+    return doc?.type === "registered" ? (doc.name ?? "").trim() : "";
+  };
+
   const sidebarState = useSidebarState();
   const sidebarResize = useSidebarResize("left", {
     isCollapsed: sidebarState.isSidebarCollapsed,
@@ -314,6 +324,7 @@ function PatchworkFrameInner(props: {
         rootFolderUrl={rootFolderUrl}
         widgetsReady={widgetsReady}
         contactUrl={() => accountDoc()?.contactUrl}
+        contactName={contactName}
         moduleSettingsUrl={() => accountDoc()?.moduleSettingsUrl}
         isolation={props.isolation}
         onInterceptOpen={setPopoverView}
@@ -454,8 +465,10 @@ export function FrameLayout(props: {
   configHandle: Accessor<DocHandle<ThreepaneConfigDoc> | undefined>;
   rootFolderUrl: Accessor<AutomergeUrl | undefined>;
   widgetsReady: Accessor<boolean>;
-  /** Account subdocs for the inlined account bar (avatar + Packages buttons). */
+  /** Account subdocs for the inlined account bar (you + Packages). */
   contactUrl: Accessor<AutomergeUrl | undefined>;
+  /** Your name, beside your picture; "" when you've none (shows "Settings"). */
+  contactName?: Accessor<string>;
   moduleSettingsUrl: Accessor<AutomergeUrl | undefined>;
   /** Fixed per tool instance: whether the main document area is isolated. */
   isolation?: boolean;
@@ -464,6 +477,7 @@ export function FrameLayout(props: {
   children: JSX.Element;
 }) {
   const isCollapsed = props.sidebarState.isSidebarCollapsed;
+  const myName = () => props.contactName?.() ?? "";
 
   // The system tray is docked to the frame's bottom-left, OUTSIDE the collapsing
   // sidebar. Its tools are configured on the threepane config doc's `tray`
@@ -556,37 +570,44 @@ export function FrameLayout(props: {
             ready={props.widgetsReady}
           />
           {/*
-            The account bar — avatar (account picker) + Packages + Settings —
-            pinned to the sidebar's bottom. Inlined here directly rather than
-            mounted as the `chee/account-bar` sideboard tool, so the frame owns
-            the markup. Each button dispatches a `patchwork:open-document` event
-            (bubbles + composed), which the footer intercepts into the popover
-            under isolation, or lets bubble to the selected-doc provider
-            otherwise — exactly the flow the sideboard tool had.
+            The account bar, pinned to the sidebar's bottom: you (your picture
+            and your name), which opens the settings page, and Packages. Each
+            button dispatches a `patchwork:open-document` event (bubbles +
+            composed), which the footer intercepts into the popover under
+            isolation, or lets bubble to the selected-doc provider otherwise.
           */}
           <div class="threepane-sidebar__footer" ref={footerEl}>
             <footer class="threepane-account-bar">
-              <Show when={props.contactUrl()}>
-                {(contactUrl) => (
-                  <button
-                    type="button"
-                    class="threepane-account-bar__button threepane-account-bar__avatar"
-                    title="Account"
-                    aria-label="Account"
-                    onClick={(e) =>
-                      dispatchOpen(e.currentTarget, {
-                        url: props.accountDocUrl,
-                        toolId: "account-picker",
-                      })
-                    }
-                  >
+              <button
+                type="button"
+                class="threepane-account-bar__me"
+                title="Settings · you, and the theme"
+                aria-label={myName() ? undefined : "Settings"}
+                onClick={(e) =>
+                  dispatchOpen(e.currentTarget, {
+                    url: props.accountDocUrl,
+                    toolId: "settings",
+                  })
+                }
+              >
+                <Show
+                  when={props.contactUrl()}
+                  fallback={<span class="threepane-account-bar__nobody" />}
+                >
+                  {(contactUrl) => (
                     <patchwork-view
                       doc-url={contactUrl()}
                       tool-id="contact-avatar"
                     />
-                  </button>
-                )}
-              </Show>
+                  )}
+                </Show>
+                <span
+                  class="threepane-account-bar__name"
+                  data-placeholder={myName() ? undefined : ""}
+                >
+                  {myName() || "Settings"}
+                </span>
+              </button>
 
               <Show when={props.moduleSettingsUrl()}>
                 {(moduleSettingsUrl) => (
@@ -604,19 +625,6 @@ export function FrameLayout(props: {
                   </button>
                 )}
               </Show>
-
-              <button
-                type="button"
-                class="threepane-account-bar__button"
-                onClick={(e) =>
-                  dispatchOpen(e.currentTarget, {
-                    url: props.accountDocUrl,
-                    toolId: "frame-configurator",
-                  })
-                }
-              >
-                Settings
-              </button>
             </footer>
           </div>
         </div>

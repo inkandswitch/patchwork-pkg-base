@@ -50,6 +50,9 @@
      (it mixes toward the chrome ink, so it reads darker on light themes and
      lighter on dark ones), plus a primary-tinted glow + grab pill on hover. */
   --threepane-sidebar-divider: var(--studio-chrome-offset-20, #d4d4d4);
+  /* the account bar's "you": a soft wash on hover, like a sidebar row */
+  --threepane-sidebar-hover: var(--studio-chrome-hover-fill, var(--studio-chrome-offset-10, #f2f2f2));
+  --threepane-sidebar-muted: var(--studio-chrome-line-offset-50, var(--studio-line-offset-50, #999));
   --threepane-resize-glow: color-mix(in oklch, var(--studio-primary-fill, var(--studio-primary, #35f7ca)), transparent 35%);
   --threepane-resize-pill: var(--studio-primary-fill, var(--studio-primary, #35f7ca));
 
@@ -913,14 +916,73 @@
   border-color: var(--threepane-sidebar-divider);
 }
 
-.threepane-account-bar__avatar {
-  padding: 0;
+/* you: your picture and your name, as one pill. opens the settings page */
+.threepane-account-bar__me {
+  display: flex;
+  align-items: center;
+  gap: var(--threepane-space-xs);
+  min-width: 0;
+  padding: var(--threepane-space-3xs);
+  padding-right: var(--threepane-space-sm);
+  border: none;
+  border-radius: var(--threepane-radius-round);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: var(--studio-cursor-pointer, pointer);
+  transition: background var(--studio-transition-fast, 0.1s ease);
 }
 
-.threepane-account-bar__avatar patchwork-view {
+@media (hover: hover) and (pointer: fine) {
+  .threepane-account-bar__me:hover {
+    background: var(--threepane-sidebar-hover);
+  }
+}
+
+.threepane-account-bar__me:focus-visible {
+  outline: var(--studio-focus-ring, 2px solid currentColor);
+  outline-offset: 1px;
+}
+
+.threepane-account-bar__me patchwork-view {
   display: block;
+  flex: none;
+  width: 24px;
+  height: 24px;
+}
+
+/* contact-avatar draws itself at 2rem unless it's told to fill its view */
+.threepane-account-bar__me patchwork-view .contact-avatar {
+  display: flex;
+  box-sizing: border-box;
   width: 100%;
+  min-width: 0;
+  max-width: none;
   height: 100%;
+  min-height: 0;
+  max-height: none;
+}
+
+.threepane-account-bar__nobody {
+  box-sizing: border-box;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border: var(--studio-border-width, 1px) dashed var(--threepane-sidebar-muted);
+  border-radius: 50%;
+}
+
+.threepane-account-bar__name {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.threepane-account-bar__name[data-placeholder] {
+  font-weight: inherit;
 }
 
 /* Left sidebar: a stack of configured widgets. The widgets start below the

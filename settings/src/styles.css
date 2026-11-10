@@ -1,456 +1,605 @@
 @layer package {
-:root,
-:host,
-[theme] {
-  --configurator-fg: var(--editor-line, black);
-  --configurator-fill: var(--editor-fill, white);
-  --configurator-family: var(--editor-family-sans, system-ui, sans-serif);
-  --configurator-family-code: var(--editor-family-code, ui-monospace, monospace);
-  --configurator-accent: var(--studio-accent, oklch(0.6 0.15 250));
-}
+  /* every variable is worked out again on [theme], so a little preview with
+     a theme="…" of its own is drawn in that theme, not the page's */
+  :root,
+  :host,
+  [theme] {
+    --settings-fill: var(--editor-fill, white);
+    --settings-fg: var(--editor-line, black);
+    --settings-muted: var(--editor-line-offset-50, #888);
+    --settings-rule: var(--editor-fill-offset-20, #ddd);
+    --settings-hover: var(--editor-fill-offset-10, #f2f2f2);
+    --settings-accent: var(--studio-primary, #35f7ca);
+    --settings-danger: var(--studio-danger-text, var(--studio-danger, crimson));
+    --settings-family: var(--editor-family-sans, system-ui, sans-serif);
+    --settings-family-code: var(--editor-family-code, ui-monospace, monospace);
+
+    --settings-mini-chrome: var(--studio-chrome-fill, var(--studio-chrome, #eee));
+    --settings-mini-chrome-line: var(--studio-chrome-line, var(--studio-line, black));
+    --settings-mini-rule: var(--studio-chrome-fill-offset-30, #ccc);
+    --settings-mini-fill: var(--text-editor-fill, var(--editor-fill, white));
+    --settings-mini-line: var(--text-editor-line, var(--editor-line, black));
+    --settings-mini-primary: var(--studio-primary, #35f7ca);
+    --settings-mini-family: var(--studio-family-sans, system-ui, sans-serif);
+    --settings-mini-family-text: var(--text-editor-family, var(--editor-family-sans, system-ui, sans-serif));
+    --settings-mini-heading: var(--syntax-heading, currentColor);
+    --settings-mini-keyword: var(--syntax-keyword, currentColor);
+    --settings-mini-link: var(--syntax-link, currentColor);
+    --settings-mini-comment: var(--syntax-comment, currentColor);
+  }
 }
 
-/* ── Root ── */
-.configurator {
+/* ── the page ──────────────────────────────────────────────────────── */
+
+.settings {
   container-type: inline-size;
-  padding: 1.25rem;
-  padding-bottom: 4rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
+  box-sizing: border-box;
   height: 100%;
-  overflow-y: auto;
-  font-family: var(--configurator-family);
-  color: var(--configurator-fg);
-}
-
-.configurator.loading {
-  opacity: 0.5;
-  font-size: 0.875rem;
-}
-
-.configurator-title {
-  font-size: 0.9375rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: inherit;
-}
-
-/* ── Section ── */
-.config-section {
+  overflow: auto;
   display: flex;
-  flex-direction: column;
-  gap: 0.625rem;
-  padding-top: 1rem;
-  border-top: var(--studio-border-width, 1px) var(--studio-border-style, solid) color-mix(in oklch, currentColor 10%, transparent);
+  justify-content: center;
+  background: var(--settings-fill);
+  color: var(--settings-fg);
+  font: 400 13px/1.4 var(--settings-family);
 }
 
-.config-section:first-of-type {
-  border-top: none;
-  padding-top: 0;
+.settings-page {
+  box-sizing: border-box;
+  width: min(600px, 100%);
+  padding: 28px 24px 64px;
+
+  & h1 {
+    margin: 0 0 16px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  & h2 {
+    margin: 0;
+    color: var(--settings-muted);
+    font-size: 12px;
+    font-weight: 600;
+  }
+  & h3 {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 500;
+
+    & small {
+      color: var(--settings-muted);
+      font-weight: 400;
+    }
+  }
+  & :is(input, select, textarea, button):focus-visible {
+    outline: 2px solid var(--settings-accent);
+    outline-offset: 1px;
+  }
 }
 
-.section-label {
-  font-size: 0.625rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: var(--studio-chrome-letter-spacing, 0.06em);
-  opacity: 0.5;
-}
-
-/* ── Preview Card Grid (frame / sidebar selectors) ── */
-.preview-grid {
+.settings-section {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 0.5rem;
+  gap: 12px;
+  padding: 16px 0 24px;
+  border-top: var(--studio-border-width, 1px) solid var(--settings-rule);
 }
 
-@container (max-width: 279px) {
-  .preview-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-@container (min-width: 400px) {
-  .preview-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
-
-.preview-card {
+/* a label down the left, its control beside it */
+.settings-row {
   display: flex;
-  flex-direction: column;
-  border: 1.5px solid color-mix(in oklch, currentColor 12%, transparent);
-  border-radius: 0.5rem;
-  overflow: hidden;
-  cursor: var(--studio-cursor-pointer, pointer);
-  transition: border-color max(1ms, calc(120ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))), box-shadow max(1ms, calc(120ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)));
-  background: none;
-  color: inherit;
-  padding: 0;
-  text-align: left;
-}
-
-.preview-card:hover {
-  border-color: color-mix(in oklch, currentColor 25%, transparent);
-}
-
-.preview-card[aria-checked="true"] {
-  border-color: var(--configurator-accent);
-  box-shadow: 0 0 0 1px var(--configurator-accent);
-}
-
-.preview-card-label {
-  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.375rem;
-  padding: 0.5rem 0.625rem;
-  font-size: 0.75rem;
-  font-weight: 500;
+  gap: 6px 10px;
+  min-height: 28px;
 }
 
-.preview-card-check {
-  margin-left: auto;
-  color: var(--configurator-accent);
-  flex-shrink: 0;
-  display: none;
+.settings-label {
+  flex: none;
+  width: 96px;
+  color: var(--settings-muted);
 }
 
-.preview-card[aria-checked="true"] .preview-card-check {
+.settings-control {
   display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
-.empty-message {
-  font-size: 0.8125rem;
-  opacity: 0.7;
-  font-style: italic;
+/* a hint under a row lines up with the controls, not the label */
+.settings-row-hint {
+  flex-basis: 100%;
+  padding-left: 106px;
+}
+
+@container (max-width: 420px) {
+  .settings-label {
+    width: 100%;
+  }
+  .settings-row-hint {
+    padding-left: 0;
+  }
+}
+
+.settings-hint {
   margin: 0;
-  padding: 0.375rem 0;
+  color: var(--settings-muted);
+  font-size: 12px;
 }
 
-/* ── Toolbar Strip ── */
-.toolbar-strip {
+.settings-cluster {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.375rem;
-  align-items: flex-end;
-}
-
-.toolbar-box {
-  display: flex;
-  flex-direction: row;
   align-items: center;
-  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) color-mix(in oklch, currentColor 12%, transparent);
-  border-radius: 0.375rem;
-  overflow: hidden;
-  cursor: var(--studio-cursor-grab, grab);
-  user-select: none;
-  position: relative;
-  transition: border-color max(1ms, calc(120ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))), opacity max(1ms, calc(150ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))), transform max(1ms, calc(200ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) ease;
+  gap: 6px;
+  min-width: 0;
 }
 
-.toolbar-box:active {
-  cursor: var(--studio-cursor-grabbing, grabbing);
+.settings-grow {
+  flex: 1;
+  min-width: 0;
 }
 
-.toolbar-box.dragging {
-  opacity: 0;
+.settings-button {
+  padding: 3px 9px;
+  border: var(--studio-border-width, 1px) solid var(--settings-rule);
+  border-radius: var(--studio-radius-sm, 4px);
+  background: var(--settings-fill);
+  color: inherit;
+  font: inherit;
+  cursor: var(--studio-cursor-pointer, pointer);
+  transition: background var(--studio-transition-fast, 0.1s ease), transform 120ms ease-out;
+
+  @media (hover: hover) and (pointer: fine) {
+    &:hover:not(:disabled) {
+      background: var(--settings-hover);
+    }
+  }
+  &:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  &[data-danger] {
+    border-color: var(--settings-danger);
+    color: var(--settings-danger);
+  }
 }
 
-.toolbar-box.shift-left {
-  transform: translateX(calc(-100% - 0.375rem));
+.settings-input {
+  box-sizing: border-box;
+  padding: 4px 6px;
+  border: var(--studio-border-width, 1px) solid var(--settings-rule);
+  border-radius: var(--studio-radius-sm, 4px);
+  background: var(--settings-fill);
+  color: inherit;
+  font: inherit;
 }
 
-.toolbar-box.shift-right {
-  transform: translateX(calc(100% + 0.375rem));
+.settings-number {
+  width: 6em;
 }
 
-.toolbar-box-label {
-  font-size: 0.6875rem;
-  padding: 0.3125rem 0.625rem;
-  text-align: center;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.settings-code {
+  font-family: var(--settings-family-code);
 }
 
-.toolbar-box-remove {
-  margin-right: 0.25rem;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 1rem;
-  height: 1rem;
+.settings-reset {
+  padding: 0;
   border: none;
-  border-radius: 50%;
-  background: color-mix(in oklch, currentColor 10%, transparent);
-  color: inherit;
-  opacity: 0;
-  cursor: var(--studio-cursor-pointer, pointer);
-  padding: 0;
-  transition: opacity max(1ms, calc(120ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))), background max(1ms, calc(120ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))), color max(1ms, calc(120ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)));
-}
-
-.toolbar-box:hover .toolbar-box-remove {
-  opacity: 0.5;
-}
-
-.toolbar-box-remove:hover {
-  opacity: 1 !important;
-  color: oklch(0.65 0.2 20);
-  background: oklch(0.65 0.2 20 / 0.15);
-}
-
-.toolbar-add-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.25rem;
-  height: 100%;
-  min-height: 3.5rem;
-  border: 1.5px dashed color-mix(in oklch, currentColor 18%, transparent);
-  border-radius: 0.375rem;
   background: none;
-  color: inherit;
-  opacity: 0.45;
+  color: var(--settings-muted);
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline dotted;
   cursor: var(--studio-cursor-pointer, pointer);
+}
+
+.settings-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--settings-muted);
+}
+
+/* ── you ───────────────────────────────────────────────────────────── */
+
+.settings-you {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.settings-you-face {
+  position: relative;
+  width: 56px;
+  height: 56px;
+
+  &[aria-busy="true"] {
+    opacity: 0.5;
+  }
+}
+
+.settings-you-picture {
+  display: block;
+  width: 56px;
+  height: 56px;
   padding: 0;
-  transition: opacity max(1ms, calc(120ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))), border-color max(1ms, calc(120ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))), background max(1ms, calc(120ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)));
-}
-
-.toolbar-add-btn:hover {
-  opacity: 0.8;
-  border-color: color-mix(in oklch, currentColor 30%, transparent);
-  background: color-mix(in oklch, currentColor 4%, transparent);
-}
-
-/* ── Context Tabs ── */
-.context-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0;
-  border-bottom: 1.5px solid color-mix(in oklch, currentColor 12%, transparent);
-}
-
-.context-tab {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.375rem 0.625rem;
-  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) color-mix(in oklch, currentColor 12%, transparent);
-  border-bottom: none;
-  border-radius: 0.375rem 0.375rem 0 0;
-  background: none;
-  color: inherit;
-  font-size: 0.75rem;
-  font-weight: 500;
-  cursor: var(--studio-cursor-grab, grab);
-  user-select: none;
-  margin-bottom: -1.5px;
-  transition: background max(1ms, calc(120ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))), opacity max(1ms, calc(150ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))), transform max(1ms, calc(200ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) ease;
-}
-
-.context-tab:active {
-  cursor: var(--studio-cursor-grabbing, grabbing);
-}
-
-.context-tab.dragging {
-  opacity: 0;
-}
-
-.context-tab.shift-left {
-  transform: translateX(-100%);
-}
-
-.context-tab.shift-right {
-  transform: translateX(100%);
-}
-
-.context-tab:hover {
-  background: color-mix(in oklch, currentColor 6%, transparent);
-}
-
-.context-tab-remove {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 0.875rem;
-  height: 0.875rem;
   border: none;
   border-radius: 50%;
   background: none;
-  color: inherit;
-  opacity: 0.25;
   cursor: var(--studio-cursor-pointer, pointer);
-  padding: 0;
-  flex-shrink: 0;
-  transition: opacity max(1ms, calc(120ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))), color max(1ms, calc(120ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))), background max(1ms, calc(120ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)));
+
+  & patchwork-view {
+    display: block;
+    width: 56px;
+    height: 56px;
+  }
+  /* contact-avatar draws itself at 2rem unless it's told to fill its view */
+  & patchwork-view .contact-avatar {
+    display: flex;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    height: 100%;
+    min-height: 0;
+    max-height: none;
+  }
+  &:disabled {
+    cursor: progress;
+  }
 }
 
-.context-tab-remove:hover {
-  opacity: 1;
-  color: oklch(0.65 0.2 20);
-  background: oklch(0.65 0.2 20 / 0.12);
-}
-
-.context-tab-add {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.375rem 0.625rem;
-  border: var(--studio-border-width, 1px) dashed color-mix(in oklch, currentColor 15%, transparent);
-  border-bottom: none;
-  border-radius: 0.375rem 0.375rem 0 0;
-  background: none;
-  color: inherit;
-  font-size: 0.75rem;
-  opacity: 0.45;
-  cursor: var(--studio-cursor-pointer, pointer);
-  margin-bottom: -1.5px;
-  transition: opacity max(1ms, calc(120ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))), background max(1ms, calc(120ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)));
-}
-
-.context-tab-add:hover {
-  opacity: 0.8;
-  background: color-mix(in oklch, currentColor 4%, transparent);
-}
-
-/* ── Add Popover (shared) ── */
-.add-popover-anchor {
-  position: relative;
-}
-
-.add-popover {
+/* the × on its corner, over the edge of it */
+.settings-you-unpicture {
   position: absolute;
-  bottom: calc(100% + 0.375rem);
-  left: 0;
-  z-index: var(--studio-layer-dropdown, 10);
-  min-width: 12rem;
-  padding: 0.375rem;
-  background: var(--configurator-fill);
-  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) color-mix(in oklch, currentColor 15%, transparent);
-  border-radius: 0.5rem;
-  box-shadow: 0 4px 16px oklch(0 0 0 / 0.1), 0 1px 4px oklch(0 0 0 / 0.06);
+  top: -2px;
+  right: -2px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: var(--studio-border-width, 1px) solid var(--settings-rule);
+  border-radius: 50%;
+  background: var(--settings-fill);
+  color: var(--settings-muted);
+  font-size: 13px;
+  line-height: 1;
+  cursor: var(--studio-cursor-pointer, pointer);
+  transition: transform 120ms ease-out;
+
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      border-color: var(--settings-danger);
+      color: var(--settings-danger);
+    }
+  }
+  &:active {
+    transform: scale(0.9);
+  }
+}
+
+.settings-you-nobody {
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border: var(--studio-border-width, 1px) dashed var(--settings-muted);
+  border-radius: 50%;
+  color: var(--settings-muted);
+  font-size: 18px;
+}
+
+.settings-you-says {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* your name, as it's shown: an input only when you're at it */
+.settings-you-name {
+  box-sizing: border-box;
+  width: 100%;
+  margin-left: -7px;
+  padding: 3px 6px;
+  border: var(--studio-border-width, 1px) solid transparent;
+  border-radius: var(--studio-radius-sm, 4px);
+  background: none;
+  color: inherit;
+  font: 600 17px var(--settings-family);
+
+  &::placeholder {
+    color: var(--settings-muted);
+  }
+  &:hover {
+    border-color: var(--settings-rule);
+  }
+  &:focus {
+    border-color: var(--settings-accent);
+    background: var(--settings-fill);
+    outline: none;
+  }
+}
+
+/* your colour: a pointer in it, as people see you */
+.settings-colors {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: 2px;
 }
 
-.add-popover-option {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.375rem 0.5rem;
+.settings-color {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: var(--studio-border-width, 1px) solid transparent;
+  border-radius: var(--studio-radius, 6px);
+  background: none;
+  color: var(--settings-color);
+  cursor: var(--studio-cursor-pointer, pointer);
+  transition: transform 120ms ease-out;
+
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      background: var(--settings-hover);
+    }
+  }
+  &:active {
+    transform: scale(0.94);
+  }
+  &[aria-checked="true"] {
+    border-color: var(--settings-color);
+    background: color-mix(in oklch, var(--settings-color) 14%, transparent);
+  }
+  & svg {
+    overflow: visible;
+    fill: currentColor;
+  }
+  & path {
+    stroke: var(--settings-fill);
+    stroke-width: 1.2px;
+    stroke-linejoin: round;
+    paint-order: stroke;
+  }
+}
+
+/* ── theme ─────────────────────────────────────────────────────────── */
+
+.settings-theme-mode {
+  display: grid;
+  gap: 8px;
+}
+
+.settings-theme-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+  gap: 14px 12px;
+}
+
+.settings-theme-card {
+  display: grid;
+  gap: 6px;
+  padding: 0;
   border: none;
-  border-radius: 0.375rem;
   background: none;
   color: inherit;
-  font-size: 0.8125rem;
-  cursor: var(--studio-cursor-pointer, pointer);
+  font: inherit;
   text-align: left;
-  width: 100%;
-  transition: background max(1ms, calc(120ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)));
+  cursor: var(--studio-cursor-pointer, pointer);
+
+  & .settings-mini {
+    transition: transform 140ms ease-out;
+  }
+  &:active .settings-mini {
+    transform: scale(0.98);
+  }
+  &[aria-checked="true"] .settings-mini,
+  &:focus-visible .settings-mini {
+    outline: 2px solid var(--settings-accent);
+    outline-offset: 2px;
+  }
+  &:focus-visible {
+    outline: none !important;
+  }
 }
 
-.add-popover-option:hover {
-  background: color-mix(in oklch, currentColor 8%, transparent);
+.settings-theme-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-.add-popover-option svg {
-  opacity: 0.4;
-  flex-shrink: 0;
+/* a little patchwork: everything in it is its own theme's */
+.settings-mini {
+  display: flex;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border: var(--studio-border-width, 1px) solid var(--settings-mini-rule);
+  border-radius: var(--studio-radius, 6px);
+  background: var(--settings-mini-chrome);
+  color: var(--settings-mini-chrome-line);
+  font: 400 7.5px/1.4 var(--settings-mini-family);
+  pointer-events: none;
+  user-select: none;
 }
 
-.add-popover-custom {
+.settings-mini-side {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 34%;
+  padding: 12px 0 4px;
+  border-right: var(--studio-border-width, 1px) solid var(--settings-mini-rule);
+
+  & b {
+    padding: 0 5px 2px;
+    font-weight: 600;
+    opacity: 0.6;
+  }
+  & span {
+    padding: 1px 5px 1px 8px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  & [data-current] {
+    background: color-mix(in oklch, var(--settings-mini-primary) 18%, transparent);
+    box-shadow: inset 1.5px 0 var(--settings-mini-primary);
+  }
+}
+
+.settings-mini-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.settings-mini-top {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: 12px;
+  padding: 0 6px;
+  border-bottom: var(--studio-border-width, 1px) solid var(--settings-mini-rule);
+  font-weight: 600;
+}
+
+.settings-mini-text {
+  flex: 1;
+  padding: 4px 6px;
+  background: var(--settings-mini-fill);
+  color: var(--settings-mini-line);
+  font-family: var(--settings-mini-family-text);
+  white-space: nowrap;
+
+  & .h {
+    color: var(--settings-mini-heading);
+    font-weight: 700;
+  }
+  & .k {
+    color: var(--settings-mini-keyword);
+  }
+  & .l {
+    color: var(--settings-mini-link);
+    text-decoration: underline;
+  }
+  & .c {
+    color: var(--settings-mini-comment);
+    font-style: italic;
+  }
+}
+
+/* ── frame ─────────────────────────────────────────────────────────── */
+
+.settings-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.settings-choice {
+  padding: 4px 10px;
+  border: var(--studio-border-width, 1px) solid var(--settings-rule);
+  border-radius: var(--studio-radius-round, 999px);
+  background: var(--settings-fill);
+  color: inherit;
+  font: inherit;
+  cursor: var(--studio-cursor-pointer, pointer);
+
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      background: var(--settings-hover);
+    }
+  }
+  &[aria-checked="true"] {
+    border-color: var(--settings-accent);
+    box-shadow: inset 0 0 0 1px var(--settings-accent);
+  }
+}
+
+.settings-strip {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.settings-strip-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  &:empty {
+    display: none;
+  }
+}
+
+.settings-strip-item {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 0.25rem 0.375rem;
-  border-top: var(--studio-border-width, 1px) var(--studio-border-style, solid) color-mix(in oklch, currentColor 8%, transparent);
-  margin-top: 2px;
-  padding-top: 0.375rem;
+  padding: 3px 4px 3px 9px;
+  border: var(--studio-border-width, 1px) solid var(--settings-rule);
+  border-radius: var(--studio-radius-sm, 4px);
+  background: var(--settings-fill);
+  cursor: var(--studio-cursor-grab, grab);
+  user-select: none;
+
+  &[data-dragging] {
+    opacity: 0.4;
+  }
+  &[data-over] {
+    border-color: var(--settings-accent);
+  }
 }
 
-.add-popover-custom-input {
-  flex: 1;
-  min-width: 0;
-  padding: 0.25rem 0.375rem;
-  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) color-mix(in oklch, currentColor 15%, transparent);
-  border-radius: 0.25rem;
-  background: none;
-  color: inherit;
-  font-size: 0.8125rem;
-  font-family: var(--configurator-family-code);
-  outline: none;
-  transition: border-color max(1ms, calc(120ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)));
-}
-
-.add-popover-custom-input::placeholder {
-  opacity: 0.4;
-  font-family: inherit;
-  font-style: italic;
-}
-
-.add-popover-custom-input:focus {
-  border-color: color-mix(in oklch, currentColor 35%, transparent);
-}
-
-.add-popover-custom-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.5rem;
-  height: 1.5rem;
-  border: none;
-  border-radius: 0.25rem;
-  background: none;
-  color: inherit;
-  opacity: 0.5;
-  cursor: var(--studio-cursor-pointer, pointer);
-  flex-shrink: 0;
+.settings-strip-remove {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
   padding: 0;
-  transition: opacity max(1ms, calc(120ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))), background max(1ms, calc(120ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)));
-}
-
-.add-popover-custom-btn:hover:not(:disabled) {
-  opacity: 0.8;
-  background: color-mix(in oklch, currentColor 8%, transparent);
-}
-
-.add-popover-custom-btn:disabled {
-  opacity: 0.2;
-  cursor: var(--studio-cursor-default, default);
-}
-
-.add-popover-done {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.3125rem;
   border: none;
-  border-radius: 0.25rem;
+  border-radius: 50%;
   background: none;
-  color: inherit;
-  opacity: 0.5;
-  font-size: 0.75rem;
+  color: var(--settings-muted);
+  line-height: 1;
   cursor: var(--studio-cursor-pointer, pointer);
-  transition: background max(1ms, calc(120ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))), opacity max(1ms, calc(120ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)));
+
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      background: var(--settings-hover);
+      color: var(--settings-danger);
+    }
+  }
 }
 
-.add-popover-done:hover {
-  opacity: 0.8;
-  background: color-mix(in oklch, currentColor 8%, transparent);
+.settings-strip-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
 }
 
-/* ── Theme Section ── */
-.theme-embed {
-  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) color-mix(in oklch, currentColor 10%, transparent);
-  border-radius: 0.5rem;
-  overflow: hidden;
-}
+/* ── contributed ───────────────────────────────────────────────────── */
 
-.theme-embed patchwork-view {
-  display: block;
-  width: 100%;
+.settings-color-input {
+  width: 32px;
+  height: 24px;
+  padding: 0;
+  border: var(--studio-border-width, 1px) solid var(--settings-rule);
+  border-radius: var(--studio-radius-sm, 4px);
+  background: none;
 }

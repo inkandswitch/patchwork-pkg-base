@@ -1,5 +1,4 @@
 import "./contact/styles.css";
-import "./picker/styles.css";
 
 export const plugins = [
   {
@@ -57,17 +56,6 @@ export const plugins = [
       const { renderContactCursor } = await import("./contact/ContactCursor");
       const { styled } = await import("./styles");
       return styled(renderContactCursor);
-    },
-  },
-  {
-    type: "patchwork:tool",
-    id: "account-picker",
-    name: "Account Picker",
-    supportedDatatypes: ["account"],
-    async load() {
-      const { AccountPickerTool } = await import("./picker/AccountPicker");
-      const { styled } = await import("./styles");
-      return styled(AccountPickerTool);
     },
   },
 ];
