@@ -19,7 +19,6 @@ function SettingsPage(props: { handle: DocHandle<AccountDoc>; element: ToolEleme
   return (
     <div class="settings">
       <div class="settings-page">
-        <h1>settings</h1>
         <Show when={account()}>
           <You handle={props.handle} account={account} repo={repo} />
           <Theme element={props.element} account={account} />

@@ -157,7 +157,7 @@ export function Theme(props: { element: HTMLElement; account: () => AccountDoc |
               if (!on) choose("both", chosen(mode()));
             }}
           />
-          another for dark mode
+          Use a different theme when Computer is in dark mode
         </label>
       </Show>
     </section>

@@ -48,13 +48,12 @@
 .settings-page {
   box-sizing: border-box;
   width: min(600px, 100%);
-  padding: 28px 24px 64px;
+  display: grid;
+  align-content: start;
+  /* sections are kept apart by space alone, no rules between them */
+  gap: 36px;
+  padding: 32px 24px 64px;
 
-  & h1 {
-    margin: 0 0 16px;
-    font-size: 15px;
-    font-weight: 600;
-  }
   & h2 {
     margin: 0;
     color: var(--settings-muted);
@@ -80,8 +79,6 @@
 .settings-section {
   display: grid;
   gap: 12px;
-  padding: 16px 0 24px;
-  border-top: var(--studio-border-width, 1px) solid var(--settings-rule);
 }
 
 /* a label down the left, its control beside it */
@@ -218,11 +215,6 @@
       }
     }
   }
-}
-
-.settings-icon-button {
-  width: 28px;
-  padding: 0;
 }
 
 .settings-icon {
@@ -570,18 +562,6 @@
     border-color: var(--settings-accent);
     background: var(--settings-fill);
     outline: none;
-  }
-}
-
-.settings-secret {
-  display: inline-flex;
-  flex: 1 1 14em;
-  gap: 4px;
-  min-width: 0;
-
-  & .settings-input {
-    flex: 1;
-    min-width: 0;
   }
 }
 
