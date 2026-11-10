@@ -954,6 +954,10 @@
   flex: none;
   width: 24px;
   height: 24px;
+  /* initials, when there's no picture, sized to the circle */
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 /* contact-avatar draws itself at 2rem unless it's told to fill its view */

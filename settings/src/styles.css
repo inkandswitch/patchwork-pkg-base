@@ -13,6 +13,8 @@
     --settings-danger: var(--studio-danger-text, var(--studio-danger, crimson));
     --settings-family: var(--editor-family-sans, system-ui, sans-serif);
     --settings-family-code: var(--editor-family-code, ui-monospace, monospace);
+    --settings-quick: max(1ms, calc(120ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)));
+    --settings-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 
     --settings-mini-chrome: var(--studio-chrome-fill, var(--studio-chrome, #eee));
     --settings-mini-chrome-line: var(--studio-chrome-line, var(--studio-line, black));
@@ -105,25 +107,30 @@
   min-width: 0;
 }
 
-/* a hint under a row lines up with the controls, not the label */
-.settings-row-hint {
-  flex-basis: 100%;
-  padding-left: 106px;
-}
-
 @container (max-width: 420px) {
   .settings-label {
     width: 100%;
   }
-  .settings-row-hint {
-    padding-left: 0;
-  }
 }
 
-.settings-hint {
-  margin: 0;
+.settings-unit {
   color: var(--settings-muted);
+}
+
+.settings-error {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--settings-danger);
   font-size: 12px;
+}
+
+.settings-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .settings-cluster {
@@ -140,36 +147,99 @@
 }
 
 .settings-button {
-  padding: 3px 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
   border: var(--studio-border-width, 1px) solid var(--settings-rule);
   border-radius: var(--studio-radius-sm, 4px);
   background: var(--settings-fill);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 5%);
   color: inherit;
-  font: inherit;
+  font: 500 12.5px var(--settings-family);
+  white-space: nowrap;
   cursor: var(--studio-cursor-pointer, pointer);
-  transition: background var(--studio-transition-fast, 0.1s ease), transform 120ms ease-out;
+  transition:
+    background-color var(--settings-quick) ease,
+    box-shadow var(--settings-quick) ease,
+    color var(--settings-quick) ease,
+    transform var(--settings-quick) var(--settings-ease-out);
 
   @media (hover: hover) and (pointer: fine) {
     &:hover:not(:disabled) {
       background: var(--settings-hover);
+      box-shadow: none;
     }
   }
   &:active:not(:disabled) {
     transform: scale(0.97);
   }
   &:disabled {
-    opacity: 0.5;
+    opacity: 0.35;
     cursor: default;
+  }
+  &[data-primary] {
+    border-color: var(--settings-fg);
+    background: var(--settings-fg);
+    color: var(--settings-fill);
+
+    @media (hover: hover) and (pointer: fine) {
+      &:hover:not(:disabled) {
+        background: var(--settings-fg);
+        opacity: 0.85;
+      }
+    }
+  }
+  /* sign out sits quiet until you go for it */
+  &[data-leave] {
+    border-color: transparent;
+    background: none;
+    box-shadow: none;
+    color: var(--settings-muted);
+
+    @media (hover: hover) and (pointer: fine) {
+      &:hover:not(:disabled) {
+        background: var(--settings-danger);
+        color: white;
+      }
+    }
   }
   &[data-danger] {
     border-color: var(--settings-danger);
-    color: var(--settings-danger);
+    background: var(--settings-danger);
+    color: white;
+
+    @media (hover: hover) and (pointer: fine) {
+      &:hover:not(:disabled) {
+        background: var(--settings-danger);
+        opacity: 0.9;
+      }
+    }
   }
+}
+
+.settings-icon-button {
+  width: 28px;
+  padding: 0;
+}
+
+.settings-icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .settings-input {
   box-sizing: border-box;
-  padding: 4px 6px;
+  height: 28px;
+  padding: 4px 8px;
   border: var(--studio-border-width, 1px) solid var(--settings-rule);
   border-radius: var(--studio-radius-sm, 4px);
   background: var(--settings-fill);
@@ -205,37 +275,72 @@
 
 /* ── you ───────────────────────────────────────────────────────────── */
 
+/* your picture on the left, ringed in your colour, with your cursor
+   under it pointing up at it; your name beside it */
 .settings-you {
-  display: grid;
-  grid-template-columns: 96px 1fr;
-  align-items: center;
-  gap: 4px 10px;
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  padding: 4px 0 28px;
 }
 
 .settings-you-face {
   position: relative;
-  width: 56px;
-  height: 56px;
+  flex: none;
+  width: 72px;
+  height: 72px;
+  padding: 4px;
+  box-sizing: border-box;
 
-  &[aria-busy="true"] {
+  &[aria-busy="true"] .settings-you-picture {
     opacity: 0.5;
   }
 }
 
 .settings-you-picture {
+  position: relative;
   display: block;
-  width: 56px;
-  height: 56px;
+  width: 64px;
+  height: 64px;
   padding: 0;
+  overflow: hidden;
   border: none;
   border-radius: 50%;
   background: none;
+  box-shadow:
+    0 0 0 2px var(--settings-fill),
+    0 0 0 4px var(--settings-you-color);
   cursor: var(--studio-cursor-pointer, pointer);
+  transition:
+    box-shadow var(--settings-quick) ease,
+    opacity var(--settings-quick) ease;
+
+  /* a shade over it, to say it's yours to change */
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: rgb(0 0 0 / 30%);
+    opacity: 0;
+    transition: opacity var(--settings-quick) ease;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    &:hover::after {
+      opacity: 1;
+    }
+  }
+  &:focus-visible::after {
+    opacity: 1;
+  }
 
   & patchwork-view {
     display: block;
-    width: 56px;
-    height: 56px;
+    width: 64px;
+    height: 64px;
+    /* initials, when there's no picture */
+    font: 600 20px var(--settings-family);
+    letter-spacing: 0.02em;
   }
   /* contact-avatar draws itself at 2rem unless it's told to fill its view */
   & patchwork-view .contact-avatar {
@@ -253,15 +358,28 @@
   }
 }
 
-/* the × on its corner, over the edge of it */
-.settings-you-unpicture {
-  position: absolute;
-  top: -2px;
-  right: -2px;
+.settings-you-nobody {
+  box-sizing: border-box;
   display: grid;
   place-items: center;
-  width: 18px;
-  height: 18px;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--settings-hover);
+  color: var(--settings-muted);
+  font-size: 20px;
+}
+
+/* the × on its shoulder, over the ring */
+.settings-you-unpicture {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
   padding: 0;
   border: var(--studio-border-width, 1px) solid var(--settings-rule);
   border-radius: 50%;
@@ -270,8 +388,18 @@
   font-size: 13px;
   line-height: 1;
   cursor: var(--studio-cursor-pointer, pointer);
-  transition: transform 120ms ease-out;
+  opacity: 0;
+  transition:
+    opacity var(--settings-quick) ease,
+    transform var(--settings-quick) var(--settings-ease-out);
 
+  .settings-you-face:hover &,
+  &:focus-visible {
+    opacity: 1;
+  }
+  @media (hover: none) {
+    opacity: 1;
+  }
   @media (hover: hover) and (pointer: fine) {
     &:hover {
       border-color: var(--settings-danger);
@@ -283,22 +411,141 @@
   }
 }
 
-.settings-you-nobody {
-  box-sizing: border-box;
+/* your cursor, pointing in at your picture from under it */
+.settings-you-cursor {
+  position: absolute;
+  top: 56px;
+  left: 44px;
+  z-index: 2;
+}
+
+.settings-pointer {
+  display: inline-flex;
+  align-items: flex-start;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: var(--studio-cursor-pointer, pointer);
+  transition: transform var(--settings-quick) var(--settings-ease-out);
+
+  &:active {
+    transform: scale(0.96);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    &:hover .settings-pointer-tag {
+      filter: brightness(1.08);
+    }
+  }
+  &:focus-visible {
+    outline: none;
+  }
+  &:focus-visible .settings-pointer-tag {
+    outline: 2px solid var(--settings-accent);
+    outline-offset: 1px;
+  }
+}
+
+.settings-pointer-arrow {
+  flex: none;
+  width: 16px;
+  height: 24px;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 25%));
+}
+
+.settings-pointer-tag {
+  max-width: 12rem;
+  margin: 13px 0 0 -3px;
+  padding: 2px 6px;
+  overflow: hidden;
+  border-radius: 4px;
+  color: white;
+  font: 500 12px/1.3 var(--settings-family);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* the palette, under your cursor */
+.settings-colors {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: var(--studio-layer-dropdown, 30);
   display: grid;
-  place-items: center;
-  width: 56px;
-  height: 56px;
-  border: var(--studio-border-width, 1px) dashed var(--settings-muted);
-  border-radius: 50%;
-  color: var(--settings-muted);
-  font-size: 18px;
+  grid-template-columns: repeat(7, 24px);
+  gap: 3px;
+  padding: 6px;
+  border: var(--studio-border-width, 1px) solid var(--settings-rule);
+  border-radius: 8px;
+  background: var(--settings-fill);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 12%);
+  transform-origin: top left;
+  animation: settings-pop var(--settings-quick) var(--settings-ease-out);
+}
+
+@keyframes settings-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+.settings-swatch {
+  position: relative;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  overflow: hidden;
+  border: none;
+  border-radius: 4px;
+  cursor: var(--studio-cursor-pointer, pointer);
+  transition: transform var(--settings-quick) var(--settings-ease-out);
+
+  &:active {
+    transform: scale(0.92);
+  }
+  &[aria-checked="true"] {
+    box-shadow:
+      inset 0 0 0 2px var(--settings-fill),
+      0 0 0 2px var(--settings-fg);
+  }
+  &:focus-visible,
+  &:has(:focus-visible) {
+    outline: 2px solid var(--settings-accent);
+    outline-offset: 1px;
+  }
+}
+
+.settings-swatch-custom {
+  background: conic-gradient(
+    hsl(0 70% 55%),
+    hsl(60 70% 55%),
+    hsl(120 70% 55%),
+    hsl(180 70% 55%),
+    hsl(240 70% 55%),
+    hsl(300 70% 55%),
+    hsl(360 70% 55%)
+  );
+
+  & input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: none;
+    opacity: 0;
+    cursor: inherit;
+  }
 }
 
 .settings-you-says {
-  display: grid;
-  gap: 2px;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
   min-width: 0;
+  padding-top: 18px;
 }
 
 /* your name, as it's shown: an input only when you're at it */
@@ -311,7 +558,7 @@
   border-radius: var(--studio-radius-sm, 4px);
   background: none;
   color: inherit;
-  font: 600 17px var(--settings-family);
+  font: 600 20px/1.2 var(--settings-family);
 
   &::placeholder {
     color: var(--settings-muted);
@@ -326,48 +573,94 @@
   }
 }
 
-/* your colour: a pointer in it, as people see you */
-.settings-colors {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px;
+.settings-secret {
+  display: inline-flex;
+  flex: 1 1 14em;
+  gap: 4px;
+  min-width: 0;
+
+  & .settings-input {
+    flex: 1;
+    min-width: 0;
+  }
 }
 
-.settings-color {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border: var(--studio-border-width, 1px) solid transparent;
-  border-radius: var(--studio-radius, 6px);
-  background: none;
-  color: var(--settings-color);
-  cursor: var(--studio-cursor-pointer, pointer);
-  transition: transform 120ms ease-out;
+.settings-ask {
+  margin-right: 4px;
+  font-weight: 600;
+}
 
-  @media (hover: hover) and (pointer: fine) {
-    &:hover {
-      background: var(--settings-hover);
-    }
+/* ── dialogs ───────────────────────────────────────────────────────── */
+
+.settings-dialog {
+  padding: 20px;
+  border: var(--studio-border-width, 1px) solid var(--settings-rule);
+  border-radius: 8px;
+  background: var(--settings-fill);
+  box-shadow: 0 8px 30px rgb(0 0 0 / 10%);
+  color: var(--settings-fg);
+  font: 400 13px/1.4 var(--settings-family);
+
+  &::backdrop {
+    background: var(--studio-backdrop, rgb(0 0 0 / 20%));
+    backdrop-filter: var(--studio-backdrop-blur, blur(2px));
   }
+  &[open] {
+    animation: settings-pop var(--settings-quick) var(--settings-ease-out);
+  }
+}
+
+.settings-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.settings-cropper[open] {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+}
+
+.settings-cropper-view {
+  position: relative;
+  width: 240px;
+  height: 240px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--settings-hover);
+  cursor: var(--studio-cursor-grab, grab);
+  touch-action: none;
+
   &:active {
-    transform: scale(0.94);
+    cursor: var(--studio-cursor-grabbing, grabbing);
   }
-  &[aria-checked="true"] {
-    border-color: var(--settings-color);
-    background: color-mix(in oklch, var(--settings-color) 14%, transparent);
+  & img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    max-width: none;
+    transform-origin: 0 0;
+    user-select: none;
+    -webkit-user-drag: none;
   }
-  & svg {
-    overflow: visible;
-    fill: currentColor;
-  }
-  & path {
-    stroke: var(--settings-fill);
-    stroke-width: 1.2px;
-    stroke-linejoin: round;
-    paint-order: stroke;
-  }
+}
+
+.settings-cropper-mask {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 9999px rgb(0 0 0 / 45%);
+  pointer-events: none;
+}
+
+.settings-cropper-zoom {
+  width: 240px;
+  accent-color: var(--settings-fg);
+}
+
+.settings-cropper .settings-dialog-actions {
+  justify-self: stretch;
 }
 
 /* ── theme ─────────────────────────────────────────────────────────── */

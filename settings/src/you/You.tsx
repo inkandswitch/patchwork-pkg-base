@@ -188,9 +188,9 @@ export function You(props: {
               couldn't read that picture
             </p>
           </Show>
-          <AccountKey handle={props.handle} name={name} />
         </div>
       </div>
+      <AccountKey handle={props.handle} name={name} />
 
       <Show when={cropping()}>
         {(pending) => (
