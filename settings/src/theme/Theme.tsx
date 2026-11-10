@@ -120,10 +120,7 @@ export function Theme(props: { element: HTMLElement; account: () => AccountDoc |
   return (
     <section class="settings-section" aria-labelledby="settings-theme">
       <h2 id="settings-theme">theme</h2>
-      <Show
-        when={themes().length}
-        fallback={<p class="settings-hint">no themes are here yet</p>}
-      >
+      <Show when={themes().length}>
         <Show
           when={split()}
           fallback={
@@ -160,7 +157,7 @@ export function Theme(props: { element: HTMLElement; account: () => AccountDoc |
               if (!on) choose("both", chosen(mode()));
             }}
           />
-          a different theme when the computer's in dark mode
+          another for dark mode
         </label>
       </Show>
     </section>

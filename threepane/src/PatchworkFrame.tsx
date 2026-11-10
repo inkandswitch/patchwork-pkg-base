@@ -467,7 +467,7 @@ export function FrameLayout(props: {
   widgetsReady: Accessor<boolean>;
   /** Account subdocs for the inlined account bar (you + Packages). */
   contactUrl: Accessor<AutomergeUrl | undefined>;
-  /** Your name, beside your picture; "" when you've none (shows "Settings"). */
+  /** Your name, beside your picture; "" when you've none (just the picture). */
   contactName?: Accessor<string>;
   moduleSettingsUrl: Accessor<AutomergeUrl | undefined>;
   /** Fixed per tool instance: whether the main document area is isolated. */
@@ -581,8 +581,8 @@ export function FrameLayout(props: {
               <button
                 type="button"
                 class="threepane-account-bar__me"
-                title="Settings · you, and the theme"
-                aria-label={myName() ? undefined : "Settings"}
+                title="Settings"
+                aria-label="Settings"
                 onClick={(e) =>
                   dispatchOpen(e.currentTarget, {
                     url: props.accountDocUrl,
@@ -601,12 +601,9 @@ export function FrameLayout(props: {
                     />
                   )}
                 </Show>
-                <span
-                  class="threepane-account-bar__name"
-                  data-placeholder={myName() ? undefined : ""}
-                >
-                  {myName() || "Settings"}
-                </span>
+                <Show when={myName()}>
+                  <span class="threepane-account-bar__name">{myName()}</span>
+                </Show>
               </button>
 
               <Show when={props.moduleSettingsUrl()}>

@@ -81,7 +81,7 @@ export function Frame(props: {
     <>
       <section class="settings-section" aria-labelledby="settings-frame">
         <h2 id="settings-frame">frame</h2>
-        <Show when={frames().length} fallback={<p class="settings-hint">no frames are here yet</p>}>
+        <Show when={frames().length}>
           <div class="settings-choices" role="radiogroup" aria-label="frame">
             <For each={frames()}>
               {(frame) => (
@@ -97,7 +97,6 @@ export function Frame(props: {
               )}
             </For>
           </div>
-          <p class="settings-hint">changing it reloads the page</p>
         </Show>
       </section>
 
@@ -105,7 +104,6 @@ export function Frame(props: {
         {(handle) => (
           <section class="settings-section" aria-labelledby="settings-titlebar">
             <h2 id="settings-titlebar">title bar</h2>
-            <p class="settings-hint">the tools along the top of a document. drag to reorder</p>
             <Strip
               values={doctitle() ?? []}
               options={titlebar()}
@@ -202,7 +200,7 @@ function Strip(props: {
         }
       >
         <div class="settings-strip-add" onKeyDown={(event) => event.key === "Escape" && setAdding(false)}>
-          <For each={available()} fallback={<span class="settings-hint">every title bar tool's in</span>}>
+          <For each={available()}>
             {(option) => (
               <button type="button" class="settings-button" onClick={() => add(option.id)}>
                 + {option.name}

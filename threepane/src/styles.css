@@ -923,7 +923,6 @@
   gap: var(--threepane-space-xs);
   min-width: 0;
   padding: var(--threepane-space-3xs);
-  padding-right: var(--threepane-space-sm);
   border: none;
   border-radius: var(--threepane-radius-round);
   background: transparent;
@@ -932,6 +931,11 @@
   text-align: left;
   cursor: var(--studio-cursor-pointer, pointer);
   transition: background var(--studio-transition-fast, 0.1s ease);
+}
+
+/* only a name needs room after it; just a picture stays round */
+.threepane-account-bar__me:has(.threepane-account-bar__name) {
+  padding-right: var(--threepane-space-sm);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -979,10 +983,6 @@
   font-weight: 600;
   white-space: nowrap;
   text-overflow: ellipsis;
-}
-
-.threepane-account-bar__name[data-placeholder] {
-  font-weight: inherit;
 }
 
 /* Left sidebar: a stack of configured widgets. The widgets start below the

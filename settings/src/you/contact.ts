@@ -57,17 +57,26 @@ export function accountUrlFromToken(token: string): AutomergeUrl | undefined {
   return isValidAutomergeUrl(url) ? (url as AutomergeUrl) : undefined;
 }
 
-// a picture, made square (the middle of it) and small (lattice's)
+// a picture, made square and small: the square you cropped it to, or else
+// the middle of it
 const PICTURE = 256;
-export async function squarePicture(file: File): Promise<Uint8Array> {
+export type Crop = { x: number; y: number; size: number };
+export async function squarePicture(file: File, crop?: Crop): Promise<Uint8Array> {
   const bitmap = await createImageBitmap(file);
   const side = Math.min(bitmap.width, bitmap.height);
-  const size = Math.min(PICTURE, side);
+  const from = crop ?? { x: (bitmap.width - side) / 2, y: (bitmap.height - side) / 2, size: side };
+  const size = Math.round(Math.min(PICTURE, from.size));
   const canvas = new OffscreenCanvas(size, size);
-  canvas
-    .getContext("2d")!
-    .drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, size, size);
+  canvas.getContext("2d")!.drawImage(bitmap, from.x, from.y, from.size, from.size, 0, 0, size, size);
   bitmap.close();
   const blob = await canvas.convertToBlob({ type: "image/webp", quality: 0.8 });
   return new Uint8Array(await blob.arrayBuffer());
+}
+
+// any css colour as #rrggbb, for <input type="color">
+export function hexColor(color: string): string {
+  const context = new OffscreenCanvas(1, 1).getContext("2d")!;
+  context.fillStyle = "#000000";
+  context.fillStyle = color;
+  return String(context.fillStyle);
 }

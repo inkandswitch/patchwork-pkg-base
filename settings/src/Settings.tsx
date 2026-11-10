@@ -20,7 +20,7 @@ function SettingsPage(props: { handle: DocHandle<AccountDoc>; element: ToolEleme
     <div class="settings">
       <div class="settings-page">
         <h1>settings</h1>
-        <Show when={account()} fallback={<p class="settings-hint">finding your account…</p>}>
+        <Show when={account()}>
           <You handle={props.handle} account={account} repo={repo} />
           <Theme element={props.element} account={account} />
           <Frame element={props.element} handle={props.handle} account={account} repo={repo} />

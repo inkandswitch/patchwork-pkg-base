@@ -53,10 +53,9 @@ function PluginSection(props: {
   return (
     <Show when={settings().length}>
       <section class="settings-section" aria-labelledby={headingId}>
-        <h2 id={headingId}>{props.plugin.name || props.plugin.id}</h2>
-        <Show when={props.plugin.description}>
-          <p class="settings-hint">{props.plugin.description}</p>
-        </Show>
+        <h2 id={headingId} title={props.plugin.description}>
+          {props.plugin.name || props.plugin.id}
+        </h2>
         <For each={settings()}>
           {([key, setting]) => (
             <Field
@@ -139,7 +138,7 @@ function Field(props: {
                 }}
               />
               <Show when={s.unit}>
-                <span class="settings-hint">{s.unit}</span>
+                <span class="settings-unit">{s.unit}</span>
               </Show>
             </span>
           );
@@ -184,7 +183,7 @@ function Field(props: {
 
   return (
     <div class="settings-row" data-type={props.setting.type}>
-      <label class="settings-label" for={props.id}>
+      <label class="settings-label" for={props.id} title={props.setting.description}>
         {label()}
       </label>
       <span class="settings-control">
@@ -201,9 +200,6 @@ function Field(props: {
           </button>
         </Show>
       </span>
-      <Show when={props.setting.description}>
-        <p class="settings-hint settings-row-hint">{props.setting.description}</p>
-      </Show>
     </div>
   );
 }
