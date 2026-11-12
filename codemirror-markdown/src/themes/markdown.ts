@@ -1,17 +1,5 @@
-import {
-  HighlightStyle,
-  syntaxHighlighting,
-  syntaxTree,
-} from "@codemirror/language";
-import { RangeSetBuilder } from "@codemirror/state";
-import {
-  Decoration,
-  EditorView,
-  ViewPlugin,
-  WidgetType,
-  type DecorationSet,
-  type ViewUpdate,
-} from "@codemirror/view";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { EditorView } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 
 const bodyFont = (style: "serif" | "sans") =>
@@ -46,6 +34,8 @@ const markdownStyles = (style: "serif" | "sans"): Record<string, any> => ({
     background: "transparent",
   },
   ".cm-content": {
+    // for things outside the highlighter (the link widget) to match the text.
+    "--markdown-body-family": bodyFont(style),
     // Justified text makes it look more like the I&S web essay template,
     // but doesn't feel right for most documents.
     // textAlign: "justify",
@@ -60,26 +50,14 @@ const markdownStyles = (style: "serif" | "sans"): Record<string, any> => ({
     // lol i guess this is the same as box-sizing: content-box
     maxWidth: `calc(var(--max-text-line-width, 100ex) - ${zoomed("2rem")})`,
     padding: zoomed("2rem"),
+    // room for the markers hung in the margin (extensions/margin.ts).
+    paddingLeft: `calc(${zoomed("2rem")} + var(--markdown-hang, 0px))`,
     boxShadow: "none",
     marginBottom: "8em",
     borderRadius: "8px",
   },
   ".cm-content li": {
     marginBottom: 0,
-  },
-  ".cm-bullet": {
-    display: "inline-block",
-    width: "1ch",
-  },
-  ".cm-bullet::before": {
-    content: '""',
-    display: "inline-block",
-    width: "0.4em",
-    height: "0.4em",
-    borderRadius: "50%",
-    background: "currentColor",
-    color: "var(--text-editor-line)",
-    verticalAlign: "0.15em",
   },
   ".cm-task": {
     margin: "0 0.1em",
@@ -133,10 +111,6 @@ const markdownStyles = (style: "serif" | "sans"): Record<string, any> => ({
   ".cm-folded-range": {
     background: "var(--text-editor-fill)",
   },
-
-  ".codeblock": {
-    background: "orange",
-  },
 });
 
 const baseHeadingStyles = {
@@ -150,9 +124,14 @@ const baseCodeStyles = {
   fontSize: "1em",
 };
 
-const markdownSyntaxHighlighting = (style: "serif" | "sans") =>
+export const markdownSyntaxHighlighting = (style: "serif" | "sans") =>
   HighlightStyle.define([
-    // this is how you ensure that codeblocks are still monospace
+    // this is how you ensure that codeblocks are still monospace.
+    // a node's own class *replaces* its parent's in the highlighter, so text
+    // inside **bold**, *italic* and ~~struck~~ loses this one and falls back to
+    // `.cm-content`, which the patchwork theme sets to the code font. those
+    // rules set the body font again; inline code inside them still wins,
+    // being later in this list.
     {
       tag: tags.content,
       fontFamily: bodyFont(style),
@@ -200,14 +179,17 @@ const markdownSyntaxHighlighting = (style: "serif" | "sans") =>
     { tag: tags.quote, fontStyle: "var(--syntax-style-quote, italic)" },
     {
       tag: tags.strong,
+      fontFamily: bodyFont(style),
       fontWeight: "var(--syntax-weight-strong, bold)",
     },
     {
       tag: tags.emphasis,
+      fontFamily: bodyFont(style),
       fontStyle: "var(--syntax-style-emphasis, italic)",
     },
     {
       tag: tags.strikethrough,
+      fontFamily: bodyFont(style),
       textDecoration: "line-through",
     },
     {
@@ -259,82 +241,5 @@ const markdownSyntaxHighlighting = (style: "serif" | "sans") =>
 export const theme = (style: "serif" | "sans") => [
   EditorView.theme(markdownStyles(style)),
   syntaxHighlighting(markdownSyntaxHighlighting(style)),
-  bullets,
-  codeblocks,
 ];
 
-const bullets = ViewPlugin.fromClass(
-  class {
-    decorations: DecorationSet;
-    view: EditorView;
-    constructor(view: EditorView) {
-      this.view = view;
-      this.decorations = this.build();
-    }
-    update(update: ViewUpdate) {
-      if (update.docChanged || update.viewportChanged) {
-        this.decorations = this.build();
-      }
-    }
-    private build(): DecorationSet {
-      const builder = new RangeSetBuilder<Decoration>();
-      const doc = this.view.state.doc;
-      syntaxTree(this.view.state).iterate({
-        enter: ({ type, from }) => {
-          if (type.name === "ListMark") {
-            const char = doc.sliceString(from, from + 1);
-            if (["-", "+", "*"].includes(char)) {
-              builder.add(
-                from,
-                from + 1,
-                Decoration.replace({ widget: new BulletWidget() })
-              );
-            }
-          }
-        },
-      });
-      return builder.finish();
-    }
-  },
-  {
-    decorations: (v) => v.decorations,
-  }
-);
-
-class BulletWidget extends WidgetType {
-  toDOM() {
-    const span = document.createElement("span");
-    span.className = "cm-bullet";
-    return span;
-  }
-}
-const codeblocks = ViewPlugin.fromClass(
-  class BlockquotePlugin {
-    decorations: DecorationSet = Decoration.none;
-
-    constructor(view: EditorView) {
-      this.buildDeco(view);
-    }
-
-    update(update: ViewUpdate) {
-      this.buildDeco(update.view);
-    }
-
-    buildDeco(view: EditorView) {
-      const builder = new RangeSetBuilder<Decoration>();
-      view.viewportLineBlocks.forEach((line) => {
-        const lineObj = view.state.doc.lineAt(line.from);
-        const match = /^>.*/g.exec(lineObj.text);
-        if (match && match[0]) {
-          builder.add(
-            line.from,
-            line.from,
-            Decoration.line({ class: "codeblock" })
-          );
-        }
-      });
-
-      this.decorations = builder.finish();
-    }
-  }
-);
