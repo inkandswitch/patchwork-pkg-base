@@ -11,39 +11,39 @@ export function BrokenModules(props: {
   infoFor: (url: string) => PkgInfo | undefined;
 }): JSX.Element {
   return (
-    <div class="pw-broken">
+    <div class="pw-pkg-broken">
       <For each={props.modules}>
         {(b) => {
           const meta = () => props.infoFor(b.url)?.meta;
           const declared = () => props.infoFor(b.url)?.plugins;
           return (
-            <div class="pw-broken__box" role="alert">
-              <div class="pw-broken__head">
-                <span class="pw-broken__label">Failed to import</span>
+            <div class="pw-pkg-broken__box" role="alert">
+              <div class="pw-pkg-broken__head">
+                <span class="pw-pkg-broken__label">Failed to import</span>
                 <Show when={meta()?.title || meta()?.name}>
-                  <span class="pw-broken__name">
+                  <span class="pw-pkg-broken__name">
                     {meta()!.title || meta()!.name}
                   </span>
                   <Show when={meta()?.version}>
-                    <span class="pw-card__version">v{meta()!.version}</span>
+                    <span class="pw-pkg-card__version">v{meta()!.version}</span>
                   </Show>
                 </Show>
                 <Copyable
                   value={b.url}
-                  class="pw-broken__url"
+                  class="pw-pkg-broken__url"
                   title="module URL — click to copy"
                 />
                 {/* It's in the list you're viewing, so it's always removable. */}
                 <SourceActions importUrl={b.url} origin="installed" />
               </div>
               <Show when={declared() && declared()!.length > 0}>
-                <ul class="pw-install__plugins pw-broken__plugins">
+                <ul class="pw-pkg-install__plugins pw-pkg-broken__plugins">
                   <For each={declared()!}>
                     {(p) => <DeclaredPluginRow plugin={p} />}
                   </For>
                 </ul>
               </Show>
-              <pre class="pw-broken__trace">{b.error}</pre>
+              <pre class="pw-pkg-broken__trace">{b.error}</pre>
             </div>
           );
         }}

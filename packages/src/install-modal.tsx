@@ -151,7 +151,7 @@ export function InstallModal(props: {
 
   return (
     <div
-      class="pw-modal"
+      class="pw-pkg-modal"
       role="dialog"
       aria-modal="true"
       onClick={(e) => {
@@ -161,20 +161,20 @@ export function InstallModal(props: {
         if (e.key === "Escape") props.onClose();
       }}
     >
-      <div class="pw-install">
-        <header class="pw-install__head">
-          <h2 class="pw-install__title">Install a package</h2>
-          <button class="pw-install__close" title="Close" onClick={props.onClose}>
+      <div class="pw-pkg-install">
+        <header class="pw-pkg-install__head">
+          <h2 class="pw-pkg-install__title">Install a package</h2>
+          <button class="pw-pkg-install__close" title="Close" onClick={props.onClose}>
             ×
           </button>
         </header>
-        <p class="pw-install__blurb">
+        <p class="pw-pkg-install__blurb">
           Paste an <code>automerge:</code> or <code>https://</code> URL to add
           it to your package list.
         </p>
         <input
           ref={(el) => setTimeout(() => el.focus(), 0)}
-          class="pw-install__input"
+          class="pw-pkg-install__input"
           type="text"
           spellcheck={false}
           autocomplete="off"
@@ -190,17 +190,17 @@ export function InstallModal(props: {
         />
 
         <Show when={target()}>
-          <div class="pw-install__preview">
+          <div class="pw-pkg-install__preview">
             <Show when={error()}>
-              <div class="pw-install__error">{error()}</div>
+              <div class="pw-pkg-install__error">{error()}</div>
             </Show>
             <Show when={busy()}>
-              <div class="pw-install__loading">Reading package…</div>
+              <div class="pw-pkg-install__loading">Reading package…</div>
             </Show>
             <Show when={valid() && (meta() || plugins())}>
-              <div class="pw-install__card">
-                <div class="pw-install__card-head">
-                  <h3 class="pw-install__pkg">
+              <div class="pw-pkg-install__card">
+                <div class="pw-pkg-install__card-head">
+                  <h3 class="pw-pkg-install__pkg">
                     {meta()?.title ||
                       meta()?.name ||
                       packageDisplayName(
@@ -209,14 +209,14 @@ export function InstallModal(props: {
                       )}
                   </h3>
                   <Show when={meta()?.version}>
-                    <span class="pw-install__version">v{meta()!.version}</span>
+                    <span class="pw-pkg-install__version">v{meta()!.version}</span>
                   </Show>
                 </div>
                 <Show
                   when={plugins() && plugins()!.length > 0}
                   fallback={
                     <Show when={!busy() && !error()}>
-                      <div class="pw-install__none">
+                      <div class="pw-pkg-install__none">
                         {plugins()
                           ? "No plugins reported by this package."
                           : "Couldn't read this package's plugin list — you can still install it."}
@@ -224,7 +224,7 @@ export function InstallModal(props: {
                     </Show>
                   }
                 >
-                  <ul class="pw-install__plugins">
+                  <ul class="pw-pkg-install__plugins">
                     <For each={plugins()!}>
                       {(p) => <DeclaredPluginRow plugin={p} />}
                     </For>
@@ -235,15 +235,15 @@ export function InstallModal(props: {
           </div>
         </Show>
 
-        <footer class="pw-install__foot">
+        <footer class="pw-pkg-install__foot">
           <Show when={alreadyInstalled()}>
-            <span class="pw-install__already">Already in your package list</span>
+            <span class="pw-pkg-install__already">Already in your package list</span>
           </Show>
-          <button class="pw-install__cancel" onClick={props.onClose}>
+          <button class="pw-pkg-install__cancel" onClick={props.onClose}>
             Cancel
           </button>
           <button
-            class="pw-install__add"
+            class="pw-pkg-install__add"
             disabled={!valid() || alreadyInstalled()}
             onClick={add}
           >

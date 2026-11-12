@@ -61,8 +61,8 @@ export function Collapsible<T>(props: {
     <>
       <For each={shown()}>{(item) => props.render(item)}</For>
       <Show when={hidden() > 0}>
-        <li class="pw-more">
-          <button class="pw-more__btn" onClick={() => setExpanded((v) => !v)}>
+        <li class="pw-pkg-more">
+          <button class="pw-pkg-more__btn" onClick={() => setExpanded((v) => !v)}>
             {expanded() ? "show less" : `show ${hidden()} more`}
           </button>
         </li>
@@ -74,7 +74,7 @@ export function Collapsible<T>(props: {
 export function OriginBadge(props: { origin: Origin }): JSX.Element {
   return (
     <span
-      class="pw-packages__origin"
+      class="pw-pkg-packages__origin"
       data-origin={props.origin}
       title={ORIGIN_HINT[props.origin]}
     >
@@ -86,7 +86,7 @@ export function OriginBadge(props: { origin: Origin }): JSX.Element {
 export function UnlistedBadge(): JSX.Element {
   return (
     <span
-      class="pw-packages__unlisted"
+      class="pw-pkg-packages__unlisted"
       title="Hidden from new-document menus and pickers"
     >
       unlisted
@@ -103,7 +103,7 @@ export function Copyable(props: {
   const { copied, copy } = useActions();
   return (
     <code
-      class={`pw-packages__copy ${props.class ?? ""}`}
+      class={`pw-pkg-packages__copy ${props.class ?? ""}`}
       classList={{ "is-copied": copied() === props.value }}
       title={props.title ?? "Click to copy"}
       onClick={() => copy(props.value)}
@@ -117,26 +117,26 @@ export function Copyable(props: {
 export function PluginRow(props: { plugin: Enriched }): JSX.Element {
   const dts = () => datatypesLabel(props.plugin.supportedDatatypes);
   return (
-    <li class="pw-plugin">
-      <span class="pw-plugin__dot" data-origin={props.plugin.origin} />
+    <li class="pw-pkg-plugin">
+      <span class="pw-pkg-plugin__dot" data-origin={props.plugin.origin} />
       <span
-        class="pw-plugin__name"
+        class="pw-pkg-plugin__name"
         classList={{ "is-unlisted": props.plugin.unlisted }}
       >
         {props.plugin.name}
       </span>
-      <span class="pw-plugin__type">{prettyType(props.plugin.type)}</span>
+      <span class="pw-pkg-plugin__type">{prettyType(props.plugin.type)}</span>
       <Show when={props.plugin.unlisted}>
         <UnlistedBadge />
       </Show>
       <Copyable
         value={props.plugin.id}
-        class="pw-plugin__id"
+        class="pw-pkg-plugin__id"
         title="Plugin id — click to copy"
       />
       <Show when={dts()}>
-        <span class="pw-plugin__supports">
-          <span class="pw-plugin__supports-label">supports</span> {dts()}
+        <span class="pw-pkg-plugin__supports">
+          <span class="pw-pkg-plugin__supports-label">supports</span> {dts()}
         </span>
       </Show>
     </li>
@@ -150,21 +150,21 @@ export function PluginRow(props: { plugin: Enriched }): JSX.Element {
 export function DeclaredPluginRow(props: { plugin: PluginLite }): JSX.Element {
   const dts = () => datatypesLabel(props.plugin.supportedDatatypes);
   return (
-    <li class="pw-install__plugin">
+    <li class="pw-pkg-install__plugin">
       <span
-        class="pw-install__plugin-name"
+        class="pw-pkg-install__plugin-name"
         classList={{ "is-unlisted": props.plugin.unlisted }}
       >
         {props.plugin.name || props.plugin.id}
       </span>
       <Show when={props.plugin.type}>
-        <span class="pw-plugin__type">{prettyType(props.plugin.type!)}</span>
+        <span class="pw-pkg-plugin__type">{prettyType(props.plugin.type!)}</span>
       </Show>
       <Show when={props.plugin.unlisted}>
         <UnlistedBadge />
       </Show>
       <Show when={dts()}>
-        <span class="pw-install__plugin-supports">supports {dts()}</span>
+        <span class="pw-pkg-install__plugin-supports">supports {dts()}</span>
       </Show>
     </li>
   );
@@ -179,12 +179,12 @@ export function SourceLine(props: {
   return (
     <Show
       when={props.importUrl}
-      fallback={<span class="pw-source__none">no import url</span>}
+      fallback={<span class="pw-pkg-source__none">no import url</span>}
     >
-      <div class="pw-source__lines">
+      <div class="pw-pkg-source__lines">
         <Copyable
           value={bareModuleUrl(props.importUrl!)}
-          class="pw-source__url"
+          class="pw-pkg-source__url"
           title="importUrl — click to copy"
         />
         <Show when={pinned()}>
@@ -193,7 +193,7 @@ export function SourceLine(props: {
             label={`heads ${heads()
               .map((h) => h.slice(0, 7))
               .join(" ")}`}
-            class="pw-source__heads"
+            class="pw-pkg-source__heads"
             title="Copy URL pinned to these heads"
           />
         </Show>
@@ -215,10 +215,10 @@ export function SourceActions(props: {
   const { openDoc, uninstall } = useActions();
   return (
     <Show when={hasActions(props.importUrl, props.origin)}>
-      <div class="pw-actions">
+      <div class="pw-pkg-actions">
         <Show when={isAutomergeUrl(props.importUrl)}>
           <button
-            class="pw-actions__btn"
+            class="pw-pkg-actions__btn"
             onClick={() => openDoc(props.importUrl!)}
           >
             open
@@ -226,7 +226,7 @@ export function SourceActions(props: {
         </Show>
         <Show when={props.origin === "installed"}>
           <button
-            class="pw-actions__btn pw-actions__btn--danger"
+            class="pw-pkg-actions__btn pw-pkg-actions__btn--danger"
             title="Remove this module from the settings doc you're viewing"
             onClick={() => uninstall(props.importUrl)}
           >

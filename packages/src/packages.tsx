@@ -155,22 +155,22 @@ export function Packages(props: {
   // --- render ----------------------------------------------------------------
   return (
     <PackagesProvider value={actions}>
-      <div class="pw-packages">
-        <header class="pw-packages__head">
-          <div class="pw-packages__toolbar">
+      <div class="pw-pkg-packages">
+        <header class="pw-pkg-packages__head">
+          <div class="pw-pkg-packages__toolbar">
             <input
-              class="pw-packages__search"
+              class="pw-pkg-packages__search"
               type="text"
               placeholder="Filter… or paste a URL to install"
               value={search()}
               onInput={(e) => setSearch(e.currentTarget.value)}
               onPaste={onSearchPaste}
             />
-            <div class="pw-packages__stats">
+            <div class="pw-pkg-packages__stats">
               <span>
                 <strong>{stats().plugins}</strong>
                 <Show when={stats().plugins !== stats().total}>
-                  <span class="pw-packages__stat-of"> / {stats().total}</span>
+                  <span class="pw-pkg-packages__stat-of"> / {stats().total}</span>
                 </Show>{" "}
                 plugins
               </span>
@@ -183,12 +183,12 @@ export function Packages(props: {
             </div>
           </div>
 
-          <div class="pw-packages__tabbar">
-            <div class="pw-packages__tabs" role="tablist">
+          <div class="pw-pkg-packages__tabbar">
+            <div class="pw-pkg-packages__tabs" role="tablist">
               <For each={["packages", "registries", "table"] as View[]}>
                 {(v) => (
                   <button
-                    class="pw-packages__tab"
+                    class="pw-pkg-packages__tab"
                     data-view={v}
                     data-active={view() === v ? "" : undefined}
                     onClick={() => setView(v)}
@@ -198,11 +198,11 @@ export function Packages(props: {
                 )}
               </For>
             </div>
-            <div class="pw-packages__origins">
+            <div class="pw-pkg-packages__origins">
               <For each={ORIGIN_CHIPS}>
                 {([key, label]) => (
                   <button
-                    class="pw-packages__origin-chip"
+                    class="pw-pkg-packages__origin-chip"
                     data-origin={key === "all" ? undefined : key}
                     data-active={originFilter() === key ? "" : undefined}
                     title={key === "all" ? undefined : ORIGIN_HINT[key as Origin]}
@@ -210,7 +210,7 @@ export function Packages(props: {
                   >
                     {label}
                     <Show when={key !== "all"}>
-                      <span class="pw-packages__origin-count">
+                      <span class="pw-pkg-packages__origin-count">
                         {originCounts()[key as Origin]}
                       </span>
                     </Show>
@@ -226,19 +226,19 @@ export function Packages(props: {
             data.isCustomSystemPackageList() || !data.isWatchedPackageList()
           }
         >
-          <div class="pw-package-notices">
+          <div class="pw-pkg-package-notices">
             <Show when={data.isCustomSystemPackageList()}>
-              <div class="pw-package-notice" role="status">
+              <div class="pw-pkg-package-notice" role="status">
                 Using a custom system package list.
                 <Copyable
                   value={data.systemPackageListUrl()!}
-                  class="pw-package-notice__url"
+                  class="pw-pkg-package-notice__url"
                   title="System package list URL — click to copy"
                 />
               </div>
             </Show>
             <Show when={!data.isWatchedPackageList()}>
-              <div class="pw-package-notice" role="alert">
+              <div class="pw-pkg-package-notice" role="alert">
                 This package list is not being watched by this window.
               </div>
             </Show>
@@ -257,7 +257,7 @@ export function Packages(props: {
         <Show
           when={filtered().length > 0}
           fallback={
-            <div class="pw-packages__empty">
+            <div class="pw-pkg-packages__empty">
               <Show
                 when={data.enriched().length > 0}
                 fallback={<>No plugins are registered yet.</>}

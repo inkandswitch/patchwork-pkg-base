@@ -25,37 +25,37 @@ import {
 export function ByPackage(props: { entries: Enriched[] }): JSX.Element {
   const groups = createMemo(() => groupByPackage(props.entries));
   return (
-    <ul class="pw-cards">
+    <ul class="pw-pkg-cards">
       <For each={groups()}>
         {(group) => (
-          <li class="pw-card" data-origin={group.origin}>
-            <header class="pw-card__head">
-              <h2 class="pw-card__name">{group.name}</h2>
-              <div class="pw-card__badges">
+          <li class="pw-pkg-card" data-origin={group.origin}>
+            <header class="pw-pkg-card__head">
+              <h2 class="pw-pkg-card__name">{group.name}</h2>
+              <div class="pw-pkg-card__badges">
                 <Show when={group.meta?.version}>
-                  <span class="pw-card__version">v{group.meta!.version}</span>
+                  <span class="pw-pkg-card__version">v{group.meta!.version}</span>
                 </Show>
                 <OriginBadge origin={group.origin} />
-                <span class="pw-card__count">
+                <span class="pw-pkg-card__count">
                   {group.plugins.length} plugin
                   {group.plugins.length === 1 ? "" : "s"}
                 </span>
               </div>
             </header>
             <Show when={group.meta?.name && group.meta?.name !== group.name}>
-              <div class="pw-card__pkgname">{group.meta!.name}</div>
+              <div class="pw-pkg-card__pkgname">{group.meta!.name}</div>
             </Show>
-            <div class="pw-card__source">
+            <div class="pw-pkg-card__source">
               <SourceLine importUrl={group.importUrl} />
             </div>
-            <ul class="pw-plugins">
+            <ul class="pw-pkg-plugins">
               <Collapsible
                 each={group.plugins}
                 render={(plugin) => <PluginRow plugin={plugin} />}
               />
             </ul>
             <Show when={hasActions(group.importUrl, group.origin)}>
-              <footer class="pw-card__foot">
+              <footer class="pw-pkg-card__foot">
                 <SourceActions
                   importUrl={group.importUrl}
                   origin={group.origin}
@@ -73,15 +73,15 @@ export function ByPackage(props: { entries: Enriched[] }): JSX.Element {
 export function ByType(props: { entries: Enriched[] }): JSX.Element {
   const groups = createMemo(() => groupByType(props.entries));
   return (
-    <div class="pw-registries">
+    <div class="pw-pkg-registries">
       <For each={groups()}>
         {(group) => (
-          <section class="pw-registry">
-            <header class="pw-registry__head">
-              <h2 class="pw-registry__name">{group.registry}</h2>
-              <span class="pw-registry__count">{group.plugins.length}</span>
+          <section class="pw-pkg-registry">
+            <header class="pw-pkg-registry__head">
+              <h2 class="pw-pkg-registry__name">{group.registry}</h2>
+              <span class="pw-pkg-registry__count">{group.plugins.length}</span>
             </header>
-            <ul class="pw-reglist">
+            <ul class="pw-pkg-reglist">
               <Collapsible
                 each={group.plugins}
                 render={(plugin) => <TypeRow plugin={plugin} />}
@@ -97,17 +97,17 @@ export function ByType(props: { entries: Enriched[] }): JSX.Element {
 function TypeRow(props: { plugin: Enriched }): JSX.Element {
   const dts = () => datatypesLabel(props.plugin.supportedDatatypes);
   return (
-    <li class="pw-regitem" data-origin={props.plugin.origin}>
-      <div class="pw-regitem__main">
+    <li class="pw-pkg-regitem" data-origin={props.plugin.origin}>
+      <div class="pw-pkg-regitem__main">
         <span
-          class="pw-regitem__name"
+          class="pw-pkg-regitem__name"
           classList={{ "is-unlisted": props.plugin.unlisted }}
         >
           {props.plugin.name}
         </span>
         <Copyable
           value={props.plugin.id}
-          class="pw-regitem__id"
+          class="pw-pkg-regitem__id"
           title="Plugin id — click to copy"
         />
         <OriginBadge origin={props.plugin.origin} />
@@ -115,11 +115,11 @@ function TypeRow(props: { plugin: Enriched }): JSX.Element {
           <UnlistedBadge />
         </Show>
         <Show when={dts()}>
-          <span class="pw-regitem__supports">supports {dts()}</span>
+          <span class="pw-pkg-regitem__supports">supports {dts()}</span>
         </Show>
       </div>
-      <div class="pw-regitem__source">
-        <span class="pw-regitem__pkg">{props.plugin.pkgName}</span>
+      <div class="pw-pkg-regitem__source">
+        <span class="pw-pkg-regitem__pkg">{props.plugin.pkgName}</span>
         <SourceLine importUrl={props.plugin.importUrl} />
         <SourceActions
           importUrl={props.plugin.importUrl}
@@ -150,61 +150,61 @@ export function Table(props: {
     sortRows(props.entries, props.sortKey, props.sortAsc)
   );
   return (
-    <div class="pw-table-wrap">
-      <table class="pw-table">
+    <div class="pw-pkg-table-wrap">
+      <table class="pw-pkg-table">
         <thead>
           <tr>
             <For each={COLUMNS}>
               {([key, label]) => (
                 <th
-                  class="pw-table__th"
+                  class="pw-pkg-table__th"
                   data-sorted={props.sortKey === key ? "" : undefined}
                   onClick={() => props.onSort(key)}
                 >
                   {label}
                   <Show when={props.sortKey === key}>
-                    <span class="pw-table__arrow">
+                    <span class="pw-pkg-table__arrow">
                       {props.sortAsc ? "▲" : "▼"}
                     </span>
                   </Show>
                 </th>
               )}
             </For>
-            <th class="pw-table__th pw-table__th--plain">importUrl</th>
+            <th class="pw-pkg-table__th pw-pkg-table__th--plain">importUrl</th>
           </tr>
         </thead>
         <tbody>
           <For each={rows()}>
             {(e) => (
-              <tr class="pw-table__row" data-origin={e.origin}>
+              <tr class="pw-pkg-table__row" data-origin={e.origin}>
                 <td
-                  class="pw-table__name"
+                  class="pw-pkg-table__name"
                   classList={{ "is-unlisted": e.unlisted }}
                 >
                   {e.name}
                   <Show when={datatypesLabel(e.supportedDatatypes)}>
-                    <span class="pw-table__supports">
+                    <span class="pw-pkg-table__supports">
                       {datatypesLabel(e.supportedDatatypes)}
                     </span>
                   </Show>
                 </td>
-                <td class="pw-table__reg">{e.registry}</td>
+                <td class="pw-pkg-table__reg">{e.registry}</td>
                 <td>
-                  <Copyable value={e.id} class="pw-table__id" />
+                  <Copyable value={e.id} class="pw-pkg-table__id" />
                 </td>
-                <td class="pw-table__pkg">{e.pkgName}</td>
+                <td class="pw-pkg-table__pkg">{e.pkgName}</td>
                 <td>
                   <OriginBadge origin={e.origin} />
                 </td>
-                <td class="pw-table__flag">
+                <td class="pw-pkg-table__flag">
                   <Show when={e.unlisted}>
                     <span title="Hidden from new-document menus and pickers">
                       ✓
                     </span>
                   </Show>
                 </td>
-                <td class="pw-table__url">
-                  <div class="pw-source">
+                <td class="pw-pkg-table__url">
+                  <div class="pw-pkg-source">
                     <SourceLine importUrl={e.importUrl} />
                     <SourceActions importUrl={e.importUrl} origin={e.origin} />
                   </div>

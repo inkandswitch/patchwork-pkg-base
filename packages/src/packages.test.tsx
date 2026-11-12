@@ -40,7 +40,7 @@ function mount() {
     () => <Packages handle={fakeHandle()} element={element} />,
     element
   );
-  const search = element.querySelector<HTMLInputElement>(".pw-packages__search")!;
+  const search = element.querySelector<HTMLInputElement>(".pw-pkg-packages__search")!;
   return { element, search };
 }
 
@@ -49,7 +49,7 @@ describe("the filter box", () => {
     const { element, search } = mount();
     search.value = "https://example.com/tool/";
     search.dispatchEvent(new InputEvent("input", { bubbles: true }));
-    expect(element.querySelector(".pw-modal")).toBeNull();
+    expect(element.querySelector(".pw-pkg-modal")).toBeNull();
     expect(search.value).toBe("https://example.com/tool/");
   });
 
@@ -61,7 +61,7 @@ describe("the filter box", () => {
     });
     search.dispatchEvent(paste);
     expect(paste.defaultPrevented).toBe(true);
-    const input = element.querySelector<HTMLInputElement>(".pw-install__input");
+    const input = element.querySelector<HTMLInputElement>(".pw-pkg-install__input");
     expect(input?.value).toBe("https://example.com/tool/");
     expect(search.value).toBe("");
   });
@@ -74,6 +74,6 @@ describe("the filter box", () => {
     });
     search.dispatchEvent(paste);
     expect(paste.defaultPrevented).toBe(false);
-    expect(element.querySelector(".pw-modal")).toBeNull();
+    expect(element.querySelector(".pw-pkg-modal")).toBeNull();
   });
 });
