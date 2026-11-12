@@ -295,8 +295,33 @@
   border: none;
   background: transparent;
   color: var(--comments-fg);
+  transition: scale max(1ms, calc(100ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+}
+
+/* a small press, so Resolve / Reply / Save feel heard before the card changes */
+.comment-btn:active:not(:disabled) {
+  scale: 0.97;
 }
 
 .comment-btn:hover {
   background: var(--studio-hover-fill, var(--comments-hover-bg));
+}
+
+/* The thread the editor's caret just moved into: a brief ring, so the eye
+   finds it in the list (see CommentsView's primary-thread effect). */
+.comments-panel .comments-thread[data-flash] {
+  border-radius: 8px;
+  animation: comments-thread-flash
+    max(1ms, calc(900ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)))
+    ease-out;
+}
+
+@keyframes comments-thread-flash {
+  0%,
+  30% {
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--studio-primary, #35f7ca), transparent 20%);
+  }
+  100% {
+    box-shadow: 0 0 0 3px transparent;
+  }
 }

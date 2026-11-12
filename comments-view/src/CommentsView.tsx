@@ -8,6 +8,7 @@ import {
   createComputed,
   on,
   onCleanup,
+  onMount,
   Show,
   For,
 } from "solid-js";
@@ -67,7 +68,36 @@ export function CommentsView(props: { element: HTMLElement }) {
   const [focusDoc, focusHandle] = subscribeDoc<{
     selection: Record<AutomergeUrl, true>;
     highlight: Record<AutomergeUrl, true>;
+    commentViews?: Record<string, true>;
   }>(props.element, { type: "patchwork:focus" });
+
+  // While this panel is on screen it's listed in the focus doc's
+  // `commentViews`, so the editor leaves threads to it instead of opening its
+  // own inline popover (and drafts new comments here). Hidden — a collapsed
+  // sidebar, another tab selected — or gone, it's taken off again.
+  let panel!: HTMLDivElement;
+  const viewId = `comments-view-${Math.random().toString(36).slice(2)}`;
+  const [onScreen, setOnScreen] = createSignal(false);
+  onMount(() => {
+    const observer = new IntersectionObserver(([entry]) =>
+      setOnScreen(!!entry && entry.isIntersecting && entry.intersectionRect.width > 0)
+    );
+    observer.observe(panel);
+    onCleanup(() => observer.disconnect());
+  });
+  const listed = (shown: boolean) => {
+    const handle = focusHandle();
+    if (!handle) return;
+    const already = !!handle.doc()?.commentViews?.[viewId];
+    if (already === shown) return;
+    handle.change((doc) => {
+      if (!doc.commentViews) doc.commentViews = {};
+      if (shown) doc.commentViews[viewId] = true;
+      else delete doc.commentViews[viewId];
+    });
+  };
+  createEffect(() => listed(onScreen()));
+  onCleanup(() => listed(false));
 
   const [, contactHandle] = subscribeDoc<Record<string, never>>(props.element, {
     type: "patchwork:contact",
@@ -196,12 +226,34 @@ export function CommentsView(props: { element: HTMLElement }) {
 
   // Clicking a thread card pins it and jumps `selection` to its targets;
   // the editor's next cursor move will overwrite `selection` again.
+  // A thread picked here (a card clicked) is already in view; one the editor
+  // moved to (the caret went into its text) is scrolled to and flashed.
+  let pickedHere: AutomergeUrl | undefined;
+  createEffect(
+    on(primaryThreadUrl, (url) => {
+      if (!url || !onScreen()) return;
+      if (url === pickedHere) {
+        pickedHere = undefined;
+        return;
+      }
+      const card = panel.querySelector<HTMLElement>(
+        `.comments-thread[data-thread-url="${CSS.escape(url)}"]`
+      );
+      if (!card) return;
+      card.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      card.removeAttribute("data-flash");
+      void card.offsetWidth; // restart the animation if it's mid-flash
+      card.setAttribute("data-flash", "");
+    }, { defer: true })
+  );
+
   const onSelectThread = (
     threadUrl: AutomergeUrl,
     targetUrls: AutomergeUrl[]
   ) => {
     const handle = focusHandle();
     if (!handle) return;
+    pickedHere = threadUrl;
     const wasPrimary = primaryThreadUrl() === threadUrl;
     setPinnedThread(wasPrimary ? undefined : threadUrl);
     const next: Record<AutomergeUrl, true> = {};
@@ -250,7 +302,7 @@ export function CommentsView(props: { element: HTMLElement }) {
   };
 
   return (
-    <div class="comments-panel">
+    <div class="comments-panel" ref={panel}>
       <div class="comments-panel-header">
         <span class="comments-panel-header-title">Comments</span>
         <Show when={canAddComment()}>
@@ -271,6 +323,11 @@ export function CommentsView(props: { element: HTMLElement }) {
           {(threadUrl) => (
             <div
               class="comments-thread"
+              data-thread-url={threadUrl}
+              onAnimationEnd={(e) => {
+                if (e.animationName === "comments-thread-flash")
+                  e.currentTarget.removeAttribute("data-flash");
+              }}
               data-new={performance.now() > settledAt ? "" : undefined}
               // Once in, it's an ordinary thread: its actions row remounts each
               // time the thread becomes primary (it follows the cursor), and
