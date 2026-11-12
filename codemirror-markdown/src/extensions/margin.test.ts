@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { EditorSelection, EditorState } from "@codemirror/state";
+import { ensureSyntaxTree } from "@codemirror/language";
 import { EditorView } from "@codemirror/view";
 import { markdownExtensions } from "./markdown";
 
@@ -11,7 +12,7 @@ afterEach(() => {
 function makeView(doc: string, at = doc.length) {
   const parent = document.createElement("div");
   document.body.appendChild(parent);
-  return new EditorView({
+  const view = new EditorView({
     parent,
     state: EditorState.create({
       doc,
@@ -19,6 +20,11 @@ function makeView(doc: string, at = doc.length) {
       extensions: [markdownExtensions()],
     }),
   });
+  // finish parsing now (a busy test run can leave the tree partial), and
+  // dispatch so the view plugins rebuild against the whole tree.
+  ensureSyntaxTree(view.state, view.state.doc.length, 10_000);
+  view.dispatch({});
+  return view;
 }
 
 const lines = (view: EditorView) =>

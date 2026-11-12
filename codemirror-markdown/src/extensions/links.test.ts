@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { ensureSyntaxTree } from "@codemirror/language";
 import { markdownLinks, urlAt } from "./links";
 
 afterEach(() => {
@@ -13,10 +14,13 @@ const doc =
   "see [text](https://a.com) and <https://b.com> and https://c.com [ref][r]\n\n[r]: https://d.com";
 
 function state(text = doc) {
-  return EditorState.create({
+  const state = EditorState.create({
     doc: text,
     extensions: [markdown({ base: markdownLanguage })],
   });
+  // a busy test run can leave the tree partial; finish it.
+  ensureSyntaxTree(state, state.doc.length, 10_000);
+  return state;
 }
 
 function makeView(text = doc) {

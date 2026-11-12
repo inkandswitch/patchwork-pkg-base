@@ -12,6 +12,7 @@ import { markdownFormattingKeymap } from "./formatting.ts";
 import { taskCheckboxes } from "./tasks.ts";
 import { margin } from "./margin.ts";
 import { headings } from "./headings.ts";
+import { lists } from "./lists.ts";
 import { markdownZoom } from "./zoom.ts";
 
 /** Styles */
@@ -45,6 +46,7 @@ export function markdownExtensions() {
     taskCheckboxes,
     margin,
     headings,
+    lists,
     indentUnit.of("    "),
   ];
 }
