@@ -19,6 +19,13 @@ const bodyFont = (style: "serif" | "sans") =>
     ? 'var(--text-editor-family-serif, "Merriweather", serif)'
     : "var(--text-editor-family-sans)";
 
+/**
+ * Scale a fixed length by the editor's text zoom (`--markdown-zoom`, set by
+ * extensions/zoom.ts). `em`/`ex` lengths follow the font already; `rem` and
+ * `px` ones need this or they'd stay put while the text grows.
+ */
+const zoomed = (length: string) => `calc(${length} * var(--markdown-zoom, 1))`;
+
 const markdownStyles = (style: "serif" | "sans"): Record<string, any> => ({
   "&": {},
   "&.cm-editor.cm-focused": {
@@ -44,15 +51,15 @@ const markdownStyles = (style: "serif" | "sans"): Record<string, any> => ({
     // textAlign: "justify",
     textWrap: "pretty",
     fontFamily: bodyFont(style),
-    lineHeight: "1.5rem",
+    lineHeight: zoomed("1.5rem"),
     color: "var(--text-editor-line)",
     caretColor: "var(--text-editor-cursor-fill)",
     background: "var(--text-editor-fill)",
-    marginBlock: "2rem",
+    marginBlock: zoomed("2rem"),
     marginInline: "auto",
     // lol i guess this is the same as box-sizing: content-box
-    maxWidth: "calc(var(--max-text-line-width, 100ex) - 2rem)",
-    padding: "2rem",
+    maxWidth: `calc(var(--max-text-line-width, 100ex) - ${zoomed("2rem")})`,
+    padding: zoomed("2rem"),
     boxShadow: "none",
     marginBottom: "8em",
     borderRadius: "8px",
@@ -87,7 +94,7 @@ const markdownStyles = (style: "serif" | "sans"): Record<string, any> => ({
   },
 
   ".frontmatter, .frontmatter *": {
-    fontSize: "14px",
+    fontSize: zoomed("14px"),
     fontFamily: "var(--text-editor-family-code)",
     color: "var(--syntax-comment, #666)",
     textDecoration: "none",
@@ -150,33 +157,33 @@ const markdownSyntaxHighlighting = (style: "serif" | "sans") =>
     {
       tag: tags.heading1,
       ...baseHeadingStyles,
-      fontSize: "var(--studio-heading-size-1, 1.5rem)",
-      lineHeight: "2rem",
-      marginBottom: "1rem",
-      marginTop: "2rem",
+      fontSize: `var(--studio-heading-size-1, ${zoomed("1.5rem")})`,
+      lineHeight: zoomed("2rem"),
+      marginBottom: zoomed("1rem"),
+      marginTop: zoomed("2rem"),
     },
     {
       tag: tags.heading2,
       ...baseHeadingStyles,
-      fontSize: "var(--studio-heading-size-2, 1.5rem)",
-      lineHeight: "2rem",
-      marginBottom: "1rem",
-      marginTop: "2rem",
+      fontSize: `var(--studio-heading-size-2, ${zoomed("1.5rem")})`,
+      lineHeight: zoomed("2rem"),
+      marginBottom: zoomed("1rem"),
+      marginTop: zoomed("2rem"),
     },
     {
       tag: tags.heading3,
       ...baseHeadingStyles,
-      fontSize: "var(--studio-heading-size-3, 1.25rem)",
-      lineHeight: "1.75rem",
-      marginBottom: "1rem",
-      marginTop: "2rem",
+      fontSize: `var(--studio-heading-size-3, ${zoomed("1.25rem")})`,
+      lineHeight: zoomed("1.75rem"),
+      marginBottom: zoomed("1rem"),
+      marginTop: zoomed("2rem"),
     },
     {
       tag: tags.heading4,
       ...baseHeadingStyles,
-      fontSize: "var(--studio-heading-size-4, 1.1rem)",
-      marginBottom: "1rem",
-      marginTop: "2rem",
+      fontSize: `var(--studio-heading-size-4, ${zoomed("1.1rem")})`,
+      marginBottom: zoomed("1rem"),
+      marginTop: zoomed("2rem"),
     },
     {
       tag: tags.processingInstruction,

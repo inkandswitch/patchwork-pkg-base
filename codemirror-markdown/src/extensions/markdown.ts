@@ -9,6 +9,7 @@ import { EditorView, keymap } from "@codemirror/view";
 
 import { markdownFormattingKeymap } from "./formatting.ts";
 import { taskCheckboxes } from "./tasks.ts";
+import { markdownZoom } from "./zoom.ts";
 
 /** Styles */
 import { theme } from "../themes/markdown.ts";
@@ -22,6 +23,7 @@ export function markdownExtensions() {
   return [
     ...theme("sans"),
     indentOnInput(),
+    markdownZoom,
     keymap.of([
       ...markdownFormattingKeymap,
       ...defaultKeymap,
