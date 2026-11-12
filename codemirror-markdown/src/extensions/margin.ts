@@ -178,16 +178,31 @@ export type CalloutType = keyof typeof CALLOUTS;
  * title, as Obsidian does; GitHub would leave it in the body.
  */
 function calloutAt(line: { from: number; text: string }) {
-  const m = /^((?:\s*>\s?)+)\[!(\w+)\][ \t]*(.*)$/.exec(line.text);
+  let cursor = 0;
+  let quoteDepth = 0;
+  while (true) {
+    const beforeWhitespace = cursor;
+    while (/\s/.test(line.text[cursor] ?? "")) cursor++;
+    if (line.text[cursor] !== ">") {
+      cursor = beforeWhitespace;
+      break;
+    }
+    cursor++;
+    if (/\s/.test(line.text[cursor] ?? "")) cursor++;
+    quoteDepth++;
+  }
+  if (!quoteDepth) return null;
+
+  const m = /^\[!(\w+)\][ \t]*(.*)$/.exec(line.text.slice(cursor));
   if (!m) return null;
-  const type = m[2].toLowerCase();
+  const type = m[1].toLowerCase();
   if (!(type in CALLOUTS)) return null;
-  const from = line.from + m[1].length;
+  const from = line.from + cursor;
   return {
     type: type as CalloutType,
     from,
-    to: line.from + line.text.length - m[3].length,
-    titled: m[3].trim() !== "",
+    to: line.from + line.text.length - m[2].length,
+    titled: m[2].trim() !== "",
   };
 }
 

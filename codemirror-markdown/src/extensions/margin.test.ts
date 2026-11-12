@@ -193,6 +193,13 @@ describe("margin", () => {
       expect(title.textContent).toBe("Shortcuts");
       expect(nope.classList).not.toContain("cm-md-callout");
     });
+
+    it("parses callouts nested inside blockquotes", () => {
+      const view = makeView("> > [!NOTE]\n> > inside\n\nend");
+      const [title, body] = lines(view);
+      expect(title.classList).toContain("cm-md-callout-note");
+      expect(title.textContent).toBe("Note");
+      expect(body.textContent).toBe("inside");
+    });
   });
 });
-
