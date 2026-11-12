@@ -3,7 +3,9 @@ import { render } from "solid-js/web";
 import { createSignal } from "solid-js";
 import { FrameLayout } from "./PatchworkFrame";
 
-vi.mock("@inkandswitch/patchwork-elements", () => ({}));
+vi.mock("@inkandswitch/patchwork-elements", () => ({
+  hasActiveAccess: vi.fn(),
+}));
 vi.mock("@inkandswitch/patchwork-plugins", () => ({
   createDocOfDatatype2: vi.fn(),
   getRegistry: vi.fn(),
@@ -45,12 +47,44 @@ function mount(isolation: boolean) {
   );
   const clickSettings = () =>
     [...host.querySelectorAll("button")]
-      .find((b) => b.textContent === "Settings")!
+      .find((b) => b.getAttribute("aria-label") === "Settings")!
       .click();
-  return { setCollapsed, onInterceptOpen, parentOpen, clickSettings, dispose };
+  const contextMenuSettings = () => {
+    const event = new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 32,
+      clientY: 48,
+    });
+    [...host.querySelectorAll("button")]
+      .find((b) => b.getAttribute("aria-label") === "Settings")!
+      .dispatchEvent(event);
+    return event;
+  };
+  return {
+    setCollapsed,
+    onInterceptOpen,
+    parentOpen,
+    clickSettings,
+    contextMenuSettings,
+    host,
+    dispose,
+  };
 }
 
 describe("account bar under isolation", () => {
+  it("opens account actions from the settings button's context menu", () => {
+    const f = mount(false);
+    const event = f.contextMenuSettings();
+    expect(event.defaultPrevented).toBe(true);
+    expect(
+      [...document.querySelectorAll('[role="menuitem"]')].map((item) =>
+        item.textContent?.trim()
+      )
+    ).toEqual(["Copy account key", "Sign out"]);
+    f.dispose();
+  });
+
   it("still goes to the popover after the sidebar collapses and reopens", () => {
     const f = mount(true);
     f.clickSettings();

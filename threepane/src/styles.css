@@ -989,6 +989,39 @@
   text-overflow: ellipsis;
 }
 
+.threepane-account-menu {
+  position: fixed;
+  z-index: 20;
+  display: flex;
+  box-sizing: border-box;
+  width: 184px;
+  max-width: calc(100vw - 8px);
+  flex-direction: column;
+  padding: var(--threepane-space-3xs);
+  border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--threepane-sidebar-divider);
+  border-radius: var(--threepane-radius-sm);
+  background: var(--threepane-sidebar-fill);
+  color: var(--threepane-sidebar-fg);
+  box-shadow: var(--studio-shadow-menu, 0 4px 12px rgb(0 0 0 / 20%));
+}
+
+.threepane-account-menu button {
+  padding: var(--threepane-space-xs) var(--threepane-space-sm);
+  border: none;
+  border-radius: var(--threepane-radius-xs);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: var(--studio-cursor-pointer, pointer);
+}
+
+.threepane-account-menu button:hover,
+.threepane-account-menu button:focus-visible {
+  outline: none;
+  background: var(--threepane-sidebar-hover);
+}
+
 /* Left sidebar: a stack of configured widgets. The widgets start below the
    frame's top strip (the empty space matching the top bar), so the frame owns
    that spacing rather than each widget reserving its own top margin. */

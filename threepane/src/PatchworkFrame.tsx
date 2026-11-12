@@ -1,6 +1,11 @@
 import "@inkandswitch/patchwork-elements";
 import { useDocHandle, useDocument } from "solid-automerge";
-import type { AutomergeUrl, DocHandle, Repo } from "@automerge/automerge-repo/slim";
+import {
+  parseAutomergeUrl,
+  type AutomergeUrl,
+  type DocHandle,
+  type Repo,
+} from "@automerge/automerge-repo/slim";
 import { subscribe } from "@inkandswitch/patchwork-providers";
 import type {
   OpenDocumentEvent,
@@ -33,7 +38,7 @@ import {
   type Accessor,
   type JSX,
 } from "solid-js";
-import { render } from "solid-js/web";
+import { Portal, render } from "solid-js/web";
 import type { ToolImplementation } from "@inkandswitch/patchwork-plugins";
 import { ensureThreepaneConfig } from "./account/ensureThreepaneConfig";
 import { seedExampleDocuments } from "./account/seedExampleDocuments";
@@ -44,6 +49,8 @@ type SelectedView = {
   url: AutomergeUrl;
   toolId: string | null;
 };
+
+const ACCOUNT_URL_STORAGE_KEY = "tinyPatchworkAccountUrl";
 
 type SidebarResize = ReturnType<typeof useSidebarResize>;
 type SidebarState = ReturnType<typeof useSidebarState>;
@@ -478,6 +485,40 @@ export function FrameLayout(props: {
 }) {
   const isCollapsed = props.sidebarState.isSidebarCollapsed;
   const myName = () => props.contactName?.() ?? "";
+  const [accountMenu, setAccountMenu] = createSignal<{ x: number; y: number }>();
+  const accountKey = () =>
+    `account:${encodeURIComponent(myName())}/${parseAutomergeUrl(props.accountDocUrl).documentId}`;
+
+  createEffect(() => {
+    if (!accountMenu()) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if ((event.target as Element | null)?.closest(".threepane-account-menu"))
+        return;
+      setAccountMenu(undefined);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setAccountMenu(undefined);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown);
+    onCleanup(() => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKeyDown);
+    });
+  });
+
+  function showAccountMenu(event: MouseEvent) {
+    event.preventDefault();
+    setAccountMenu({
+      x: Math.max(4, Math.min(event.clientX, window.innerWidth - 184)),
+      y: Math.max(4, Math.min(event.clientY, window.innerHeight - 96)),
+    });
+  }
+
+  function signOut() {
+    localStorage.removeItem(ACCOUNT_URL_STORAGE_KEY);
+    window.location.replace("/");
+  }
 
   // The system tray is docked to the frame's bottom-left, OUTSIDE the collapsing
   // sidebar. Its tools are configured on the threepane config doc's `tray`
@@ -583,12 +624,14 @@ export function FrameLayout(props: {
                 class="threepane-account-bar__me"
                 title="Settings"
                 aria-label="Settings"
+                aria-haspopup="menu"
                 onClick={(e) =>
                   dispatchOpen(e.currentTarget, {
                     url: props.accountDocUrl,
                     toolId: "settings",
                   })
                 }
+                onContextMenu={showAccountMenu}
               >
                 <Show
                   when={props.contactUrl()}
@@ -605,6 +648,62 @@ export function FrameLayout(props: {
                   <span class="threepane-account-bar__name">{myName()}</span>
                 </Show>
               </button>
+              <Show when={accountMenu()}>
+                {(position) => (
+                  <Portal>
+                    <div
+                      class="threepane-account-menu"
+                      role="menu"
+                      aria-label="Account actions"
+                      style={{
+                        left: `${position().x}px`,
+                        top: `${position().y}px`,
+                      }}
+                      onKeyDown={(event) => {
+                        const items = [
+                          ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                            '[role="menuitem"]'
+                          ),
+                        ];
+                        const index = items.indexOf(
+                          document.activeElement as HTMLButtonElement
+                        );
+                        const focus = (next: number) =>
+                          items[
+                            (next + items.length) % items.length
+                          ]?.focus();
+                        if (event.key === "ArrowDown") focus(index + 1);
+                        else if (event.key === "ArrowUp")
+                          focus(index < 0 ? items.length - 1 : index - 1);
+                        else return;
+                        event.preventDefault();
+                      }}
+                    >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        ref={(el) => queueMicrotask(() => el.focus())}
+                        onClick={() => {
+                          navigator.clipboard.writeText(accountKey());
+                          setAccountMenu(undefined);
+                        }}
+                      >
+                        Copy account key
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setAccountMenu(undefined);
+                          if (window.confirm("Sign out?")) signOut();
+                        }}
+                      >
+                        Sign out
+                      </button>
+                    </div>
+                  </Portal>
+                )}
+              </Show>
 
               <Show when={props.moduleSettingsUrl()}>
                 {(moduleSettingsUrl) => (
