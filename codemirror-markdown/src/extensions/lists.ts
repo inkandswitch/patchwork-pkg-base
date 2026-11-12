@@ -43,7 +43,7 @@ export function listAt(state: EditorState, pos: number): SyntaxNode | null {
   return null;
 }
 
-const items = (list: SyntaxNode) => list.getChildren("ListItem");
+export const items = (list: SyntaxNode) => list.getChildren("ListItem");
 
 /** `true`/`false` for a ticked/open task item, `null` for a plain item. */
 function done(state: EditorState, item: SyntaxNode): boolean | null {
@@ -54,7 +54,7 @@ function done(state: EditorState, item: SyntaxNode): boolean | null {
 
 /** An item as written: from the start of its first line (so its indent comes
  *  with it) to the end of its last nested line. */
-const startOf = (state: EditorState, item: SyntaxNode) =>
+export const startOf = (state: EditorState, item: SyntaxNode) =>
   state.doc.lineAt(item.from).from;
 const textOf = (state: EditorState, item: SyntaxNode) =>
   state.doc.sliceString(startOf(state, item), item.to);
