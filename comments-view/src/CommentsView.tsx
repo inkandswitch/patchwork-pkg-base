@@ -8,7 +8,6 @@ import {
   createComputed,
   on,
   onCleanup,
-  onMount,
   Show,
   For,
 } from "solid-js";
@@ -71,33 +70,25 @@ export function CommentsView(props: { element: HTMLElement }) {
     commentViews?: Record<string, true>;
   }>(props.element, { type: "patchwork:focus" });
 
-  // While this panel is on screen it's listed in the focus doc's
+  // While this panel is mounted it's listed in the focus doc's
   // `commentViews`, so the editor leaves threads to it instead of opening its
-  // own inline popover (and drafts new comments here). Hidden — a collapsed
-  // sidebar, another tab selected — or gone, it's taken off again.
-  let panel!: HTMLDivElement;
+  // own inline popover (and drafts new comments here). A frame that hides it
+  // — threepane collapsing its sidebar or switching tab — unmounts it, which
+  // takes it off again.
   const viewId = `comments-view-${Math.random().toString(36).slice(2)}`;
-  const [onScreen, setOnScreen] = createSignal(false);
-  onMount(() => {
-    const observer = new IntersectionObserver(([entry]) =>
-      setOnScreen(!!entry && entry.isIntersecting && entry.intersectionRect.width > 0)
-    );
-    observer.observe(panel);
-    onCleanup(() => observer.disconnect());
-  });
-  const listed = (shown: boolean) => {
+  createEffect(() => {
     const handle = focusHandle();
     if (!handle) return;
-    const already = !!handle.doc()?.commentViews?.[viewId];
-    if (already === shown) return;
     handle.change((doc) => {
       if (!doc.commentViews) doc.commentViews = {};
-      if (shown) doc.commentViews[viewId] = true;
-      else delete doc.commentViews[viewId];
+      doc.commentViews[viewId] = true;
     });
-  };
-  createEffect(() => listed(onScreen()));
-  onCleanup(() => listed(false));
+    onCleanup(() =>
+      handle.change((doc) => {
+        if (doc.commentViews) delete doc.commentViews[viewId];
+      })
+    );
+  });
 
   const [, contactHandle] = subscribeDoc<Record<string, never>>(props.element, {
     type: "patchwork:contact",
@@ -227,40 +218,31 @@ export function CommentsView(props: { element: HTMLElement }) {
   // Clicking a thread card pins it and jumps `selection` to its targets;
   // the editor's next cursor move will overwrite `selection` again.
   // A thread picked here (a card clicked) is already in view; one the editor
-  // moved to (the caret went into its text) is scrolled to and flashed — and
-  // so is the caret's thread when the panel comes on screen (opened because
-  // a comment was clicked, see threepane's CommentsOpener).
+  // moved to (the caret went into its text) — including the caret's thread
+  // when the panel has just opened — is scrolled to and flashed. The card
+  // does that itself, when it's drawn or when it becomes due (see
+  // `flashIfDue` below), so nothing waits on the cards being drawn.
   let pickedHere: AutomergeUrl | undefined;
+  const [flashDue, setFlashDue] = createSignal<AutomergeUrl>();
   createEffect(
-    on([primaryThreadUrl, onScreen], ([url, shown], previous) => {
-      if (!url || !shown) return;
-      const [wasUrl, wasShown] = previous ?? [undefined, false];
-      if (url === wasUrl && wasShown) return;
-      if (url === pickedHere) {
+    on(primaryThreadUrl, (url) => {
+      if (url && url === pickedHere) {
         pickedHere = undefined;
         return;
       }
-      // a panel that's just opened draws its cards once their targets have
-      // resolved: keep looking for a little while
-      const until = performance.now() + 3000;
-      const flash = () => {
-        const card = panel.querySelector<HTMLElement>(
-          `.comments-thread[data-thread-url="${CSS.escape(url)}"]`
-        );
-        if (!card) {
-          if (performance.now() < until) frame = requestAnimationFrame(flash);
-          return;
-        }
-        card.scrollIntoView({ block: "nearest", behavior: "smooth" });
-        card.removeAttribute("data-flash");
-        void card.offsetWidth; // restart the animation if it's mid-flash
-        card.setAttribute("data-flash", "");
-      };
-      let frame = 0;
-      flash();
-      onCleanup(() => cancelAnimationFrame(frame));
-    }, { defer: true })
+      setFlashDue(url);
+    })
   );
+  const flashIfDue = (card: HTMLElement, threadUrl: AutomergeUrl) => {
+    createEffect(() => {
+      if (flashDue() !== threadUrl) return;
+      setFlashDue(undefined);
+      card.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      card.removeAttribute("data-flash");
+      void card.offsetWidth; // restart the animation if it's mid-flash
+      card.setAttribute("data-flash", "");
+    });
+  };
 
   const onSelectThread = (
     threadUrl: AutomergeUrl,
@@ -317,7 +299,7 @@ export function CommentsView(props: { element: HTMLElement }) {
   };
 
   return (
-    <div class="comments-panel" ref={panel}>
+    <div class="comments-panel">
       <div class="comments-panel-header">
         <span class="comments-panel-header-title">Comments</span>
         <Show when={canAddComment()}>
@@ -339,6 +321,7 @@ export function CommentsView(props: { element: HTMLElement }) {
             <div
               class="comments-thread"
               data-thread-url={threadUrl}
+              ref={(card) => flashIfDue(card, threadUrl)}
               onAnimationEnd={(e) => {
                 if (e.animationName === "comments-thread-flash")
                   e.currentTarget.removeAttribute("data-flash");
