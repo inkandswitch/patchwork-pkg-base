@@ -114,15 +114,13 @@ export default function Folder(props: {
     const h = handle();
     if (!h) return;
     const freshy = await createNew(props.repo, datatype);
-    let newIndex = 0;
     h.change((folder) => {
-      folder.docs.push(freshy);
-      newIndex = folder.docs.length - 1;
+      folder.docs.unshift(freshy);
     });
     props.clearFilter();
     setExpanded(true);
     props.open(freshy);
-    setRenaming(h.url + "/" + newIndex);
+    setRenaming(h.url + "/0");
   }
 
   return (

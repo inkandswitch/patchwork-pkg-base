@@ -84,7 +84,7 @@ export default function CreateNew(props: CreateNewProps) {
   async function selectDatatype(datatype: Plugin<DatatypeDescription>) {
     const freshy = await createNew(props.repo, datatype);
     props.changeFolder((doc) => {
-      doc.docs.push(freshy);
+      doc.docs.unshift(freshy);
     });
     // Clear the filter so the just-created doc is actually visible in the list.
     props.clearFilter();
@@ -97,7 +97,7 @@ export default function CreateNew(props: CreateNewProps) {
     if (!isValidAutomergeUrl(trimmed)) return;
     const docLink = await docLinkFromUrl(props.repo, trimmed as AutomergeUrl);
     props.changeFolder((doc) => {
-      doc.docs.push(docLink);
+      doc.docs.unshift(docLink);
     });
     // Clear the filter so the freshly added doc is visible.
     props.clearFilter();
