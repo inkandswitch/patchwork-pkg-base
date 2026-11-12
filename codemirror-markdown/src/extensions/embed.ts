@@ -43,6 +43,9 @@ class EmbedWidget extends WidgetType {
   toDOM(view: EditorView) {
     const container = document.createElement("div");
     container.className = "cm-embed";
+    // focusable by a click anywhere in it (not by Tab), so :focus-within —
+    // which shows its frame — holds even when what's clicked can't take focus.
+    container.tabIndex = -1;
 
     // An image with no pinned tool is just drawn, with no frame round it. We
     // can't tell until the doc loads, so hold off mounting the frame until then.

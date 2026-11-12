@@ -44,6 +44,10 @@ const openPopover = StateEffect.define<PopoverState>();
 const closePopover = StateEffect.define<null>();
 // Hide the floating "Comment" button until the next selection change (Escape).
 const dismissButton = StateEffect.define<null>();
+// The main mouse button went down (true) or up (false) in the editor. The
+// button waits for the mouse to come up: it doesn't chase a selection that's
+// still being dragged out.
+const setPointerDown = StateEffect.define<boolean>();
 
 // Mutable UI state shared across the extension's pieces (not editor state
 // because it isn't versioned/undoable): the thread we most recently dismissed,
@@ -187,6 +191,8 @@ type FieldValue = {
   // The floating button is hidden while this is true — after Escape, or after a
   // comment is added — until a fresh selection re-arms it.
   buttonDismissed: boolean;
+  // A selection is being dragged out with the mouse.
+  pointerDown: boolean;
   tooltip: Tooltip | null;
 };
 
@@ -197,11 +203,13 @@ const commentUIField = (options: CommentUIOptions, ui: CommentUIState) =>
     create: (state) => ({
       popover: null,
       buttonDismissed: false,
+      pointerDown: false,
       tooltip: buttonTooltip(state, options),
     }),
     update(value, tr) {
       let popover = value.popover;
       let buttonDismissed = value.buttonDismissed;
+      let pointerDown = value.pointerDown;
       let popoverChanged = false;
 
       // Read-only can flip mid-session: entering it closes any open popover —
@@ -230,6 +238,8 @@ const commentUIField = (options: CommentUIOptions, ui: CommentUIState) =>
           buttonDismissed = true;
         } else if (effect.is(dismissButton)) {
           buttonDismissed = true;
+        } else if (effect.is(setPointerDown)) {
+          pointerDown = effect.value;
         }
       }
       // Any fresh selection re-arms the button.
@@ -241,13 +251,15 @@ const commentUIField = (options: CommentUIOptions, ui: CommentUIState) =>
         // change, an extension reconfigure, …) would hand CodeMirror a fresh
         // Tooltip and it would tear down and remount the thread view mid-edit.
         if (!popoverChanged) {
-          return buttonDismissed === value.buttonDismissed
+          return buttonDismissed === value.buttonDismissed &&
+            pointerDown === value.pointerDown
             ? value
-            : { ...value, buttonDismissed };
+            : { ...value, buttonDismissed, pointerDown };
         }
         return {
           popover,
           buttonDismissed,
+          pointerDown,
           tooltip: popoverTooltip(popover, options, ui),
         };
       }
@@ -259,18 +271,38 @@ const commentUIField = (options: CommentUIOptions, ui: CommentUIState) =>
         !tr.docChanged &&
         !tr.selection &&
         !readOnlyChanged &&
-        buttonDismissed === value.buttonDismissed
+        buttonDismissed === value.buttonDismissed &&
+        pointerDown === value.pointerDown
       ) {
         return value;
       }
       return {
         popover: null,
         buttonDismissed,
-        tooltip: buttonDismissed ? null : buttonTooltip(tr.state, options),
+        pointerDown,
+        tooltip:
+          buttonDismissed || pointerDown
+            ? null
+            : buttonTooltip(tr.state, options),
       };
     },
     provide: (field) => showTooltip.from(field, (value) => value.tooltip),
   });
+
+// Note the main button going down, and (wherever it's let go — often outside
+// the editor, at the end of a drag) coming back up.
+export const trackPointer = (view: EditorView) => {
+  view.dispatch({ effects: setPointerDown.of(true) });
+  const up = () => {
+    view.win.removeEventListener("mouseup", up, true);
+    view.win.removeEventListener("blur", up);
+    // the editor may have gone while the button was down
+    if (view.dom.isConnected)
+      view.dispatch({ effects: setPointerDown.of(false) });
+  };
+  view.win.addEventListener("mouseup", up, true);
+  view.win.addEventListener("blur", up);
+};
 
 // Editor-level interactions: click commented text to (re)open its thread, and
 // Escape to dismiss the floating button.
@@ -281,6 +313,7 @@ const commentInteractions = (
 ): Extension =>
   EditorView.domEventHandlers({
     mousedown(event, view) {
+      if (event.button === 0) trackPointer(view);
       if (
         event.button !== 0 ||
         event.metaKey ||
@@ -378,6 +411,13 @@ const commentUITheme = EditorView.baseTheme({
     userSelect: "none",
     whiteSpace: "nowrap",
     transition: "background-color max(1ms, calc(0.15s * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)))",
+    // fades in once the selection's made (it waits for the mouse to come up)
+    animation:
+      "cm-comment-button-in max(1ms, calc(0.16s * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) ease-out both",
+  },
+  "@keyframes cm-comment-button-in": {
+    from: { opacity: "0", transform: "translateY(2px)" },
+    to: { opacity: "1", transform: "none" },
   },
   ".cm-comment-button:hover": {
     background: "var(--cm-comment-button-bg-hover)",
