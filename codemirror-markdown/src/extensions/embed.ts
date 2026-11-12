@@ -200,21 +200,19 @@ function embedSyntax({ docId, toolId }: DocRef): string {
 }
 
 /**
- * Import each OS file dropped from the desktop as a Patchwork `file` document,
- * returning tool-less refs to embed. Uses the realm-local `window.repo` (the
- * documented global) — fine for creating brand-new docs, which aren't subject
- * to draft remapping.
+ * Import each OS file (dropped from the desktop or pasted) as a Patchwork
+ * `file` document, returning tool-less refs to embed. Uses the realm-local
+ * `window.repo` (the documented global) — fine for creating brand-new docs,
+ * which aren't subject to draft remapping.
  */
-async function fileDropRefs(files: FileList): Promise<DocRef[]> {
+async function importFileRefs(files: Iterable<File>): Promise<DocRef[]> {
   const repo = (window as unknown as { repo?: any }).repo;
   if (!repo) {
-    console.warn(
-      "[codemirror-embed] window.repo unavailable; ignoring dropped files"
-    );
+    console.warn("[codemirror-embed] window.repo unavailable; ignoring files");
     return [];
   }
   const refs: DocRef[] = [];
-  for (const file of Array.from(files)) {
+  for (const file of files) {
     try {
       const mimeType = file.type || "application/octet-stream";
       const isText =
@@ -238,7 +236,7 @@ async function fileDropRefs(files: FileList): Promise<DocRef[]> {
       }
     } catch (err) {
       console.warn(
-        "[codemirror-embed] failed to import dropped file",
+        "[codemirror-embed] failed to import file",
         file.name,
         err
       );
@@ -247,18 +245,28 @@ async function fileDropRefs(files: FileList): Promise<DocRef[]> {
   return refs;
 }
 
-function insertRefs(view: EditorView, pos: number, refs: DocRef[]): void {
+/** Insert embeds over `from..to` (a drop point, or a pasted-over selection). */
+function insertRefs(
+  view: EditorView,
+  from: number,
+  refs: DocRef[],
+  to = from
+): void {
   if (refs.length === 0) return;
+  // Files import asynchronously, so the doc may have shrunk in the meantime.
+  const len = view.state.doc.length;
+  from = Math.min(from, len);
+  to = Math.min(to, len);
   let text = refs.map(embedSyntax).join("\n\n");
   // On a non-empty line, add just enough breaks to put the embed on its own line.
-  const line = view.state.doc.lineAt(pos);
-  if (/\S/.test(line.text)) {
-    if (pos > line.from) text = "\n" + text;
-    if (pos < line.to) text = text + "\n";
-  }
+  const { doc } = view.state;
+  const start = doc.lineAt(from);
+  const end = doc.lineAt(to);
+  if (/\S/.test(start.text) && from > start.from) text = "\n" + text;
+  if (/\S/.test(end.text) && to < end.to) text = text + "\n";
   view.dispatch({
-    changes: { from: pos, insert: text },
-    selection: { anchor: pos + text.length },
+    changes: { from, to, insert: text },
+    selection: { anchor: from + text.length },
   });
 }
 
@@ -299,7 +307,9 @@ function embedDropHandlers() {
       // OS files import asynchronously; insert once the docs exist.
       if (dt.files && dt.files.length > 0) {
         event.preventDefault();
-        void fileDropRefs(dt.files).then((refs) => insertRefs(view, pos, refs));
+        void importFileRefs(Array.from(dt.files)).then((refs) =>
+          insertRefs(view, pos, refs)
+        );
         return true;
       }
 
@@ -310,6 +320,24 @@ function embedDropHandlers() {
       if (refs.length === 0) return false;
       event.preventDefault();
       insertRefs(view, pos, refs);
+      return true;
+    },
+    paste(event, view) {
+      // Image pastes (screenshots, "Copy Image") become embedded `file` docs.
+      // A paste that also carries text is left to CodeMirror: rich text from
+      // office apps attaches a picture of itself, and a Finder copy carries
+      // the file's icon alongside its name.
+      const dt = event.clipboardData;
+      if (!dt || dt.getData("text/plain")) return false;
+      const images = Array.from(dt.files ?? []).filter((f) =>
+        f.type.startsWith("image/")
+      );
+      if (images.length === 0) return false;
+      event.preventDefault();
+      const { from, to } = view.state.selection.main;
+      void importFileRefs(images).then((refs) =>
+        insertRefs(view, from, refs, to)
+      );
       return true;
     },
   });
