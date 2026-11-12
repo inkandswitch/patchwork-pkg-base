@@ -821,10 +821,12 @@
 	--syntax-style-link: var(--text-editor-text-style);
 	--syntax-weight-link: var(--text-editor-text-weight);
 
-	--syntax-quote: var(--syntax-punctuation);
-	--syntax-style-quote: var(--syntax-style-punctuation);
-	--syntax-fill-quote: var(--syntax-fill-punctuation);
-	--syntax-weight-quote: var(--syntax-weight-punctuation);
+	/* a quote's and a list's text is prose, not syntax: the text's own colour
+	   and style. (a quote is set off by its bar, a list by its markers.) */
+	--syntax-quote: var(--text-editor-line);
+	--syntax-style-quote: var(--text-editor-text-style);
+	--syntax-fill-quote: var(--text-editor-text-fill);
+	--syntax-weight-quote: var(--text-editor-text-weight);
 
 	--syntax-list: var(--text-editor-line);
 	/* bullets drawn in place of `-`: the theme's primary accent, as ink */
