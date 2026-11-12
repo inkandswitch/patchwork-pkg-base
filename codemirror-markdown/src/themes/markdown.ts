@@ -89,6 +89,9 @@ const markdownStyles = (style: "serif" | "sans"): Record<string, any> => ({
   ".cm-task:disabled": {
     cursor: "default",
   },
+  ".cm-task-done": {
+    opacity: 0.6,
+  },
   ".cm-activeLine": {
     backgroundColor: "inherit",
   },

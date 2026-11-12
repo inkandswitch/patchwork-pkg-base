@@ -59,6 +59,8 @@ function toggle(view: EditorView, from: number) {
   });
 }
 
+const doneMark = Decoration.mark({ class: "cm-task-done" });
+
 function build(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   const { doc } = view.state;
@@ -74,6 +76,12 @@ function build(view: EditorView): DecorationSet {
           node.to,
           Decoration.replace({ widget: new TaskWidget(checked) })
         );
+        // Fade a done task's text (the `Task` node runs from the marker to
+        // the end of the item's paragraph; nested lists sit outside it).
+        const task = node.node.parent;
+        if (checked && task?.name === "Task" && task.to > node.to) {
+          builder.add(node.to, task.to, doneMark);
+        }
       },
     });
   }

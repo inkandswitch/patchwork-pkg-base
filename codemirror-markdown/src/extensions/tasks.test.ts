@@ -64,4 +64,12 @@ describe("gfm task lists", () => {
     click(boxes(view)[0]);
     expect(view.state.doc.toString()).toBe("- [ ] todo");
   });
+
+  it("fades the text of done tasks, not open ones", () => {
+    const view = makeView("- [ ] todo\n- [x] done\n    - [ ] nested");
+    const faded = Array.from(
+      view.contentDOM.querySelectorAll(".cm-task-done")
+    ).map((el) => el.textContent);
+    expect(faded).toEqual([" done"]);
+  });
 });
