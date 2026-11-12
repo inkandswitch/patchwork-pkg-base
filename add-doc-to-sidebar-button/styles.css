@@ -19,6 +19,7 @@
 .add-doc-to-sidebar button {
 	display: flex;
 	align-items: center;
+	justify-content: center;
 	height: 22px;
 	padding: 0 var(--studio-space-sm, 0.5rem);
 	border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--add-doc-to-sidebar-border);
@@ -30,9 +31,15 @@
 	font-weight: 500;
 	cursor: var(--studio-cursor-pointer, pointer);
 	transition: border-color var(--studio-transition-fast, 0.1s ease),
-		background var(--studio-transition-fast, 0.1s ease);
+		background var(--studio-transition-fast, 0.1s ease),
+		scale max(1ms, calc(100ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 	white-space: nowrap;
 	user-select: none;
+}
+
+/* a small press, so the button feels heard: what it does happens over in the sidebar */
+.add-doc-to-sidebar button:active:not(:disabled) {
+	scale: 0.97;
 }
 
 .add-doc-to-sidebar button:hover {
