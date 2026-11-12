@@ -51,6 +51,8 @@ describe("the editor's datatype extensions", () => {
       on() {},
       off() {},
       isReadOnly: () => false,
+      isReady: () => true,
+      whenReady: async () => {},
     };
     const element = document.createElement("div") as any;
     element.repo = { find: () => new Promise(() => {}) };

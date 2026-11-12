@@ -7,7 +7,10 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-function makeView(options: Partial<Parameters<typeof commentUI>[0]> = {}) {
+function makeView(
+  options: Partial<Parameters<typeof commentUI>[0]> = {},
+  extra: any[] = []
+) {
   const parent = document.createElement("div");
   document.body.appendChild(parent);
   return new EditorView({
@@ -22,6 +25,7 @@ function makeView(options: Partial<Parameters<typeof commentUI>[0]> = {}) {
           onClose: () => {},
           ...options,
         }),
+        ...extra,
       ],
     }),
   });
@@ -97,5 +101,75 @@ describe("the thread popover", () => {
     await frame();
     expect(view.dom.querySelector(".cm-comment-popover")).toBe(popover);
     expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
+describe("clicking commented text", () => {
+  const thread = "automerge:thread" as any;
+  // "words" (5..10) is commented
+  const threadAtPos = (pos: number) =>
+    pos >= 5 && pos <= 10 ? { threadUrl: thread, from: 5 } : null;
+
+  // a click at `pos`: our mousedown, then the caret landing there
+  async function clickAt(view: EditorView, pos: number) {
+    view.posAtCoords = (() => pos) as any;
+    mouse(view.contentDOM, "mousedown");
+    view.dispatch({ selection: { anchor: pos } });
+    mouse(window, "mouseup");
+    await frame();
+  }
+  const peek = (view: EditorView) => view.dom.querySelector(".cm-comment-peek");
+  // after ours, stop the mousedown before CodeMirror's own mouse selection,
+  // which needs layout happy-dom lacks (the test moves the caret itself)
+  const noMouseSelection = EditorView.domEventHandlers({ mousedown: () => true });
+
+  it("offers to show the comment rather than opening the comments panel", async () => {
+    const openThreadsElsewhere = vi.fn(() => true);
+    const view = makeView({ threadAtPos, openThreadsElsewhere }, [noMouseSelection]);
+    await clickAt(view, 7);
+    expect(openThreadsElsewhere).not.toHaveBeenCalled();
+    expect(peek(view)?.textContent).toBe("View comment");
+
+    mouse(peek(view)!, "click");
+    expect(openThreadsElsewhere).toHaveBeenCalledOnce();
+    await frame();
+    expect(peek(view)).toBeNull();
+  });
+
+  it("opens the thread inline when nothing can show it", async () => {
+    const view = makeView({ threadAtPos, openThreadsElsewhere: () => false }, [
+      noMouseSelection,
+    ]);
+    await clickAt(view, 7);
+    mouse(peek(view)!, "click");
+    await frame();
+    expect(view.dom.querySelector(".cm-comment-popover")).not.toBeNull();
+  });
+
+  it("puts the offer away once the caret leaves the comment", async () => {
+    const view = makeView({ threadAtPos, openThreadsElsewhere: () => true }, [
+      noMouseSelection,
+    ]);
+    await clickAt(view, 7);
+    const chip = peek(view);
+    view.dispatch({ selection: { anchor: 8 } });
+    await frame();
+    expect(peek(view)).toBe(chip);
+    view.dispatch({ selection: { anchor: 15 } });
+    await frame();
+    expect(peek(view)).toBeNull();
+  });
+
+  it("does nothing extra while a comments panel is already showing", async () => {
+    const view = makeView(
+      {
+        threadAtPos,
+        threadsShownElsewhere: () => true,
+        openThreadsElsewhere: () => true,
+      },
+      [noMouseSelection]
+    );
+    await clickAt(view, 7);
+    expect(peek(view)).toBeNull();
   });
 });

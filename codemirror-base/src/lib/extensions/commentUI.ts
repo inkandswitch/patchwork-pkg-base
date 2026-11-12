@@ -56,6 +56,9 @@ const leaveToElsewhere = (options: CommentUIOptions) =>
 type PopoverState = { threadUrl: AutomergeUrl; anchor: number };
 
 const openPopover = StateEffect.define<PopoverState>();
+// Offer a small "View comment" chip at a clicked comment, rather than opening
+// a comments panel the moment commented text is clicked.
+const openPeek = StateEffect.define<PopoverState>();
 const closePopover = StateEffect.define<null>();
 // Hide the floating "Comment" button until the next selection change (Escape).
 const dismissButton = StateEffect.define<null>();
@@ -70,6 +73,40 @@ const setPointerDown = StateEffect.define<boolean>();
 type CommentUIState = { suppressed: AutomergeUrl | null };
 
 const POPOVER_CLASS = "cm-comment-popover";
+
+// Keep a press from focusing the button: the editor would blur and the
+// tooltip go before the click lands (see the comment button).
+const keepEditorFocus = (button: HTMLElement) =>
+  button.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  });
+
+// "View comment", at a clicked comment while no comments view is showing. It
+// brings one up (which follows the caret to the thread); with nothing that can
+// show threads, it opens the thread inline instead.
+const buildPeekButton = (
+  view: EditorView,
+  options: CommentUIOptions,
+  peek: () => PopoverState | null
+): HTMLElement => {
+  const button = document.createElement("button");
+  button.className = "cm-comment-button cm-comment-peek";
+  button.textContent = "View comment";
+  keepEditorFocus(button);
+  button.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const state = peek();
+    if (!state) return;
+    if (options.openThreadsElsewhere?.()) {
+      view.dispatch({ effects: dismissButton.of(null) });
+    } else {
+      view.dispatch({ effects: openPopover.of(state) });
+    }
+  });
+  return button;
+};
 
 // A speech-bubble icon + "Comment" label, shown floating above the selection.
 // It reads the selection when it is pressed rather than being built for one:
@@ -97,10 +134,7 @@ const buildCommentButton = (
   // press silently does nothing and the user has to click twice. Swallowing
   // mousedown keeps the editor focused and the selection (and button) alive
   // long enough for the click to land.
-  button.addEventListener("mousedown", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-  });
+  keepEditorFocus(button);
 
   button.addEventListener("click", (e) => {
     e.preventDefault();
@@ -211,8 +245,21 @@ const popoverTooltip = (
   create: (view) => buildThreadPopover(view, state, options, ui),
 });
 
+const peekTooltip = (
+  peek: PopoverState,
+  create: Tooltip["create"]
+): Tooltip => ({
+  pos: peek.anchor,
+  above: true,
+  strictSide: false,
+  arrow: false,
+  create,
+});
+
 type FieldValue = {
   popover: PopoverState | null;
+  // The "View comment" chip's comment, while it's up.
+  peek: PopoverState | null;
   // The floating button is hidden while this is true — after Escape, or after a
   // comment is added — until a fresh selection re-arms it.
   buttonDismissed: boolean;
@@ -227,15 +274,25 @@ const commentUIField = (options: CommentUIOptions, ui: CommentUIState) => {
   const createButton: Tooltip["create"] = (view) => ({
     dom: buildCommentButton(view, options),
   });
-  return StateField.define<FieldValue>({
+  // one `create` for every chip, so moving within the comment keeps its DOM
+  const createPeek: Tooltip["create"] = (view) => ({
+    dom: buildPeekButton(
+      view,
+      options,
+      () => view.state.field(field, false)?.peek ?? null
+    ),
+  });
+  const field: StateField<FieldValue> = StateField.define<FieldValue>({
     create: (state) => ({
       popover: null,
+      peek: null,
       buttonDismissed: false,
       pointerDown: false,
       tooltip: buttonTooltip(state, options, createButton),
     }),
     update(value, tr) {
       let popover = value.popover;
+      let peek = value.peek;
       let buttonDismissed = value.buttonDismissed;
       let pointerDown = value.pointerDown;
       let popoverChanged = false;
@@ -248,6 +305,9 @@ const commentUIField = (options: CommentUIOptions, ui: CommentUIState) => {
         popover = null;
         popoverChanged = true;
       }
+      if (peek && tr.docChanged) {
+        peek = { ...peek, anchor: tr.changes.mapPos(peek.anchor) };
+      }
 
       // Keep the popover pinned to its text as the document shifts under it.
       if (popover && tr.docChanged) {
@@ -258,6 +318,9 @@ const commentUIField = (options: CommentUIOptions, ui: CommentUIState) => {
         if (effect.is(openPopover)) {
           popover = effect.value;
           popoverChanged = true;
+          peek = null;
+        } else if (effect.is(openPeek)) {
+          peek = effect.value;
         } else if (effect.is(closePopover)) {
           popover = null;
           popoverChanged = true;
@@ -266,12 +329,21 @@ const commentUIField = (options: CommentUIOptions, ui: CommentUIState) => {
           buttonDismissed = true;
         } else if (effect.is(dismissButton)) {
           buttonDismissed = true;
+          peek = null;
         } else if (effect.is(setPointerDown)) {
           pointerDown = effect.value;
         }
       }
       // Any fresh selection re-arms the button.
       if (tr.selection) buttonDismissed = false;
+      // The chip goes once the caret leaves its comment, or there's a
+      // selection (which gets the "Comment" button instead).
+      if (peek && tr.selection && !tr.effects.some((e) => e.is(openPeek))) {
+        const sel = tr.state.selection.main;
+        const hit = sel.empty ? options.threadAtPos(sel.head) : null;
+        if (hit?.threadUrl !== peek.threadUrl) peek = null;
+      }
+      if (peek && tr.state.readOnly) peek = null;
 
       if (popover) {
         // Reuse the exact same tooltip object unless the popover state itself
@@ -282,10 +354,11 @@ const commentUIField = (options: CommentUIOptions, ui: CommentUIState) => {
           return buttonDismissed === value.buttonDismissed &&
             pointerDown === value.pointerDown
             ? value
-            : { ...value, buttonDismissed, pointerDown };
+            : { ...value, peek, buttonDismissed, pointerDown };
         }
         return {
           popover,
+          peek,
           buttonDismissed,
           pointerDown,
           // Following its text as the document shifts is a move, not a new
@@ -306,6 +379,7 @@ const commentUIField = (options: CommentUIOptions, ui: CommentUIState) => {
         !tr.docChanged &&
         !tr.selection &&
         !readOnlyChanged &&
+        peek === value.peek &&
         buttonDismissed === value.buttonDismissed &&
         pointerDown === value.pointerDown
       ) {
@@ -313,16 +387,21 @@ const commentUIField = (options: CommentUIOptions, ui: CommentUIState) => {
       }
       return {
         popover: null,
+        peek,
         buttonDismissed,
         pointerDown,
-        tooltip:
-          buttonDismissed || pointerDown
-            ? null
-            : buttonTooltip(tr.state, options, createButton),
+        tooltip: pointerDown
+          ? null
+          : peek
+            ? peekTooltip(peek, createPeek)
+            : buttonDismissed
+              ? null
+              : buttonTooltip(tr.state, options, createButton),
       };
     },
-    provide: (field) => showTooltip.from(field, (value) => value.tooltip),
+    provide: (f) => showTooltip.from(f, (value) => value.tooltip),
   });
+  return field;
 };
 
 // Note the main button going down, and (wherever it's let go — often outside
@@ -376,12 +455,16 @@ const commentInteractions = (
       // Don't reopen the thread we just dismissed while the click stays inside
       // it — the user has to click elsewhere (or another comment) first.
       if (hit.threadUrl === ui.suppressed) return false;
-      // A comments view (showing, or opened now) follows the caret to this
-      // thread itself.
-      if (leaveToElsewhere(options)) return false;
+      // A comments view on screen follows the caret to this thread itself.
+      if (options.threadsShownElsewhere?.()) return false;
       ui.suppressed = null;
+      const at = { threadUrl: hit.threadUrl, anchor: hit.from };
+      // One that could be opened is offered, not opened: a "View comment"
+      // chip, so clicking into commented text doesn't throw up a panel.
       view.dispatch({
-        effects: openPopover.of({ threadUrl: hit.threadUrl, anchor: hit.from }),
+        effects: options.openThreadsElsewhere
+          ? openPeek.of(at)
+          : openPopover.of(at),
       });
       return false; // let the click also move the cursor as usual
     },
@@ -391,6 +474,7 @@ const commentInteractions = (
       // While a popover is open its own Escape handler wins (it also works when
       // the popover's textarea holds focus); here we only hide the button.
       if (!state || state.popover || !state.tooltip) return false;
+      // (dismissButton puts away the "View comment" chip as well)
       view.dispatch({ effects: dismissButton.of(null) });
       return true;
     },
