@@ -74,6 +74,14 @@ const markdownStyles = (style: "serif" | "sans"): Record<string, any> => ({
     color: "var(--text-editor-line)",
     verticalAlign: "0.15em",
   },
+  ".cm-task": {
+    margin: "0 0.1em",
+    verticalAlign: "-0.1em",
+    cursor: "pointer",
+  },
+  ".cm-task:disabled": {
+    cursor: "default",
+  },
   ".cm-activeLine": {
     backgroundColor: "inherit",
   },

@@ -121,3 +121,40 @@ describe("pasting images", () => {
     expect(view.state.doc.toString()).toBe("");
   });
 });
+
+function drop(view: EditorView, pos: number, files: File[]) {
+  // happy-dom has no layout, so pin where the drop lands.
+  vi.spyOn(view, "posAtCoords").mockReturnValue(pos);
+  const event = new Event("drop", { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "dataTransfer", {
+    value: {
+      files,
+      types: ["Files"],
+      getData: () => "",
+    },
+  });
+  view.contentDOM.dispatchEvent(event);
+}
+
+describe("dropping files from the desktop", () => {
+  it("imports each dropped file as a file doc and embeds them", async () => {
+    const view = makeView("ab", 0);
+    const md = new File(["# hi"], "notes.md", { type: "text/markdown" });
+    drop(view, 1, [png(), md]);
+
+    await vi.waitFor(() => expect(created).toHaveLength(2));
+    expect(created[0].doc).toMatchObject({ name: "image.png" });
+    expect(created[1].doc).toMatchObject({
+      name: "notes.md",
+      extension: "md",
+      content: "# hi",
+    });
+
+    const [a, b] = created.map(idOf);
+    await vi.waitFor(() =>
+      expect(view.state.doc.toString()).toBe(
+        `a\n[patchwork:${a}]\n\n[patchwork:${b}]\nb`
+      )
+    );
+  });
+});
