@@ -677,6 +677,44 @@
   }
 }
 
+/* the face and name come in when you become someone. rare, so it can
+   take a moment: a short rise and fade, staggered a touch */
+.settings-arriving {
+  transition:
+    opacity calc(var(--settings-quick) * 2) var(--settings-ease-out),
+    transform calc(var(--settings-quick) * 2) var(--settings-ease-out);
+
+  @starting-style {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+.settings-account.settings-arriving {
+  transition-delay: 40ms;
+}
+
+/* ── logging in ────────────────────────────────────────────────────── */
+
+.settings-login form {
+  display: grid;
+  gap: 10px;
+  width: min(340px, 80vw);
+}
+
+.settings-login-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.settings-login .settings-input {
+  width: 100%;
+}
+
+.settings-login .settings-dialog-actions {
+  margin-top: 4px;
+}
+
 .settings-ask {
   margin-right: 4px;
   font-weight: 600;

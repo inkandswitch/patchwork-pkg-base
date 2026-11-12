@@ -1,22 +1,13 @@
 // you: your picture (ringed in your colour), your cursor as people see it
 // (click it for another colour), your name, and which account this is.
-// there's no signing up: the first change to any of you makes your contact,
-// and a name makes you someone (and not anonymous)
-import {
-  createEffect,
-  createMemo,
-  createResource,
-  createSignal,
-  For,
-  onCleanup,
-  Show,
-} from "solid-js";
+// until you're someone there's none of that, just two ways in: make an
+// account here, or log in with the key from another computer
+import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
 import type { DocHandle, Repo } from "@automerge/automerge-repo/slim";
 import { useDocument } from "solid-automerge";
 import {
   ACCOUNT_URL_STORAGE_KEY,
   accountToken,
-  accountUrlFromToken,
   colorFromString,
   hexColor,
   squarePicture,
@@ -26,6 +17,7 @@ import {
   type Crop,
 } from "./contact";
 import { Cropper } from "./Cropper";
+import { LogIn } from "./LogIn";
 
 export function You(props: {
   handle: DocHandle<AccountDoc>;
@@ -62,6 +54,26 @@ export function You(props: {
     (await myContact()).change((doc) =>
       fn(doc as ContactDoc & Record<string, any>)
     );
+
+  // someone: you've made an account, or been given a name. until then you
+  // can make one or log in to one, and that's all
+  const someone = () => me()?.type === "registered";
+  // (and while your contact's still coming, neither, so nothing flashes)
+  const known = () => !contactUrl() || me() !== undefined;
+  const [joining, setJoining] = createSignal(false);
+  // you only arrive (and get the little entrance) if we saw you as nobody
+  const [wasNobody, setWasNobody] = createSignal(false);
+  createEffect(() => known() && !someone() && setWasNobody(true));
+  let justMade = false;
+  async function makeAccount() {
+    justMade = true;
+    await changeMe((doc) => {
+      if (doc.type !== "registered") {
+        (doc as { type: string }).type = "registered";
+        doc.name = "";
+      }
+    });
+  }
 
   const name = () => {
     const doc = me();
@@ -122,96 +134,142 @@ export function You(props: {
       <h2 id="settings-you" class="settings-hidden">
         you
       </h2>
-      <div class="settings-you" style={{ "--settings-you-color": myColor() }}>
-        <div class="settings-you-face" aria-busy={busy()}>
-          <button
-            type="button"
-            class="settings-you-picture"
-            title={avatarUrl() ? "Change picture" : "Add a picture"}
-            aria-label={avatarUrl() ? "Change picture" : "Add a picture"}
-            disabled={busy()}
-            onClick={() => pictureInput.click()}
+      <Show when={known()}>
+        <Show
+          when={someone()}
+          fallback={
+            <div class="settings-cluster settings-ways-in">
+              <button
+                type="button"
+                class="settings-button"
+                data-primary
+                onClick={makeAccount}
+              >
+                Create account
+              </button>
+              <button
+                type="button"
+                class="settings-button"
+                onClick={() => setJoining(true)}
+              >
+                Log in
+              </button>
+            </div>
+          }
+        >
+          <div
+            class="settings-you"
+            classList={{ "settings-arriving": wasNobody() }}
+            style={{ "--settings-you-color": myColor() }}
           >
-            <Show
-              when={contactUrl()}
-              fallback={<span class="settings-you-nobody">+</span>}
-            >
-              {(url) => (
-                <patchwork-view doc-url={url()} tool-id="contact-avatar" />
-              )}
-            </Show>
-          </button>
-          <Show when={avatarUrl()}>
-            <button
-              type="button"
-              class="settings-you-unpicture"
-              title="Remove picture"
-              aria-label="Remove picture"
-              onClick={() =>
-                changeMe((doc) => {
-                  delete doc.avatarUrl;
-                })
-              }
-            >
-              ×
-            </button>
-          </Show>
-          <input
-            type="file"
-            accept="image/*"
-            hidden
-            ref={pictureInput}
-            onChange={(event) => {
-              const [file] = event.currentTarget.files ?? [];
-              event.currentTarget.value = "";
-              if (file) setCropping({ file, src: URL.createObjectURL(file) });
-            }}
-          />
-          <div class="settings-you-cursor">
-            <Pointer
-              color={myColor()}
-              name={name() || "You"}
-              aria-expanded={choosingColor()}
-              aria-haspopup="true"
-              title="Change colour"
-              onClick={() => setChoosingColor((open) => !open)}
-            />
-            <Show when={choosingColor()}>
-              <Colors
-                value={me()?.color}
-                onChange={(color) =>
-                  changeMe((doc) => {
-                    doc.color = color;
-                  })
-                }
-                onClose={() => setChoosingColor(false)}
+            <div class="settings-you-face" aria-busy={busy()}>
+              <button
+                type="button"
+                class="settings-you-picture"
+                title={avatarUrl() ? "Change picture" : "Add a picture"}
+                aria-label={avatarUrl() ? "Change picture" : "Add a picture"}
+                disabled={busy()}
+                onClick={() => pictureInput.click()}
+              >
+                <Show
+                  when={contactUrl()}
+                  fallback={<span class="settings-you-nobody">+</span>}
+                >
+                  {(url) => (
+                    <patchwork-view doc-url={url()} tool-id="contact-avatar" />
+                  )}
+                </Show>
+              </button>
+              <Show when={avatarUrl()}>
+                <button
+                  type="button"
+                  class="settings-you-unpicture"
+                  title="Remove picture"
+                  aria-label="Remove picture"
+                  onClick={() =>
+                    changeMe((doc) => {
+                      delete doc.avatarUrl;
+                    })
+                  }
+                >
+                  ×
+                </button>
+              </Show>
+              <input
+                type="file"
+                accept="image/*"
+                hidden
+                ref={pictureInput}
+                onChange={(event) => {
+                  const [file] = event.currentTarget.files ?? [];
+                  event.currentTarget.value = "";
+                  if (file)
+                    setCropping({ file, src: URL.createObjectURL(file) });
+                }}
               />
-            </Show>
+              <div class="settings-you-cursor">
+                <Pointer
+                  color={myColor()}
+                  name={name() || "You"}
+                  aria-expanded={choosingColor()}
+                  aria-haspopup="true"
+                  title="Change colour"
+                  onClick={() => setChoosingColor((open) => !open)}
+                />
+                <Show when={choosingColor()}>
+                  <Colors
+                    value={me()?.color}
+                    onChange={(color) =>
+                      changeMe((doc) => {
+                        doc.color = color;
+                      })
+                    }
+                    onClose={() => setChoosingColor(false)}
+                  />
+                </Show>
+              </div>
+            </div>
+            <div class="settings-you-says">
+              <input
+                class="settings-you-name"
+                value={name()}
+                placeholder="Your name"
+                aria-label="Your name"
+                aria-invalid={failed() || undefined}
+                autocomplete="name"
+                spellcheck={false}
+                ref={(el) => {
+                  if (justMade) queueMicrotask(() => el.focus());
+                  justMade = false;
+                }}
+                onInput={(event) => rename(event.currentTarget.value, false)}
+                onChange={(event) => rename(event.currentTarget.value, true)}
+                onKeyDown={(event) =>
+                  event.key === "Enter" && event.currentTarget.blur()
+                }
+              />
+              <Show when={failed()}>
+                <p class="settings-error" role="alert">
+                  Couldn't read that picture
+                </p>
+              </Show>
+            </div>
           </div>
-        </div>
-        <div class="settings-you-says">
-          <input
-            class="settings-you-name"
-            value={name()}
-            placeholder="Your name"
-            aria-label="Your name"
-            aria-invalid={failed() || undefined}
-            autocomplete="name"
-            spellcheck={false}
-            onInput={(event) => rename(event.currentTarget.value, false)}
-            onChange={(event) => rename(event.currentTarget.value, true)}
-            onKeyDown={(event) =>
-              event.key === "Enter" && event.currentTarget.blur()
-            }
+          <AccountKey
+            handle={props.handle}
+            name={name}
+            arriving={wasNobody()}
           />
-          <Show when={failed()}>
-            <p class="settings-error" role="alert">
-              Couldn't read that picture
-            </p>
-          </Show>
-        </div>
-      </div>
-      <AccountKey handle={props.handle} name={name} repo={props.repo} />
+        </Show>
+      </Show>
+
+      <Show when={joining()}>
+        <LogIn
+          here={props.handle.url}
+          repo={props.repo}
+          onCancel={() => setJoining(false)}
+        />
+      </Show>
 
       <Show when={cropping()}>
         {(pending) => (
@@ -336,16 +394,13 @@ function Colors(props: {
   );
 }
 
-// this account, elsewhere: its key, to use it on another computer; leaving;
-// and coming in with the key from another computer
+// this account, elsewhere: its key, to use it on another computer; and leaving
 function AccountKey(props: {
   handle: DocHandle<AccountDoc>;
   name: () => string;
-  repo: Repo;
+  arriving: boolean;
 }) {
-  const [mode, setMode] = createSignal<"here" | "leaving" | "joining">("here");
-  const setLeaving = (on: boolean) => setMode(on ? "leaving" : "here");
-  const leaving = () => mode() === "leaving";
+  const [leaving, setLeaving] = createSignal(false);
   const [copied, setCopied] = createSignal(false);
 
   function copy() {
@@ -357,42 +412,6 @@ function AccountKey(props: {
   function signOut() {
     localStorage.removeItem(ACCOUNT_URL_STORAGE_KEY);
     window.location.replace("/");
-  }
-
-  // logging in: the key you paste, the account it's for, and who that is
-  const [key, setKey] = createSignal("");
-  const target = createMemo(() => accountUrlFromToken(key()));
-  const [found] = createResource(target, async (url) => {
-    try {
-      const account = (await props.repo.find<AccountDoc>(url)).doc();
-      if (!account?.contactUrl && !account?.rootFolderUrl) return null;
-      const contact = account.contactUrl
-        ? (await props.repo.find<ContactDoc>(account.contactUrl)).doc()
-        : undefined;
-      return { url, name: contact?.type === "registered" ? contact.name : "" };
-    } catch {
-      return null;
-    }
-  });
-  const status = () => {
-    if (!key().trim()) return;
-    if (!target()) return "That's not an account key";
-    if (target() === props.handle.url) return "That's this account";
-    if (found.loading) return "Looking…";
-    if (!found()) return "Couldn't find that account";
-  };
-  const canLogIn = () =>
-    !found.loading && !!found() && found()!.url === target() && !status();
-  function logIn(event: SubmitEvent) {
-    event.preventDefault();
-    const account = found();
-    if (!canLogIn() || !account) return;
-    localStorage.setItem(ACCOUNT_URL_STORAGE_KEY, account.url);
-    window.location.replace("/");
-  }
-  function stopJoining() {
-    setKey("");
-    setMode("here");
   }
 
   const copyButton = () => (
@@ -412,17 +431,13 @@ function AccountKey(props: {
     event.key === "Escape" && setLeaving(false);
 
   return (
-    <div class="settings-account">
-      <Show when={mode() === "here"}>
+    <div
+      class="settings-account"
+      classList={{ "settings-arriving": props.arriving }}
+    >
+      <Show when={!leaving()}>
         <div class="settings-cluster">
           {copyButton()}
-          <button
-            type="button"
-            class="settings-button"
-            onClick={() => setMode("joining")}
-          >
-            Log in…
-          </button>
           <button
             type="button"
             class="settings-button"
@@ -432,54 +447,6 @@ function AccountKey(props: {
             Sign out
           </button>
         </div>
-      </Show>
-      <Show when={mode() === "joining"}>
-        <form
-          class="settings-cluster"
-          onSubmit={logIn}
-          onKeyDown={(event) => event.key === "Escape" && stopJoining()}
-        >
-          <input
-            class="settings-input settings-code settings-grow"
-            type="password"
-            placeholder="Paste an account key"
-            aria-label="Account key"
-            autocomplete="off"
-            spellcheck={false}
-            value={key()}
-            ref={(el) => queueMicrotask(() => el.focus())}
-            onInput={(event) => setKey(event.currentTarget.value)}
-          />
-          <button type="button" class="settings-button" onClick={stopJoining}>
-            Cancel
-          </button>
-          <button
-            type="submit"
-            class="settings-button"
-            data-primary
-            disabled={!canLogIn()}
-          >
-            {found()?.name && canLogIn()
-              ? `Log in as ${found()!.name}`
-              : "Log in"}
-          </button>
-          <Show when={status()}>
-            {(said) => (
-              <p
-                class={found.loading ? "settings-note" : "settings-error"}
-                role="status"
-              >
-                {said()}
-              </p>
-            )}
-          </Show>
-          <Show when={canLogIn()}>
-            <p class="settings-note">
-              This computer will use that account instead. Copy this one's key
-              first if you'll want it back.
-            </p>
-          </Show>
-        </form>
       </Show>
       <Show when={leaving()}>
         <div class="settings-cluster" onKeyDown={escape}>
