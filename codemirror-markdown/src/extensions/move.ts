@@ -260,11 +260,13 @@ const dragPlugin = ViewPlugin.fromClass(
 );
 
 const moveTheme = EditorView.baseTheme({
+  // draggable, but no hand: a plain arrow, here and all through a drag (so it
+  // doesn't flicker to the text I-beam over the lines it passes)
   ".cm-md-list-marker:not(:has(.cm-task))": {
-    cursor: "grab",
+    cursor: "default",
   },
   ".cm-md-drag-active, .cm-md-drag-active *": {
-    cursor: "grabbing !important",
+    cursor: "default !important",
   },
   ".cm-md-dragging": {
     opacity: "0.35",
