@@ -3,10 +3,8 @@ import { render } from "solid-js/web";
 import { createSignal } from "solid-js";
 import { FrameLayout } from "./PatchworkFrame";
 
-// keyhiveAccess reads this optional export at import; an older patchwork lacks it
-vi.mock("@inkandswitch/patchwork-elements", () => ({
-  hasActiveAccess: undefined,
-}));
+// the real one defines <patchwork-view> against a repo; the layout doesn't need it
+vi.mock("@inkandswitch/patchwork-elements", () => ({}));
 vi.mock("@inkandswitch/patchwork-plugins", () => ({
   createDocOfDatatype2: vi.fn(),
   getRegistry: vi.fn(),
