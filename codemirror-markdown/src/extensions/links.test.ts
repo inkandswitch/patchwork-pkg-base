@@ -55,25 +55,44 @@ describe("urlAt", () => {
 });
 
 describe("mod-click", () => {
-  function mousedown(view: EditorView, init: MouseEventInit) {
-    vi.spyOn(view, "posAtCoords").mockReturnValue(6);
-    // happy-dom has no layout, so stub the measuring CodeMirror's own
-    // click-to-place-cursor does when we let a click through.
-    vi.spyOn(view, "posAndSideAtCoords").mockReturnValue({ pos: 6, assoc: 1 });
-    const event = new MouseEvent("mousedown", {
+  const mod = { metaKey: true, ctrlKey: true };
+
+  // happy-dom has no layout: pretend the pointer is over `pos`, which is
+  // drawn right where the pointer is.
+  function pointAt(view: EditorView, pos: number) {
+    vi.spyOn(view, "posAtCoords").mockReturnValue(pos);
+    vi.spyOn(view, "posAndSideAtCoords").mockReturnValue({ pos, assoc: 1 });
+    vi.spyOn(view, "coordsAtPos").mockReturnValue({
+      left: 10,
+      right: 10,
+      top: 0,
+      bottom: 20,
+    });
+  }
+
+  const mouse = (view: EditorView, type: string, init: MouseEventInit = {}) => {
+    const event = new MouseEvent(type, {
       bubbles: true,
       cancelable: true,
       button: 0,
+      clientX: 10,
+      clientY: 10,
       ...init,
     });
     view.contentDOM.dispatchEvent(event);
     return event;
-  }
+  };
+
+  const hovered = (view: EditorView) =>
+    Array.from(view.contentDOM.querySelectorAll(".cm-md-link-hover")).map(
+      (el) => el.textContent
+    );
 
   it("opens the link under the pointer when the modifier is held", () => {
     const open = vi.spyOn(window, "open").mockReturnValue(null);
     const view = makeView();
-    const event = mousedown(view, { metaKey: true, ctrlKey: true });
+    pointAt(view, 6);
+    const event = mouse(view, "mousedown", mod);
     expect(open).toHaveBeenCalledWith(
       "https://a.com",
       "_blank",
@@ -84,8 +103,20 @@ describe("mod-click", () => {
 
   it("leaves a plain click alone", () => {
     const open = vi.spyOn(window, "open").mockReturnValue(null);
-    mousedown(makeView(), {});
+    const view = makeView();
+    pointAt(view, 6);
+    mouse(view, "mousedown");
     expect(open).not.toHaveBeenCalled();
+  });
+
+  it("ignores a link the pointer is only near", () => {
+    const view = makeView();
+    pointAt(view, 6);
+    // e.g. the blank space past the end of a line the link ends
+    mouse(view, "mousemove", { ...mod, clientX: 300 });
+    expect(hovered(view)).toEqual([]);
+    mouse(view, "mousemove", mod);
+    expect(hovered(view)).toEqual(["[text](https://a.com)"]);
   });
 
   it("opens automerge links inside patchwork", () => {
@@ -95,35 +126,31 @@ describe("mod-click", () => {
     document.addEventListener("patchwork:open-document", (e) =>
       opened((e as CustomEvent).detail.url)
     );
-    vi.spyOn(view, "posAtCoords").mockReturnValue(2);
-    view.contentDOM.dispatchEvent(
-      new MouseEvent("mousedown", {
-        bubbles: true,
-        cancelable: true,
-        metaKey: true,
-        ctrlKey: true,
-      })
-    );
+    pointAt(view, 2);
+    mouse(view, "mousedown", mod);
     expect(opened).toHaveBeenCalledWith(url);
   });
 
-  it("flags the editor while the modifier is held", () => {
+  it("underlines only the hovered link, only while the modifier is held", () => {
     const view = makeView();
-    const key = (type: string, held: boolean) =>
-      view.contentDOM.dispatchEvent(
-        new KeyboardEvent(type, { bubbles: true, metaKey: held, ctrlKey: held })
-      );
-    key("keydown", true);
-    expect(view.dom.classList.contains("cm-mod-held")).toBe(true);
-    key("keyup", false);
-    expect(view.dom.classList.contains("cm-mod-held")).toBe(false);
-  });
+    pointAt(view, doc.indexOf("https://b.com"));
+    mouse(view, "mousemove");
+    expect(hovered(view)).toEqual([]);
 
-  it("marks raw links so they can be styled", () => {
-    const view = makeView();
-    const marked = Array.from(
-      view.contentDOM.querySelectorAll(".cm-md-link")
-    ).map((el) => el.textContent);
-    expect(marked).toContain("[text](https://a.com)");
+    mouse(view, "mousemove", mod);
+    expect(hovered(view)).toEqual(["<https://b.com>"]);
+
+    view.contentDOM.dispatchEvent(
+      new KeyboardEvent("keyup", { bubbles: true })
+    );
+    expect(hovered(view)).toEqual([]);
+
+    view.contentDOM.dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, ...mod })
+    );
+    expect(hovered(view)).toEqual(["<https://b.com>"]);
+
+    mouse(view, "mouseleave", mod);
+    expect(hovered(view)).toEqual([]);
   });
 });

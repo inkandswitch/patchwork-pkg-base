@@ -10,7 +10,7 @@ export const linkTheme = EditorView.baseTheme({
       color: "inherit",
     },
   },
-  "&.cm-mod-held .cm-md-link, &.cm-mod-held .cm-md-link *": {
+  ".cm-md-link-hover, .cm-md-link-hover *": {
     textDecoration: "underline",
     cursor: "var(--studio-cursor-pointer, pointer)",
   },
