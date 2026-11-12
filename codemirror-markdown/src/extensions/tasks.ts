@@ -124,7 +124,8 @@ const ink = (fade: number) =>
 
 const taskTheme = EditorView.baseTheme({
   ".cm-task": {
-    "--cm-task-size": "calc(1.05rem * var(--markdown-zoom, 1))",
+    // about as tall as the text, centred on it (margin.ts sets the size)
+    "--cm-task-size": "var(--markdown-marker-size, 0.9em)",
     boxSizing: "border-box",
     display: "inline-flex",
     alignItems: "center",
@@ -135,7 +136,7 @@ const taskTheme = EditorView.baseTheme({
     borderRadius: "calc(var(--cm-task-size) / 3.5)",
     border: `1.5px solid ${ink(45)}`,
     color: ink(45),
-    verticalAlign: "-0.15em",
+    verticalAlign: "middle",
     cursor: "var(--studio-cursor-pointer, pointer)",
     userSelect: "none",
     transition: `border-color ${motion(140)} linear, color ${motion(140)} linear, scale ${motion(100)} ease`,
