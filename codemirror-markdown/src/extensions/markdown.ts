@@ -13,6 +13,8 @@ import { taskCheckboxes } from "./tasks.ts";
 import { margin } from "./margin.ts";
 import { headings } from "./headings.ts";
 import { lists } from "./lists.ts";
+import { prefixes } from "./prefix.ts";
+import { verticalMemory } from "./vertical.ts";
 import { markdownZoom } from "./zoom.ts";
 
 /** Styles */
@@ -45,6 +47,8 @@ export function markdownExtensions() {
     }),
     taskCheckboxes,
     margin,
+    prefixes,
+    verticalMemory,
     headings,
     lists,
     indentUnit.of("    "),

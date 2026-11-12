@@ -72,11 +72,11 @@ describe("margin", () => {
     expect(nums.slice(0, 4)).toEqual(["1.", "1.", "2.", "2."]);
   });
 
-  it("shows the typed number on the line the caret's on", () => {
+  it("shows the rendered number even on the line the caret's on", () => {
     const doc = "1. a\n10. b\n\nend";
     const view = makeView(doc, doc.indexOf("b"));
     const [, b] = lines(view);
-    expect(hang(b)?.textContent).toBe("10. ");
+    expect(hang(b)?.textContent).toBe("2.");
   });
 
   it("puts a task's checkbox where the bullet would be", () => {
@@ -107,13 +107,11 @@ describe("margin", () => {
     expect(after.classList).not.toContain("cm-md-quote");
   });
 
-  it("shows the > hung on the line the caret's on", () => {
+  it("never shows the >, even on the line the caret's on", () => {
     const doc = "> the true\n> the world\n\nafter";
     const view = makeView(doc, doc.indexOf("world"));
-    const [q1, q2] = lines(view);
-    expect(q1.textContent).toBe("the true");
-    expect(hang(q2)?.textContent).toBe("> ");
-    expect(q2.textContent).toBe("> the world");
+    const [, q2] = lines(view);
+    expect(q2.textContent).toBe("the world");
   });
 
   it("gives a nested quote one bar and hides all its >s", () => {

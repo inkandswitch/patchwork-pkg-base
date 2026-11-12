@@ -13,11 +13,14 @@ import {
  * Bear-style margin: block markers hang out to the left of the text, so the
  * body text of headings, lists and quotes all starts on the same column.
  *
- *   H1 The title           (`# ` → H1 label, always: see headings.ts)
+ *   H1 The title           (`# ` → H1 label)
  *    • a bullet            (`- ` → dot)
- *   3. a number            (the number it renders as; raw on the caret line)
+ *   3. a number            (the number it renders as, whatever was typed)
  *    ☐ a task              (`- [ ] ` → checkbox, no bullet)
- *    ┃ a quote             (`> ` → a bar; raw `> ` while the caret's on it)
+ *    ┃ a quote             (`> ` → a bar)
+ *
+ * The markup itself is never shown, and the caret never goes into it: see
+ * prefix.ts.
  *
  * Everything hung goes in a `.cm-md-hang` box: a fixed-width inline-flex with
  * a negative margin of the same width, so it takes no room on the line and
@@ -25,8 +28,6 @@ import {
  * big heading doesn't hang further out than a paragraph.
  */
 
-const numberMark = Decoration.mark({ class: "cm-md-hang cm-md-hang-number" });
-const quoteMark = Decoration.mark({ class: "cm-md-hang cm-md-hang-quote" });
 const hidden = Decoration.replace({});
 // inclusive, so it wraps the checkbox widget tasks.ts puts at its very start.
 const taskMark = Decoration.mark({ class: "cm-md-hang", inclusive: true });
@@ -106,17 +107,6 @@ function renderedNumber(state: EditorState, mark: SyntaxNode) {
   return `${(Number.isNaN(start) ? 1 : start) + index}${delimiter}`;
 }
 
-/** Lines that hold any part of the selection: those show their raw markup. */
-function caretLines(state: EditorState) {
-  const lines = new Set<number>();
-  for (const r of state.selection.ranges) {
-    const first = state.doc.lineAt(r.from).number;
-    const last = state.doc.lineAt(r.to).number;
-    for (let n = first; n <= last; n++) lines.add(n);
-  }
-  return lines;
-}
-
 /** `pos` moved past any spaces (not newlines) that follow it. */
 function skipSpaces(state: EditorState, pos: number) {
   const line = state.doc.lineAt(pos);
@@ -127,7 +117,6 @@ function skipSpaces(state: EditorState, pos: number) {
 function build(view: EditorView): DecorationSet {
   const { state } = view;
   const { doc } = state;
-  const editing = caretLines(state);
   const decos: Range<Decoration>[] = [];
 
   for (const { from, to } of view.visibleRanges) {
@@ -140,12 +129,11 @@ function build(view: EditorView): DecorationSet {
         const heading = /^ATXHeading(\d)$/.exec(name);
         if (heading) {
           const mark = node.node.firstChild;
-          if (!mark || mark.name !== "HeaderMark" || mark.from !== node.from)
-            return;
+          if (!mark || mark.name !== "HeaderMark") return;
           decos.push(
             Decoration.replace({
               widget: new HeadingLabel(Number(heading[1])),
-            }).range(mark.from, skipSpaces(state, mark.to))
+            }).range(doc.lineAt(node.from).from, skipSpaces(state, mark.to))
           );
           return;
         }
@@ -170,8 +158,6 @@ function build(view: EditorView): DecorationSet {
             decos.push(
               Decoration.replace({ widget: new Bullet() }).range(node.from, end)
             );
-          } else if (editing.has(doc.lineAt(node.from).number)) {
-            decos.push(numberMark.range(node.from, end));
           } else {
             decos.push(
               Decoration.replace({
@@ -212,12 +198,7 @@ function build(view: EditorView): DecorationSet {
             end = next + 1;
           }
           end = skipSpaces(state, end);
-          decos.push(
-            (editing.has(line.number) ? quoteMark : hidden).range(
-              line.from,
-              end
-            )
-          );
+          decos.push(hidden.range(line.from, end));
         }
       },
     });
@@ -235,7 +216,6 @@ const marginPlugin = ViewPlugin.fromClass(
     update(update: ViewUpdate) {
       if (
         update.docChanged ||
-        update.selectionSet ||
         update.viewportChanged ||
         syntaxTree(update.startState) !== syntaxTree(update.state)
       ) {

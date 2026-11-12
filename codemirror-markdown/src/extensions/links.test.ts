@@ -137,12 +137,13 @@ describe("mod-click", () => {
 
   it("underlines only the hovered link, only while the modifier is held", () => {
     const view = makeView();
-    pointAt(view, doc.indexOf("https://b.com"));
+    // the bare url: `<…>` autolinks render as link widgets now.
+    pointAt(view, doc.indexOf("https://c.com"));
     mouse(view, "mousemove");
     expect(hovered(view)).toEqual([]);
 
     mouse(view, "mousemove", mod);
-    expect(hovered(view)).toEqual(["<https://b.com>"]);
+    expect(hovered(view)).toEqual(["https://c.com"]);
 
     view.contentDOM.dispatchEvent(
       new KeyboardEvent("keyup", { bubbles: true })
@@ -152,9 +153,32 @@ describe("mod-click", () => {
     view.contentDOM.dispatchEvent(
       new KeyboardEvent("keydown", { bubbles: true, ...mod })
     );
-    expect(hovered(view)).toEqual(["<https://b.com>"]);
+    expect(hovered(view)).toEqual(["https://c.com"]);
 
     mouse(view, "mouseleave", mod);
     expect(hovered(view)).toEqual([]);
+  });
+});
+
+describe("autolinks", () => {
+  it("render as just their url, brackets and all hidden", () => {
+    const text = "call <fax:+442034223303> or <a@b.co>\n\nend";
+    const view = makeView(text);
+    view.dispatch({ selection: { anchor: text.length } });
+    const links = Array.from(
+      view.contentDOM.querySelectorAll<HTMLAnchorElement>("a.cm-link")
+    );
+    expect(links.map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
+      ["fax:+442034223303", "fax:+442034223303"],
+      ["a@b.co", "mailto:a@b.co"],
+    ]);
+  });
+
+  it("show their markup while the caret is in them", () => {
+    const text = "call <fax:+44> now";
+    const view = makeView(text);
+    view.dispatch({ selection: { anchor: text.indexOf("+") } });
+    expect(view.contentDOM.querySelector("a.cm-link")).toBeNull();
+    expect(view.contentDOM.textContent).toContain("<fax:+44>");
   });
 });

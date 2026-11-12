@@ -1,7 +1,7 @@
 import { syntaxTree } from "@codemirror/language";
 import {
   EditorSelection,
-  EditorState,
+  type EditorState,
   Prec,
   type Line,
   type StateCommand,
@@ -10,13 +10,11 @@ import { keymap } from "@codemirror/view";
 
 /**
  * Headings behave like the block type they are in lush and rich, not like
- * text that starts with `#`: the `# ` prefix is never shown (margin.ts draws
- * an H1/H2 label in its place) and the caret never goes inside it.
+ * text that starts with `#`. The `# ` is a block prefix (prefix.ts: never
+ * shown, never holds the caret, Backspace at the text's start removes it);
+ * this adds what's particular to headings:
  *
- *  - Backspace at the start of a heading turns it back into body text.
  *  - Enter at the start of a heading pushes it down, leaving a line above.
- *  - Delete at the end of the line before a heading pulls in its text, not
- *    its `#`s.
  *  - Mod-Shift-h / Mod-Shift-j make a heading / subheading (lush's keys), and
  *    Mod-Shift-b makes body text. Mod-Alt-1…3 and Mod-Alt-0 do the same.
  *    (lush's Title key, Mod-Shift-t, belongs to the browser.)
@@ -46,40 +44,6 @@ export function headingPrefix(
   }
   return null;
 }
-
-/**
- * Keep empty cursors out of a heading's prefix. Moving left out of the
- * heading's start goes on to the end of the line above, rather than sticking.
- */
-const keepOutOfPrefix = EditorState.transactionFilter.of((tr) => {
-  if (!tr.selection) return tr;
-  const { state } = tr;
-  const before = tr.startState.selection;
-  let moved = false;
-  const ranges = tr.selection.ranges.map((r, i) => {
-    if (!r.empty) return r;
-    const line = state.doc.lineAt(r.head);
-    if (r.head >= line.to && line.length > 0) return r;
-    const prefix = headingPrefix(state, line);
-    if (!prefix || r.head >= prefix.to) return r;
-    const old = before.ranges[i] ?? before.main;
-    const leaving =
-      !tr.docChanged &&
-      old.empty &&
-      old.head === prefix.to &&
-      line.from > 0;
-    moved = true;
-    return EditorSelection.cursor(leaving ? line.from - 1 : prefix.to);
-  });
-  if (!moved) return tr;
-  return [
-    tr,
-    {
-      selection: EditorSelection.create(ranges, tr.selection.mainIndex),
-      sequential: true,
-    },
-  ];
-});
 
 /** Each line touched by the selection, once. */
 function selectedLines(state: EditorState) {
@@ -135,19 +99,6 @@ function atHeadingStart(state: EditorState) {
   return prefix && sel.main.head === prefix.to ? prefix : null;
 }
 
-const backspace: StateCommand = ({ state, dispatch }) => {
-  const prefix = atHeadingStart(state);
-  if (!prefix) return false;
-  dispatch(
-    state.update({
-      changes: { from: prefix.from, to: prefix.to },
-      selection: EditorSelection.cursor(prefix.from),
-      userEvent: "delete.backward",
-    })
-  );
-  return true;
-};
-
 const enter: StateCommand = ({ state, dispatch }) => {
   const prefix = atHeadingStart(state);
   if (!prefix) return false;
@@ -165,30 +116,11 @@ const enter: StateCommand = ({ state, dispatch }) => {
   return true;
 };
 
-const deleteForward: StateCommand = ({ state, dispatch }) => {
-  const sel = state.selection;
-  if (sel.ranges.length !== 1 || !sel.main.empty) return false;
-  const line = state.doc.lineAt(sel.main.head);
-  if (sel.main.head !== line.to || line.number >= state.doc.lines) return false;
-  const prefix = headingPrefix(state, state.doc.line(line.number + 1));
-  if (!prefix) return false;
-  dispatch(
-    state.update({
-      changes: { from: line.to, to: prefix.to },
-      userEvent: "delete.forward",
-    })
-  );
-  return true;
-};
-
 export const headings = [
-  keepOutOfPrefix,
-  // above lang-markdown's own (Prec.high) Enter and Backspace.
+  // above lang-markdown's own (Prec.high) Enter.
   Prec.highest(
     keymap.of([
-      { key: "Backspace", run: backspace },
       { key: "Enter", run: enter },
-      { key: "Delete", run: deleteForward },
       { key: "Mod-Shift-h", run: setHeading(2), preventDefault: true },
       { key: "Mod-Shift-j", run: setHeading(3), preventDefault: true },
       { key: "Mod-Shift-b", run: setHeading(0), preventDefault: true },

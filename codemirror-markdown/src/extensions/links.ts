@@ -85,6 +85,28 @@ function getLinks(view: EditorView) {
       from,
       to,
       enter: (node) => {
+        // `<https://…>`, `<fax:…>`, `<a@b.c>`: the url, without its brackets
+        if (node.name === "Autolink") {
+          const url = node.node.getChild("URL");
+          const inside =
+            selection.from >= node.from && selection.from <= node.to;
+          const spans = selection.from < node.from && selection.to > node.to;
+          if (url && !inside && !spans) {
+            const text = state.doc.sliceString(url.from, url.to);
+            const href =
+              /^[a-z][a-z0-9+.-]*:/i.test(text) || !text.includes("@")
+                ? text
+                : `mailto:${text}`;
+            widgets.push(
+              Decoration.replace({ widget: new LinkWidget(href, text) }).range(
+                node.from,
+                node.to
+              )
+            );
+          }
+          return;
+        }
+
         // Match markdown link syntax
         if (node.name === "Link") {
           const linkFrom = node.from;
