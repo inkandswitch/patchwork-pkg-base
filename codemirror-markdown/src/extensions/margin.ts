@@ -518,6 +518,7 @@ const marginTheme = EditorView.baseTheme({
   ".cm-md-list-marker": {
     display: "inline-block",
     boxSizing: "border-box",
+    width: "auto",
     minWidth: "var(--markdown-list-indent)",
     marginLeft: "calc(-1 * var(--markdown-list-indent))",
     paddingRight: "0",
