@@ -600,19 +600,38 @@ const marginTheme = EditorView.baseTheme({
     paddingLeft: "calc(6px + var(--markdown-quote-indent))",
   },
   // code sits on a faint step up the editor's fill ramp: inline, a pill;
-  // a block, a rounded panel with a little room inside
+  // a block, a rounded panel laid out like a callout: its left edge where a
+  // quote's bar is, its text where a quote's text starts
   ".cm-md-code": {
+    position: "relative",
+    // a stacking context, so the tint drawn behind the text (z-index -1)
+    // stays above the editor's own background.
+    isolation: "isolate",
     fontFamily: "var(--text-editor-family-code)",
+    paddingLeft: "calc(6px + var(--markdown-quote-indent))",
+    paddingRight: zoomed("0.75rem"),
+  },
+  ".cm-md-code::after": {
+    content: '""',
+    position: "absolute",
+    zIndex: "-1",
+    left: "calc(6px + var(--markdown-marker-centre) - 1.5px)",
+    right: "0",
+    top: "0",
+    bottom: "0",
     background: "var(--text-editor-fill-offset-10, rgb(0 0 0 / 0.04))",
-    paddingInline: `calc(6px + ${zoomed("0.75rem")})`,
   },
   ".cm-md-code-first": {
     paddingTop: zoomed("0.5rem"),
+  },
+  ".cm-md-code-first::after": {
     borderTopLeftRadius: "6px",
     borderTopRightRadius: "6px",
   },
   ".cm-md-code-last": {
     paddingBottom: zoomed("0.5rem"),
+  },
+  ".cm-md-code-last::after": {
     borderBottomLeftRadius: "6px",
     borderBottomRightRadius: "6px",
   },
