@@ -1004,8 +1004,8 @@
   padding: var(--threepane-space-3xs);
   border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--threepane-sidebar-divider);
   border-radius: var(--threepane-radius-sm);
-  background: var(--threepane-sidebar-fill);
-  color: var(--threepane-sidebar-fg);
+  background: var(--threepane-bg);
+  color: var(--threepane-fg);
   box-shadow: var(--studio-shadow-menu, 0 4px 12px rgb(0 0 0 / 20%));
 }
 
