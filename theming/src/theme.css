@@ -829,6 +829,8 @@
 	--syntax-list: var(--text-editor-line);
 	/* bullets drawn in place of `-`: the theme's primary accent, as ink */
 	--syntax-list-marker: var(--text-editor-primary-text);
+	/* a quote's bar: the same colour as the bullets */
+	--syntax-quote-bar: var(--syntax-list-marker);
 	--syntax-fill-list: var(--text-editor-text-fill);
 	--syntax-style-list: var(--text-editor-text-style);
 	--syntax-weight-list: var(--text-editor-text-weight);

@@ -41,7 +41,15 @@ export type CommentUIOptions = {
   // there, not in an inline popover. Without it, or while it's false, the
   // editor shows threads inline.
   threadsShownElsewhere?: () => boolean;
+  // With nothing showing threads, ask something that can (a frame with a
+  // comments sidebar) to bring a comments view up; true if anything was
+  // asked. The view, once on screen, picks the thread up itself.
+  openThreadsElsewhere?: () => boolean;
 };
+
+// Threads go to a comments view if one's showing, or one can be opened.
+const leaveToElsewhere = (options: CommentUIOptions) =>
+  !!options.threadsShownElsewhere?.() || !!options.openThreadsElsewhere?.();
 
 // Which thread the popover is showing, and the document position it hangs off.
 type PopoverState = { threadUrl: AutomergeUrl; anchor: number };
@@ -102,7 +110,7 @@ const buildCommentButton = (
     if (!threadUrl) return;
     // A visible comments panel picks the new thread up (it's on the
     // selection) and opens its draft; just put the button away.
-    if (options.threadsShownElsewhere?.()) {
+    if (leaveToElsewhere(options)) {
       view.dispatch({ effects: dismissButton.of(null) });
       return;
     }
@@ -364,11 +372,12 @@ const commentInteractions = (
         ui.suppressed = null; // clicked away from any comment; re-arm reopening
         return false;
       }
-      // A visible comments panel follows the caret to this thread itself.
-      if (options.threadsShownElsewhere?.()) return false;
       // Don't reopen the thread we just dismissed while the click stays inside
       // it — the user has to click elsewhere (or another comment) first.
       if (hit.threadUrl === ui.suppressed) return false;
+      // A comments view (showing, or opened now) follows the caret to this
+      // thread itself.
+      if (leaveToElsewhere(options)) return false;
       ui.suppressed = null;
       view.dispatch({
         effects: openPopover.of({ threadUrl: hit.threadUrl, anchor: hit.from }),

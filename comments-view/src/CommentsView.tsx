@@ -227,23 +227,38 @@ export function CommentsView(props: { element: HTMLElement }) {
   // Clicking a thread card pins it and jumps `selection` to its targets;
   // the editor's next cursor move will overwrite `selection` again.
   // A thread picked here (a card clicked) is already in view; one the editor
-  // moved to (the caret went into its text) is scrolled to and flashed.
+  // moved to (the caret went into its text) is scrolled to and flashed — and
+  // so is the caret's thread when the panel comes on screen (opened because
+  // a comment was clicked, see threepane's CommentsOpener).
   let pickedHere: AutomergeUrl | undefined;
   createEffect(
-    on(primaryThreadUrl, (url) => {
-      if (!url || !onScreen()) return;
+    on([primaryThreadUrl, onScreen], ([url, shown], previous) => {
+      if (!url || !shown) return;
+      const [wasUrl, wasShown] = previous ?? [undefined, false];
+      if (url === wasUrl && wasShown) return;
       if (url === pickedHere) {
         pickedHere = undefined;
         return;
       }
-      const card = panel.querySelector<HTMLElement>(
-        `.comments-thread[data-thread-url="${CSS.escape(url)}"]`
-      );
-      if (!card) return;
-      card.scrollIntoView({ block: "nearest", behavior: "smooth" });
-      card.removeAttribute("data-flash");
-      void card.offsetWidth; // restart the animation if it's mid-flash
-      card.setAttribute("data-flash", "");
+      // a panel that's just opened may not have drawn its cards yet: give
+      // it a few frames
+      let tries = 30;
+      const flash = () => {
+        const card = panel.querySelector<HTMLElement>(
+          `.comments-thread[data-thread-url="${CSS.escape(url)}"]`
+        );
+        if (!card) {
+          if (--tries > 0) frame = requestAnimationFrame(flash);
+          return;
+        }
+        card.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        card.removeAttribute("data-flash");
+        void card.offsetWidth; // restart the animation if it's mid-flash
+        card.setAttribute("data-flash", "");
+      };
+      let frame = 0;
+      flash();
+      onCleanup(() => cancelAnimationFrame(frame));
     }, { defer: true })
   );
 

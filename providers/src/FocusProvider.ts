@@ -15,10 +15,17 @@ const SELECTOR = "patchwork:focus";
 //     each under an id of its own; a view adds itself while visible and
 //     removes itself when hidden or gone. While any is listed, an editor
 //     leaves threads to them rather than opening its own inline popover.
+//   - `commentViewOpeners`: things that can bring a comments view on screen
+//     (a frame with a comments tab it can open), each under an id of its own.
+//   - `openCommentView`: bumped to ask them to. With no comments view on
+//     screen but an opener listed, an editor asks rather than going inline;
+//     the view that opens then lists itself in `commentViews` as usual.
 export type FocusDoc = {
   selection: Record<AutomergeUrl, true>;
   highlight: Record<AutomergeUrl, true>;
   commentViews: Record<string, true>;
+  commentViewOpeners: Record<string, true>;
+  openCommentView: number;
 };
 
 export const FocusProvider = (element: PatchworkViewElement) => {
@@ -26,6 +33,8 @@ export const FocusProvider = (element: PatchworkViewElement) => {
     selection: {},
     highlight: {},
     commentViews: {},
+    commentViewOpeners: {},
+    openCommentView: 0,
   });
 
   // Consumers recover the live handle from the global repo via this url, so
