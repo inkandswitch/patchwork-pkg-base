@@ -101,7 +101,7 @@ function DocOpenWith(handle, element) {
 		}
 
 		.doc-openwith-btn:hover,
-		.doc-openwith-btn[data-open] {
+		.doc-openwith-btn--open {
 			border-color: var(--doc-openwith-border-hover);
 			background: var(--doc-openwith-hover);
 		}
@@ -116,6 +116,18 @@ function DocOpenWith(handle, element) {
 			background: var(--doc-openwith-bg);
 			box-shadow: var(--studio-shadow-sm, 0 2px 8px rgba(0, 0, 0, 0.08));
 			overflow: hidden;
+			/* Grows out of the button (transform-origin is set in toggleMenu, to
+			   whichever edge it is aligned to). Closing is instant. */
+			transition:
+				opacity max(1ms, calc(150ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
+				scale max(1ms, calc(150ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+		}
+
+		@starting-style {
+			.doc-openwith-menu[popover]:popover-open {
+				opacity: 0;
+				scale: 0.97;
+			}
 		}
 
 		.doc-openwith-input {
@@ -254,9 +266,11 @@ function DocOpenWith(handle, element) {
 		if (rect.left + menuWidth > window.innerWidth - 8) {
 			menuEl.style.left = ""
 			menuEl.style.right = window.innerWidth - rect.right + "px"
+			menuEl.style.transformOrigin = "top right"
 		} else {
 			menuEl.style.right = ""
 			menuEl.style.left = rect.left + "px"
+			menuEl.style.transformOrigin = "top left"
 		}
 		menuEl.togglePopover()
 	}

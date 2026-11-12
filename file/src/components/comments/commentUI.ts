@@ -62,10 +62,9 @@ type CommentUIState = {suppressed: AutomergeUrl | null}
 const POPOVER_CLASS = "cm-comment-popover"
 
 // A speech-bubble icon + "Comment" label, shown floating above the selection.
+// It reads the selection when it is pressed rather than being built for one:
+// the same button stays up as the selection under it is extended.
 const buildCommentButton = (
-	from: number,
-	to: number,
-	head: number,
 	view: EditorView,
 	options: CommentUIOptions
 ): HTMLElement => {
@@ -96,10 +95,12 @@ const buildCommentButton = (
 	button.addEventListener("click", (e) => {
 		e.preventDefault()
 		e.stopPropagation()
-		const threadUrl = options.createThreadForRange(from, to)
+		const sel = view.state.selection.main
+		if (sel.empty) return
+		const threadUrl = options.createThreadForRange(sel.from, sel.to)
 		if (!threadUrl) return
 		// Open the popover right where the button was (the selection head).
-		view.dispatch({effects: openPopover.of({threadUrl, anchor: head})})
+		view.dispatch({effects: openPopover.of({threadUrl, anchor: sel.head})})
 	})
 
 	return button
@@ -158,9 +159,14 @@ const buildThreadPopover = (
 	}
 }
 
+// `create` has to be the same function from one selection to the next (see
+// `commentUIField`): CodeMirror keeps a tooltip's DOM only while its `create`
+// is unchanged, and otherwise rebuilds the button, replaying its entrance, on
+// every keystroke that moves the selection.
 const buttonTooltip = (
 	state: EditorState,
-	options: CommentUIOptions
+	options: CommentUIOptions,
+	create: Tooltip["create"]
 ): Tooltip | null => {
 	const sel = state.selection.main
 	if (sel.empty || !options.canComment()) return null
@@ -173,9 +179,7 @@ const buttonTooltip = (
 		above: true,
 		strictSide: false,
 		arrow: false,
-		create: (view) => ({
-			dom: buildCommentButton(sel.from, sel.to, sel.head, view, options),
-		}),
+		create,
 	}
 }
 
@@ -201,12 +205,15 @@ type FieldValue = {
 
 // A single field driving the one tooltip slot: the thread popover when one is
 // open, otherwise the selection's "Comment" button.
-const commentUIField = (options: CommentUIOptions, ui: CommentUIState) =>
-	StateField.define<FieldValue>({
+const commentUIField = (options: CommentUIOptions, ui: CommentUIState) => {
+	const createButton: Tooltip["create"] = (view) => ({
+		dom: buildCommentButton(view, options),
+	})
+	return StateField.define<FieldValue>({
 		create: (state) => ({
 			popover: null,
 			buttonDismissed: false,
-			tooltip: buttonTooltip(state, options),
+			tooltip: buttonTooltip(state, options, createButton),
 		}),
 		update(value, tr) {
 			let popover = value.popover
@@ -248,7 +255,14 @@ const commentUIField = (options: CommentUIOptions, ui: CommentUIState) =>
 				return {
 					popover,
 					buttonDismissed,
-					tooltip: popoverTooltip(popover, options, ui),
+					// Following its text as the document shifts is a move, not a new
+					// popover: keep the tooltip's `create`, so CodeMirror repositions the
+					// thread view it has rather than closing it (which discards an
+					// unwritten draft, see `onClose`) and mounting another.
+					tooltip:
+						value.tooltip && value.popover?.threadUrl === popover.threadUrl
+							? {...value.tooltip, pos: popover.anchor}
+							: popoverTooltip(popover, options, ui),
 				}
 			}
 
@@ -265,11 +279,12 @@ const commentUIField = (options: CommentUIOptions, ui: CommentUIState) =>
 			return {
 				popover: null,
 				buttonDismissed,
-				tooltip: buttonDismissed ? null : buttonTooltip(tr.state, options),
+				tooltip: buttonDismissed ? null : buttonTooltip(tr.state, options, createButton),
 			}
 		},
 		provide: (field) => showTooltip.from(field, (value) => value.tooltip),
 	})
+}
 
 // Editor-level interactions: click commented text to (re)open its thread, and
 // Escape to dismiss the floating button.

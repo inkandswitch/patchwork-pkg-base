@@ -67,7 +67,28 @@ export function CommentsView(props: { element: HTMLElement }) {
   const [focusDoc, focusHandle] = subscribeDoc<{
     selection: Record<AutomergeUrl, true>;
     highlight: Record<AutomergeUrl, true>;
+    commentViews?: Record<string, true>;
   }>(props.element, { type: "patchwork:focus" });
+
+  // While this panel is mounted it's listed in the focus doc's
+  // `commentViews`, so the editor leaves threads to it instead of opening its
+  // own inline popover (and drafts new comments here). A frame that hides it
+  // — threepane collapsing its sidebar or switching tab — unmounts it, which
+  // takes it off again.
+  const viewId = `comments-view-${Math.random().toString(36).slice(2)}`;
+  createEffect(() => {
+    const handle = focusHandle();
+    if (!handle) return;
+    handle.change((doc) => {
+      if (!doc.commentViews) doc.commentViews = {};
+      doc.commentViews[viewId] = true;
+    });
+    onCleanup(() =>
+      handle.change((doc) => {
+        if (doc.commentViews) delete doc.commentViews[viewId];
+      })
+    );
+  });
 
   const [, contactHandle] = subscribeDoc<Record<string, never>>(props.element, {
     type: "patchwork:contact",
@@ -196,12 +217,40 @@ export function CommentsView(props: { element: HTMLElement }) {
 
   // Clicking a thread card pins it and jumps `selection` to its targets;
   // the editor's next cursor move will overwrite `selection` again.
+  // A thread picked here (a card clicked) is already in view; one the editor
+  // moved to (the caret went into its text) — including the caret's thread
+  // when the panel has just opened — is scrolled to and flashed. The card
+  // does that itself, when it's drawn or when it becomes due (see
+  // `flashIfDue` below), so nothing waits on the cards being drawn.
+  let pickedHere: AutomergeUrl | undefined;
+  const [flashDue, setFlashDue] = createSignal<AutomergeUrl>();
+  createEffect(
+    on(primaryThreadUrl, (url) => {
+      if (url && url === pickedHere) {
+        pickedHere = undefined;
+        return;
+      }
+      setFlashDue(url);
+    })
+  );
+  const flashIfDue = (card: HTMLElement, threadUrl: AutomergeUrl) => {
+    createEffect(() => {
+      if (flashDue() !== threadUrl) return;
+      setFlashDue(undefined);
+      card.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      card.removeAttribute("data-flash");
+      void card.offsetWidth; // restart the animation if it's mid-flash
+      card.setAttribute("data-flash", "");
+    });
+  };
+
   const onSelectThread = (
     threadUrl: AutomergeUrl,
     targetUrls: AutomergeUrl[]
   ) => {
     const handle = focusHandle();
     if (!handle) return;
+    pickedHere = threadUrl;
     const wasPrimary = primaryThreadUrl() === threadUrl;
     setPinnedThread(wasPrimary ? undefined : threadUrl);
     const next: Record<AutomergeUrl, true> = {};
@@ -271,6 +320,12 @@ export function CommentsView(props: { element: HTMLElement }) {
           {(threadUrl) => (
             <div
               class="comments-thread"
+              data-thread-url={threadUrl}
+              ref={(card) => flashIfDue(card, threadUrl)}
+              onAnimationEnd={(e) => {
+                if (e.animationName === "comments-thread-flash")
+                  e.currentTarget.removeAttribute("data-flash");
+              }}
               data-new={performance.now() > settledAt ? "" : undefined}
               // Once in, it's an ordinary thread: its actions row remounts each
               // time the thread becomes primary (it follows the cursor), and

@@ -69,6 +69,18 @@ class Bullet extends WidgetType {
   }
 }
 
+class Rule extends WidgetType {
+  eq() {
+    return true;
+  }
+  toDOM() {
+    const hr = document.createElement("span");
+    hr.className = "cm-md-hr";
+    hr.setAttribute("role", "separator");
+    return hr;
+  }
+}
+
 class NumberLabel extends WidgetType {
   constructor(readonly text: string) {
     super();
@@ -373,6 +385,16 @@ function build(view: EditorView): DecorationSet {
           return false;
         }
 
+        if (name === "HorizontalRule") {
+          // a rule across the text; the `---` itself only on the caret's line
+          const line = doc.lineAt(node.from);
+          if (!editing.has(line.number))
+            decos.push(
+              Decoration.replace({ widget: new Rule() }).range(node.from, node.to)
+            );
+          return false;
+        }
+
         if (name === "InlineCode") {
           // one tinted pill for the whole thing, backticks and all
           decos.push(inlineCode.range(node.from, node.to));
@@ -457,8 +479,14 @@ const zoomed = (length: string) => `calc(${length} * var(--markdown-zoom, 1))`;
 const marginTheme = EditorView.baseTheme({
   ".cm-content": {
     "--markdown-hang": zoomed("2.5rem"),
-    "--markdown-list-indent": zoomed("1.6rem"),
-    "--markdown-quote-indent": zoomed("1.1rem"),
+    // in the text's own ems (resolved where used): a checkbox is about as
+    // tall as the text, and its centre is the column every list marker and
+    // quote bar is centred on; the text starts a gap after it
+    "--markdown-marker-size": "0.9em",
+    "--markdown-marker-centre": "calc(var(--markdown-marker-size) / 2)",
+    "--markdown-list-indent": "1.45em",
+    // quote text lines up with list text
+    "--markdown-quote-indent": "var(--markdown-list-indent)",
   },
   ".cm-md-hang": {
     display: "inline-flex",
@@ -498,28 +526,39 @@ const marginTheme = EditorView.baseTheme({
   ".cm-md-list-line": {
     paddingLeft: "calc(6px + var(--md-list-depth, 1) * var(--markdown-list-indent))",
   },
-  // its marker, in that padding: from the start of the indent, not hung right
+  // its marker, in that padding: from the start of the indent, not hung
+  // right; at the text's size, sitting on its line like text does, so a
+  // number shares the text's baseline and a box or dot (vertical-align:
+  // middle) is centred on it
   ".cm-md-list-marker": {
-    width: "var(--markdown-list-indent)",
+    display: "inline-block",
+    boxSizing: "border-box",
+    width: "auto",
+    minWidth: "var(--markdown-list-indent)",
     marginLeft: "calc(-1 * var(--markdown-list-indent))",
-    justifyContent: "flex-start",
     paddingRight: "0",
+    fontSize: "inherit",
+    textAlign: "left",
+  },
+  ".cm-md-list-marker.cm-md-hang-number": {
+    color: "var(--text-editor-line-offset-40, inherit)",
   },
   ".cm-md-heading-level": {
     fontSize: "0.75em",
     verticalAlign: "-0.15em",
   },
   ".cm-md-hang .cm-bullet": {
+    "--dot": "0.4em",
     display: "inline-block",
-    width: "0.5em",
-    height: "0.5em",
-    // in the box's left, centred under where a number's first digit sits
-    marginLeft: "0.15em",
+    width: "var(--dot)",
+    height: "var(--dot)",
+    // centred on the column a checkbox's centre is on
+    marginLeft: "calc(var(--markdown-marker-centre) - var(--dot) / 2)",
+    verticalAlign: "middle",
     borderRadius: "50%",
-    // theming's list marker colour (the primary accent, as ink)
+    // theming's list marker colour (shared with the quote bar)
     background:
       "var(--syntax-list-marker, var(--text-editor-primary-text, currentColor))",
-    alignSelf: "center",
   },
   ".cm-md-hang .cm-task": {
     margin: "0",
@@ -545,6 +584,13 @@ const marginTheme = EditorView.baseTheme({
     paddingBottom: zoomed("0.5rem"),
     borderBottomLeftRadius: "6px",
     borderBottomRightRadius: "6px",
+  },
+  ".cm-md-hr": {
+    display: "inline-block",
+    width: "100%",
+    verticalAlign: "middle",
+    borderTop:
+      "var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--text-editor-fill-offset-40, rgb(0 0 0 / 0.15))",
   },
   ".cm-md-inline-code": {
     background: "var(--text-editor-fill-offset-10, rgb(0 0 0 / 0.04))",
@@ -591,7 +637,7 @@ const marginTheme = EditorView.baseTheme({
     content: '""',
     position: "absolute",
     zIndex: "-1",
-    left: "6px",
+    left: "calc(6px + var(--markdown-marker-centre) - 1.5px)",
     right: "0",
     top: "0",
     bottom: "0",
@@ -643,12 +689,14 @@ const marginTheme = EditorView.baseTheme({
   ".cm-md-quote::before": {
     content: '""',
     position: "absolute",
-    // on the body's column (past CodeMirror's own 6px line padding)
-    left: "6px",
+    // centred on the markers' column (past CodeMirror's own 6px padding)
+    left: "calc(6px + var(--markdown-marker-centre) - 1.5px)",
     top: "0",
     bottom: "0",
     width: "3px",
-    background: "var(--syntax-quote-bar, var(--studio-link, currentColor))",
+    // the same colour as the bullets
+    background:
+      "var(--syntax-quote-bar, var(--syntax-list-marker, var(--text-editor-primary-text, currentColor)))",
     opacity: "0.6",
   },
   ".cm-md-quote-first::before": {

@@ -38,6 +38,7 @@ import {
 import { useSidebarResize } from "../hooks/useSidebarResize";
 import { FrameTopBar } from "./FrameTopBar";
 import { ContextSidebar } from "./ContextSidebar";
+import { CommentsOpener } from "./CommentsOpener";
 import { MainDocumentView } from "./MainDocumentView";
 
 /**
@@ -280,6 +281,13 @@ function DraftDocumentArea(props: {
               ref={setFocusProviderElement}
             >
               <Show when={areDocProvidersReady()}>
+                <CommentsOpener
+                  element={focusProviderElement()!}
+                  open={(toolId) => {
+                    props.setSelectedContextToolId(toolId);
+                    props.setIsRightSidebarCollapsed(false);
+                  }}
+                />
                 <div class="frame__main-column">
                   <div class="frame__doc-column">
                     <FrameTopBar

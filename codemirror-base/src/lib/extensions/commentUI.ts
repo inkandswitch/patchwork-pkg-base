@@ -7,6 +7,7 @@ import {
 import {
   EditorView,
   showTooltip,
+  tooltips,
   type Tooltip,
   type TooltipView,
 } from "@codemirror/view";
@@ -35,7 +36,21 @@ export type CommentUIOptions = {
   // abandoned, never-filled-in draft so dismissing the popover doesn't litter
   // the document with empty comments.
   onClose: (threadUrl: AutomergeUrl) => void;
+  // True while some other view (a comments panel) is showing threads on
+  // screen. Then clicking commented text only moves the caret — that view
+  // follows the selection to the thread — and a new comment is drafted
+  // there, not in an inline popover. Without it, or while it's false, the
+  // editor shows threads inline.
+  threadsShownElsewhere?: () => boolean;
+  // With nothing showing threads, ask something that can (a frame with a
+  // comments sidebar) to bring a comments view up; true if anything was
+  // asked. The view, once on screen, picks the thread up itself.
+  openThreadsElsewhere?: () => boolean;
 };
+
+// Threads go to a comments view if one's showing, or one can be opened.
+const leaveToElsewhere = (options: CommentUIOptions) =>
+  !!options.threadsShownElsewhere?.() || !!options.openThreadsElsewhere?.();
 
 // Which thread the popover is showing, and the document position it hangs off.
 type PopoverState = { threadUrl: AutomergeUrl; anchor: number };
@@ -57,10 +72,9 @@ type CommentUIState = { suppressed: AutomergeUrl | null };
 const POPOVER_CLASS = "cm-comment-popover";
 
 // A speech-bubble icon + "Comment" label, shown floating above the selection.
+// It reads the selection when it is pressed rather than being built for one:
+// the same button stays up as the selection under it is extended.
 const buildCommentButton = (
-  from: number,
-  to: number,
-  head: number,
   view: EditorView,
   options: CommentUIOptions
 ): HTMLElement => {
@@ -91,10 +105,18 @@ const buildCommentButton = (
   button.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
-    const threadUrl = options.createThreadForRange(from, to);
+    const sel = view.state.selection.main;
+    if (sel.empty) return;
+    const threadUrl = options.createThreadForRange(sel.from, sel.to);
     if (!threadUrl) return;
+    // A visible comments panel picks the new thread up (it's on the
+    // selection) and opens its draft; just put the button away.
+    if (leaveToElsewhere(options)) {
+      view.dispatch({ effects: dismissButton.of(null) });
+      return;
+    }
     // Open the popover right where the button was (the selection head).
-    view.dispatch({ effects: openPopover.of({ threadUrl, anchor: head }) });
+    view.dispatch({ effects: openPopover.of({ threadUrl, anchor: sel.head }) });
   });
 
   return button;
@@ -152,9 +174,14 @@ const buildThreadPopover = (
   };
 };
 
+// `create` has to be the same function from one selection to the next (see
+// `commentUIField`): CodeMirror keeps a tooltip's DOM only while its `create`
+// is unchanged, and otherwise rebuilds the button, replaying its entrance, on
+// every keystroke that moves the selection.
 const buttonTooltip = (
   state: EditorState,
-  options: CommentUIOptions
+  options: CommentUIOptions,
+  create: Tooltip["create"]
 ): Tooltip | null => {
   const sel = state.selection.main;
   // A read-only editor can't take the comment write, so don't offer the button.
@@ -168,9 +195,7 @@ const buttonTooltip = (
     above: true,
     strictSide: false,
     arrow: false,
-    create: (view) => ({
-      dom: buildCommentButton(sel.from, sel.to, sel.head, view, options),
-    }),
+    create,
   };
 };
 
@@ -198,13 +223,16 @@ type FieldValue = {
 
 // A single field driving the one tooltip slot: the thread popover when one is
 // open, otherwise the selection's "Comment" button.
-const commentUIField = (options: CommentUIOptions, ui: CommentUIState) =>
-  StateField.define<FieldValue>({
+const commentUIField = (options: CommentUIOptions, ui: CommentUIState) => {
+  const createButton: Tooltip["create"] = (view) => ({
+    dom: buildCommentButton(view, options),
+  });
+  return StateField.define<FieldValue>({
     create: (state) => ({
       popover: null,
       buttonDismissed: false,
       pointerDown: false,
-      tooltip: buttonTooltip(state, options),
+      tooltip: buttonTooltip(state, options, createButton),
     }),
     update(value, tr) {
       let popover = value.popover;
@@ -260,7 +288,14 @@ const commentUIField = (options: CommentUIOptions, ui: CommentUIState) =>
           popover,
           buttonDismissed,
           pointerDown,
-          tooltip: popoverTooltip(popover, options, ui),
+          // Following its text as the document shifts is a move, not a new
+          // popover: keep the tooltip's `create`, so CodeMirror repositions the
+          // thread view it has rather than closing it (which discards an
+          // unwritten draft, see `onClose`) and mounting another.
+          tooltip:
+            value.tooltip && value.popover?.threadUrl === popover.threadUrl
+              ? { ...value.tooltip, pos: popover.anchor }
+              : popoverTooltip(popover, options, ui),
         };
       }
 
@@ -283,11 +318,12 @@ const commentUIField = (options: CommentUIOptions, ui: CommentUIState) =>
         tooltip:
           buttonDismissed || pointerDown
             ? null
-            : buttonTooltip(tr.state, options),
+            : buttonTooltip(tr.state, options, createButton),
       };
     },
     provide: (field) => showTooltip.from(field, (value) => value.tooltip),
   });
+};
 
 // Note the main button going down, and (wherever it's let go — often outside
 // the editor, at the end of a drag) coming back up.
@@ -340,6 +376,9 @@ const commentInteractions = (
       // Don't reopen the thread we just dismissed while the click stays inside
       // it — the user has to click elsewhere (or another comment) first.
       if (hit.threadUrl === ui.suppressed) return false;
+      // A comments view (showing, or opened now) follows the caret to this
+      // thread itself.
+      if (leaveToElsewhere(options)) return false;
       ui.suppressed = null;
       view.dispatch({
         effects: openPopover.of({ threadUrl: hit.threadUrl, anchor: hit.from }),
@@ -474,5 +513,25 @@ export const commentUI = (options: CommentUIOptions): Extension => {
   ensureCommentButtonVars();
   const ui: CommentUIState = { suppressed: null };
   const field = commentUIField(options, ui);
-  return [field, commentInteractions(options, ui, field), commentUITheme];
+  return [
+    field,
+    commentInteractions(options, ui, field),
+    commentUITheme,
+    tooltips({ tooltipSpace: visibleEditorBox }),
+  ];
 };
+
+// The room a tooltip has: the editor's own visible box, not the whole
+// window. Measured against the window, a button over a selection on the top
+// visible line "fits" above it — under whatever chrome sits above the editor
+// (a frame's title bar) — so it never flips below. Against this, it does.
+function visibleEditorBox(view: EditorView) {
+  const box = view.dom.getBoundingClientRect();
+  const win = view.dom.ownerDocument.defaultView ?? window;
+  return {
+    top: Math.max(0, box.top),
+    left: Math.max(0, box.left),
+    bottom: Math.min(win.innerHeight, box.bottom),
+    right: Math.min(win.innerWidth, box.right),
+  };
+}

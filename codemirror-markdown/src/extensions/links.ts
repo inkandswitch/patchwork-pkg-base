@@ -43,22 +43,29 @@ export function openUrl(url: string, from: Element) {
 class LinkWidget extends WidgetType {
   readonly url: string;
   readonly text: string;
+  /** the bold/italic/strikethrough the link sits in (see `inheritedStyle`) */
+  readonly style: string;
 
-  constructor(url: string, text: string) {
+  constructor(url: string, text: string, style = "") {
     super();
     this.url = url;
     this.text = text;
+    this.style = style;
   }
 
   eq(other: LinkWidget) {
-    return other.url === this.url && other.text === this.text;
+    return (
+      other.url === this.url &&
+      other.text === this.text &&
+      other.style === this.style
+    );
   }
 
   toDOM() {
     const link = document.createElement("a");
     link.href = this.url;
     link.textContent = this.text;
-    link.className = "cm-link";
+    link.className = "cm-link" + (this.style ? " " + this.style : "");
     link.title = this.url;
 
     // Clicks work as on any other link in the editor: a plain click puts
@@ -74,6 +81,25 @@ class LinkWidget extends WidgetType {
     // sees the Mod-click.
     return false;
   }
+}
+
+type SyntaxNode = ReturnType<ReturnType<typeof syntaxTree>["resolveInner"]>;
+
+/**
+ * Classes for the inline styling around a link. The widget replaces text the
+ * highlighter splits into several spans (the brackets, the text, the url), so
+ * no single bold or italic span covers it to wrap it — without these a link
+ * inside `**…**` or `*…*` would come out plain. (A heading's size and weight
+ * reach it through the heading line's class instead; see margin.ts.)
+ */
+function inheritedStyle(node: SyntaxNode) {
+  const classes = new Set<string>();
+  for (let n = node.parent; n; n = n.parent) {
+    if (n.name === "StrongEmphasis") classes.add("cm-md-strong");
+    else if (n.name === "Emphasis") classes.add("cm-md-em");
+    else if (n.name === "Strikethrough") classes.add("cm-md-strike");
+  }
+  return [...classes].join(" ");
 }
 
 function getLinks(view: EditorView) {
@@ -99,7 +125,9 @@ function getLinks(view: EditorView) {
                 ? text
                 : `mailto:${text}`;
             widgets.push(
-              Decoration.replace({ widget: new LinkWidget(href, text) }).range(
+              Decoration.replace({
+                widget: new LinkWidget(href, text, inheritedStyle(node.node)),
+              }).range(
                 node.from,
                 node.to
               )
@@ -130,7 +158,7 @@ function getLinks(view: EditorView) {
 
               // Replace the entire [text](url) with just the link widget
               const deco = Decoration.replace({
-                widget: new LinkWidget(url, text),
+                widget: new LinkWidget(url, text, inheritedStyle(node.node)),
               });
 
               widgets.push(deco.range(linkFrom, linkTo));
@@ -169,7 +197,6 @@ const linkPlugin = ViewPlugin.fromClass(
   }
 );
 
-type SyntaxNode = ReturnType<ReturnType<typeof syntaxTree>["resolveInner"]>;
 
 /**
  * The link at `pos`, if any: an inline `[text](url)`, an autolink `<url>`, a

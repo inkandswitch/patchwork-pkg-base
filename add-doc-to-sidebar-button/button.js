@@ -127,9 +127,15 @@ export default function renderAddDocToSidebarButton(handle, element) {
 
   function flash(text) {
     clearTimeout(resetTimer);
+    // Hold the button at the width it has now: the message is shorter than the
+    // label, and a button that shrank would drag the rest of the title bar
+    // along with it, there and back.
+    const width = button.offsetWidth;
+    if (width) button.style.minWidth = width + "px";
     button.textContent = text;
     resetTimer = setTimeout(() => {
       button.textContent = LABEL;
+      button.style.minWidth = "";
       button.disabled = false;
     }, 1500);
   }

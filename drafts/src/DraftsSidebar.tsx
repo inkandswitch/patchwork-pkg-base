@@ -64,6 +64,8 @@ const EMPTY_DRAFT_LIST: DraftList = {
 // Shown in the panel footer, logged on load, and stamped into fork
 // diagnostics; bump on deploy to tell builds apart.
 const DRAFTS_VERSION = "0.0.45";
+/** How long a card stays marked as where a merge landed (see `.draft-card[data-landed]`). */
+const LANDED_MS = 700;
 
 // Logged at module load so the console shows which build is running even
 // before the panel renders.
@@ -526,6 +528,32 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
   // selected draft's parent) lights up via `data-merge-target`.
   const [mergeHighlight, setMergeHighlight] = createSignal(false);
 
+  // The card a merge just landed in ("main" for the main card), for a moment,
+  // so it can flash: the merged draft's own card is gone by then, and this is
+  // what says where its changes went.
+  const [landed, setLanded] = createSignal<AutomergeUrl | "main" | null>(null);
+  let landedTimer: ReturnType<typeof setTimeout> | undefined;
+  const flashLanded = (target: AutomergeUrl | "main") => {
+    clearTimeout(landedTimer);
+    setLanded(target);
+    landedTimer = setTimeout(() => setLanded(null), LANDED_MS);
+  };
+  onCleanup(() => clearTimeout(landedTimer));
+
+  // The draft cards are keyed by url, not by summary: the provider pushes
+  // fresh summary objects on every change (a rename, a new member), and a list
+  // keyed on those would tear down and rebuild every card each time.
+  const draftUrls = createMemo(() => list().drafts.map((s) => s.url), [], {
+    equals: (a, b) => a.length === b.length && a.every((url, i) => url === b[i]),
+  });
+  // A card's summary, holding on to the last one it had: the card can outlive
+  // its entry in the list by a tick as it is removed.
+  const summaryFor = (url: AutomergeUrl) =>
+    createMemo<DraftSummary>(
+      (prev) => list().drafts.find((s) => s.url === url) ?? prev,
+      list().drafts.find((s) => s.url === url)!
+    );
+
   // Nesting depth for a card's indentation: hops up the parent chain until
   // main (a top-level draft's parent is the main draft, which isn't in the
   // drafts list, so it counts 0). Cycle-guarded — parents are plain urls.
@@ -558,7 +586,10 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
     }
     const draftHandle = await repo.find<DraftDoc>(draftUrl);
     await mergeDraft(repo, draftHandle);
-    selectDraft(parentUrl && parentUrl !== list().main.url ? parentUrl : null);
+    const target =
+      parentUrl && parentUrl !== list().main.url ? parentUrl : null;
+    selectDraft(target);
+    flashLanded(target ?? "main");
   };
 
   // Delete the selected draft: unlink it from its parent's `drafts` list,
@@ -630,51 +661,56 @@ export function DraftsSidebar(props: { element: HTMLElement }) {
             isMergeTarget={
               mergeHighlight() && mergeParentUrl() === list().main.url
             }
+            justLanded={landed() === "main"}
           />
-          <For each={list().drafts}>
-            {(summary) => (
-              <DraftCard
-                url={summary.url}
-                members={summary.members}
-                changeGroupDocUrl={summary.changeGroupDocUrl}
-                mainDocUrl={hostDocHandle()?.url}
-                isSelected={selected() === summary.url}
-                name={summary.name}
-                depth={draftDepth(summary)}
-                onRename={(name) => void onRename(summary.url, name)}
-                onSelect={selectDraft}
-                onScrub={(scrub) =>
-                  onScrub(summary.url, summary.members, scrub)
-                }
-                scrubber={() =>
-                  selected() === summary.url ? scrubber() : null
-                }
-                onBaselineScrub={(base) =>
-                  onBaselineScrub(summary.url, summary.members, base)
-                }
-                baseliner={() =>
-                  selected() === summary.url ? baseliner() : null
-                }
-                checkpoint={() =>
-                  selected() === summary.url ? (checkedOut()?.at ?? null) : null
-                }
-                hasCheckpoint={selected() === summary.url && isPinned()}
-                onReturnToLatest={clearCheckpoint}
-                eyeOpen={selected() === summary.url && eyeOpen()}
-                eyeDisabled={false}
-                onToggleEye={toggleEye}
-                onFork={() => void onForkSelection(false)}
-                forkAtLabel={forkAtLabel()}
-                onForkAt={() => void onForkSelection(true)}
-                mergeLabel={`Merge into "${mergeTargetName()}"`}
-                onMerge={() => void onMergeDraft()}
-                onMergeHover={setMergeHighlight}
-                onDelete={() => void onDeleteDraft()}
-                isMergeTarget={
-                  mergeHighlight() && mergeParentUrl() === summary.url
-                }
-              />
-            )}
+          <For each={draftUrls()}>
+            {(url) => {
+              const summary = summaryFor(url);
+              return (
+                <DraftCard
+                  url={summary().url}
+                  members={summary().members}
+                  changeGroupDocUrl={summary().changeGroupDocUrl}
+                  mainDocUrl={hostDocHandle()?.url}
+                  isSelected={selected() === summary().url}
+                  name={summary().name}
+                  depth={draftDepth(summary())}
+                  onRename={(name) => void onRename(summary().url, name)}
+                  onSelect={selectDraft}
+                  onScrub={(scrub) =>
+                    onScrub(summary().url, summary().members, scrub)
+                  }
+                  scrubber={() =>
+                    selected() === summary().url ? scrubber() : null
+                  }
+                  onBaselineScrub={(base) =>
+                    onBaselineScrub(summary().url, summary().members, base)
+                  }
+                  baseliner={() =>
+                    selected() === summary().url ? baseliner() : null
+                  }
+                  checkpoint={() =>
+                    selected() === summary().url ? (checkedOut()?.at ?? null) : null
+                  }
+                  hasCheckpoint={selected() === summary().url && isPinned()}
+                  onReturnToLatest={clearCheckpoint}
+                  eyeOpen={selected() === summary().url && eyeOpen()}
+                  eyeDisabled={false}
+                  onToggleEye={toggleEye}
+                  onFork={() => void onForkSelection(false)}
+                  forkAtLabel={forkAtLabel()}
+                  onForkAt={() => void onForkSelection(true)}
+                  mergeLabel={`Merge into "${mergeTargetName()}"`}
+                  onMerge={() => void onMergeDraft()}
+                  onMergeHover={setMergeHighlight}
+                  onDelete={() => void onDeleteDraft()}
+                  isMergeTarget={
+                    mergeHighlight() && mergeParentUrl() === summary().url
+                  }
+                  justLanded={landed() === summary().url}
+                />
+              );
+            }}
           </For>
         </div>
       </Show>
@@ -1096,6 +1132,8 @@ function MainCard(props: {
   onForkAt: () => void;
   // True while the merge menu item is hovered and this card is the target.
   isMergeTarget: boolean;
+  // True for a moment after a draft is merged into this card.
+  justLanded: boolean;
 }) {
   const [menuOpen, setMenuOpen] = createSignal(false);
   return (
@@ -1104,6 +1142,7 @@ function MainCard(props: {
       data-selected={props.isSelected ? "" : undefined}
       data-menu-open={menuOpen() ? "" : undefined}
       data-merge-target={props.isMergeTarget ? "" : undefined}
+      data-landed={props.justLanded ? "" : undefined}
     >
       {/* A div, not a <button>: the rename input rendered inside would be
           invalid (and misbehave) nested in a button. */}
@@ -1207,6 +1246,8 @@ function DraftCard(props: {
   onMergeHover: (over: boolean) => void;
   // True while the merge menu item is hovered and this card is the target.
   isMergeTarget: boolean;
+  // True for a moment after a draft is merged into this card.
+  justLanded: boolean;
   // Unlinks the draft (and its forks) from the tree, after a confirm dialog.
   onDelete: () => void;
 }) {
@@ -1217,6 +1258,7 @@ function DraftCard(props: {
       data-selected={props.isSelected ? "" : undefined}
       data-menu-open={menuOpen() ? "" : undefined}
       data-merge-target={props.isMergeTarget ? "" : undefined}
+      data-landed={props.justLanded ? "" : undefined}
       style={{ "margin-left": `${Math.min(props.depth + 1, 5)}rem` }}
     >
       {/* A div, not a <button>: see MainCard. */}

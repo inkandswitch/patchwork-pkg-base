@@ -744,9 +744,27 @@
       font-size:18px; color:var(--text-primary); font-weight:600;
       border:3px dashed var(--accent-line); border-radius:12px; pointer-events:none;
     }
-    .chat-drop-overlay.show { display:flex; }
+    /* The scrim fades in over the messages rather than landing on them. Leaving is instant. */
+    .chat-drop-overlay.show {
+      display:flex;
+      transition:opacity max(1ms, calc(150ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+    }
+    @starting-style {
+      .chat-drop-overlay.show { opacity:0; }
+    }
     .chat-msg-video-wrap { max-width:350px; border-radius:8px; overflow:hidden; margin-top:4px; position:relative; }
     .chat-msg-video { width:100%; display:block; border-radius:8px; cursor:var(--studio-cursor-pointer, pointer); }
+
+    /* Where a jump-to-message landed (see scrollToMessage in MessageList.tsx): a
+       wash that holds, then fades. The class is on for 1500ms, and the duration
+       matches that rather than the motion scale, which would hide the wash. */
+    [data-msg-id] { position:relative; }
+    .chat-msg-highlight::after {
+      content:""; position:absolute; inset:0; pointer-events:none; border-radius:4px;
+      background:var(--accent-soft);
+      animation:chat-msg-flash 1500ms var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)) both;
+    }
+    @keyframes chat-msg-flash { 0%,40%{opacity:1;} 100%{opacity:0;} }
 
     /* Lightbox */
     .chat-lightbox {
@@ -754,7 +772,20 @@
       background:rgba(0,0,0,0.85); align-items:center; justify-content:center;
       cursor:zoom-out;
     }
-    .chat-lightbox.show { display:flex; }
+    /* The scrim fades in and the picture lifts out of it. Closing is instant. */
+    .chat-lightbox.show {
+      display:flex;
+      transition:opacity max(1ms, calc(200ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+    }
+    .chat-lightbox.show img, .chat-lightbox.show video {
+      transition:
+        opacity max(1ms, calc(200ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
+        scale max(1ms, calc(200ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+    }
+    @starting-style {
+      .chat-lightbox.show { opacity:0; }
+      .chat-lightbox.show img, .chat-lightbox.show video { opacity:0; scale:0.96; }
+    }
     .chat-lightbox img, .chat-lightbox video {
       max-width:95%; max-height:95%; object-fit:contain; border-radius:4px;
       cursor:var(--studio-cursor-default, default);

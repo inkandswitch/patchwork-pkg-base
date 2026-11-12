@@ -92,6 +92,32 @@
     var(--drafts-shadow-sm);
 }
 
+/* A merge just landed here: the ring the hover promised holds for a beat,
+   then fades. It is drawn over the card, since the card clips its own shadow
+   (see LANDED_MS in DraftsSidebar.tsx, which outlasts this). */
+.draft-card[data-landed] {
+  position: relative;
+}
+.draft-card[data-landed]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 2px solid var(--drafts-primary);
+  background: color-mix(in oklch, var(--drafts-primary), transparent 88%);
+  pointer-events: none;
+  animation: draft-landed max(1ms, calc(600ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) ease-out both;
+}
+@keyframes draft-landed {
+  0%,
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 .draft-card-header {
   /* The header is a div (a rename input can't nest in a button), which,
      unlike a button, doesn't default to border-box — without this the

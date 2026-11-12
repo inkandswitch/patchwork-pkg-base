@@ -2,6 +2,13 @@
 :host,
 [theme] {
   --threepane-bg: var(--studio-fill, white);
+  /* How long a sidebar takes to open or close. Short, and eased out, so the
+     panel is out of the way almost as soon as it is asked to be. The top bar's
+     slot and the tray dock's fade keep time with it. */
+  --threepane-sidebar-duration: max(
+    1ms,
+    calc(140ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))
+  );
   --threepane-sidebar-fill: var(--studio-chrome, var(--studio-fill, white));
   --threepane-fg: var(--studio-line, black);
   /* ink for text sitting ON the sidebar/account-bar chrome surface. mirrors the
@@ -210,7 +217,7 @@
   border-bottom: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--threepane-toolbar-border);
   /* Animate the collapsed left-slot in step with the sidebar's width transition
      so the title glides up against the pinned toggle instead of jumping. */
-  transition: padding-left var(--studio-transition-slow, 0.25s ease);
+  transition: padding-left var(--threepane-sidebar-duration) ease-out;
 }
 
 /* When the left sidebar is collapsed the bar's left edge reaches the frame edge,
@@ -738,7 +745,8 @@
      doesn't flash at full size over the still-expanding sidebar. The delay equals
      the sidebar's transition duration; collapsing overrides this to hide at once. */
   opacity: 1;
-  transition: opacity var(--studio-transition-fast, 0.1s ease) 0.25s;
+  transition: opacity var(--studio-transition-fast, 0.1s ease)
+    var(--threepane-sidebar-duration);
 }
 
 .frame__tray-dock--collapsed {
@@ -935,8 +943,16 @@
    actively dragged - the width must track the pointer 1:1 with no easing lag.
    The body flag is set for the duration of a drag by `useSidebarResize`. */
 .sidebar {
-  transition: width var(--studio-transition-slow, 0.25s ease);
+  transition: width var(--threepane-sidebar-duration) ease-out;
 }
-body[data-sidebar-resizing] .sidebar {
+/* A sidebar that snaps shut mid-drag takes the top bar's slot with it. */
+body[data-sidebar-resizing] .sidebar,
+body[data-sidebar-resizing] .frame__topbar {
   transition: none;
+}
+/* While the width animates, the content is squeezed with the panel and clipped
+   to it (`Sidebar` keeps it mounted until the panel has closed). */
+.sidebar[data-moving] > :not(.sidebar-toggle) {
+  min-width: 0;
+  overflow: hidden;
 }

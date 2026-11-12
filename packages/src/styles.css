@@ -1017,7 +1017,12 @@
   box-shadow: 0 2px 6px
     color-mix(in oklch, var(--pw-packages-accent), transparent 74%);
   transition: background var(--studio-transition-fast, 0.1s ease),
-    box-shadow var(--studio-transition-fast, 0.1s ease);
+    box-shadow var(--studio-transition-fast, 0.1s ease),
+    scale max(1ms, calc(100ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+}
+/* a small press, so the button feels heard */
+.pw-install__add:active:not(:disabled) {
+  scale: 0.97;
 }
 .pw-install__add:hover:not(:disabled) {
   background: color-mix(
