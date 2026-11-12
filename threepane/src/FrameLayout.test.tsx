@@ -46,12 +46,58 @@ function mount(isolation: boolean) {
   );
   const clickSettings = () =>
     [...host.querySelectorAll("button")]
-      .find((b) => b.textContent === "Settings")!
+      .find((b) => b.getAttribute("aria-label") === "Settings")!
       .click();
-  return { setCollapsed, onInterceptOpen, parentOpen, clickSettings, dispose };
+  const contextMenuSettings = () => {
+    const event = new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 32,
+      clientY: 48,
+    });
+    [...host.querySelectorAll("button")]
+      .find((b) => b.getAttribute("aria-label") === "Settings")!
+      .dispatchEvent(event);
+    return event;
+  };
+  return {
+    setCollapsed,
+    onInterceptOpen,
+    parentOpen,
+    clickSettings,
+    contextMenuSettings,
+    host,
+    dispose,
+  };
 }
 
 describe("account bar under isolation", () => {
+  it("opens account actions from the settings button's context menu", () => {
+    const f = mount(false);
+    const event = f.contextMenuSettings();
+    expect(event.defaultPrevented).toBe(true);
+    expect(
+      [...document.querySelectorAll('[role="menuitem"]')].map((item) =>
+        item.textContent?.trim()
+      )
+    ).toEqual(["Copy account key", "Sign out"]);
+    f.dispose();
+  });
+
+  it("clears the saved account and redirects when signing out", () => {
+    const f = mount(false);
+    localStorage.setItem("tinyPatchworkAccountUrl", "automerge:account");
+    const replace = vi.spyOn(window.location, "replace").mockImplementation(() => {});
+    f.contextMenuSettings();
+    [...document.querySelectorAll('[role="menuitem"]')]
+      .find((item) => item.textContent?.trim() === "Sign out")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(localStorage.getItem("tinyPatchworkAccountUrl")).toBeNull();
+    expect(replace).toHaveBeenCalledWith("/");
+    replace.mockRestore();
+    f.dispose();
+  });
+
   it("still goes to the popover after the sidebar collapses and reopens", () => {
     const f = mount(true);
     f.clickSettings();

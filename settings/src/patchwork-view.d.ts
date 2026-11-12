@@ -10,6 +10,10 @@ declare module "solid-js" {
         key?: string | number;
       };
     }
+    // attr:theme — a preview drawn in a theme of its own
+    interface ExplicitAttributes {
+      theme: string;
+    }
   }
 }
 

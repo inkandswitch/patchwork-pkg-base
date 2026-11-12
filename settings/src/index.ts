@@ -1,15 +1,14 @@
-import type { Plugin, ToolImplementation } from "@inkandswitch/patchwork-plugins";
-
-export const plugins: Plugin<any>[] = [
+// the settings page. other packages get a section on it by registering a
+// `patchwork:settings` plugin: static JSON, see ./schema.ts
+export const plugins = [
   {
     type: "patchwork:tool",
-    id: "frame-configurator",
-    name: "Frame Configurator",
+    id: "settings",
+    name: "Settings",
     icon: "Settings",
     supportedDatatypes: ["account"],
-    async load(): Promise<ToolImplementation> {
-      const { renderFrameConfigurator } = await import("./FrameConfigurator");
-      return renderFrameConfigurator;
+    async load() {
+      return (await import("./Settings")).default;
     },
   },
 ];

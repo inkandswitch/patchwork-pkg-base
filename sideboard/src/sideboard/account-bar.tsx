@@ -8,9 +8,9 @@ import type { PatchworkToolProps, SideboardAccountDoc } from "../types.ts";
 import { createOpenEvent } from "./events.ts";
 
 /**
- * The account bar: the contact avatar (opens the account picker), Packages
- * (module settings) and Settings (frame configurator). Usable as its own tool
- * or pinned to the bottom of the combined sideboard.
+ * The account bar: the contact avatar (opens the settings page) and Packages
+ * (module settings). Usable as its own tool or pinned to the bottom of the
+ * combined sideboard.
  */
 export function AccountBar(props: PatchworkToolProps<SideboardAccountDoc>) {
   const doc = makeDocumentProjection(props.handle);
@@ -24,11 +24,9 @@ export function AccountBar(props: PatchworkToolProps<SideboardAccountDoc>) {
         <button
           type="button"
           class="account-bar__button account-bar__avatar"
-          title="Account"
-          aria-label="Account"
-          onClick={() =>
-            open({ url: props.handle.url, toolId: "account-picker" })
-          }
+          title="Settings"
+          aria-label="Settings"
+          onClick={() => open({ url: props.handle.url, toolId: "settings" })}
         >
           <patchwork-view doc-url={doc.contactUrl!} tool-id="contact-avatar" />
         </button>
@@ -45,16 +43,6 @@ export function AccountBar(props: PatchworkToolProps<SideboardAccountDoc>) {
           Packages
         </button>
       </Show>
-
-      <button
-        type="button"
-        class="account-bar__button"
-        onClick={() =>
-          open({ url: props.handle.url, toolId: "frame-configurator" })
-        }
-      >
-        Settings
-      </button>
     </footer>
   );
 }

@@ -1,7 +1,7 @@
 {
   "name": "@patchwork/account",
   "version": "0.0.0",
-  "description": "the contact datatype and its views, plus the account picker",
+  "description": "the contact datatype and its views",
   "type": "module",
   "private": true,
   "main": "./dist/index.js",

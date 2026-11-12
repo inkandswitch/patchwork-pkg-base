@@ -1,6 +1,11 @@
 import "@inkandswitch/patchwork-elements";
 import { useDocHandle, useDocument } from "solid-automerge";
-import type { AutomergeUrl, DocHandle, Repo } from "@automerge/automerge-repo/slim";
+import {
+  parseAutomergeUrl,
+  type AutomergeUrl,
+  type DocHandle,
+  type Repo,
+} from "@automerge/automerge-repo/slim";
 import { subscribe } from "@inkandswitch/patchwork-providers";
 import type {
   OpenDocumentEvent,
@@ -33,7 +38,7 @@ import {
   type Accessor,
   type JSX,
 } from "solid-js";
-import { render } from "solid-js/web";
+import { Portal, render } from "solid-js/web";
 import type { ToolImplementation } from "@inkandswitch/patchwork-plugins";
 import { ensureThreepaneConfig } from "./account/ensureThreepaneConfig";
 import { seedExampleDocuments } from "./account/seedExampleDocuments";
@@ -45,6 +50,8 @@ type SelectedView = {
   url: AutomergeUrl;
   toolId: string | null;
 };
+
+const ACCOUNT_URL_STORAGE_KEY = "tinyPatchworkAccountUrl";
 
 type SidebarResize = ReturnType<typeof useSidebarResize>;
 type SidebarState = ReturnType<typeof useSidebarState>;
@@ -230,6 +237,16 @@ function PatchworkFrameInner(props: {
   const traySlots = (): ToolSlot[] => threepaneConfig()?.tray ?? [];
   const rootFolderUrl = () => accountDoc()?.rootFolderUrl;
 
+  // your name, for the account bar: only a registered contact has one
+  const [contact] = useDocument<{ type?: string; name?: string }>(
+    () => accountDoc()?.contactUrl,
+    { repo: props.repo }
+  );
+  const contactName = () => {
+    const doc = contact();
+    return doc?.type === "registered" ? (doc.name ?? "").trim() : "";
+  };
+
   const sidebarState = useSidebarState();
   const sidebarResize = useSidebarResize("left", {
     isCollapsed: sidebarState.isSidebarCollapsed,
@@ -316,6 +333,7 @@ function PatchworkFrameInner(props: {
         rootFolderUrl={rootFolderUrl}
         widgetsReady={widgetsReady}
         contactUrl={() => accountDoc()?.contactUrl}
+        contactName={contactName}
         moduleSettingsUrl={() => accountDoc()?.moduleSettingsUrl}
         isolation={props.isolation}
         onInterceptOpen={setPopoverView}
@@ -456,8 +474,10 @@ export function FrameLayout(props: {
   configHandle: Accessor<DocHandle<ThreepaneConfigDoc> | undefined>;
   rootFolderUrl: Accessor<AutomergeUrl | undefined>;
   widgetsReady: Accessor<boolean>;
-  /** Account subdocs for the inlined account bar (avatar + Packages buttons). */
+  /** Account subdocs for the inlined account bar (you + Packages). */
   contactUrl: Accessor<AutomergeUrl | undefined>;
+  /** Your name, beside your picture; "" when you've none (just the picture). */
+  contactName?: Accessor<string>;
   moduleSettingsUrl: Accessor<AutomergeUrl | undefined>;
   /** Fixed per tool instance: whether the main document area is isolated. */
   isolation?: boolean;
@@ -466,6 +486,41 @@ export function FrameLayout(props: {
   children: JSX.Element;
 }) {
   const isCollapsed = props.sidebarState.isSidebarCollapsed;
+  const myName = () => props.contactName?.() ?? "";
+  const [accountMenu, setAccountMenu] = createSignal<{ x: number; y: number }>();
+  const accountKey = () =>
+    `account:${encodeURIComponent(myName())}/${parseAutomergeUrl(props.accountDocUrl).documentId}`;
+
+  createEffect(() => {
+    if (!accountMenu()) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if ((event.target as Element | null)?.closest(".threepane-account-menu"))
+        return;
+      setAccountMenu(undefined);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setAccountMenu(undefined);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown);
+    onCleanup(() => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKeyDown);
+    });
+  });
+
+  function showAccountMenu(event: MouseEvent) {
+    event.preventDefault();
+    setAccountMenu({
+      x: Math.max(4, Math.min(event.clientX, window.innerWidth - 184)),
+      y: Math.max(4, Math.min(event.clientY, window.innerHeight - 96)),
+    });
+  }
+
+  function signOut() {
+    localStorage.removeItem(ACCOUNT_URL_STORAGE_KEY);
+    window.location.replace("/");
+  }
 
   // The system tray is docked to the frame's bottom-left, OUTSIDE the collapsing
   // sidebar. Its tools are configured on the threepane config doc's `tray`
@@ -558,35 +613,97 @@ export function FrameLayout(props: {
             ready={props.widgetsReady}
           />
           {/*
-            The account bar — avatar (account picker) + Packages + Settings —
-            pinned to the sidebar's bottom. Inlined here directly rather than
-            mounted as the `chee/account-bar` sideboard tool, so the frame owns
-            the markup. Each button dispatches a `patchwork:open-document` event
-            (bubbles + composed), which the footer intercepts into the popover
-            under isolation, or lets bubble to the selected-doc provider
-            otherwise — exactly the flow the sideboard tool had.
+            The account bar, pinned to the sidebar's bottom: you (your picture
+            and your name), which opens the settings page, and Packages. Each
+            button dispatches a `patchwork:open-document` event (bubbles +
+            composed), which the footer intercepts into the popover under
+            isolation, or lets bubble to the selected-doc provider otherwise.
           */}
           <div class="threepane-sidebar__footer" ref={footerEl}>
             <footer class="threepane-account-bar">
-              <Show when={props.contactUrl()}>
-                {(contactUrl) => (
-                  <button
-                    type="button"
-                    class="threepane-account-bar__button threepane-account-bar__avatar"
-                    title="Account"
-                    aria-label="Account"
-                    onClick={(e) =>
-                      dispatchOpen(e.currentTarget, {
-                        url: props.accountDocUrl,
-                        toolId: "account-picker",
-                      })
-                    }
-                  >
+              <button
+                type="button"
+                class="threepane-account-bar__me"
+                title="Settings"
+                aria-label="Settings"
+                aria-haspopup="menu"
+                onClick={(e) =>
+                  dispatchOpen(e.currentTarget, {
+                    url: props.accountDocUrl,
+                    toolId: "settings",
+                  })
+                }
+                onContextMenu={showAccountMenu}
+              >
+                <Show
+                  when={props.contactUrl()}
+                  fallback={<span class="threepane-account-bar__nobody" />}
+                >
+                  {(contactUrl) => (
                     <patchwork-view
                       doc-url={contactUrl()}
                       tool-id="contact-avatar"
                     />
-                  </button>
+                  )}
+                </Show>
+                <Show when={myName()}>
+                  <span class="threepane-account-bar__name">{myName()}</span>
+                </Show>
+              </button>
+              <Show when={accountMenu()}>
+                {(position) => (
+                  <Portal>
+                    <div
+                      class="threepane-account-menu"
+                      role="menu"
+                      aria-label="Account actions"
+                      style={{
+                        left: `${position().x}px`,
+                        top: `${position().y}px`,
+                      }}
+                      onKeyDown={(event) => {
+                        const items = [
+                          ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                            '[role="menuitem"]'
+                          ),
+                        ];
+                        const index = items.indexOf(
+                          document.activeElement as HTMLButtonElement
+                        );
+                        const focus = (next: number) =>
+                          items[
+                            (next + items.length) % items.length
+                          ]?.focus();
+                        if (event.key === "ArrowDown") focus(index + 1);
+                        else if (event.key === "ArrowUp")
+                          focus(index < 0 ? items.length - 1 : index - 1);
+                        else return;
+                        event.preventDefault();
+                      }}
+                    >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        ref={(el) => queueMicrotask(() => el.focus())}
+                        onClick={() => {
+                          navigator.clipboard.writeText(accountKey());
+                          setAccountMenu(undefined);
+                        }}
+                      >
+                        Copy account key
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setAccountMenu(undefined);
+                          signOut();
+                        }}
+                      >
+                        Sign out
+                      </button>
+                    </div>
+                  </Portal>
                 )}
               </Show>
 
@@ -606,19 +723,6 @@ export function FrameLayout(props: {
                   </button>
                 )}
               </Show>
-
-              <button
-                type="button"
-                class="threepane-account-bar__button"
-                onClick={(e) =>
-                  dispatchOpen(e.currentTarget, {
-                    url: props.accountDocUrl,
-                    toolId: "frame-configurator",
-                  })
-                }
-              >
-                Settings
-              </button>
             </footer>
           </div>
         </div>
