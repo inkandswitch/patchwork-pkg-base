@@ -44,6 +44,25 @@ class EmbedWidget extends WidgetType {
     const container = document.createElement("div");
     container.className = "cm-embed";
 
+    // An image with no pinned tool is just drawn, with no frame round it. We
+    // can't tell until the doc loads, so hold off mounting the frame until then.
+    if (this.toolId) {
+      this.mountFrame(view, container);
+    } else {
+      const cleanup = mountImageOrFrame(this.docId, container, () =>
+        this.mountFrame(view, container)
+      );
+      cleanups.set(container, cleanup);
+    }
+    return container;
+  }
+
+  destroy(dom: HTMLElement) {
+    cleanups.get(dom)?.();
+    cleanups.delete(dom);
+  }
+
+  private mountFrame(view: EditorView, container: HTMLElement): void {
     const patchworkView = document.createElement("patchwork-view");
     // No heads in the url: the embed follows whatever version the host
     // resolves — the active checkpoint when one is checked out, live otherwise.
@@ -65,7 +84,6 @@ class EmbedWidget extends WidgetType {
     });
 
     container.appendChild(patchworkView);
-    return container;
   }
 
   private setTool(
@@ -86,6 +104,88 @@ class EmbedWidget extends WidgetType {
     // Atomic embed: the editor ignores all events; the frame handles them.
     return true;
   }
+}
+
+const cleanups = new WeakMap<HTMLElement, () => void>();
+
+const IMAGE_EXTENSIONS = ["svg", "png", "jpg", "jpeg", "gif", "webp", "bmp"];
+
+type FileDoc = {
+  "@patchwork"?: { type?: string };
+  content?: unknown;
+  mimeType?: string;
+  extension?: string;
+  name?: string;
+};
+
+function isImageDoc(doc: FileDoc | undefined): boolean {
+  if (doc?.["@patchwork"]?.type !== "file") return false;
+  if (!(doc.content instanceof Uint8Array)) return false;
+  return (
+    !!doc.mimeType?.startsWith("image/") ||
+    IMAGE_EXTENSIONS.includes(doc.extension?.toLowerCase() ?? "")
+  );
+}
+
+/**
+ * Look the doc up; if it's an image file, draw it as a bare `<img>` that
+ * follows the doc's content. Anything else (or no `window.repo`) gets the
+ * normal embed frame. Returns a cleanup for when the widget goes away.
+ *
+ * Reads through the realm-local `window.repo`, so an image changed only in a
+ * draft shows its main-branch bytes here.
+ */
+function mountImageOrFrame(
+  docId: DocumentId,
+  container: HTMLElement,
+  mountFrame: () => void
+): () => void {
+  const repo = (window as unknown as { repo?: any }).repo;
+  if (!repo?.find) {
+    mountFrame();
+    return () => {};
+  }
+
+  let disposed = false;
+  let objectUrl: string | undefined;
+  let handle: any;
+  let img: HTMLImageElement | undefined;
+
+  const render = () => {
+    const doc = handle.doc() as FileDoc | undefined;
+    if (!isImageDoc(doc)) return;
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    objectUrl = URL.createObjectURL(
+      new Blob([doc!.content as BlobPart], { type: doc!.mimeType || "" })
+    );
+    img!.src = objectUrl;
+    img!.alt = doc!.name ?? "";
+  };
+
+  Promise.resolve(repo.find(`automerge:${docId}`)).then(
+    (h) => {
+      if (disposed) return;
+      handle = h;
+      if (!isImageDoc(handle.doc())) {
+        mountFrame();
+        return;
+      }
+      container.classList.add("cm-embed-image");
+      img = document.createElement("img");
+      container.appendChild(img);
+      render();
+      handle.on("change", render);
+    },
+    () => {
+      if (!disposed) mountFrame();
+    }
+  );
+
+  return () => {
+    disposed = true;
+    handle?.off?.("change", render);
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+  };
 }
 
 // Marker syntax: [patchwork:docId] or [patchwork:docId/toolId] (ids can't

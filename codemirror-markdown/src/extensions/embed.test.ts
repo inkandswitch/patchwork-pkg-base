@@ -158,3 +158,51 @@ describe("dropping files from the desktop", () => {
     );
   });
 });
+
+describe("rendering embeds", () => {
+  const docId = () => parseAutomergeUrl(generateAutomergeUrl()).documentId;
+
+  function withDoc(doc: Record<string, unknown>) {
+    (window as any).repo.find = async () => ({
+      doc: () => doc,
+      on() {},
+      off() {},
+    });
+  }
+
+  const imageDoc = {
+    "@patchwork": { type: "file" },
+    content: new Uint8Array([137, 80, 78, 71]),
+    mimeType: "image/png",
+    extension: "png",
+    name: "cat.png",
+  };
+
+  it("draws an image doc as a bare img, with no frame", async () => {
+    withDoc(imageDoc);
+    const view = makeView(`[patchwork:${docId()}]`, 0);
+    await vi.waitFor(() =>
+      expect(view.dom.querySelector(".cm-embed-image > img")).not.toBeNull()
+    );
+    expect(view.dom.querySelector("patchwork-view")).toBeNull();
+    expect(view.dom.querySelector(".cm-embed img")!.getAttribute("alt")).toBe("cat.png");
+  });
+
+  it("frames docs that aren't images", async () => {
+    withDoc({ "@patchwork": { type: "file" }, content: "# hi", extension: "md" });
+    const view = makeView(`[patchwork:${docId()}]`, 0);
+    await vi.waitFor(() =>
+      expect(view.dom.querySelector('patchwork-view[tool-id="embed"]')).not.toBeNull()
+    );
+    expect(view.dom.querySelector(".cm-embed img")).toBeNull();
+  });
+
+  it("frames an image when a tool is pinned", async () => {
+    withDoc(imageDoc);
+    const view = makeView(`[patchwork:${docId()}/raw]`, 0);
+    const pv = view.dom.querySelector("patchwork-view");
+    expect(pv?.getAttribute("embed-tool-id")).toBe("raw");
+    await settle();
+    expect(view.dom.querySelector(".cm-embed img")).toBeNull();
+  });
+});
