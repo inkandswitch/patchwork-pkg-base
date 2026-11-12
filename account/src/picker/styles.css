@@ -356,6 +356,16 @@
     border-radius: 8px;
     box-shadow: 0 4px 16px rgb(0 0 0 / 12%);
     z-index: var(--studio-layer-dropdown, 30);
+    /* Grows out of the cursor chip above it. Closing is instant. */
+    transform-origin: top left;
+    transition:
+      opacity max(1ms, calc(150ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
+      scale max(1ms, calc(150ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+
+    @starting-style {
+      opacity: 0;
+      scale: 0.97;
+    }
   }
 
   & .color-grid {
@@ -484,6 +494,13 @@
     background: var(--studio-backdrop, rgb(0 0 0 / 20%));
     backdrop-filter: var(--studio-backdrop-blur, blur(2px));
     z-index: var(--studio-layer-overlay, 100);
+    /* Same enter as the other modals: the wash fades, the card lifts in.
+       Closing is instant. */
+    transition: opacity max(1ms, calc(150ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)));
+
+    @starting-style {
+      opacity: 0;
+    }
   }
 
   & .modal {
@@ -502,6 +519,17 @@
     width: 20rem;
     max-width: 90vw;
     box-shadow: 0 8px 30px rgb(0 0 0 / 10%);
+    /* `transform` is the centring, so the lift uses translate and scale. */
+    transition:
+      opacity max(1ms, calc(200ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
+      translate max(1ms, calc(200ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1)),
+      scale max(1ms, calc(200ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+
+    @starting-style {
+      opacity: 0;
+      translate: 0 8px;
+      scale: 0.98;
+    }
   }
 
   & .cropper-modal {
