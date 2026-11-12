@@ -2,12 +2,21 @@
 // (click it for another colour), your name, and which account this is.
 // there's no signing up: the first change to any of you makes your contact,
 // and a name makes you someone (and not anonymous)
-import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+  For,
+  onCleanup,
+  Show,
+} from "solid-js";
 import type { DocHandle, Repo } from "@automerge/automerge-repo/slim";
 import { useDocument } from "solid-automerge";
 import {
   ACCOUNT_URL_STORAGE_KEY,
   accountToken,
+  accountUrlFromToken,
   colorFromString,
   hexColor,
   squarePicture,
@@ -202,7 +211,7 @@ export function You(props: {
           </Show>
         </div>
       </div>
-      <AccountKey handle={props.handle} name={name} />
+      <AccountKey handle={props.handle} name={name} repo={props.repo} />
 
       <Show when={cropping()}>
         {(pending) => (
@@ -327,12 +336,16 @@ function Colors(props: {
   );
 }
 
-// this account, elsewhere: its key, to use it on another computer; and leaving
+// this account, elsewhere: its key, to use it on another computer; leaving;
+// and coming in with the key from another computer
 function AccountKey(props: {
   handle: DocHandle<AccountDoc>;
   name: () => string;
+  repo: Repo;
 }) {
-  const [leaving, setLeaving] = createSignal(false);
+  const [mode, setMode] = createSignal<"here" | "leaving" | "joining">("here");
+  const setLeaving = (on: boolean) => setMode(on ? "leaving" : "here");
+  const leaving = () => mode() === "leaving";
   const [copied, setCopied] = createSignal(false);
 
   function copy() {
@@ -344,6 +357,42 @@ function AccountKey(props: {
   function signOut() {
     localStorage.removeItem(ACCOUNT_URL_STORAGE_KEY);
     window.location.replace("/");
+  }
+
+  // logging in: the key you paste, the account it's for, and who that is
+  const [key, setKey] = createSignal("");
+  const target = createMemo(() => accountUrlFromToken(key()));
+  const [found] = createResource(target, async (url) => {
+    try {
+      const account = (await props.repo.find<AccountDoc>(url)).doc();
+      if (!account?.contactUrl && !account?.rootFolderUrl) return null;
+      const contact = account.contactUrl
+        ? (await props.repo.find<ContactDoc>(account.contactUrl)).doc()
+        : undefined;
+      return { url, name: contact?.type === "registered" ? contact.name : "" };
+    } catch {
+      return null;
+    }
+  });
+  const status = () => {
+    if (!key().trim()) return;
+    if (!target()) return "That's not an account key";
+    if (target() === props.handle.url) return "That's this account";
+    if (found.loading) return "Looking…";
+    if (!found()) return "Couldn't find that account";
+  };
+  const canLogIn = () =>
+    !found.loading && !!found() && found()!.url === target() && !status();
+  function logIn(event: SubmitEvent) {
+    event.preventDefault();
+    const account = found();
+    if (!canLogIn() || !account) return;
+    localStorage.setItem(ACCOUNT_URL_STORAGE_KEY, account.url);
+    window.location.replace("/");
+  }
+  function stopJoining() {
+    setKey("");
+    setMode("here");
   }
 
   const copyButton = () => (
@@ -364,9 +413,16 @@ function AccountKey(props: {
 
   return (
     <div class="settings-account">
-      <Show when={!leaving()}>
+      <Show when={mode() === "here"}>
         <div class="settings-cluster">
           {copyButton()}
+          <button
+            type="button"
+            class="settings-button"
+            onClick={() => setMode("joining")}
+          >
+            Log in…
+          </button>
           <button
             type="button"
             class="settings-button"
@@ -376,6 +432,54 @@ function AccountKey(props: {
             Sign out
           </button>
         </div>
+      </Show>
+      <Show when={mode() === "joining"}>
+        <form
+          class="settings-cluster"
+          onSubmit={logIn}
+          onKeyDown={(event) => event.key === "Escape" && stopJoining()}
+        >
+          <input
+            class="settings-input settings-code settings-grow"
+            type="password"
+            placeholder="Paste an account key"
+            aria-label="Account key"
+            autocomplete="off"
+            spellcheck={false}
+            value={key()}
+            ref={(el) => queueMicrotask(() => el.focus())}
+            onInput={(event) => setKey(event.currentTarget.value)}
+          />
+          <button type="button" class="settings-button" onClick={stopJoining}>
+            Cancel
+          </button>
+          <button
+            type="submit"
+            class="settings-button"
+            data-primary
+            disabled={!canLogIn()}
+          >
+            {found()?.name && canLogIn()
+              ? `Log in as ${found()!.name}`
+              : "Log in"}
+          </button>
+          <Show when={status()}>
+            {(said) => (
+              <p
+                class={found.loading ? "settings-note" : "settings-error"}
+                role="status"
+              >
+                {said()}
+              </p>
+            )}
+          </Show>
+          <Show when={canLogIn()}>
+            <p class="settings-note">
+              This computer will use that account instead. Copy this one's key
+              first if you'll want it back.
+            </p>
+          </Show>
+        </form>
       </Show>
       <Show when={leaving()}>
         <div class="settings-cluster" onKeyDown={escape}>

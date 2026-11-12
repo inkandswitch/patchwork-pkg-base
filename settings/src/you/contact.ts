@@ -1,7 +1,11 @@
 // the bits of account/ the "you" section needs, copied rather than linked
 // (see CLAUDE.md): the contact doc's shape, the presence palette, and the
 // account key you copy to use this account somewhere else
-import { parseAutomergeUrl, type AutomergeUrl } from "@automerge/automerge-repo/slim";
+import {
+  isValidAutomergeUrl,
+  parseAutomergeUrl,
+  type AutomergeUrl,
+} from "@automerge/automerge-repo/slim";
 
 export type ContactDoc =
   | { type: "anonymous"; color?: string }
@@ -44,6 +48,16 @@ export const ACCOUNT_URL_STORAGE_KEY = "tinyPatchworkAccountUrl";
 export function accountToken(url: AutomergeUrl, name: string): string {
   const { documentId } = parseAutomergeUrl(url);
   return `account:${encodeURIComponent(name)}/${documentId}`;
+}
+
+// and back: the account a key (or a bare automerge: url) is for. only the
+// document id counts; the name in the key is there for people
+export function accountUrlFromToken(token: string): AutomergeUrl | undefined {
+  const key = token.trim();
+  if (isValidAutomergeUrl(key)) return key;
+  const documentId = key.match(/^account:[^/]*\/(.+)$/)?.[1];
+  const url = `automerge:${documentId}`;
+  return documentId && isValidAutomergeUrl(url) ? url : undefined;
 }
 
 // a picture, made square and small: the square you cropped it to, or else

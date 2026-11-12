@@ -227,6 +227,13 @@
   font-size: 12px;
 }
 
+.settings-note {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--settings-muted);
+  font-size: 12px;
+}
+
 .settings-hidden {
   position: absolute;
   width: 1px;
