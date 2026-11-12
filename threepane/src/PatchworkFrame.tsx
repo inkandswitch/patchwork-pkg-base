@@ -489,19 +489,19 @@ export function FrameLayout(props: {
   //    side rail), opening a document from it collapses both sidebars so the
   //    document takes over. Account-bar events intercepted in (1) don't.
   //
-  // The sidebar content (account bar included) is unmounted while collapsed and
-  // rebuilt on every re-expand (see `Sidebar`), so this effect rebinds on the
-  // collapse state rather than once at mount — otherwise the first collapse
+  // The sidebar content (account bar included) is unmounted once collapsed and
+  // rebuilt on re-expand (see `Sidebar`), so this effect rebinds whenever a new
+  // content element mounts rather than once — otherwise the first collapse
   // destroys the element the listener was on and it never fires again.
-  let sidebarContentEl: HTMLDivElement | undefined;
+  const [sidebarContentEl, setSidebarContentEl] =
+    createSignal<HTMLDivElement>();
   let footerEl: HTMLDivElement | undefined;
   createEffect(() => {
-    if (isCollapsed()) return;
-    const el = sidebarContentEl;
+    const el = sidebarContentEl();
     if (!el) return;
-    const footer = footerEl;
     const onOpen = (event: OpenDocumentEvent) => {
       const { url, toolId } = event.detail;
+      const footer = footerEl;
       if (
         props.isolation &&
         url &&
@@ -549,7 +549,7 @@ export function FrameLayout(props: {
         <div
           class="threepane-sidebar"
           classList={{ "threepane-sidebar--has-tray": hasTray() }}
-          ref={sidebarContentEl}
+          ref={setSidebarContentEl}
         >
           <SidebarWidgets
             widgets={props.sidebarWidgets}

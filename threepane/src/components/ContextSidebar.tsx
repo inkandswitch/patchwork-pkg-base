@@ -71,13 +71,12 @@ export function ContextSidebar(props: ContextSidebarProps) {
             </button>
           </div>
         </Show>
-        <Show when={!props.isCollapsed()}>
-          <div class="context-sidebar__content">
-            <Show when={activeToolId()} keyed>
-              {(id) => <patchwork-view component={id} />}
-            </Show>
-          </div>
-        </Show>
+        {/* `Sidebar` unmounts all of this once it has finished closing. */}
+        <div class="context-sidebar__content">
+          <Show when={activeToolId()} keyed>
+            {(id) => <patchwork-view component={id} />}
+          </Show>
+        </div>
       </div>
     </Sidebar>
   );
