@@ -240,15 +240,15 @@ export function CommentsView(props: { element: HTMLElement }) {
         pickedHere = undefined;
         return;
       }
-      // a panel that's just opened may not have drawn its cards yet: give
-      // it a few frames
-      let tries = 30;
+      // a panel that's just opened draws its cards once their targets have
+      // resolved: keep looking for a little while
+      const until = performance.now() + 3000;
       const flash = () => {
         const card = panel.querySelector<HTMLElement>(
           `.comments-thread[data-thread-url="${CSS.escape(url)}"]`
         );
         if (!card) {
-          if (--tries > 0) frame = requestAnimationFrame(flash);
+          if (performance.now() < until) frame = requestAnimationFrame(flash);
           return;
         }
         card.scrollIntoView({ block: "nearest", behavior: "smooth" });
