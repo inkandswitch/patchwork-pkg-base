@@ -86,6 +86,20 @@ describe("account bar under isolation", () => {
     f.dispose();
   });
 
+  it("clears the saved account and redirects when signing out", () => {
+    const f = mount(false);
+    localStorage.setItem("tinyPatchworkAccountUrl", "automerge:account");
+    const replace = vi.spyOn(window.location, "replace").mockImplementation(() => {});
+    f.contextMenuSettings();
+    [...document.querySelectorAll('[role="menuitem"]')]
+      .find((item) => item.textContent?.trim() === "Sign out")!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(localStorage.getItem("tinyPatchworkAccountUrl")).toBeNull();
+    expect(replace).toHaveBeenCalledWith("/");
+    replace.mockRestore();
+    f.dispose();
+  });
+
   it("still goes to the popover after the sidebar collapses and reopens", () => {
     const f = mount(true);
     f.clickSettings();

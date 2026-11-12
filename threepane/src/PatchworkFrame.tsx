@@ -697,7 +697,7 @@ export function FrameLayout(props: {
                         role="menuitem"
                         onClick={() => {
                           setAccountMenu(undefined);
-                          if (window.confirm("Sign out?")) signOut();
+                          signOut();
                         }}
                       >
                         Sign out
