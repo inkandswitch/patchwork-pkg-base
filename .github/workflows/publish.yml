@@ -5,6 +5,12 @@ on:
   push:
     branches: [main]
 
+# One publish at a time: each run bumps from the registry's latest version, so
+# two overlapping runs pick the same number and the second gets a 409.
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -76,9 +82,29 @@ jobs:
             console.log(`publishing ${pkg.name}@${pkg.version} (latest was ${latest})`)
           '
 
+      # A version npm has staged but not yet made live (it takes a few minutes)
+      # doesn't show up in `npm view`, so the bump above can pick a number
+      # that's already taken; npm answers that with a 409. Take the next one.
       - name: publish
-        run: npm publish --access public
         working-directory: static-dist
+        run: |
+          log="$RUNNER_TEMP/npm-publish.log"
+          for attempt in 1 2 3 4 5; do
+            if npm publish --access public 2>&1 | tee "$log"; then
+              exit 0
+            fi
+            grep -q "E409" "$log" || exit 1
+            next=$(node -e '
+              const fs = require("node:fs")
+              const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"))
+              const [major, minor, patch] = pkg.version.split(".").map(Number)
+              pkg.version = `${major}.${minor}.${patch + 1}`
+              fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n")
+              console.log(pkg.version)
+            ')
+            echo "version taken (409), retrying as $next"
+          done
+          exit 1
 
       - name: update patchwork.inkandswitch.com
         env:
