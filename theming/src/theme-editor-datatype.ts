@@ -33,6 +33,31 @@ export const EDITABLE_VARIABLES: {group: string; vars: EditableVariable[]}[] = [
 		{key: "--studio-modified", label: "Modified", type: "color"},
 		{key: "--studio-link", label: "Link", type: "color"},
 	]},
+	// derived from the accents by default (see theme.css), so text fields:
+	// left blank, a callout follows its accent.
+	{group: "Callouts", vars: [
+		{key: "--studio-callout-note", label: "Note", type: "text", placeholder: "var(--studio-link)"},
+		{key: "--studio-callout-tip", label: "Tip", type: "text", placeholder: "var(--studio-success)"},
+		{key: "--studio-callout-important", label: "Important", type: "text", placeholder: "the link hue, toward violet"},
+		{key: "--studio-callout-warning", label: "Warning", type: "text", placeholder: "var(--studio-warning)"},
+		{key: "--studio-callout-caution", label: "Caution", type: "text", placeholder: "var(--studio-danger)"},
+	]},
+	// the account picker's named colours, as drawn for everyone's carets,
+	// nametags and avatars in this theme.
+	{group: "Presence colours", vars: [
+		{key: "--studio-presence-sky-blue", label: "Sky Blue", type: "text", placeholder: "hsl(200 70% 50%)"},
+		{key: "--studio-presence-coral", label: "Coral", type: "text", placeholder: "hsl(10 75% 58%)"},
+		{key: "--studio-presence-emerald", label: "Emerald", type: "text", placeholder: "hsl(145 70% 45%)"},
+		{key: "--studio-presence-violet", label: "Violet", type: "text", placeholder: "hsl(270 70% 55%)"},
+		{key: "--studio-presence-amber", label: "Amber", type: "text", placeholder: "hsl(38 85% 50%)"},
+		{key: "--studio-presence-rose", label: "Rose", type: "text", placeholder: "hsl(350 70% 55%)"},
+		{key: "--studio-presence-teal", label: "Teal", type: "text", placeholder: "hsl(178 70% 45%)"},
+		{key: "--studio-presence-indigo", label: "Indigo", type: "text", placeholder: "hsl(235 70% 58%)"},
+		{key: "--studio-presence-lime", label: "Lime", type: "text", placeholder: "hsl(85 70% 45%)"},
+		{key: "--studio-presence-fuchsia", label: "Fuchsia", type: "text", placeholder: "hsl(310 70% 55%)"},
+		{key: "--studio-presence-orange", label: "Orange", type: "text", placeholder: "hsl(25 80% 52%)"},
+		{key: "--studio-presence-cyan", label: "Cyan", type: "text", placeholder: "hsl(188 75% 48%)"},
+	]},
 	{group: "Selection", vars: [
 		{key: "--studio-selection-fill", label: "Selection fill", type: "color"},
 	]},

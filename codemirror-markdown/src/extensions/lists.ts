@@ -302,8 +302,14 @@ export const isHidingDone = (state: EditorState) =>
 // ---------------------------------------------------------------------------
 // the menu
 
-type Item = { label: string; run: () => void };
+type Item = { label: string; run: () => void; disabled?: boolean };
 
+/**
+ * What the menu offers for the list at `pos`. An ordered list always offers
+ * Fix numbering and a task list always offers all its task actions, greyed
+ * out when there's nothing for them to do: a menu that only sometimes opens
+ * reads as one that doesn't work.
+ */
 function menuItems(view: EditorView, pos: number): Item[] {
   const { state } = view;
   const list = listAt(state, pos);
@@ -311,16 +317,28 @@ function menuItems(view: EditorView, pos: number): Item[] {
   const apply = (changes: ChangeSpec[], userEvent: string) => () =>
     view.dispatch({ changes, userEvent });
   const out: Item[] = [];
-  if (needsRenumber(state, list)) {
-    out.push({ label: "Fix numbering", run: apply(renumber(state, list), "input.renumber") });
+  if (list.name === "OrderedList") {
+    const changes = renumber(state, list);
+    out.push({
+      label: "Fix numbering",
+      run: apply(changes, "input.renumber"),
+      disabled: !changes.length,
+    });
   }
   const hasTasks = items(list).some((it) => done(state, it) !== null);
   if (hasTasks) {
     const n = countDone(state, list);
-    if (moveDoneDown(state, list).length)
-      out.push({ label: "Move done to bottom", run: apply(moveDoneDown(state, list), "input.move") });
-    if (n)
-      out.push({ label: `Clear done (${n})`, run: apply(clearDone(state, list), "delete.clear-done") });
+    const moves = moveDoneDown(state, list);
+    out.push({
+      label: "Move done to bottom",
+      run: apply(moves, "input.move"),
+      disabled: !moves.length,
+    });
+    out.push({
+      label: n ? `Clear done (${n})` : "Clear done",
+      run: apply(clearDone(state, list), "delete.clear-done"),
+      disabled: !n,
+    });
     const hiding = isHidingDone(state);
     out.push({
       label: hiding ? "Show done" : "Hide done",
@@ -336,12 +354,13 @@ function openMenu(view: EditorView, x: number, y: number, entries: Item[]) {
   menu.setAttribute("role", "menu");
   menu.style.left = `${x}px`;
   menu.style.top = `${y}px`;
-  const buttons = entries.map(({ label, run }) => {
+  const buttons = entries.map(({ label, run, disabled }) => {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "cm-md-menu-item";
     b.setAttribute("role", "menuitem");
     b.textContent = label;
+    b.disabled = !!disabled;
     b.addEventListener("click", () => {
       close();
       run();
@@ -363,10 +382,13 @@ function openMenu(view: EditorView, x: number, y: number, entries: Item[]) {
     } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
       const step = e.key === "ArrowDown" ? 1 : -1;
-      buttons[(i + step + buttons.length) % buttons.length]?.focus();
+      const live = buttons.filter((b) => !b.disabled);
+      const at = live.indexOf(buttons[i]);
+      live[(at + step + live.length) % live.length]?.focus();
     }
   };
   function close() {
+    if (menu.matches?.(":popover-open")) menu.hidePopover();
     menu.remove();
     window.removeEventListener("pointerdown", outside, true);
     window.removeEventListener("scroll", close, true);
@@ -379,11 +401,26 @@ function openMenu(view: EditorView, x: number, y: number, entries: Item[]) {
   menu.addEventListener("keydown", keys);
 
   view.dom.appendChild(menu);
-  // keep it on screen
-  const r = menu.getBoundingClientRect();
-  if (r.right > window.innerWidth) menu.style.left = `${Math.max(0, x - r.width)}px`;
-  if (r.bottom > window.innerHeight) menu.style.top = `${Math.max(0, y - r.height)}px`;
-  buttons[0]?.focus();
+  // In the top layer, so nothing the editor sits in can move it (a
+  // transformed or contained ancestor makes `position: fixed` relative to
+  // itself), clip it, or draw over it (the app's side panels did all three).
+  if (typeof menu.showPopover === "function") {
+    menu.popover = "manual";
+    menu.showPopover();
+  }
+  // where it actually landed, put right: covers browsers without popovers.
+  let r = menu.getBoundingClientRect();
+  if (r.left !== x || r.top !== y) {
+    menu.style.left = `${x + (x - r.left)}px`;
+    menu.style.top = `${y + (y - r.top)}px`;
+    r = menu.getBoundingClientRect();
+  }
+  // and on screen
+  const shift = (prop: "left" | "top", by: number) =>
+    (menu.style[prop] = `${parseFloat(menu.style[prop]) - by}px`);
+  if (r.right > window.innerWidth) shift("left", r.width);
+  if (r.bottom > window.innerHeight) shift("top", r.height);
+  buttons.find((b) => !b.disabled)?.focus();
   return close;
 }
 
@@ -416,6 +453,9 @@ const menuPlugin = ViewPlugin.fromClass(
 const listsTheme = EditorView.baseTheme({
   ".cm-md-menu": {
     position: "fixed",
+    // undo the popover defaults (centred, inset 0)
+    inset: "auto",
+    margin: "0",
     zIndex: "var(--studio-layer-popover, 4000)",
     display: "flex",
     flexDirection: "column",
@@ -436,7 +476,10 @@ const listsTheme = EditorView.baseTheme({
     borderRadius: "4px",
     cursor: "var(--studio-cursor-default, default)",
   },
-  ".cm-md-menu-item:hover, .cm-md-menu-item:focus-visible": {
+  ".cm-md-menu-item:disabled": {
+    opacity: "0.45",
+  },
+  ".cm-md-menu-item:not(:disabled):hover, .cm-md-menu-item:focus-visible": {
     background: "var(--studio-fill-offset-20, #eee)",
   },
   ".cm-md-hidden-done": {

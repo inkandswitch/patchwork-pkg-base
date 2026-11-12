@@ -111,6 +111,22 @@ describe("the menu", () => {
     expect(items()).toHaveLength(0);
   });
 
+  it("opens on a list that needs nothing, with its actions greyed out", () => {
+    const view = makeView("1. a\n2. b\n\n- [ ] c\n\nend");
+    const [num] = Array.from(view.contentDOM.querySelectorAll(".cm-md-hang"));
+    rightClick(num);
+    expect(items().map((b) => [b.textContent, b.disabled])).toEqual([
+      ["Fix numbering", true],
+    ]);
+    document.querySelector(".cm-md-menu")!.remove();
+    rightClick(view.contentDOM.querySelectorAll(".cm-md-hang")[2]);
+    expect(items().map((b) => [b.textContent, b.disabled])).toEqual([
+      ["Move done to bottom", true],
+      ["Clear done", true],
+      ["Hide done", false],
+    ]);
+  });
+
   it("leaves the browser's menu alone on plain text", () => {
     const view = makeView("- [x] a\n\nend");
     const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });

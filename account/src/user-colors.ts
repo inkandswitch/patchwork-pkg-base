@@ -23,6 +23,24 @@ export const USER_COLOR_PALETTE = [
   { name: "Cyan", value: "hsl(188, 75%, 48%)" },
 ] as const;
 
+/** "Sky Blue" → "sky-blue": the palette colour's theme token suffix. */
+const slug = (name: string) => name.toLowerCase().replace(/\s+/g, "-");
+const squash = (color: string) => color.replace(/\s+/g, "").toLowerCase();
+const TOKENS = new Map(
+  USER_COLOR_PALETTE.map((c) => [squash(c.value), `--studio-presence-${slug(c.name)}`])
+);
+
+/**
+ * A contact colour as it should be drawn: a palette colour becomes its theme
+ * token (`--studio-presence-sky-blue`, see theming's theme.css), falling back
+ * to the stored value, so a theme can restyle everyone's colours. Any other
+ * colour (picked with the custom picker) is drawn as it is.
+ */
+export function themedColor(color: string): string {
+  const token = TOKENS.get(squash(color));
+  return token ? `var(${token}, ${color})` : color;
+}
+
 /**
  * Generate a deterministic color from a string (like a contact url).
  * Only used to seed `contact.color` at signup -- presence rendering never

@@ -30,18 +30,22 @@ import {
 
 const hidden = Decoration.replace({});
 // inclusive, so it wraps the checkbox widget tasks.ts puts at its very start.
-const taskMark = Decoration.mark({ class: "cm-md-hang", inclusive: true });
+const taskMark = Decoration.mark({
+  class: "cm-md-hang cm-md-list-marker",
+  inclusive: true,
+});
 
 class HeadingLabel extends WidgetType {
-  constructor(readonly level: number) {
+  /** `shown` only on the caret's line; elsewhere it keeps its room, unseen. */
+  constructor(readonly level: number, readonly shown: boolean) {
     super();
   }
   eq(other: HeadingLabel) {
-    return other.level === this.level;
+    return other.level === this.level && other.shown === this.shown;
   }
   toDOM() {
     const span = document.createElement("span");
-    span.className = "cm-md-hang cm-md-heading-label";
+    span.className = `cm-md-hang cm-md-heading-label${this.shown ? "" : " cm-md-heading-label-idle"}`;
     span.setAttribute("aria-hidden", "true");
     const n = document.createElement("span");
     n.className = "cm-md-heading-level";
@@ -57,7 +61,7 @@ class Bullet extends WidgetType {
   }
   toDOM() {
     const span = document.createElement("span");
-    span.className = "cm-md-hang";
+    span.className = "cm-md-hang cm-md-list-marker";
     const dot = document.createElement("span");
     dot.className = "cm-bullet";
     span.append(dot);
@@ -74,7 +78,7 @@ class NumberLabel extends WidgetType {
   }
   toDOM() {
     const span = document.createElement("span");
-    span.className = "cm-md-hang cm-md-hang-number";
+    span.className = "cm-md-hang cm-md-list-marker cm-md-hang-number";
     span.textContent = this.text;
     return span;
   }
@@ -144,6 +148,118 @@ function alpha(n: number) {
   return out;
 }
 
+const codeLine = Decoration.line({ class: "cm-md-code" });
+const calloutMarker = Decoration.mark({ class: "cm-md-callout-marker" });
+
+/** Lines holding any part of the selection: a callout's `[!NOTE]` shows as
+ *  text on them, so its type can be changed. */
+function caretLines(state: EditorState) {
+  const lines = new Set<number>();
+  for (const r of state.selection.ranges) {
+    const last = state.doc.lineAt(r.to).number;
+    for (let n = state.doc.lineAt(r.from).number; n <= last; n++) lines.add(n);
+  }
+  return lines;
+}
+
+export const CALLOUTS = {
+  note: "Note",
+  tip: "Tip",
+  important: "Important",
+  warning: "Warning",
+  caution: "Caution",
+} as const;
+export type CalloutType = keyof typeof CALLOUTS;
+
+/**
+ * A GitHub-style callout's marker on the first line of a quote:
+ * `> [!NOTE]`, any case. Text after it (`> [!TIP] Shortcuts`) is taken as the
+ * title, as Obsidian does; GitHub would leave it in the body.
+ */
+function calloutAt(line: { from: number; text: string }) {
+  const m = /^((?:\s*>\s?)+)\[!(\w+)\][ \t]*(.*)$/.exec(line.text);
+  if (!m) return null;
+  const type = m[2].toLowerCase();
+  if (!(type in CALLOUTS)) return null;
+  const from = line.from + m[1].length;
+  return {
+    type: type as CalloutType,
+    from,
+    to: line.from + line.text.length - m[3].length,
+    titled: m[3].trim() !== "",
+  };
+}
+
+// 16×16, stroked in currentColor.
+const ICONS: Record<CalloutType, string> = {
+  note: '<circle cx="8" cy="8" r="6.25"/><path d="M8 7.25v4M8 4.75v.01"/>',
+  tip: '<path d="M5.75 11.5h4.5M6.5 14h3M8 1.75a4.25 4.25 0 0 0-2.5 7.7c.5.4.75.9.75 1.55V11.5h3.5V11c0-.65.25-1.15.75-1.55A4.25 4.25 0 0 0 8 1.75z"/>',
+  important: '<path d="M2.25 3.25a1.5 1.5 0 0 1 1.5-1.5h8.5a1.5 1.5 0 0 1 1.5 1.5v6.5a1.5 1.5 0 0 1-1.5 1.5H7l-3 2.5v-2.5h-.25a1.5 1.5 0 0 1-1.5-1.5z"/><path d="M8 4.5v3M8 9.5v.01"/>',
+  warning: '<path d="M7.13 2.25a1 1 0 0 1 1.74 0l5.6 9.75a1 1 0 0 1-.87 1.5H2.4a1 1 0 0 1-.87-1.5z"/><path d="M8 6v3M8 11v.01"/>',
+  caution: '<path d="M5.5 1.75h5l3.75 3.75v5l-3.75 3.75h-5L1.75 10.5v-5z"/><path d="M8 5v3.5M8 10.75v.01"/>',
+};
+
+class CalloutTitle extends WidgetType {
+  constructor(readonly type: CalloutType, readonly label: boolean) {
+    super();
+  }
+  eq(other: CalloutTitle) {
+    return other.type === this.type && other.label === this.label;
+  }
+  toDOM() {
+    const span = document.createElement("span");
+    span.className = "cm-md-callout-title";
+    span.innerHTML =
+      `<svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" ` +
+      `stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${ICONS[this.type]}</svg>`;
+    if (this.label) span.append(CALLOUTS[this.type]);
+    else span.setAttribute("aria-label", CALLOUTS[this.type]);
+    return span;
+  }
+}
+
+/**
+ * Lists are laid out with indentation, not spaces: every line in one is
+ * padded by its depth (one list indent per list it's in), its markdown
+ * indentation is hidden, and the marker sits in the padding — on the body's
+ * column at the top level — so an item's text, and its wrapped lines, start
+ * one indent in.
+ */
+function listLines(
+  state: EditorState,
+  from: number,
+  to: number,
+  decos: Range<Decoration>[]
+) {
+  const { doc } = state;
+  const tree = syntaxTree(state);
+  const last = doc.lineAt(to).number;
+  for (let n = doc.lineAt(from).number; n <= last; n++) {
+    const line = doc.line(n);
+    const indent = /^[ \t]*/.exec(line.text)![0].length;
+    if (indent === line.length) continue; // blank
+    let depth = 0;
+    let code = false;
+    for (
+      let node: SyntaxNode | null = tree.resolveInner(line.from + indent, 1);
+      node;
+      node = node.parent
+    ) {
+      if (node.name === "ListItem") depth++;
+      if (node.name === "FencedCode" || node.name === "CodeBlock") code = true;
+    }
+    if (!depth) continue;
+    decos.push(
+      Decoration.line({
+        class: "cm-md-list-line",
+        attributes: { style: `--md-list-depth: ${depth}` },
+      }).range(line.from)
+    );
+    // code keeps its spaces: they're part of what it says.
+    if (indent && !code) decos.push(hidden.range(line.from, line.from + indent));
+  }
+}
+
 /** `pos` moved past any spaces (not newlines) that follow it. */
 function skipSpaces(state: EditorState, pos: number) {
   const line = state.doc.lineAt(pos);
@@ -154,6 +270,7 @@ function skipSpaces(state: EditorState, pos: number) {
 function build(view: EditorView): DecorationSet {
   const { state } = view;
   const { doc } = state;
+  const editing = caretLines(state);
   const decos: Range<Decoration>[] = [];
 
   for (const { from, to } of view.visibleRanges) {
@@ -167,10 +284,14 @@ function build(view: EditorView): DecorationSet {
         if (heading) {
           const mark = node.node.firstChild;
           if (!mark || mark.name !== "HeaderMark") return;
+          const line = doc.lineAt(node.from);
           decos.push(
             Decoration.replace({
-              widget: new HeadingLabel(Number(heading[1])),
-            }).range(doc.lineAt(node.from).from, skipSpaces(state, mark.to))
+              widget: new HeadingLabel(Number(heading[1]), editing.has(line.number)),
+            }).range(line.from, skipSpaces(state, mark.to)),
+            // the heading's size on the whole line, for what the highlighter
+            // doesn't wrap (a rendered link): see headingLines in the theme.
+            Decoration.line({ class: `cm-md-h${heading[1]}` }).range(line.from)
           );
           return;
         }
@@ -209,19 +330,52 @@ function build(view: EditorView): DecorationSet {
           return;
         }
 
+        if (
+          (name === "BulletList" || name === "OrderedList") &&
+          node.node.parent?.name !== "ListItem"
+        ) {
+          listLines(state, node.from, node.to, decos);
+          return; // carry on into it for its marks
+        }
+
+        if (name === "FencedCode" || name === "CodeBlock") {
+          // every line in the code font, whether or not its language
+          // highlighter tags each word: untagged text would otherwise take
+          // the body font.
+          const first = doc.lineAt(node.from).number;
+          const last = doc.lineAt(node.to).number;
+          for (let n = first; n <= last; n++)
+            decos.push(codeLine.range(doc.line(n).from));
+          return false;
+        }
+
         if (name === "Blockquote") {
           // one bar per quote, however deeply it nests.
           for (let p = node.node.parent; p; p = p.parent)
             if (p.name === "Blockquote") return;
           const first = doc.lineAt(node.from).number;
           const last = doc.lineAt(node.to).number;
+          const callout = calloutAt(doc.line(first));
           for (let n = first; n <= last; n++) {
             const line = doc.line(n);
             const classes = ["cm-md-quote"];
             if (n === first) classes.push("cm-md-quote-first");
             if (n === last) classes.push("cm-md-quote-last");
+            if (callout) {
+              classes.push("cm-md-callout", `cm-md-callout-${callout.type}`);
+              if (n === first) classes.push("cm-md-callout-title-line");
+            }
             decos.push(
               Decoration.line({ class: classes.join(" ") }).range(line.from)
+            );
+          }
+          if (callout) {
+            decos.push(
+              editing.has(first)
+                ? calloutMarker.range(callout.from, callout.to)
+                : Decoration.replace({
+                    widget: new CalloutTitle(callout.type, !callout.titled),
+                  }).range(callout.from, callout.to)
             );
           }
           return; // carry on into it for its QuoteMarks
@@ -257,6 +411,7 @@ const marginPlugin = ViewPlugin.fromClass(
     update(update: ViewUpdate) {
       if (
         update.docChanged ||
+        update.selectionSet ||
         update.viewportChanged ||
         syntaxTree(update.startState) !== syntaxTree(update.state)
       ) {
@@ -272,6 +427,8 @@ const zoomed = (length: string) => `calc(${length} * var(--markdown-zoom, 1))`;
 const marginTheme = EditorView.baseTheme({
   ".cm-content": {
     "--markdown-hang": zoomed("2.5rem"),
+    "--markdown-list-indent": zoomed("1.6rem"),
+    "--markdown-quote-indent": zoomed("1.1rem"),
   },
   ".cm-md-hang": {
     display: "inline-flex",
@@ -304,31 +461,139 @@ const marginTheme = EditorView.baseTheme({
     fontFamily: "var(--markdown-body-family, inherit)",
     letterSpacing: "0.02em",
   },
+  ".cm-md-heading-label-idle": {
+    visibility: "hidden",
+  },
+  // a list line: padded one indent per level (CodeMirror's own 6px first)
+  ".cm-md-list-line": {
+    paddingLeft: "calc(6px + var(--md-list-depth, 1) * var(--markdown-list-indent))",
+  },
+  // its marker, in that padding: from the start of the indent, not hung right
+  ".cm-md-list-marker": {
+    width: "var(--markdown-list-indent)",
+    marginLeft: "calc(-1 * var(--markdown-list-indent))",
+    justifyContent: "flex-start",
+    paddingRight: "0",
+  },
   ".cm-md-heading-level": {
     fontSize: "0.75em",
     verticalAlign: "-0.15em",
   },
   ".cm-md-hang .cm-bullet": {
     display: "inline-block",
-    width: "0.4em",
-    height: "0.4em",
+    width: "0.5em",
+    height: "0.5em",
+    // in the box's left, centred under where a number's first digit sits
+    marginLeft: "0.15em",
     borderRadius: "50%",
-    background: "var(--syntax-list-marker, currentColor)",
-    color: "var(--text-editor-line)",
+    // theming's list marker colour (the primary accent, as ink)
+    background:
+      "var(--syntax-list-marker, var(--text-editor-primary-text, currentColor))",
     alignSelf: "center",
   },
   ".cm-md-hang .cm-task": {
     margin: "0",
   },
+  // a quote: its bar on the body's column, its text one quote indent in
   ".cm-md-quote": {
     position: "relative",
+    paddingLeft: "calc(6px + var(--markdown-quote-indent))",
+  },
+  ".cm-md-code": {
+    fontFamily: "var(--text-editor-family-code)",
+  },
+
+  // GitHub-style callouts. Colours from theming's --studio-callout-* (the
+  // accent: bar) and --text-editor-callout-*-text/-fill (title ink, box
+  // tint), with fallbacks for running without the theme.
+  ...Object.fromEntries(
+    (Object.keys(CALLOUTS) as CalloutType[]).map((type) => {
+      const fallback = { note: "#36e", tip: "#1a7f37", important: "#8250df", warning: "#d4a72c", caution: "#d1242f" }[type];
+      return [
+        `.cm-md-callout-${type}`,
+        {
+          "--md-callout": `var(--studio-callout-${type}, ${fallback})`,
+          "--md-callout-text": `var(--text-editor-callout-${type}-text, color-mix(in oklch, var(--md-callout), currentColor 35%))`,
+          "--md-callout-fill": `var(--text-editor-callout-${type}-fill, color-mix(in oklch, var(--md-callout) 9%, transparent))`,
+        },
+      ];
+    })
+  ),
+  ".cm-md-callout": {
+    // the body reads as body text, not as a quote: the theme's quote styling
+    // (italic, the punctuation grey) comes through these variables.
+    "--syntax-quote": "var(--text-editor-line)",
+    "--syntax-style-quote": "normal",
+    "--syntax-weight-quote": "normal",
+    "--syntax-fill-quote": "transparent",
+    // a stacking context, so the tint drawn behind the text (z-index -1)
+    // stays above the editor's own background.
+    isolation: "isolate",
+    paddingRight: zoomed("0.75rem"),
+  },
+  // (doubled up to outrank the plain quote bar's rule further down)
+  ".cm-md-quote.cm-md-callout::before": {
+    background: "var(--md-callout)",
+    opacity: "1",
+  },
+  ".cm-md-callout::after": {
+    content: '""',
+    position: "absolute",
+    zIndex: "-1",
+    left: "6px",
+    right: "0",
+    top: "0",
+    bottom: "0",
+    background: "var(--md-callout-fill)",
+  },
+  ".cm-md-callout.cm-md-quote-first": {
+    paddingTop: zoomed("0.5rem"),
+  },
+  ".cm-md-callout.cm-md-quote-last": {
+    paddingBottom: zoomed("0.5rem"),
+  },
+  ".cm-md-callout.cm-md-quote-first::before, .cm-md-callout.cm-md-quote-first::after": {
+    top: "0",
+    borderTopRightRadius: "6px",
+  },
+  ".cm-md-callout.cm-md-quote-last::before, .cm-md-callout.cm-md-quote-last::after": {
+    bottom: "0",
+    borderBottomRightRadius: "6px",
+  },
+  ".cm-md-callout.cm-md-quote-first::before": { borderTopRightRadius: "0" },
+  ".cm-md-callout.cm-md-quote-last::before": { borderBottomRightRadius: "0" },
+  ".cm-md-callout-title-line": {
+    color: "var(--md-callout-text)",
+    fontWeight: "600",
+  },
+  ".cm-md-callout-title": {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "0.4em",
+    color: "var(--md-callout-text)",
+    fontWeight: "600",
+    marginRight: "0.4em",
+  },
+  ".cm-md-callout-title svg": {
+    width: "1em",
+    height: "1em",
+    flex: "none",
+  },
+  // the raw `[!NOTE]`, on the caret's line. it parses as a reference link,
+  // so the highlighter's link colour and underline are undone inside it.
+  ".cm-md-callout-marker, .cm-md-callout-marker *": {
+    color: "var(--md-callout-text)",
+    textDecoration: "none",
+  },
+  ".cm-md-callout-marker": {
+    fontFamily: "var(--text-editor-family-code)",
+    fontSize: "0.9em",
   },
   ".cm-md-quote::before": {
     content: '""',
     position: "absolute",
-    // on the bullets' column: centred on where a hung dot sits (the hang's
-    // right padding, then half a dot at the hang's 0.8rem).
-    left: `calc(-1 * (${zoomed("0.6rem")} + ${zoomed("0.16rem")}) - 1.5px)`,
+    // on the body's column (past CodeMirror's own 6px line padding)
+    left: "6px",
     top: "0",
     bottom: "0",
     width: "3px",

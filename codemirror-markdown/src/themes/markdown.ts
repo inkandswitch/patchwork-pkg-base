@@ -119,6 +119,27 @@ const baseHeadingStyles = {
   textDecoration: "none",
 };
 
+/** Size and leading per heading level, shared by the highlight rules (the
+ *  heading's text) and the line classes margin.ts puts on heading lines. */
+const headingSizes: Record<number, { fontSize: string; lineHeight?: string }> = {
+  1: { fontSize: `var(--studio-heading-size-1, ${zoomed("1.5rem")})`, lineHeight: zoomed("2rem") },
+  2: { fontSize: `var(--studio-heading-size-2, ${zoomed("1.5rem")})`, lineHeight: zoomed("2rem") },
+  3: { fontSize: `var(--studio-heading-size-3, ${zoomed("1.25rem")})`, lineHeight: zoomed("1.75rem") },
+  4: { fontSize: `var(--studio-heading-size-4, ${zoomed("1.1rem")})` },
+};
+
+/**
+ * The same, on the whole line: a widget that replaces part of a heading (a
+ * rendered link) isn't wrapped in the heading's highlight span, so without
+ * this it falls back to the body size.
+ */
+const headingLines = Object.fromEntries(
+  Object.entries(headingSizes).map(([level, size]) => [
+    `.cm-md-h${level}`,
+    { fontFamily: baseHeadingStyles.fontFamily, fontWeight: baseHeadingStyles.fontWeight, ...size },
+  ])
+);
+
 const baseCodeStyles = {
   fontFamily: "var(--text-editor-family-code)",
   fontSize: "1em",
@@ -139,31 +160,28 @@ export const markdownSyntaxHighlighting = (style: "serif" | "sans") =>
     {
       tag: tags.heading1,
       ...baseHeadingStyles,
-      fontSize: `var(--studio-heading-size-1, ${zoomed("1.5rem")})`,
-      lineHeight: zoomed("2rem"),
+      ...headingSizes[1],
       marginBottom: zoomed("1rem"),
       marginTop: zoomed("2rem"),
     },
     {
       tag: tags.heading2,
       ...baseHeadingStyles,
-      fontSize: `var(--studio-heading-size-2, ${zoomed("1.5rem")})`,
-      lineHeight: zoomed("2rem"),
+      ...headingSizes[2],
       marginBottom: zoomed("1rem"),
       marginTop: zoomed("2rem"),
     },
     {
       tag: tags.heading3,
       ...baseHeadingStyles,
-      fontSize: `var(--studio-heading-size-3, ${zoomed("1.25rem")})`,
-      lineHeight: zoomed("1.75rem"),
+      ...headingSizes[3],
       marginBottom: zoomed("1rem"),
       marginTop: zoomed("2rem"),
     },
     {
       tag: tags.heading4,
       ...baseHeadingStyles,
-      fontSize: `var(--studio-heading-size-4, ${zoomed("1.1rem")})`,
+      ...headingSizes[4],
       marginBottom: zoomed("1rem"),
       marginTop: zoomed("2rem"),
     },
@@ -176,7 +194,7 @@ export const markdownSyntaxHighlighting = (style: "serif" | "sans") =>
       color: "var(--syntax-comment, #555)",
       fontFamily: "var(--text-editor-family-code)",
     },
-    { tag: tags.quote, fontStyle: "var(--syntax-style-quote, italic)" },
+    // quotes are set off by their bar (margin.ts), not by italics.
     {
       tag: tags.strong,
       fontFamily: bodyFont(style),
@@ -239,7 +257,7 @@ export const markdownSyntaxHighlighting = (style: "serif" | "sans") =>
   ]);
 
 export const theme = (style: "serif" | "sans") => [
-  EditorView.theme(markdownStyles(style)),
+  EditorView.theme({ ...markdownStyles(style), ...headingLines }),
   syntaxHighlighting(markdownSyntaxHighlighting(style)),
 ];
 

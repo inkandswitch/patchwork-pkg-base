@@ -1,6 +1,7 @@
 import type { DocHandle } from "@automerge/automerge-repo/slim";
 import type { ToolElement } from "@inkandswitch/patchwork-plugins";
 import type { ContactDoc } from "../types";
+import { themedColor } from "../user-colors";
 
 /**
  * A compact cursor token: the contact's name on a pill in their presence
@@ -27,7 +28,7 @@ export function renderContactCursor(
     // The contact's chosen color; without one, the CSS fallback (neutral
     // gray) applies.
     if (contact.color) {
-      token.style.setProperty("--contact-cursor-color", contact.color);
+      token.style.setProperty("--contact-cursor-color", themedColor(contact.color));
     } else {
       token.style.removeProperty("--contact-cursor-color");
     }

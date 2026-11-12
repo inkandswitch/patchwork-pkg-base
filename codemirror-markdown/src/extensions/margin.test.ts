@@ -42,6 +42,13 @@ describe("margin", () => {
     expect(h2.textContent).toBe("H2Sub");
   });
 
+  it("marks heading lines with their level, for widgets in them", () => {
+    const view = makeView("## See [the tale](https://a.com)\n\nbody");
+    const [h2] = lines(view);
+    expect(h2.classList).toContain("cm-md-h2");
+    expect(h2.querySelector("a.cm-link")).toBeNull(); // links are another plugin
+  });
+
   it("keeps the label even while the caret is on the heading", () => {
     const view = makeView("## Sub\n\nbody", 4);
     const [h2] = lines(view);
@@ -128,4 +135,64 @@ describe("margin", () => {
     expect(q.className.match(/cm-md-quote-first/g)).toHaveLength(1);
     expect(q.textContent).toBe("deep");
   });
+
+  it("shows a heading's label only on the caret's line", () => {
+    const doc = "# One\n\n## Two\n\nend";
+    const view = makeView(doc, doc.indexOf("Two"));
+    const [one, , two] = lines(view);
+    expect(hang(one)?.classList).toContain("cm-md-heading-label-idle");
+    expect(hang(two)?.classList).not.toContain("cm-md-heading-label-idle");
+  });
+
+  it("puts every line of a code block in the code font", () => {
+    const view = makeView("```js\nhello\nfunction f() {}\n```\n\nend");
+    const code = lines(view).slice(0, 4);
+    expect(code.every((l) => l.classList.contains("cm-md-code"))).toBe(true);
+    expect(lines(view)[5].classList).not.toContain("cm-md-code");
+  });
+
+  it("indents list lines by depth, hiding their markdown indentation", () => {
+    const view = makeView("- a\n    - b\n      more b\n- c\n\nend");
+    const [a, b, more, c, , end] = lines(view);
+    const depth = (l: HTMLElement) => l.style.getPropertyValue("--md-list-depth");
+    expect([a, b, more, c].map(depth)).toEqual(["1", "2", "2", "1"]);
+    expect(b.textContent).toBe("b");
+    expect(more.textContent).toBe("more b");
+    expect(end.classList).not.toContain("cm-md-list-line");
+  });
+
+  describe("callouts", () => {
+    const doc = "> [!WARNING]\n> Mind the gap\n\n> just a quote\n\nend";
+
+    it("draws the marker as an icon and title, and tints the box", () => {
+      const view = makeView(doc);
+      const [title, body, , quote] = lines(view);
+      for (const l of [title, body]) {
+        expect(l.classList).toContain("cm-md-callout");
+        expect(l.classList).toContain("cm-md-callout-warning");
+      }
+      const t = title.querySelector(".cm-md-callout-title")!;
+      expect(t.querySelector("svg")).not.toBeNull();
+      expect(t.textContent).toBe("Warning");
+      expect(title.textContent).toBe("Warning");
+      expect(body.textContent).toBe("Mind the gap");
+      expect(quote.classList).not.toContain("cm-md-callout");
+    });
+
+    it("shows the marker as text while the caret is on it", () => {
+      const view = makeView(doc, 4);
+      const [title] = lines(view);
+      expect(title.querySelector(".cm-md-callout-title")).toBeNull();
+      expect(title.textContent).toBe("[!WARNING]");
+    });
+
+    it("takes text after the marker as the title, and ignores unknown types", () => {
+      const view = makeView("> [!tip] Shortcuts\n> body\n\n> [!NOPE]\n\nend");
+      const [title, , , nope] = lines(view);
+      expect(title.classList).toContain("cm-md-callout-tip");
+      expect(title.textContent).toBe("Shortcuts");
+      expect(nope.classList).not.toContain("cm-md-callout");
+    });
+  });
 });
+

@@ -1,5 +1,5 @@
 import { For, Show } from "solid-js";
-import { USER_COLOR_PALETTE, parseHslColor } from "../../user-colors";
+import { USER_COLOR_PALETTE, parseHslColor, themedColor } from "../../user-colors";
 
 interface ColorPopupProps {
   value?: string;
@@ -60,7 +60,7 @@ export function ColorPopup(props: ColorPopupProps) {
             <button
               type="button"
               class={`color-swatch${props.value === color.value ? " selected" : ""}`}
-              style={{ "background-color": color.value }}
+              style={{ "background-color": themedColor(color.value) }}
               onClick={() => {
                 props.onChange(color.value);
                 props.onClose();
