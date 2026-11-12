@@ -85,13 +85,32 @@ export function createPresenceExtension(
 ) {
   const compartment = new Compartment();
 
+  // What the current instance was built for. Rebuilding swaps in a new
+  // Presence (a goodbye and a fresh hello to peers) and a new field and
+  // layer, so only do it when one of these actually changed -- the effect's
+  // first run, straight after mount, never has.
+  let built: { handle: unknown; path: string; url: AutomergeUrl | null };
   const extension = () => {
     const url = contactUrl();
+    built = { handle: handle(), path: JSON.stringify(path()), url };
     return url ? presence(handle(), path(), url, repo) : [];
   };
 
   const createReconfigureEffect = (view: EditorView) =>
     createEffect(() => {
+      // read all three every run, so the effect keeps tracking them
+      const next = {
+        handle: handle(),
+        path: JSON.stringify(path()),
+        url: contactUrl(),
+      };
+      if (
+        next.handle === built.handle &&
+        next.path === built.path &&
+        next.url === built.url
+      ) {
+        return;
+      }
       view.dispatch({ effects: compartment.reconfigure(extension()) });
     });
 
@@ -150,7 +169,10 @@ function presence(
     markers(view) {
       // Stable order, so the layer's pairwise DOM reuse matches each marker
       // with the same peer's existing element across redraws.
-      const selections = [...view.state.field(remoteSelectionField)].sort(
+      // A measure queued before a reconfigure can land after it, when this
+      // instance's field has gone from the state: draw nothing.
+      const current = view.state.field(remoteSelectionField, false) ?? [];
+      const selections = [...current].sort(
         (a, b) => (a.peerId < b.peerId ? -1 : a.peerId > b.peerId ? 1 : 0)
       );
       const markers: PresenceCaretMarker[] = [];
