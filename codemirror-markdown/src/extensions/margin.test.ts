@@ -212,4 +212,12 @@ describe("margin", () => {
     expect(ls[6].querySelector(".cm-md-hr")).toBeNull();
     expect(ls[6].textContent).toBe("***");
   });
+
+  it("changes the bullet's shape with depth: dot, ring, diamond, round again", () => {
+    const view = makeView("- a\n    - b\n        - c\n            - d\n- e\n\nend");
+    const shapes = lines(view)
+      .slice(0, 5)
+      .map((l) => l.querySelector(".cm-bullet")!.className.replace("cm-bullet cm-bullet-", ""));
+    expect(shapes).toEqual(["disc", "circle", "diamond", "disc", "disc"]);
+  });
 });

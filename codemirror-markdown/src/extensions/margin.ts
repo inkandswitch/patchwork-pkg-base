@@ -55,18 +55,32 @@ class HeadingLabel extends WidgetType {
   }
 }
 
+/** Bullets change shape with depth, as HTML's do: a dot, a ring, a diamond,
+ *  then round again. */
+const BULLET_SHAPES = ["disc", "circle", "diamond"] as const;
+
 class Bullet extends WidgetType {
-  eq() {
-    return true;
+  constructor(readonly shape: (typeof BULLET_SHAPES)[number]) {
+    super();
+  }
+  eq(other: Bullet) {
+    return other.shape === this.shape;
   }
   toDOM() {
     const span = document.createElement("span");
     span.className = "cm-md-hang cm-md-list-marker";
     const dot = document.createElement("span");
-    dot.className = "cm-bullet";
+    dot.className = `cm-bullet cm-bullet-${this.shape}`;
     span.append(dot);
     return span;
   }
+}
+
+/** How many bullet lists deep a list mark is (1 at the top). */
+function bulletDepth(mark: SyntaxNode) {
+  let depth = 0;
+  for (let n = mark.parent; n; n = n.parent) if (n.name === "BulletList") depth++;
+  return Math.max(1, depth);
 }
 
 class Rule extends WidgetType {
@@ -346,7 +360,11 @@ function build(view: EditorView): DecorationSet {
           }
           if (bullet) {
             decos.push(
-              Decoration.replace({ widget: new Bullet() }).range(node.from, end)
+              Decoration.replace({
+                widget: new Bullet(
+                  BULLET_SHAPES[(bulletDepth(node.node) - 1) % BULLET_SHAPES.length]
+                ),
+              }).range(node.from, end)
             );
           } else {
             decos.push(
@@ -556,9 +574,22 @@ const marginTheme = EditorView.baseTheme({
     marginLeft: "calc(var(--markdown-marker-centre) - var(--dot) / 2)",
     verticalAlign: "middle",
     borderRadius: "50%",
+    boxSizing: "border-box",
     // theming's list marker colour (shared with the quote bar)
-    background:
+    "--bullet-colour":
       "var(--syntax-list-marker, var(--text-editor-primary-text, currentColor))",
+    background: "var(--bullet-colour)",
+  },
+  // second level: a ring
+  ".cm-md-hang .cm-bullet-circle": {
+    background: "transparent",
+    border: "max(1.5px, 0.09em) solid var(--bullet-colour)",
+  },
+  // third: a diamond, a touch smaller so it weighs the same as the dot
+  ".cm-md-hang .cm-bullet-diamond": {
+    "--dot": "0.34em",
+    borderRadius: "1px",
+    transform: "rotate(45deg)",
   },
   ".cm-md-hang .cm-task": {
     margin: "0",
