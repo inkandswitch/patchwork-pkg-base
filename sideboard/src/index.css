@@ -66,7 +66,9 @@
 }
 }
 
-button {
+/* sideboard's own buttons only: this file goes in the page's head unlayered,
+   so a bare `button` here would flatten every button on the page */
+:where(.sideboard, .document-list, .account-bar, .popmenu__content, .popmenu__sub-content) button {
   background: none;
   border: none;
   font: inherit;
@@ -190,7 +192,7 @@ button {
   min-width: 0;
 }
 
-.icon {
+:where(.sideboard, .document-list, .account-bar, .popmenu__content, .popmenu__sub-content) .icon {
   height: 1em;
 }
 
