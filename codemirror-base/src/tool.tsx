@@ -68,6 +68,7 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
   const [focusDoc, focusHandle] = subscribeDoc<{
     selection: Record<AutomergeUrl, true>;
     highlight: Record<AutomergeUrl, true>;
+    commentViews?: Record<string, true>;
   }>(props.element, { type: "patchwork:focus" });
 
   const contactUrl = subscribe<AutomergeUrl>(props.element, {
@@ -254,6 +255,9 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
       threadAtPos,
       watchThreadForClose,
       onClose: onClosePopover,
+      // read when clicked, so no need to rebuild the extension on change
+      threadsShownElsewhere: () =>
+        Object.keys(focusDoc()?.commentViews ?? {}).length > 0,
     }),
     ...(datatypeExtensions() ?? []),
   ];
