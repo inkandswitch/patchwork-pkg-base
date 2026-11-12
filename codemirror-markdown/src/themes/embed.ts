@@ -29,6 +29,44 @@ export const embedTheme = EditorView.baseTheme({
     maxWidth: "100%",
     height: "auto",
   },
+  // a frame: resizable from its corner (extensions/embed.ts), never wider
+  // than the text
+  ".cm-embed.cm-embed-frame": {
+    position: "relative",
+    maxWidth: "100%",
+    boxSizing: "border-box",
+  },
+  // the handle shows on hover or focus, a small corner like a textarea's
+  ".cm-embed-resize": {
+    position: "absolute",
+    right: "0",
+    bottom: "0",
+    width: "16px",
+    height: "16px",
+    cursor: "nwse-resize",
+    touchAction: "none",
+    opacity: "0",
+    transition:
+      "opacity max(1ms, calc(150ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)))",
+  },
+  ".cm-embed-resize::before": {
+    content: '""',
+    position: "absolute",
+    right: "3px",
+    bottom: "3px",
+    width: "7px",
+    height: "7px",
+    borderRight: "2px solid var(--text-editor-line-offset-40, #999)",
+    borderBottom: "2px solid var(--text-editor-line-offset-40, #999)",
+    borderRadius: "0 0 2px 0",
+  },
+  ".cm-embed:hover > .cm-embed-resize, .cm-embed:focus-within > .cm-embed-resize, .cm-embed-resizing > .cm-embed-resize":
+    {
+      opacity: "1",
+    },
+  ".cm-embed-resizing": {
+    userSelect: "none",
+  },
   ".cm-embed > patchwork-view": {
     display: "block",
     height: "500px",

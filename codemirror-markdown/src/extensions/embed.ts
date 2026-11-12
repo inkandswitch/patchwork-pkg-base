@@ -16,6 +16,13 @@ import {
 } from "@automerge/automerge-repo/slim";
 import { embedTheme } from "../themes/embed.ts";
 
+/** A resized embed: its width (unset = the text's full width) and height, px. */
+type Size = { width: number | null; height: number };
+
+const DEFAULT_HEIGHT = 500;
+const MIN_WIDTH = 160;
+const MIN_HEIGHT = 88;
+
 /**
  * Renders an embedded doc through the shared "embed" tool, which draws the
  * chrome and nests the content view. The inner tool travels via the
@@ -24,27 +31,50 @@ import { embedTheme } from "../themes/embed.ts";
  * marker (which recreates the widget). The frame's header only shows while the
  * embed has focus (`embed-chrome="focus"`), and its remove button comes back as
  * `patchwork:embed-remove`, which deletes the marker.
+ *
+ * A frame can be resized from its corner; the size goes in the marker
+ * (`[patchwork:id/tool =640x400]`) and a size change keeps the same DOM, so
+ * the embedded tool isn't remounted.
  */
 class EmbedWidget extends WidgetType {
   readonly docId: DocumentId;
   // `null` = no pinned tool; the embed frame uses the datatype's fallback.
   readonly toolId: string | null;
-  readonly embedText: string;
+  readonly size: Size | null;
 
-  constructor(docId: DocumentId, toolId: string | null, embedText: string) {
+  constructor(docId: DocumentId, toolId: string | null, size: Size | null) {
     super();
     this.docId = docId;
     this.toolId = toolId;
-    this.embedText = embedText;
+    this.size = size;
   }
 
   eq(other: EmbedWidget) {
-    return other.docId === this.docId && other.toolId === this.toolId;
+    return (
+      other.docId === this.docId &&
+      other.toolId === this.toolId &&
+      other.size?.width === this.size?.width &&
+      other.size?.height === this.size?.height
+    );
+  }
+
+  /** Same doc and tool, new size: resize in place rather than remount. */
+  updateDOM(dom: HTMLElement) {
+    if (
+      dom.dataset.docId !== this.docId ||
+      (dom.dataset.toolId ?? null) !== this.toolId
+    ) {
+      return false;
+    }
+    applySize(dom, this.size);
+    return true;
   }
 
   toDOM(view: EditorView) {
     const container = document.createElement("div");
     container.className = "cm-embed";
+    container.dataset.docId = this.docId;
+    if (this.toolId) container.dataset.toolId = this.toolId;
     // focusable by a click anywhere in it (not by Tab), so :focus-within —
     // which shows its frame — holds even when what's clicked can't take focus.
     container.tabIndex = -1;
@@ -52,7 +82,7 @@ class EmbedWidget extends WidgetType {
     container.addEventListener("patchwork:embed-remove", (e) => {
       // Nested embeds remove themselves from their own host, not from us.
       e.stopPropagation();
-      this.remove(view, container);
+      removeMarker(view, container);
     });
 
     // An image with no pinned tool is just drawn, with no frame round it. We
@@ -74,6 +104,7 @@ class EmbedWidget extends WidgetType {
   }
 
   private mountFrame(view: EditorView, container: HTMLElement): void {
+    container.classList.add("cm-embed-frame");
     const patchworkView = document.createElement("patchwork-view");
     // No heads in the url: the embed follows whatever version the host
     // resolves — the active checkpoint when one is checked out, live otherwise.
@@ -85,7 +116,6 @@ class EmbedWidget extends WidgetType {
     // Explicit inline height: without it the element collapses to 0px (the
     // stylesheet rule isn't reliably applied here).
     patchworkView.style.display = "block";
-    patchworkView.style.height = "500px";
     patchworkView.style.width = "100%";
 
     // Persist tool picks into the marker text. Stop propagation so nested
@@ -93,60 +123,160 @@ class EmbedWidget extends WidgetType {
     container.addEventListener("patchwork:embed-tool-changed", (e) => {
       e.stopPropagation();
       const toolId = (e as CustomEvent<{ toolId?: string }>).detail?.toolId;
-      if (toolId) this.setTool(view, container, toolId);
+      if (!toolId) return;
+      rewriteMarker(view, container, (ref) => ({ ...ref, toolId }));
     });
 
     container.appendChild(patchworkView);
-  }
-
-  /** Where this widget's marker is, if it's still exactly there. */
-  private markerRange(
-    view: EditorView,
-    container: HTMLElement
-  ): { from: number; to: number } | null {
-    const from = view.posAtDOM(container);
-    const to = from + this.embedText.length;
-    if (view.state.doc.sliceString(from, to) !== this.embedText) return null;
-    return { from, to };
-  }
-
-  private remove(view: EditorView, container: HTMLElement): void {
-    const range = this.markerRange(view, container);
-    if (!range) return;
-    let { from, to } = range;
-    // An embed on a line of its own takes its line with it.
-    const { doc } = view.state;
-    const line = doc.lineAt(from);
-    if (line.from === from && line.to === to) {
-      if (line.number < doc.lines) to += 1;
-      else if (line.number > 1) from -= 1;
-    }
-    view.dispatch({
-      changes: { from, to },
-      selection: { anchor: from },
-      userEvent: "delete",
-    });
-    view.focus();
-  }
-
-  private setTool(
-    view: EditorView,
-    container: HTMLElement,
-    toolId: string
-  ): void {
-    // Only rewrite if the marker is still exactly where this widget maps to.
-    const range = this.markerRange(view, container);
-    if (!range) return;
-    const { from, to } = range;
-    view.dispatch({
-      changes: { from, to, insert: embedSyntax({ docId: this.docId, toolId }) },
-    });
+    container.appendChild(resizeHandle(view, container));
+    applySize(container, this.size);
   }
 
   ignoreEvent() {
     // Atomic embed: the editor ignores all events; the frame handles them.
     return true;
   }
+}
+
+/** The embed frame's own <patchwork-view> (not one nested inside it). */
+function frameOf(container: HTMLElement): HTMLElement | undefined {
+  return Array.from(container.children).find(
+    (el): el is HTMLElement => el.localName === "patchwork-view"
+  );
+}
+
+/** Size a framed embed: its height, and its width if narrower than the text. */
+function applySize(container: HTMLElement, size: Size | null): void {
+  const view = frameOf(container);
+  if (view) view.style.height = `${size?.height ?? DEFAULT_HEIGHT}px`;
+  if (size?.width) container.style.width = `${size.width}px`;
+  else container.style.removeProperty("width");
+}
+
+/**
+ * The corner handle. Dragging resizes the frame live; letting go writes the
+ * size into the marker. Dragged out to the text's full width it drops the
+ * width, so the embed goes back to following the column.
+ */
+function resizeHandle(view: EditorView, container: HTMLElement): HTMLElement {
+  const handle = document.createElement("div");
+  handle.className = "cm-embed-resize";
+  handle.title = "Resize";
+  handle.setAttribute("role", "separator");
+  handle.setAttribute("aria-label", "Resize embed");
+
+  let drag: {
+    id: number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    max: number;
+    size?: Size;
+  } | null = null;
+  const frame = () => frameOf(container);
+
+  handle.addEventListener("pointerdown", (e) => {
+    const inner = frame();
+    if (!inner || e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    handle.setPointerCapture?.(e.pointerId);
+    drag = {
+      id: e.pointerId,
+      x: e.clientX,
+      y: e.clientY,
+      width: container.getBoundingClientRect().width,
+      height: inner.getBoundingClientRect().height,
+      max: availableWidth(container),
+    };
+    container.classList.add("cm-embed-resizing");
+  });
+
+  handle.addEventListener("pointermove", (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    e.preventDefault();
+    const width = Math.round(
+      Math.min(drag.max, Math.max(MIN_WIDTH, drag.width + e.clientX - drag.x))
+    );
+    const height = Math.round(
+      Math.max(MIN_HEIGHT, drag.height + e.clientY - drag.y)
+    );
+    drag.size = { width: width >= drag.max - 1 ? null : width, height };
+    applySize(container, drag.size);
+    // the line got taller or shorter: let the editor re-measure it.
+    view.requestMeasure();
+  });
+
+  const end = (commit: boolean) => (e: PointerEvent) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    handle.releasePointerCapture?.(e.pointerId);
+    container.classList.remove("cm-embed-resizing");
+    const { size } = drag;
+    drag = null;
+    if (commit && size) rewriteMarker(view, container, (ref) => ({ ...ref, size }));
+  };
+  handle.addEventListener("pointerup", end(true));
+  handle.addEventListener("pointercancel", end(false));
+  return handle;
+}
+
+/** The width the embed's line gives it: the line's, less its padding. */
+function availableWidth(container: HTMLElement): number {
+  const line = container.closest<HTMLElement>(".cm-line") ?? container.parentElement;
+  if (!line) return Infinity;
+  const style = getComputedStyle(line);
+  return (
+    line.clientWidth -
+    (parseFloat(style.paddingLeft) || 0) -
+    (parseFloat(style.paddingRight) || 0)
+  );
+}
+
+/** The marker this embed's DOM stands for, read fresh from the doc. */
+function markerAt(
+  view: EditorView,
+  container: HTMLElement
+): (DocRef & { from: number; to: number }) | null {
+  const from = view.posAtDOM(container);
+  const line = view.state.doc.lineAt(from);
+  const pattern = new RegExp(EMBED_PATTERN.source, "y");
+  pattern.lastIndex = from - line.from;
+  const m = pattern.exec(line.text);
+  if (!m || m[1] !== container.dataset.docId) return null;
+  return { from, to: from + m[0].length, ...refFromMatch(m) };
+}
+
+function rewriteMarker(
+  view: EditorView,
+  container: HTMLElement,
+  change: (ref: DocRef) => DocRef
+): void {
+  const marker = markerAt(view, container);
+  if (!marker) return;
+  const { from, to, ...ref } = marker;
+  const insert = embedSyntax(change(ref));
+  if (insert === view.state.sliceDoc(from, to)) return;
+  view.dispatch({ changes: { from, to, insert } });
+}
+
+function removeMarker(view: EditorView, container: HTMLElement): void {
+  const marker = markerAt(view, container);
+  if (!marker) return;
+  let { from, to } = marker;
+  // An embed on a line of its own takes its line with it.
+  const { doc } = view.state;
+  const line = doc.lineAt(from);
+  if (line.from === from && line.to === to) {
+    if (line.number < doc.lines) to += 1;
+    else if (line.number > 1) from -= 1;
+  }
+  view.dispatch({
+    changes: { from, to },
+    selection: { anchor: from },
+    userEvent: "delete",
+  });
+  view.focus();
 }
 
 const cleanups = new WeakMap<HTMLElement, () => void>();
@@ -303,12 +433,23 @@ function mountImageOrFrame(
   };
 }
 
-// Marker syntax: [patchwork:docId] or [patchwork:docId/toolId] (ids can't
-// contain `/` or `]`). We scan plain text instead of the markdown syntax tree
+// Marker syntax: [patchwork:docId] or [patchwork:docId/toolId], optionally
+// sized: [patchwork:docId/toolId =640x400], or =x400 for just a height (ids
+// can't contain `/`, `]` or spaces). We scan plain text instead of the markdown syntax tree
 // on purpose: `@codemirror/language` isn't a shared singleton across
 // patchwork's separately-bundled extensions, so `syntaxTree(state)` here would
 // read a different `Language` facet and always come back empty.
-const EMBED_PATTERN = /\[patchwork:([^/\]]+)(?:\/([^\]]+))?\]/g;
+const EMBED_PATTERN =
+  /\[patchwork:([^/\]\s]+)(?:\/([^\]\s]+))?(?:\s+=(\d*)x(\d+))?\]/g;
+
+function refFromMatch(m: RegExpExecArray): DocRef {
+  const [, docId, toolId, width, height] = m;
+  return {
+    docId: docId as DocumentId,
+    toolId: toolId ?? null,
+    size: height ? { width: width ? Number(width) : null, height: Number(height) } : null,
+  };
+}
 
 function getEmbedLinks(view: EditorView) {
   const widgets: Range<Decoration>[] = [];
@@ -323,12 +464,11 @@ function getEmbedLinks(view: EditorView) {
     while ((m = EMBED_PATTERN.exec(text)) !== null) {
       const matchFrom = from + m.index;
       const matchTo = matchFrom + m[0].length;
-      const [matchText, docId, toolId] = m;
-
+      const { docId, toolId, size } = refFromMatch(m);
       if (!isValidDocumentId(docId)) continue;
 
       const embed = Decoration.replace({
-        widget: new EmbedWidget(docId as DocumentId, toolId ?? null, matchText),
+        widget: new EmbedWidget(docId, toolId, size ?? null),
       });
       widgets.push(embed.range(matchFrom, matchTo));
     }
@@ -343,7 +483,7 @@ function getEmbedLinks(view: EditorView) {
 const PATCHWORK_DND = "text/x-patchwork-dnd";
 const PATCHWORK_URLS = "text/x-patchwork-urls";
 
-type DocRef = { docId: DocumentId; toolId: string | null };
+type DocRef = { docId: DocumentId; toolId: string | null; size?: Size | null };
 
 /** Turn an automerge url or a patchwork web link into a DocumentId, or null. */
 function urlToDocId(raw: string): DocumentId | null {
@@ -410,8 +550,10 @@ function extractDocRefs(dt: DataTransfer): DocRef[] {
   return refs;
 }
 
-function embedSyntax({ docId, toolId }: DocRef): string {
-  return toolId ? `[patchwork:${docId}/${toolId}]` : `[patchwork:${docId}]`;
+function embedSyntax({ docId, toolId, size }: DocRef): string {
+  const tool = toolId ? `/${toolId}` : "";
+  const sized = size ? ` =${size.width ?? ""}x${size.height}` : "";
+  return `[patchwork:${docId}${tool}${sized}]`;
 }
 
 /**

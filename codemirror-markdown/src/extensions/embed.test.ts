@@ -232,6 +232,66 @@ describe("rendering embeds", () => {
     expect(view.state.doc.toString()).toBe("a  b");
   });
 
+  describe("resizing", () => {
+    const pointer = (el: Element, type: string, x: number, y: number) =>
+      el.dispatchEvent(
+        new PointerEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          clientX: x,
+          clientY: y,
+          pointerId: 1,
+          button: 0,
+        })
+      );
+
+    it("sizes a frame from its marker", () => {
+      const view = makeView(`[patchwork:${docId()}/raw =320x240]`, 0);
+      const embed = view.dom.querySelector<HTMLElement>(".cm-embed")!;
+      expect(embed.style.width).toBe("320px");
+      expect(embed.querySelector<HTMLElement>("patchwork-view")!.style.height).toBe("240px");
+    });
+
+    it("takes a height on its own, leaving the width to the text", () => {
+      const view = makeView(`[patchwork:${docId()}/raw =x240]`, 0);
+      const embed = view.dom.querySelector<HTMLElement>(".cm-embed")!;
+      expect(embed.style.width).toBe("");
+      expect(embed.querySelector<HTMLElement>("patchwork-view")!.style.height).toBe("240px");
+    });
+
+    it("writes the dragged size into the marker, keeping the same frame", () => {
+      const id = docId();
+      const view = makeView(`a\n[patchwork:${id}/raw]\nb`, 0);
+      const embed = view.dom.querySelector<HTMLElement>(".cm-embed")!;
+      const frame = embed.querySelector<HTMLElement>("patchwork-view")!;
+      // happy-dom has no layout: give the frame and its line a size
+      embed.getBoundingClientRect = () => ({ width: 600 }) as DOMRect;
+      frame.getBoundingClientRect = () => ({ height: 500 }) as DOMRect;
+      Object.defineProperty(embed.closest(".cm-line")!, "clientWidth", { value: 800 });
+
+      const handle = embed.querySelector(".cm-embed-resize")!;
+      pointer(handle, "pointerdown", 100, 100);
+      pointer(handle, "pointermove", 50, 0);
+      expect(frame.style.height).toBe("400px");
+      pointer(handle, "pointerup", 50, 0);
+
+      expect(view.state.doc.toString()).toBe(`a\n[patchwork:${id}/raw =550x400]\nb`);
+      expect(view.dom.querySelector("patchwork-view")).toBe(frame);
+    });
+
+    it("keeps the size when the tool changes", () => {
+      const id = docId();
+      const view = makeView(`[patchwork:${id}/raw =x300]`, 0);
+      view.dom.querySelector("patchwork-view")!.dispatchEvent(
+        new CustomEvent("patchwork:embed-tool-changed", {
+          bubbles: true,
+          detail: { toolId: "file" },
+        })
+      );
+      expect(view.state.doc.toString()).toBe(`[patchwork:${id}/file =x300]`);
+    });
+  });
+
   describe("scrolling back to an embed", () => {
     // CodeMirror throws a line's DOM away when it scrolls out of view and
     // calls toDOM again when it comes back. If the remounted embed waited on
