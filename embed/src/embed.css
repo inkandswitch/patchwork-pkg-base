@@ -30,6 +30,16 @@
   flex-shrink: 0;
 }
 
+.embed-frame {
+  outline: none;
+}
+
+/* Focus mode (embeds in running text): the header only shows while focus is
+   inside the frame. The menu is a descendant, so it keeps the header up. */
+.embed-frame[data-chrome="focus"]:not(:focus-within) .header {
+  display: none;
+}
+
 .embed-frame .title {
   flex: 1;
   min-width: 0;
@@ -58,12 +68,6 @@
   outline: none;
 }
 
-.embed-frame .version {
-  font-size: 0.7em;
-  color: var(--embed-frame-muted);
-  flex-shrink: 0;
-}
-
 .embed-frame .tool-btn {
   display: inline-flex;
   align-items: center;
@@ -90,7 +94,7 @@
   color: var(--embed-frame-fg);
 }
 
-.embed-frame .open-btn {
+.embed-frame .icon-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -105,7 +109,8 @@
   flex-shrink: 0;
 }
 
-.embed-frame .open-btn:hover {
+.embed-frame .icon-btn:hover,
+.embed-frame .icon-btn:focus-visible {
   opacity: 1;
 }
 
@@ -147,8 +152,31 @@
   }
 }
 
+.embed-frame .tool-menu .search {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: var(--studio-space-xs, 0.375rem) var(--studio-space-sm, 0.5rem);
+  border: none;
+  border-bottom: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--embed-frame-border);
+  background: none;
+  color: inherit;
+  font: inherit;
+  outline: none;
+}
+
+.embed-frame .tool-menu .search::placeholder {
+  color: var(--embed-frame-muted);
+}
+
+.embed-frame .tool-menu .empty {
+  padding: var(--studio-space-2xs, 0.25rem) var(--studio-space-sm, 0.5rem);
+  color: var(--embed-frame-muted);
+}
+
 .embed-frame .tool-menu .list {
-  max-height: 200px;
+  max-height: 240px;
   overflow-y: auto;
   padding: var(--studio-space-2xs, 0.25rem);
 }
@@ -167,8 +195,13 @@
   white-space: nowrap;
 }
 
-.embed-frame .tool-menu .item:hover {
+.embed-frame .tool-menu .item[data-active] {
   background: var(--embed-frame-highlight);
+}
+
+.embed-frame .tool-menu .item .hint {
+  color: var(--embed-frame-muted);
+  margin-right: var(--studio-space-xs, 0.375rem);
 }
 
 .embed-frame .tool-menu .item[data-current] {

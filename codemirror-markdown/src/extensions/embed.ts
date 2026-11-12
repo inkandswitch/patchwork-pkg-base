@@ -21,7 +21,9 @@ import { embedTheme } from "../themes/embed.ts";
  * chrome and nests the content view. The inner tool travels via the
  * `embed-tool-id` attribute; tool picks come back as
  * `patchwork:embed-tool-changed` events and are persisted by rewriting the
- * marker (which recreates the widget).
+ * marker (which recreates the widget). The frame's header only shows while the
+ * embed has focus (`embed-chrome="focus"`), and its remove button comes back as
+ * `patchwork:embed-remove`, which deletes the marker.
  */
 class EmbedWidget extends WidgetType {
   readonly docId: DocumentId;
@@ -46,6 +48,12 @@ class EmbedWidget extends WidgetType {
     // focusable by a click anywhere in it (not by Tab), so :focus-within —
     // which shows its frame — holds even when what's clicked can't take focus.
     container.tabIndex = -1;
+
+    container.addEventListener("patchwork:embed-remove", (e) => {
+      // Nested embeds remove themselves from their own host, not from us.
+      e.stopPropagation();
+      this.remove(view, container);
+    });
 
     // An image with no pinned tool is just drawn, with no frame round it. We
     // can't tell until the doc loads, so hold off mounting the frame until then.
@@ -72,6 +80,8 @@ class EmbedWidget extends WidgetType {
     patchworkView.setAttribute("doc-url", `automerge:${this.docId}`);
     patchworkView.setAttribute("tool-id", "embed");
     if (this.toolId) patchworkView.setAttribute("embed-tool-id", this.toolId);
+    patchworkView.setAttribute("embed-chrome", "focus");
+    patchworkView.setAttribute("embed-removable", "");
     // Explicit inline height: without it the element collapses to 0px (the
     // stylesheet rule isn't reliably applied here).
     patchworkView.style.display = "block";
@@ -89,15 +99,45 @@ class EmbedWidget extends WidgetType {
     container.appendChild(patchworkView);
   }
 
+  /** Where this widget's marker is, if it's still exactly there. */
+  private markerRange(
+    view: EditorView,
+    container: HTMLElement
+  ): { from: number; to: number } | null {
+    const from = view.posAtDOM(container);
+    const to = from + this.embedText.length;
+    if (view.state.doc.sliceString(from, to) !== this.embedText) return null;
+    return { from, to };
+  }
+
+  private remove(view: EditorView, container: HTMLElement): void {
+    const range = this.markerRange(view, container);
+    if (!range) return;
+    let { from, to } = range;
+    // An embed on a line of its own takes its line with it.
+    const { doc } = view.state;
+    const line = doc.lineAt(from);
+    if (line.from === from && line.to === to) {
+      if (line.number < doc.lines) to += 1;
+      else if (line.number > 1) from -= 1;
+    }
+    view.dispatch({
+      changes: { from, to },
+      selection: { anchor: from },
+      userEvent: "delete",
+    });
+    view.focus();
+  }
+
   private setTool(
     view: EditorView,
     container: HTMLElement,
     toolId: string
   ): void {
-    const from = view.posAtDOM(container);
-    const to = from + this.embedText.length;
     // Only rewrite if the marker is still exactly where this widget maps to.
-    if (view.state.doc.sliceString(from, to) !== this.embedText) return;
+    const range = this.markerRange(view, container);
+    if (!range) return;
+    const { from, to } = range;
     view.dispatch({
       changes: { from, to, insert: embedSyntax({ docId: this.docId, toolId }) },
     });

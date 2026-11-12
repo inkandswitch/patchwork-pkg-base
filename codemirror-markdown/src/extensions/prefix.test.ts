@@ -78,6 +78,24 @@ describe("block prefixes", () => {
     }
   });
 
+  it("enter at the start of the text pushes the line down, leaving a blank line", () => {
+    for (const [doc, then] of [
+      ["- [ ] task", "\n- [ ] task"],
+      ["- item", "\n- item"],
+      ["1. item", "\n1. item"],
+      ["- a\n- [ ] task", "- a\n\n- [ ] task"],
+      // quote markers stay, so the quote isn't split
+      ["> quote", ">\n> quote"],
+      ["> - [ ] task", ">\n> - [ ] task"],
+    ]) {
+      const prefix = doc.length - doc.split(" ").pop()!.length;
+      const view = makeView(doc, prefix);
+      press(view, "Enter");
+      expect(text(view), doc).toBe(then);
+      expect(head(view), doc).toBe(then.length - doc.split(" ").pop()!.length);
+    }
+  });
+
   it("typing a list marker at the start of an item replaces its own", () => {
     const view = makeView("1. go", 3);
     type(view, "2. ");

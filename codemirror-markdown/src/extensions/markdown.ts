@@ -19,7 +19,7 @@ import { verticalMemory } from "./vertical.ts";
 import { markdownZoom } from "./zoom.ts";
 
 /** Styles */
-import { theme } from "../themes/markdown.ts";
+import { bareUrl, theme } from "../themes/markdown.ts";
 
 // Undo/redo (`history()`/`historyKeymap`) is deliberately absent: the base
 // editor (codemirror-base) owns it, so it can reset the stack when a scope
@@ -66,7 +66,7 @@ export function markdownExtensions() {
 export const bareUrls = {
   props: [
     styleTags({
-      URL: tags.link,
+      URL: bareUrl,
       "Link/URL Image/URL Autolink/URL LinkReference/URL": tags.url,
     }),
   ],

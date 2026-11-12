@@ -206,6 +206,32 @@ describe("rendering embeds", () => {
     expect(view.dom.querySelector(".cm-embed img")).toBeNull();
   });
 
+  it("asks the frame for focus-only chrome and a remove button", () => {
+    const view = makeView(`[patchwork:${docId()}/raw]`, 0);
+    const pv = view.dom.querySelector("patchwork-view")!;
+    expect(pv.getAttribute("embed-chrome")).toBe("focus");
+    expect(pv.hasAttribute("embed-removable")).toBe(true);
+  });
+
+  it("deletes the marker, and its line, when the frame asks to be removed", () => {
+    const id = docId();
+    const view = makeView(`a\n[patchwork:${id}/raw]\nb`, 0);
+    const pv = view.dom.querySelector("patchwork-view")!;
+    pv.dispatchEvent(
+      new CustomEvent("patchwork:embed-remove", { bubbles: true, composed: true })
+    );
+    expect(view.state.doc.toString()).toBe("a\nb");
+  });
+
+  it("keeps the rest of the line when removing an inline embed", () => {
+    const id = docId();
+    const view = makeView(`a [patchwork:${id}/raw] b`, 0);
+    view.dom
+      .querySelector("patchwork-view")!
+      .dispatchEvent(new CustomEvent("patchwork:embed-remove", { bubbles: true }));
+    expect(view.state.doc.toString()).toBe("a  b");
+  });
+
   describe("scrolling back to an embed", () => {
     // CodeMirror throws a line's DOM away when it scrolls out of view and
     // calls toDOM again when it comes back. If the remounted embed waited on

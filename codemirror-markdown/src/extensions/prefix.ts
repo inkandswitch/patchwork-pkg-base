@@ -18,6 +18,9 @@ import { EditorView, keymap } from "@codemirror/view";
  *    the line above, rather than sticking);
  *  - Backspace at the start of the text takes off the innermost marker
  *    (`- [ ] x` → `- x` → `x`; `# x` → `x`; `> x` → `x`);
+ *  - Enter at the start of the text pushes the line down, leaving an empty
+ *    line above — not an empty item: `- [ ]` with nothing after it isn't even
+ *    a task. Quote markers stay on the new line, so a quote isn't split;
  *  - Delete at the end of the line before pulls in the text, not the markup;
  *  - typing a marker at the start of the text replaces the line's own
  *    (`1. ` then `2. ` is a `2.` item, not a list inside a list; `## ` on a
@@ -111,6 +114,27 @@ const backspace: StateCommand = ({ state, dispatch }) => {
   return true;
 };
 
+const enter: StateCommand = ({ state, dispatch }) => {
+  const prefix = atTextStart(state);
+  if (!prefix) return false;
+  const line = state.doc.lineAt(prefix.from);
+  // an empty item: let the usual Enter end the list / quote.
+  if (prefix.to >= line.to) return false;
+  const quotes = prefix.marks.findIndex((m) => m !== "QuoteMark");
+  const keep =
+    quotes === -1 ? prefix.to : quotes === 0 ? line.from : prefix.starts[quotes];
+  const insert = doc(state, line.from, keep).trimEnd() + "\n";
+  dispatch(
+    state.update({
+      changes: { from: line.from, insert },
+      selection: EditorSelection.cursor(prefix.to + insert.length),
+      scrollIntoView: true,
+      userEvent: "input",
+    })
+  );
+  return true;
+};
+
 const deleteForward: StateCommand = ({ state, dispatch }) => {
   const sel = state.selection;
   if (sel.ranges.length !== 1 || !sel.main.empty) return false;
@@ -180,9 +204,10 @@ const replaceMarker = EditorView.inputHandler.of((view, from, to, text) => {
 export const prefixes = [
   keepOut,
   replaceMarker,
-  // above lang-markdown's own (Prec.high) Backspace.
+  // above lang-markdown's own (Prec.high) Backspace and Enter.
   Prec.highest(
     keymap.of([
+      { key: "Enter", run: enter },
       { key: "Backspace", run: backspace },
       { key: "Delete", run: deleteForward },
     ])

@@ -1,6 +1,19 @@
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { EditorView } from "@codemirror/view";
-import { tags } from "@lezer/highlight";
+import { Tag, tags } from "@lezer/highlight";
+
+/**
+ * A url written on its own (not inside link syntax). A kind of `tags.link`, so
+ * the theme's link colour reaches it; its own rule here lets it wrap mid-url.
+ */
+export const bareUrl = Tag.define(tags.link);
+
+/**
+ * Urls break anywhere. Otherwise a url too long for the line jumps down to a
+ * line of its own first — leaving a list item's bullet alone on the line
+ * above — and only then breaks.
+ */
+const breakUrl = { wordBreak: "break-all" };
 
 const bodyFont = (style: "serif" | "sans") =>
   style == "serif"
@@ -237,16 +250,17 @@ export const markdownSyntaxHighlighting = (style: "serif" | "sans") =>
     },
     { tag: tags.keyword, ...baseCodeStyles, color: "var(--syntax-keyword, #708)" },
     {
-      tag: [
-        tags.atom,
-        tags.bool,
-        tags.url,
-        tags.contentSeparator,
-        tags.labelName,
-      ],
+      tag: [tags.atom, tags.bool, tags.contentSeparator, tags.labelName],
       ...baseCodeStyles,
       color: "var(--syntax-atom, var(--studio-secondary))",
     },
+    {
+      tag: tags.url,
+      ...baseCodeStyles,
+      color: "var(--syntax-atom, var(--studio-secondary))",
+      ...breakUrl,
+    },
+    { tag: bareUrl, fontFamily: bodyFont(style), ...breakUrl },
     { tag: [tags.literal, tags.inserted], ...baseCodeStyles, color: "var(--syntax-inserted, #164)" },
     { tag: [tags.string, tags.deleted], ...baseCodeStyles, color: "var(--syntax-string, #5f67b5)" },
     {

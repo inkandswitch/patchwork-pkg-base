@@ -9,8 +9,8 @@
     --settings-muted: var(--editor-line-offset-50, #888);
     --settings-rule: var(--editor-fill-offset-20, #ddd);
     --settings-hover: var(--editor-fill-offset-10, #f2f2f2);
-    /* a group of rows sits on a faint wash of the page's own ink */
-    --settings-group: color-mix(in oklch, var(--settings-fg) 4%, var(--settings-fill));
+    /* a group of rows sits on the theme's first fill offset */
+    --settings-group: var(--editor-fill-offset-10, #f2f2f2);
     --settings-well: color-mix(in oklch, var(--settings-fg) 9%, var(--settings-fill));
     --settings-accent: var(--studio-primary, #35f7ca);
     --settings-danger: var(--studio-danger-text, var(--studio-danger, crimson));

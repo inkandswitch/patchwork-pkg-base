@@ -15,6 +15,11 @@ export const linkTheme = EditorView.baseTheme({
       color: "inherit",
     },
   },
+  // an autolink shows its url, which breaks anywhere (see breakUrl in
+  // themes/markdown.ts)
+  ".cm-link-url": {
+    wordBreak: "break-all",
+  },
   // in a heading, the heading's own font (its line class sets it)
   ".cm-md-h1 .cm-link, .cm-md-h2 .cm-link, .cm-md-h3 .cm-link, .cm-md-h4 .cm-link, .cm-md-h5 .cm-link, .cm-md-h6 .cm-link":
     {

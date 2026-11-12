@@ -61,6 +61,23 @@ export const ui = {
 }
 
 export const syntax = [
+	// Block tags first. lezer-markdown tags whole quotes and lists, and every
+	// span inside inherits the tag, so a later rule here would beat the inline
+	// ones on the same span: **bold** in a list item came out at list weight.
+	{
+		tag: t.quote,
+		color: "var(--syntax-quote)",
+		backgroundColor: "var(--syntax-fill-quote)",
+		fontStyle: "var(--syntax-style-quote)",
+		fontWeight: "var(--syntax-weight-quote)",
+	},
+	{
+		tag: t.list,
+		color: "var(--syntax-list)",
+		backgroundColor: "var(--syntax-fill-list)",
+		fontStyle: "var(--syntax-style-list)",
+		fontWeight: "var(--syntax-weight-list)",
+	},
 	{
 		tag: t.comment,
 		color: "var(--syntax-comment)",
@@ -313,20 +330,6 @@ export const syntax = [
 		fontStyle: "var(--syntax-style-link)",
 		fontWeight: "var(--syntax-weight-link)",
 		textDecoration: "underline",
-	},
-	{
-		tag: t.quote,
-		color: "var(--syntax-quote)",
-		backgroundColor: "var(--syntax-fill-quote)",
-		fontStyle: "var(--syntax-style-quote)",
-		fontWeight: "var(--syntax-weight-quote)",
-	},
-	{
-		tag: t.list,
-		color: "var(--syntax-list)",
-		backgroundColor: "var(--syntax-fill-list)",
-		fontStyle: "var(--syntax-style-list)",
-		fontWeight: "var(--syntax-weight-list)",
 	},
 	{
 		tag: t.inserted,

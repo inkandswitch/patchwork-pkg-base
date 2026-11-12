@@ -126,7 +126,11 @@ function getLinks(view: EditorView) {
                 : `mailto:${text}`;
             widgets.push(
               Decoration.replace({
-                widget: new LinkWidget(href, text, inheritedStyle(node.node)),
+                widget: new LinkWidget(
+                  href,
+                  text,
+                  [inheritedStyle(node.node), "cm-link-url"].join(" ").trim()
+                ),
               }).range(
                 node.from,
                 node.to
