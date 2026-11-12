@@ -1,13 +1,15 @@
 /** CodeMirror Extensions */
 import { completionKeymap } from "@codemirror/autocomplete";
 import { defaultKeymap, indentWithTab } from "@codemirror/commands";
-import { markdown } from "@codemirror/lang-markdown";
+import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { foldKeymap, indentOnInput, indentUnit } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { searchKeymap } from "@codemirror/search";
 import { EditorView, keymap } from "@codemirror/view";
 
 import { markdownFormattingKeymap } from "./formatting.ts";
+import { taskCheckboxes } from "./tasks.ts";
+import { markdownZoom } from "./zoom.ts";
 
 /** Styles */
 import { theme } from "../themes/markdown.ts";
@@ -21,6 +23,7 @@ export function markdownExtensions() {
   return [
     ...theme("sans"),
     indentOnInput(),
+    markdownZoom,
     keymap.of([
       ...markdownFormattingKeymap,
       ...defaultKeymap,
@@ -30,7 +33,9 @@ export function markdownExtensions() {
       indentWithTab,
     ]),
     EditorView.lineWrapping,
-    markdown({ codeLanguages: languages }),
+    // GFM base: task lists, tables, strikethrough, autolinks.
+    markdown({ base: markdownLanguage, codeLanguages: languages }),
+    taskCheckboxes,
     indentUnit.of("    "),
   ];
 }

@@ -271,6 +271,10 @@
   text-overflow: ellipsis;
 }
 
+.threepane__title-text[draggable="true"] {
+  -webkit-user-drag: element;
+}
+
 .threepane__title-text--editable {
   cursor: var(--studio-cursor-text, text);
 }

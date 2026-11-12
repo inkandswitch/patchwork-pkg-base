@@ -28,6 +28,9 @@
     "@inkandswitch/patchwork-filesystem": "^0.2.9",
     "@inkandswitch/patchwork-plugins": "^1.2.5",
     "@inkandswitch/patchwork-providers": "^0.5.2",
+    "@kobalte/core": "^0.13.11",
+    "clsx": "^2.1.1",
+    "solid-automerge": "^2.1.1",
     "solid-js": "^1.9.9"
   },
   "devDependencies": {

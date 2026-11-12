@@ -17,7 +17,6 @@ type ThemePreferencesHandle = {
 	change(fn: (doc: any) => void): void
 	on?(event: "change", listener: () => void): void
 	off?(event: "change", listener: () => void): void
-	whenReady?(): Promise<unknown>
 }
 
 export const CURRENT_THEME_SELECTOR = "patchwork:current-theme"
@@ -164,7 +163,6 @@ function ensureThemePreferencesShape(prefsHandle: ThemePreferencesHandle) {
 }
 
 async function useThemePreferencesHandle(prefsHandle: ThemePreferencesHandle) {
-	await prefsHandle.whenReady?.()
 	ensureThemePreferencesShape(prefsHandle)
 
 	if (currentPrefsHandle === prefsHandle) return

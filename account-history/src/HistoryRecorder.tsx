@@ -67,7 +67,6 @@ export function HistoryRecorder(props: PatchworkToolProps<any>) {
 
       // Get document to extract title and type
       const docHandle = await props.repo.find(url);
-      await docHandle.whenReady();
       const doc = docHandle.doc();
 
       if (!doc) {

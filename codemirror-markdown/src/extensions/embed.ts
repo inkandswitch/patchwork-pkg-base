@@ -44,6 +44,25 @@ class EmbedWidget extends WidgetType {
     const container = document.createElement("div");
     container.className = "cm-embed";
 
+    // An image with no pinned tool is just drawn, with no frame round it. We
+    // can't tell until the doc loads, so hold off mounting the frame until then.
+    if (this.toolId) {
+      this.mountFrame(view, container);
+    } else {
+      const cleanup = mountImageOrFrame(this.docId, container, () =>
+        this.mountFrame(view, container)
+      );
+      cleanups.set(container, cleanup);
+    }
+    return container;
+  }
+
+  destroy(dom: HTMLElement) {
+    cleanups.get(dom)?.();
+    cleanups.delete(dom);
+  }
+
+  private mountFrame(view: EditorView, container: HTMLElement): void {
     const patchworkView = document.createElement("patchwork-view");
     // No heads in the url: the embed follows whatever version the host
     // resolves — the active checkpoint when one is checked out, live otherwise.
@@ -65,7 +84,6 @@ class EmbedWidget extends WidgetType {
     });
 
     container.appendChild(patchworkView);
-    return container;
   }
 
   private setTool(
@@ -86,6 +104,88 @@ class EmbedWidget extends WidgetType {
     // Atomic embed: the editor ignores all events; the frame handles them.
     return true;
   }
+}
+
+const cleanups = new WeakMap<HTMLElement, () => void>();
+
+const IMAGE_EXTENSIONS = ["svg", "png", "jpg", "jpeg", "gif", "webp", "bmp"];
+
+type FileDoc = {
+  "@patchwork"?: { type?: string };
+  content?: unknown;
+  mimeType?: string;
+  extension?: string;
+  name?: string;
+};
+
+function isImageDoc(doc: FileDoc | undefined): boolean {
+  if (doc?.["@patchwork"]?.type !== "file") return false;
+  if (!(doc.content instanceof Uint8Array)) return false;
+  return (
+    !!doc.mimeType?.startsWith("image/") ||
+    IMAGE_EXTENSIONS.includes(doc.extension?.toLowerCase() ?? "")
+  );
+}
+
+/**
+ * Look the doc up; if it's an image file, draw it as a bare `<img>` that
+ * follows the doc's content. Anything else (or no `window.repo`) gets the
+ * normal embed frame. Returns a cleanup for when the widget goes away.
+ *
+ * Reads through the realm-local `window.repo`, so an image changed only in a
+ * draft shows its main-branch bytes here.
+ */
+function mountImageOrFrame(
+  docId: DocumentId,
+  container: HTMLElement,
+  mountFrame: () => void
+): () => void {
+  const repo = (window as unknown as { repo?: any }).repo;
+  if (!repo?.find) {
+    mountFrame();
+    return () => {};
+  }
+
+  let disposed = false;
+  let objectUrl: string | undefined;
+  let handle: any;
+  let img: HTMLImageElement | undefined;
+
+  const render = () => {
+    const doc = handle.doc() as FileDoc | undefined;
+    if (!isImageDoc(doc)) return;
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    objectUrl = URL.createObjectURL(
+      new Blob([doc!.content as BlobPart], { type: doc!.mimeType || "" })
+    );
+    img!.src = objectUrl;
+    img!.alt = doc!.name ?? "";
+  };
+
+  Promise.resolve(repo.find(`automerge:${docId}`)).then(
+    (h) => {
+      if (disposed) return;
+      handle = h;
+      if (!isImageDoc(handle.doc())) {
+        mountFrame();
+        return;
+      }
+      container.classList.add("cm-embed-image");
+      img = document.createElement("img");
+      container.appendChild(img);
+      render();
+      handle.on("change", render);
+    },
+    () => {
+      if (!disposed) mountFrame();
+    }
+  );
+
+  return () => {
+    disposed = true;
+    handle?.off?.("change", render);
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+  };
 }
 
 // Marker syntax: [patchwork:docId] or [patchwork:docId/toolId] (ids can't
@@ -200,21 +300,19 @@ function embedSyntax({ docId, toolId }: DocRef): string {
 }
 
 /**
- * Import each OS file dropped from the desktop as a Patchwork `file` document,
- * returning tool-less refs to embed. Uses the realm-local `window.repo` (the
- * documented global) — fine for creating brand-new docs, which aren't subject
- * to draft remapping.
+ * Import each OS file (dropped from the desktop or pasted) as a Patchwork
+ * `file` document, returning tool-less refs to embed. Uses the realm-local
+ * `window.repo` (the documented global) — fine for creating brand-new docs,
+ * which aren't subject to draft remapping.
  */
-async function fileDropRefs(files: FileList): Promise<DocRef[]> {
+async function importFileRefs(files: Iterable<File>): Promise<DocRef[]> {
   const repo = (window as unknown as { repo?: any }).repo;
   if (!repo) {
-    console.warn(
-      "[codemirror-embed] window.repo unavailable; ignoring dropped files"
-    );
+    console.warn("[codemirror-embed] window.repo unavailable; ignoring files");
     return [];
   }
   const refs: DocRef[] = [];
-  for (const file of Array.from(files)) {
+  for (const file of files) {
     try {
       const mimeType = file.type || "application/octet-stream";
       const isText =
@@ -238,7 +336,7 @@ async function fileDropRefs(files: FileList): Promise<DocRef[]> {
       }
     } catch (err) {
       console.warn(
-        "[codemirror-embed] failed to import dropped file",
+        "[codemirror-embed] failed to import file",
         file.name,
         err
       );
@@ -247,18 +345,28 @@ async function fileDropRefs(files: FileList): Promise<DocRef[]> {
   return refs;
 }
 
-function insertRefs(view: EditorView, pos: number, refs: DocRef[]): void {
+/** Insert embeds over `from..to` (a drop point, or a pasted-over selection). */
+function insertRefs(
+  view: EditorView,
+  from: number,
+  refs: DocRef[],
+  to = from
+): void {
   if (refs.length === 0) return;
+  // Files import asynchronously, so the doc may have shrunk in the meantime.
+  const len = view.state.doc.length;
+  from = Math.min(from, len);
+  to = Math.min(to, len);
   let text = refs.map(embedSyntax).join("\n\n");
   // On a non-empty line, add just enough breaks to put the embed on its own line.
-  const line = view.state.doc.lineAt(pos);
-  if (/\S/.test(line.text)) {
-    if (pos > line.from) text = "\n" + text;
-    if (pos < line.to) text = text + "\n";
-  }
+  const { doc } = view.state;
+  const start = doc.lineAt(from);
+  const end = doc.lineAt(to);
+  if (/\S/.test(start.text) && from > start.from) text = "\n" + text;
+  if (/\S/.test(end.text) && to < end.to) text = text + "\n";
   view.dispatch({
-    changes: { from: pos, insert: text },
-    selection: { anchor: pos + text.length },
+    changes: { from, to, insert: text },
+    selection: { anchor: from + text.length },
   });
 }
 
@@ -299,7 +407,9 @@ function embedDropHandlers() {
       // OS files import asynchronously; insert once the docs exist.
       if (dt.files && dt.files.length > 0) {
         event.preventDefault();
-        void fileDropRefs(dt.files).then((refs) => insertRefs(view, pos, refs));
+        void importFileRefs(Array.from(dt.files)).then((refs) =>
+          insertRefs(view, pos, refs)
+        );
         return true;
       }
 
@@ -310,6 +420,24 @@ function embedDropHandlers() {
       if (refs.length === 0) return false;
       event.preventDefault();
       insertRefs(view, pos, refs);
+      return true;
+    },
+    paste(event, view) {
+      // Image pastes (screenshots, "Copy Image") become embedded `file` docs.
+      // A paste that also carries text is left to CodeMirror: rich text from
+      // office apps attaches a picture of itself, and a Finder copy carries
+      // the file's icon alongside its name.
+      const dt = event.clipboardData;
+      if (!dt || dt.getData("text/plain")) return false;
+      const images = Array.from(dt.files ?? []).filter((f) =>
+        f.type.startsWith("image/")
+      );
+      if (images.length === 0) return false;
+      event.preventDefault();
+      const { from, to } = view.state.selection.main;
+      void importFileRefs(images).then((refs) =>
+        insertRefs(view, from, refs, to)
+      );
       return true;
     },
   });

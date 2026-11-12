@@ -128,6 +128,27 @@ function DocumentTitleInner(props: {
     });
   }
 
+  // Dragging the title drags the doc, in the formats the sidebar's document
+  // list (and the browser) take: drop it there and it's added as a link.
+  function onDragStart(event: DragEvent) {
+    const url = props.docUrl();
+    const data = event.dataTransfer;
+    if (!url || !data) return;
+    const name = title() ?? "Untitled";
+    const type = typeId();
+    data.effectAllowed = "copyLink";
+    data.setData(
+      "text/x-patchwork-dnd",
+      JSON.stringify({ source: "threepane", items: [{ url, name, type }] })
+    );
+    data.setData("text/x-patchwork-urls", JSON.stringify([url]));
+    data.setData(
+      "text/uri-list",
+      `${location.origin}${location.pathname}#doc=${url}\r\n`
+    );
+    data.setData("text/plain", url);
+  }
+
   return (
     <Show
       when={editing()}
@@ -135,6 +156,8 @@ function DocumentTitleInner(props: {
         <span
           class="threepane__title-text"
           classList={{ "threepane__title-text--editable": canEdit() }}
+          draggable={true}
+          onDragStart={onDragStart}
           onClick={startEditing}
           title={canEdit() ? "Rename" : undefined}
         >
