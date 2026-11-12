@@ -1,6 +1,6 @@
 import {render} from "solid-js/web"
 import html from "solid-js/html"
-import {createSignal} from "solid-js"
+import {createMemo, createSignal, For, Show} from "solid-js"
 import {Presence} from "@automerge/automerge-repo"
 import {automergeUrlToServiceWorkerUrl} from "@inkandswitch/patchwork-filesystem"
 import {subscribe} from "@inkandswitch/patchwork-providers"
@@ -169,25 +169,44 @@ function DocPresence(handle, element) {
 	connectToSelectedDocProvider(element)
 	const session = joinDoc(handle)
 
-	function face(entry, fadedFn) {
-		const color = entry.color || "#888"
-		const initial = (entry.name || "?")[0].toUpperCase()
-		const imgUrl = entry.avatarUrl
-			? automergeUrlToServiceWorkerUrl(entry.avatarUrl)
-			: null
+	// A face is built once and kept: everything about it that can change is
+	// read through `entry` (an accessor), so a peer's heartbeat updates the face
+	// it has rather than replacing it.
+	function face(entry, faded) {
+		const imgUrl = () => {
+			const avatarUrl = entry()?.avatarUrl
+			return avatarUrl ? automergeUrlToServiceWorkerUrl(avatarUrl) : null
+		}
 		return html`<div
-			class="doc-presence-face"
+			class=${() =>
+				"doc-presence-face" + (faded() ? " doc-presence-face--faded" : "")}
 			style=${() => {
-				let s = `--face-color:${color}; opacity:${fadedFn() ? 0.35 : 1};`
-				if (imgUrl)
-					s += ` background-image: url("${imgUrl}"); color: transparent;`
+				let s = `--face-color:${entry()?.color || "#888"};`
+				const url = imgUrl()
+				if (url) s += ` background-image: url("${url}"); color: transparent;`
 				return s
 			}}
-			title=${entry.name}
+			title=${() => entry()?.name}
 		>
-			${initial}
+			${() => (entry()?.name || "?")[0].toUpperCase()}
 		</div>`
 	}
+
+	// One face per contact, keyed by its url. `session.peers()` is a fresh array
+	// of fresh objects on every presence event (a heartbeat every couple of
+	// seconds), so the list is keyed on the urls, which are stable, and each
+	// face looks its own peer up.
+	const peerUrls = createMemo(
+		() => session.peers().map(p => p.value.contactUrl),
+		[],
+		{equals: (a, b) => a.length === b.length && a.every((url, i) => url === b[i])},
+	)
+	// holds on to the last state it saw: a face can outlive its peer by a tick
+	const peerState = url =>
+		createMemo(
+			prev =>
+				session.peers().find(p => p.value.contactUrl === url)?.value ?? prev,
+		)
 
 	const style = document.createElement("style")
 	style.textContent = `
@@ -210,29 +229,50 @@ function DocPresence(handle, element) {
 			line-height: 1;
 			overflow: hidden;
 			flex-shrink: 0;
-			transition: opacity max(1ms, calc(0.3s * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) ease;
+			transition:
+				opacity max(1ms, calc(0.3s * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) ease,
+				scale max(1ms, calc(150ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 			background-color: var(--color-base-200, #eee);
 			background-size: cover;
 			background-position: center;
 			color: var(--color-base-content, #333);
+		}
+		/* someone whose window isn't focused */
+		.doc-presence-face--faded {
+			opacity: 0.35;
+		}
+		/* Someone arriving while you watch fades in. The faces already here when
+		   the bar is drawn don't: \`data-live\` goes on a frame after that. */
+		@starting-style {
+			.doc-presence[data-live] .doc-presence-face,
+			.doc-presence[data-live] .doc-presence-face--faded {
+				opacity: 0;
+				scale: 0.8;
+			}
 		}
 	`
 	element.appendChild(style)
 
 	const dispose = render(
 		() => html`<div class="doc-presence">
-			${() => {
-				const s = selfInfo()
-				if (!s) return null
-				return face(s, () => !focused())
-			}}
-			${() =>
-				session.peers().map(p => face(p.value, () => !p.value.focused))}
+			<${Show} when=${() => selfInfo()}>
+				${() => face(selfInfo, () => !focused())}
+			<//>
+			<${For} each=${() => peerUrls()}>
+				${url => {
+					const state = peerState(url)
+					return face(state, () => !state()?.focused)
+				}}
+			<//>
 		</div>`,
 		element,
 	)
+	const live = requestAnimationFrame(() =>
+		element.querySelector(".doc-presence")?.setAttribute("data-live", ""),
+	)
 
 	return () => {
+		cancelAnimationFrame(live)
 		leaveDoc(handle)
 		style.remove()
 		dispose()
