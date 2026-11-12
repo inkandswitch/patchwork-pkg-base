@@ -58,6 +58,14 @@ describe("gfm task lists", () => {
     expect(boxes(view)[0].checked).toBe(true);
   });
 
+  it("doesn't tick on a right-click", () => {
+    const view = makeView("- [ ] todo");
+    boxes(view)[0].dispatchEvent(
+      new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 2 })
+    );
+    expect(view.state.doc.toString()).toBe("- [ ] todo");
+  });
+
   it("unticks a checked task when clicked", () => {
     const view = makeView("- [ ] a\n- [X] b");
     click(boxes(view)[1]);

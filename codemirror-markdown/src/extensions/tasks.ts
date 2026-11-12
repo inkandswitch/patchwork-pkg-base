@@ -36,6 +36,8 @@ class TaskWidget extends WidgetType {
     // mousedown, not click: keeps focus/selection where it was and stops
     // CodeMirror from moving the cursor onto the line.
     box.addEventListener("mousedown", (event) => {
+      // only the main button ticks it: a right-click is for the list menu.
+      if (event.button !== 0) return;
       event.preventDefault();
       if (box.disabled) return;
       toggle(view, view.posAtDOM(box));
