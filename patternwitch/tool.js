@@ -792,8 +792,8 @@ export default function PatternWitchTool(handle, element) {
 
       <div class="section-label">Canvas size</div>
       <div class="size-row">
-        <label>W <input type="number" data-dim="w" min="${MIN_SIZE}" max="${MAX_SIZE}" value="${doc.width}"/></label>
-        <label>H <input type="number" data-dim="h" min="${MIN_SIZE}" max="${MAX_SIZE}" value="${doc.height}"/></label>
+        <label>W <input type="number" data-dim="w" data-size="${doc.width}" min="${MIN_SIZE}" max="${MAX_SIZE}" value="${doc.width}"/></label>
+        <label>H <input type="number" data-dim="h" data-size="${doc.height}" min="${MIN_SIZE}" max="${MAX_SIZE}" value="${doc.height}"/></label>
         <button class="btn" data-apply-size>${icon("grid")} Apply</button>
       </div>
 
@@ -840,6 +840,33 @@ export default function PatternWitchTool(handle, element) {
 
     backdrop.append(modal);
     modalMount.append(backdrop);
+  }
+
+  // Bring the open modal up to date with the doc, in place. Rebuilding it
+  // (renderModal) replaces the colour input a picker is attached to, which
+  // closes the picker mid-drag, and resets a size someone is halfway through
+  // typing, so that is kept for when the rows themselves change.
+  function syncModal() {
+    const modal = modalMount.querySelector(".modal");
+    const doc = getDoc();
+    const rows = modal ? modal.querySelectorAll(".palette-row") : [];
+    if (!modal || rows.length !== doc.palette.length) return renderModal();
+    const active = modal.getRootNode().activeElement;
+    rows.forEach((rowEl, i) => {
+      const input = rowEl.querySelector('input[type="color"]');
+      // the one being edited is ahead of the doc, not behind it
+      if (input !== active && input.value !== doc.palette[i])
+        input.value = doc.palette[i];
+      rowEl.querySelector(".hex").textContent = input.value;
+    });
+    for (const [dim, size] of [["w", doc.width], ["h", doc.height]]) {
+      const input = modal.querySelector(`[data-dim="${dim}"]`);
+      // only when the canvas itself changed size: an unapplied edit stays
+      if (input.dataset.size !== String(size)) {
+        input.dataset.size = size;
+        if (input !== active) input.value = size;
+      }
+    }
   }
 
   function removeColor(index) {
@@ -901,7 +928,7 @@ export default function PatternWitchTool(handle, element) {
   const onChange = () => {
     drawCanvas();
     renderPalette();
-    if (showSettings) renderModal();
+    if (showSettings) syncModal();
   };
   handle.on("change", onChange);
 
