@@ -217,3 +217,20 @@ describe("clicking a rendered link", () => {
   });
 });
 
+describe("rendered links keep the styling they sit in", () => {
+  it("bold, italic and struck", () => {
+    const text = "**ok [a](https://a.com)** and *ok [b](https://b.com)* and ~~[c](https://c.com)~~ and [d](https://d.com)\n\nend";
+    const view = makeView(text);
+    view.dispatch({ selection: { anchor: text.length } });
+    const classes = Array.from(
+      view.contentDOM.querySelectorAll<HTMLAnchorElement>("a.cm-link")
+    ).map((a) => [a.textContent, a.className]);
+    expect(classes).toEqual([
+      ["a", "cm-link cm-md-strong"],
+      ["b", "cm-link cm-md-em"],
+      ["c", "cm-link cm-md-strike"],
+      ["d", "cm-link"],
+    ]);
+  });
+});
+
