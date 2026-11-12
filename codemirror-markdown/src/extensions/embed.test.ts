@@ -205,4 +205,50 @@ describe("rendering embeds", () => {
     await settle();
     expect(view.dom.querySelector(".cm-embed img")).toBeNull();
   });
+
+  describe("scrolling back to an embed", () => {
+    // CodeMirror throws a line's DOM away when it scrolls out of view and
+    // calls toDOM again when it comes back. If the remounted embed waited on
+    // repo.find it would start 0px tall and then grow, jumping the text.
+    const neverLoads = () => {
+      (window as any).repo.find = () => new Promise(() => {});
+    };
+
+    it("draws a seen image straight away, at its known size", async () => {
+      withDoc(imageDoc);
+      const id = docId();
+      makeView(`[patchwork:${id}]`, 0);
+      let img: HTMLImageElement | null = null;
+      await vi.waitFor(() => {
+        img = document.querySelector(".cm-embed-image > img");
+        expect(img).not.toBeNull();
+      });
+      Object.defineProperty(img, "naturalWidth", { value: 640 });
+      Object.defineProperty(img, "naturalHeight", { value: 480 });
+      img!.dispatchEvent(new Event("load"));
+      document.body.innerHTML = "";
+
+      neverLoads();
+      const view = makeView(`[patchwork:${id}]`, 0);
+      const again = view.dom.querySelector(".cm-embed-image > img")!;
+      expect(again).not.toBeNull();
+      expect(again.getAttribute("src")).toBe(img!.getAttribute("src"));
+      expect(again.getAttribute("width")).toBe("640");
+      expect(again.getAttribute("height")).toBe("480");
+    });
+
+    it("frames a seen non-image straight away", async () => {
+      withDoc({ "@patchwork": { type: "file" }, content: "# hi" });
+      const id = docId();
+      makeView(`[patchwork:${id}]`, 0);
+      await vi.waitFor(() =>
+        expect(document.querySelector("patchwork-view")).not.toBeNull()
+      );
+      document.body.innerHTML = "";
+
+      neverLoads();
+      const view = makeView(`[patchwork:${id}]`, 0);
+      expect(view.dom.querySelector("patchwork-view")).not.toBeNull();
+    });
+  });
 });

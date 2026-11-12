@@ -128,9 +128,52 @@ function isImageDoc(doc: FileDoc | undefined): boolean {
 }
 
 /**
- * Look the doc up; if it's an image file, draw it as a bare `<img>` that
- * follows the doc's content. Anything else (or no `window.repo`) gets the
- * normal embed frame. Returns a cleanup for when the widget goes away.
+ * What each embedded doc turned out to be, kept for the life of the page.
+ *
+ * CodeMirror throws a line's DOM away when it scrolls out of view and calls
+ * `toDOM` again when it comes back. Waiting on `repo.find` each time would
+ * remount the embed at 0px and grow it a moment later, jumping the text
+ * (scrolling up, the growth lands above what you're reading). With this the
+ * remount is drawn at once, at its last size. The object urls stay alive with
+ * the entry, so a remounted `<img>` needs no re-decode of the bytes into a
+ * blob either.
+ */
+type Seen =
+  | { kind: "frame" }
+  | {
+      kind: "image";
+      content: Uint8Array;
+      url: string;
+      name: string;
+      width?: number;
+      height?: number;
+    };
+const seen = new Map<DocumentId, Seen>();
+
+type ImageSeen = Extract<Seen, { kind: "image" }>;
+
+/** The cached image for this doc, made fresh if its bytes changed. */
+function imageFor(docId: DocumentId, doc: FileDoc): ImageSeen {
+  const prev = seen.get(docId);
+  if (prev?.kind === "image" && prev.content === doc.content) return prev;
+  if (prev?.kind === "image") URL.revokeObjectURL(prev.url);
+  const content = doc.content as Uint8Array;
+  const next: ImageSeen = {
+    kind: "image",
+    content,
+    url: URL.createObjectURL(
+      new Blob([content as BlobPart], { type: doc.mimeType || "" })
+    ),
+    name: doc.name ?? "",
+  };
+  seen.set(docId, next);
+  return next;
+}
+
+/**
+ * Draw an image doc as a bare `<img>` that follows the doc's content; anything
+ * else (or no `window.repo`) gets the normal embed frame. A doc seen before is
+ * drawn straight away from `seen`. Returns a cleanup for when the widget goes.
  *
  * Reads through the realm-local `window.repo`, so an image changed only in a
  * draft shows its main-branch bytes here.
@@ -140,51 +183,80 @@ function mountImageOrFrame(
   container: HTMLElement,
   mountFrame: () => void
 ): () => void {
-  const repo = (window as unknown as { repo?: any }).repo;
-  if (!repo?.find) {
+  const known = seen.get(docId);
+  if (known?.kind === "frame") {
     mountFrame();
     return () => {};
   }
 
+  const repo = (window as unknown as { repo?: any }).repo;
   let disposed = false;
-  let objectUrl: string | undefined;
   let handle: any;
   let img: HTMLImageElement | undefined;
 
+  const show = (image: ImageSeen) => {
+    if (!img) {
+      container.classList.add("cm-embed-image");
+      img = document.createElement("img");
+      // Width/height attributes give the box its aspect ratio before the
+      // image decodes (the theme keeps `height: auto`).
+      img.addEventListener("load", () => {
+        const current = seen.get(docId);
+        if (current?.kind !== "image" || img!.src !== current.url) return;
+        current.width = img!.naturalWidth;
+        current.height = img!.naturalHeight;
+        img!.width = current.width;
+        img!.height = current.height;
+      });
+      container.appendChild(img);
+    }
+    if (img.getAttribute("src") === image.url) return;
+    if (image.width && image.height) {
+      img.width = image.width;
+      img.height = image.height;
+    } else {
+      img.removeAttribute("width");
+      img.removeAttribute("height");
+    }
+    img.alt = image.name;
+    img.src = image.url;
+  };
+
   const render = () => {
     const doc = handle.doc() as FileDoc | undefined;
-    if (!isImageDoc(doc)) return;
-    if (objectUrl) URL.revokeObjectURL(objectUrl);
-    objectUrl = URL.createObjectURL(
-      new Blob([doc!.content as BlobPart], { type: doc!.mimeType || "" })
-    );
-    img!.src = objectUrl;
-    img!.alt = doc!.name ?? "";
+    if (isImageDoc(doc)) show(imageFor(docId, doc!));
   };
+
+  if (known?.kind === "image") show(known);
+
+  if (!repo?.find) {
+    if (!img) mountFrame();
+    return () => {};
+  }
 
   Promise.resolve(repo.find(`automerge:${docId}`)).then(
     (h) => {
       if (disposed) return;
       handle = h;
-      if (!isImageDoc(handle.doc())) {
+      const doc = handle.doc();
+      if (!isImageDoc(doc)) {
+        if (doc) seen.set(docId, { kind: "frame" });
+        img?.remove();
+        container.classList.remove("cm-embed-image");
         mountFrame();
         return;
       }
-      container.classList.add("cm-embed-image");
-      img = document.createElement("img");
-      container.appendChild(img);
       render();
       handle.on("change", render);
     },
     () => {
-      if (!disposed) mountFrame();
+      if (!disposed && !img) mountFrame();
     }
   );
 
   return () => {
     disposed = true;
     handle?.off?.("change", render);
-    if (objectUrl) URL.revokeObjectURL(objectUrl);
   };
 }
 
