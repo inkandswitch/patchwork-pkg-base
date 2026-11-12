@@ -25,7 +25,13 @@ import {
 } from "@inkandswitch/patchwork-providers-solid";
 
 /** Styles */
-import { createMemo, createResource, Show } from "solid-js";
+import {
+  createMemo,
+  createResource,
+  createSignal,
+  onCleanup,
+  Show,
+} from "solid-js";
 import {
   createCommentForRange,
   type Comment,
@@ -245,10 +251,31 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
   };
 
   // The editor is only mounted once the datatype's extensions (themes, syntax
-  // highlighting) are in hand, so it never paints unthemed first.
-  const [datatypeExtensions] = createResource(() =>
-    loadCodeMirrorExtensionsForDoc(props.handle)
+  // highlighting) are in hand, so it never paints unthemed first. They come
+  // from other packages, which can register after we mount (a refresh races
+  // them) or re-register over themselves, so look again whenever one for this
+  // doc's type comes or goes; the editor swaps them in without remounting.
+  const [extensionsVersion, setExtensionsVersion] = createSignal(1);
+  const bump = () => setExtensionsVersion((v) => v + 1);
+  const extensionRegistry = getRegistry<any>("codemirror:extension");
+  onCleanup(
+    extensionRegistry.on("registered", (ext) => {
+      if (supportsDoc(ext, props.handle)) bump();
+    })
   );
+  onCleanup(
+    extensionRegistry.on("removed", (id) => {
+      if (datatypeExtensionIds.has(id)) bump();
+    })
+  );
+  let datatypeExtensionIds = new Set<string>();
+  const [datatypeExtensions] = createResource(extensionsVersion, async () => {
+    const { ids, extensions } = await loadCodeMirrorExtensionsForDoc(
+      props.handle
+    );
+    datatypeExtensionIds = ids;
+    return extensions;
+  });
 
   // Base CodeMirror extensions (context-specific, not language-specific)
   const extensions = (): Extension[] => [
@@ -270,7 +297,7 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
         return true;
       },
     }),
-    ...(datatypeExtensions() ?? []),
+    ...(datatypeExtensions.latest ?? []),
   ];
 
   return (
@@ -285,7 +312,8 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
     >
       <div style={{ display: "flex", height: "100%" }}>
         <div style={{ position: "relative", flex: 1, height: "100%" }}>
-          <Show when={datatypeExtensions.state === "ready"}>
+          {/* `latest`: stay mounted while a later lookup refreshes them */}
+          <Show when={datatypeExtensions.latest}>
             <CodeMirror
               handle={props.handle as DocHandle<TextDoc>}
               repo={props.repo}
@@ -384,22 +412,27 @@ function commentTargetStyle(isEmphasised: boolean): string {
   `;
 }
 
+function supportsDoc(ext: any, handle: DocHandle<unknown>): boolean {
+  const docType = (handle.doc() as any)?.["@patchwork"]?.type;
+  return (
+    ext.supportedDatatypes === "*" ||
+    (Array.isArray(ext.supportedDatatypes) &&
+      ext.supportedDatatypes.includes(docType))
+  );
+}
+
 async function loadCodeMirrorExtensionsForDoc(
   handle: DocHandle<unknown>
-): Promise<Extension[]> {
-  const docType = (handle.doc() as any)?.["@patchwork"]?.type;
+): Promise<{ ids: Set<string>; extensions: Extension[] }> {
   const registry = getRegistry<any>("codemirror:extension");
   const loaded = await registry.loadAll(
-    registry.filter((ext) => {
-      return (
-        ext.supportedDatatypes === "*" ||
-        (Array.isArray(ext.supportedDatatypes) &&
-          ext.supportedDatatypes.includes(docType))
-      );
-    })
+    registry.filter((ext) => supportsDoc(ext, handle))
   );
-  return loaded.flatMap((ext) => {
-    const impl = ext.module;
-    return Array.isArray(impl) ? impl : [impl];
-  });
+  return {
+    ids: new Set(loaded.map((ext) => ext.id)),
+    extensions: loaded.flatMap((ext) => {
+      const impl = ext.module;
+      return Array.isArray(impl) ? impl : [impl];
+    }),
+  };
 }
