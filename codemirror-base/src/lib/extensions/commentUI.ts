@@ -7,6 +7,7 @@ import {
 import {
   EditorView,
   showTooltip,
+  tooltips,
   type Tooltip,
   type TooltipView,
 } from "@codemirror/view";
@@ -512,5 +513,25 @@ export const commentUI = (options: CommentUIOptions): Extension => {
   ensureCommentButtonVars();
   const ui: CommentUIState = { suppressed: null };
   const field = commentUIField(options, ui);
-  return [field, commentInteractions(options, ui, field), commentUITheme];
+  return [
+    field,
+    commentInteractions(options, ui, field),
+    commentUITheme,
+    tooltips({ tooltipSpace: visibleEditorBox }),
+  ];
 };
+
+// The room a tooltip has: the editor's own visible box, not the whole
+// window. Measured against the window, a button over a selection on the top
+// visible line "fits" above it — under whatever chrome sits above the editor
+// (a frame's title bar) — so it never flips below. Against this, it does.
+function visibleEditorBox(view: EditorView) {
+  const box = view.dom.getBoundingClientRect();
+  const win = view.dom.ownerDocument.defaultView ?? window;
+  return {
+    top: Math.max(0, box.top),
+    left: Math.max(0, box.left),
+    bottom: Math.min(win.innerHeight, box.bottom),
+    right: Math.min(win.innerWidth, box.right),
+  };
+}
