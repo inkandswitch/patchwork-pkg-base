@@ -3,7 +3,7 @@ import { EditorView } from "@codemirror/view";
 export const linkTheme = EditorView.baseTheme({
   ".cm-link": {
     textDecoration: "underline",
-    cursor: "var(--studio-cursor-pointer, pointer)",
+    // a plain click edits; it's a pointer only while Mod is held (below).
     // the widget replaces the link's text, so the theme's `t.link` highlight
     // (theming/src/codemirror-theme.ts) never reaches it: read the same tokens.
     fontFamily: "var(--markdown-body-family, var(--text-editor-family-sans))",

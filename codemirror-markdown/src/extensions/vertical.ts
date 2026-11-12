@@ -42,7 +42,10 @@ export const vertical =
 
     const now = view.state.selection.main;
     const to = view.state.doc.lineAt(now.head).number;
-    const back = streak.visited.get(to);
+    // moving between the rows of one wrapped line is just a move: only
+    // arriving on a different line goes back to where the caret was on it.
+    const back = to !== from ? streak.visited.get(to) : undefined;
+    if (to === from) streak.visited.set(to, now.head);
     if (back !== undefined && back !== now.head && view.state.doc === streak.doc) {
       view.dispatch({
         selection: EditorSelection.cursor(back),

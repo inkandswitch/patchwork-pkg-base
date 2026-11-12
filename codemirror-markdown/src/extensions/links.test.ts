@@ -182,3 +182,38 @@ describe("autolinks", () => {
     expect(view.contentDOM.textContent).toContain("<fax:+44>");
   });
 });
+
+describe("clicking a rendered link", () => {
+  const text = "go to [the tale](https://a.com) or <fax:+44> now\n\nend";
+  // one event at a time: a whole mousedown/click in happy-dom's
+  // contenteditable trips CodeMirror's DOM observer mid-update.
+  const fire = (el: Element, type: string, init: MouseEventInit = {}) => {
+    const event = new MouseEvent(type, { bubbles: true, cancelable: true, button: 0, ...init });
+    el.dispatchEvent(event);
+    return event;
+  };
+  const rendered = (view: EditorView) =>
+    Array.from(view.contentDOM.querySelectorAll<HTMLAnchorElement>("a.cm-link"));
+
+  it("doesn't open on a plain click, or let the browser follow it", () => {
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    const view = makeView(text);
+    view.dispatch({ selection: { anchor: text.length } });
+    for (const a of rendered(view)) {
+      expect(fire(a, "click").defaultPrevented).toBe(true);
+    }
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it("opens on Mod-click anywhere along it", () => {
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    const view = makeView(text);
+    view.dispatch({ selection: { anchor: text.length } });
+    const [tale, fax] = rendered(view);
+    fire(tale, "mousedown", { metaKey: true, ctrlKey: true });
+    expect(open).toHaveBeenLastCalledWith("https://a.com", "_blank", "noopener,noreferrer");
+    fire(fax, "mousedown", { metaKey: true, ctrlKey: true });
+    expect(open).toHaveBeenLastCalledWith("fax:+44", "_blank", "noopener,noreferrer");
+  });
+});
+

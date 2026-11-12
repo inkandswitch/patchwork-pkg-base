@@ -76,7 +76,7 @@ describe("gfm task lists", () => {
     const faded = Array.from(
       view.contentDOM.querySelectorAll(".cm-task-done")
     ).map((el) => el.textContent);
-    // the margin (margin.ts) splits it: the space after the box hangs.
-    expect(faded.join("")).toBe(" done");
+    // the margin (margin.ts) hides the space after the box.
+    expect(faded.join("")).toBe("done");
   });
 });

@@ -61,17 +61,18 @@ class LinkWidget extends WidgetType {
     link.className = "cm-link";
     link.title = this.url;
 
-    link.onclick = (e) => {
-      e.preventDefault();
-      openUrl(this.url, link);
-    };
+    // Clicks work as on any other link in the editor: a plain click puts
+    // the caret there (which shows the markup), and Mod-click opens it — see
+    // modClick below. The browser mustn't follow the href itself.
+    link.addEventListener("click", (e) => e.preventDefault());
 
     return link;
   }
 
-  ignoreEvent(e: Event) {
-    // Let click events through to our widget
-    return e.type !== "click";
+  ignoreEvent() {
+    // hand every event to the editor, so it places the caret and modClick
+    // sees the Mod-click.
+    return false;
   }
 }
 
@@ -207,7 +208,17 @@ export const urlAt = (state: EditorState, pos: number) =>
  * nearest position, so without the distance check the blank space past the
  * end of a line would count as hovering a link that ends the line.
  */
-function linkUnderPointer(view: EditorView, x: number, y: number) {
+function linkUnderPointer(
+  view: EditorView,
+  x: number,
+  y: number,
+  target?: EventTarget | null
+) {
+  // over a rendered link: its whole width is the link, not just near an edge.
+  const widget =
+    target instanceof Element ? target.closest(".cm-link") : null;
+  if (widget && view.contentDOM.contains(widget))
+    return linkAt(view.state, view.posAtDOM(widget));
   const hit = view.posAndSideAtCoords({ x, y });
   if (!hit) return null;
   const at = view.coordsAtPos(hit.pos, hit.assoc);
@@ -254,7 +265,7 @@ const hoverField = StateField.define<DecorationSet>({
  */
 const modClick = ViewPlugin.fromClass(
   class {
-    pointer: { x: number; y: number } | null = null;
+    pointer: { x: number; y: number; target: EventTarget | null } | null = null;
     mod = false;
 
     constructor(readonly view: EditorView) {}
@@ -263,7 +274,7 @@ const modClick = ViewPlugin.fromClass(
       const { view } = this;
       const link =
         this.mod && this.pointer
-          ? linkUnderPointer(view, this.pointer.x, this.pointer.y)
+          ? linkUnderPointer(view, this.pointer.x, this.pointer.y, this.pointer.target)
           : null;
       let current: { from: number; to: number } | null = null;
       view.state.field(hoverField).between(0, view.state.doc.length, (from, to) => {
@@ -279,14 +290,19 @@ const modClick = ViewPlugin.fromClass(
     eventHandlers: {
       mousedown(event, view) {
         if (event.button !== 0 || !modHeld(event)) return false;
-        const link = linkUnderPointer(view, event.clientX, event.clientY);
+        const link = linkUnderPointer(
+          view,
+          event.clientX,
+          event.clientY,
+          event.target
+        );
         if (!link) return false;
         event.preventDefault();
         openUrl(link.url, view.dom);
         return true;
       },
       mousemove(event) {
-        this.pointer = { x: event.clientX, y: event.clientY };
+        this.pointer = { x: event.clientX, y: event.clientY, target: event.target };
         this.mod = modHeld(event);
         this.refresh();
       },

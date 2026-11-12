@@ -77,4 +77,15 @@ describe("vertical memory", () => {
     down(view);
     expect(head(view)).toBe(doc.indexOf("second") + 1 + 3);
   });
+
+  it("moves between the rows of one wrapped line", () => {
+    // a stand-in for moving down a visual row within the same line
+    const withinLine: Command = (view) => {
+      view.dispatch({ selection: { anchor: view.state.selection.main.head + 10 } });
+      return true;
+    };
+    const view = makeView(doc, 2);
+    vertical(withinLine)(view);
+    expect(head(view)).toBe(12);
+  });
 });

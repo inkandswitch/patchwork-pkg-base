@@ -1,8 +1,10 @@
-import { syntaxTree } from "@codemirror/language";
+import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
+import { indentMore } from "@codemirror/commands";
 import {
   type ChangeSpec,
   type EditorState,
   type Range,
+  Prec,
   StateEffect,
   StateField,
 } from "@codemirror/state";
@@ -11,6 +13,8 @@ import {
   EditorView,
   ViewPlugin,
   WidgetType,
+  keymap,
+  type Command,
   type DecorationSet,
 } from "@codemirror/view";
 
@@ -92,8 +96,12 @@ export function renumber(state: EditorState, list: SyntaxNode): ChangeSpec[] {
   const all = items(list);
   const firstMark = all[0]?.getChild("ListMark");
   if (!firstMark) return changes;
-  const start =
-    parseInt(state.doc.sliceString(firstMark.from, firstMark.to), 10) || 0;
+  // a list inside a list item starts again from 1; a top-level one keeps its
+  // first number (`5.` there is usually on purpose).
+  const nested = list.parent?.name === "ListItem";
+  const start = nested
+    ? 1
+    : parseInt(state.doc.sliceString(firstMark.from, firstMark.to), 10) || 0;
   all.forEach((item, i) => {
     const mark = item.getChild("ListMark");
     if (!mark) return;
@@ -157,6 +165,46 @@ export function moveDoneDown(
 
 const countDone = (state: EditorState, list: SyntaxNode) =>
   items(list).filter((it) => done(state, it)).length;
+
+/**
+ * Tab on an ordered item indents it as usual, and if that makes it the first
+ * item of a new list inside the one above, numbers it 1 — `4.` tabbed in
+ * under `3.` is the start of a sub-list, not its fourth item.
+ */
+/** The first non-space on a line: where its list marker is, if any. */
+const textStart = (line: { from: number; text: string }) =>
+  line.from + /^\s*/.exec(line.text)![0].length;
+
+const tabInOrderedList: Command = (view) => {
+  const before = view.state;
+  const line = before.doc.lineAt(before.selection.main.head);
+  const was = listAt(before, textStart(line));
+  if (!was || was.name !== "OrderedList" || before.selection.ranges.length !== 1)
+    return false;
+  if (!indentMore(view)) return false;
+  const { state } = view;
+  const now = state.doc.lineAt(state.selection.main.head);
+  ensureSyntaxTree(state, now.to, 100);
+  const list = listAt(state, textStart(now));
+  const first = list && items(list)[0];
+  const mark = first?.getChild("ListMark");
+  if (
+    !list ||
+    !mark ||
+    list.name !== "OrderedList" ||
+    list.parent?.name !== "ListItem" ||
+    state.doc.lineAt(first!.from).number !== now.number
+  )
+    return true;
+  const text = state.doc.sliceString(mark.from, mark.to);
+  const want = `1${text.slice(-1)}`;
+  if (text !== want)
+    view.dispatch({
+      changes: { from: mark.from, to: mark.to, insert: want },
+      userEvent: "input.renumber",
+    });
+  return true;
+};
 
 // ---------------------------------------------------------------------------
 // hiding done tasks
@@ -404,4 +452,10 @@ const listsTheme = EditorView.baseTheme({
   },
 });
 
-export const lists = [hideDoneField, menuPlugin, listsTheme];
+export const lists = [
+  hideDoneField,
+  menuPlugin,
+  listsTheme,
+  // ahead of indentWithTab in the main keymap
+  Prec.high(keymap.of([{ key: "Tab", run: tabInOrderedList }])),
+];

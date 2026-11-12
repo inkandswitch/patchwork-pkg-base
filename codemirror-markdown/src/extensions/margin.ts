@@ -104,7 +104,44 @@ function renderedNumber(state: EditorState, mark: SyntaxNode) {
   const start = firstMark
     ? parseInt(state.doc.sliceString(firstMark.from, firstMark.to), 10)
     : 1;
-  return `${(Number.isNaN(start) ? 1 : start) + index}${delimiter}`;
+  const n = (Number.isNaN(start) ? 1 : start) + index;
+  // nested ordered lists count the way GitHub draws them: 1. → i. → a.
+  let depth = 0;
+  for (let p = item.parent?.parent; p; p = p.parent)
+    if (p.name === "OrderedList") depth++;
+  return `${counter(n, depth)}${delimiter}`;
+}
+
+/** `n` in the style for an ordered list `depth` lists deep. */
+export function counter(n: number, depth: number) {
+  const style = depth % 3;
+  if (style === 1 && n > 0 && n < 4000) return roman(n);
+  if (style === 2 && n > 0) return alpha(n);
+  return String(n);
+}
+
+function roman(n: number) {
+  const numerals: [number, string][] = [
+    [1000, "m"], [900, "cm"], [500, "d"], [400, "cd"], [100, "c"], [90, "xc"],
+    [50, "l"], [40, "xl"], [10, "x"], [9, "ix"], [5, "v"], [4, "iv"], [1, "i"],
+  ];
+  let out = "";
+  for (const [value, numeral] of numerals)
+    while (n >= value) {
+      out += numeral;
+      n -= value;
+    }
+  return out;
+}
+
+function alpha(n: number) {
+  let out = "";
+  while (n > 0) {
+    n--;
+    out = String.fromCharCode(97 + (n % 26)) + out;
+    n = Math.floor(n / 26);
+  }
+  return out;
 }
 
 /** `pos` moved past any spaces (not newlines) that follow it. */
@@ -151,7 +188,11 @@ function build(view: EditorView): DecorationSet {
             // the checkbox takes the bullet's place: drop the mark, and hang
             // the task marker (which tasks.ts draws as a checkbox).
             if (end > node.from) decos.push(hidden.range(node.from, end));
-            decos.push(taskMark.range(task.from, skipSpaces(state, task.to)));
+            decos.push(taskMark.range(task.from, task.to));
+            // the space after the box is hidden, not hung: hung, the caret
+            // at the start of the text would be drawn at the end of the hang.
+            const after = skipSpaces(state, task.to);
+            if (after > task.to) decos.push(hidden.range(task.to, after));
             return;
           }
           if (bullet) {
@@ -285,8 +326,9 @@ const marginTheme = EditorView.baseTheme({
   ".cm-md-quote::before": {
     content: '""',
     position: "absolute",
-    // centred in the left half of the margin, clear of a hung `>`.
-    left: "calc(-0.5 * var(--markdown-hang))",
+    // on the bullets' column: centred on where a hung dot sits (the hang's
+    // right padding, then half a dot at the hang's 0.8rem).
+    left: `calc(-1 * (${zoomed("0.6rem")} + ${zoomed("0.16rem")}) - 1.5px)`,
     top: "0",
     bottom: "0",
     width: "3px",

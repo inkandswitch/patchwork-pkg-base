@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { ensureSyntaxTree } from "@codemirror/language";
-import { EditorView } from "@codemirror/view";
+import { EditorView, runScopeHandlers } from "@codemirror/view";
 import { markdownExtensions } from "./markdown";
 import {
   clearDone,
@@ -62,9 +62,9 @@ describe("fix numbering", () => {
     );
   });
 
-  it("only touches the list it was asked about", () => {
+  it("only touches the list it was asked about, and starts a nested one at 1", () => {
     const doc = "1. a\n    3. x\n    3. y\n5. b\n";
-    expect(run(doc, "x", renumber)).toBe("1. a\n    3. x\n    4. y\n5. b\n");
+    expect(run(doc, "x", renumber)).toBe("1. a\n    1. x\n    2. y\n5. b\n");
   });
 });
 
@@ -130,5 +130,26 @@ describe("the menu", () => {
     expect(view.contentDOM.textContent).not.toContain("a");
     shown[0].dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
     expect(isHidingDone(view.state)).toBe(false);
+  });
+});
+
+describe("tab in an ordered list", () => {
+  const press = (view: EditorView, key: string) =>
+    runScopeHandlers(view, new KeyboardEvent("keydown", { key }), "editor");
+
+  it("starts a new sub-list at 1", () => {
+    const doc = "1. a\n2. b\n3. c";
+    const view = makeView(doc);
+    view.dispatch({ selection: { anchor: doc.indexOf("c") } });
+    press(view, "Tab");
+    expect(view.state.doc.toString()).toBe("1. a\n2. b\n    1. c");
+  });
+
+  it("leaves the number alone when it joins a sub-list already there", () => {
+    const doc = "1. a\n    1. x\n2. b";
+    const view = makeView(doc);
+    view.dispatch({ selection: { anchor: doc.indexOf("b") } });
+    press(view, "Tab");
+    expect(view.state.doc.toString()).toBe("1. a\n    1. x\n    2. b");
   });
 });

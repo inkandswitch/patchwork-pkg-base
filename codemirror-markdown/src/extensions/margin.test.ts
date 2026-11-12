@@ -66,10 +66,17 @@ describe("margin", () => {
     expect(nums).toEqual(["1.", "2.", "3.", undefined, "5)", "6)", undefined, undefined]);
   });
 
+  it("counts a third level in letters", () => {
+    const view = makeView("1. a\n    1. b\n        1. c\n        2. d\n\nend");
+    const nums = lines(view).map((l) => hang(l)?.textContent);
+    expect(nums.slice(0, 4)).toEqual(["1.", "i.", "a.", "b."]);
+  });
+
   it("counts nested lists on their own", () => {
     const view = makeView("1. a\n    1. x\n    1. y\n2. b\n\nend");
     const nums = lines(view).map((l) => hang(l)?.textContent);
-    expect(nums.slice(0, 4)).toEqual(["1.", "1.", "2.", "2."]);
+    // the way GitHub draws them: 1. → i. → a.
+    expect(nums.slice(0, 4)).toEqual(["1.", "i.", "ii.", "2."]);
   });
 
   it("shows the rendered number even on the line the caret's on", () => {
@@ -84,9 +91,10 @@ describe("margin", () => {
     const [task] = lines(view);
     expect(hang(task)?.querySelector("input.cm-task")).not.toBeNull();
     expect(task.querySelector(".cm-bullet")).toBeNull();
-    // the space after the box hangs with it; the text starts on the column.
-    expect(hang(task)?.textContent).toBe(" ");
-    expect(task.textContent).toBe(" todo");
+    // the space after the box is hidden, so the text (and a caret at its
+    // start) begins on the column.
+    expect(hang(task)?.textContent).toBe("");
+    expect(task.textContent).toBe("todo");
   });
 
   it("keeps the number on an ordered task", () => {
