@@ -69,6 +69,18 @@ class Bullet extends WidgetType {
   }
 }
 
+class Rule extends WidgetType {
+  eq() {
+    return true;
+  }
+  toDOM() {
+    const hr = document.createElement("span");
+    hr.className = "cm-md-hr";
+    hr.setAttribute("role", "separator");
+    return hr;
+  }
+}
+
 class NumberLabel extends WidgetType {
   constructor(readonly text: string) {
     super();
@@ -358,6 +370,16 @@ function build(view: EditorView): DecorationSet {
           return false;
         }
 
+        if (name === "HorizontalRule") {
+          // a rule across the text; the `---` itself only on the caret's line
+          const line = doc.lineAt(node.from);
+          if (!editing.has(line.number))
+            decos.push(
+              Decoration.replace({ widget: new Rule() }).range(node.from, node.to)
+            );
+          return false;
+        }
+
         if (name === "InlineCode") {
           // one tinted pill for the whole thing, backticks and all
           decos.push(inlineCode.range(node.from, node.to));
@@ -530,6 +552,13 @@ const marginTheme = EditorView.baseTheme({
     paddingBottom: zoomed("0.5rem"),
     borderBottomLeftRadius: "6px",
     borderBottomRightRadius: "6px",
+  },
+  ".cm-md-hr": {
+    display: "inline-block",
+    width: "100%",
+    verticalAlign: "middle",
+    borderTop:
+      "var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--text-editor-fill-offset-40, rgb(0 0 0 / 0.15))",
   },
   ".cm-md-inline-code": {
     background: "var(--text-editor-fill-offset-10, rgb(0 0 0 / 0.04))",

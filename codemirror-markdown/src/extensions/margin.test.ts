@@ -194,5 +194,15 @@ describe("margin", () => {
       expect(nope.classList).not.toContain("cm-md-callout");
     });
   });
+
+  it("draws --- and *** as a rule, and shows them on the caret's line", () => {
+    const doc = "a\n\n---\n\nb\n\n***\n\nend";
+    const view = makeView(doc, doc.indexOf("***") + 1);
+    const ls = lines(view);
+    expect(ls[2].querySelector(".cm-md-hr")).not.toBeNull();
+    expect(ls[2].textContent).toBe("");
+    expect(ls[6].querySelector(".cm-md-hr")).toBeNull();
+    expect(ls[6].textContent).toBe("***");
+  });
 });
 
