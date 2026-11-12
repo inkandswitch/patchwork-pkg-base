@@ -178,12 +178,14 @@ function Strip(props: {
       props.setValues([...props.values, clean]);
   };
 
-  function drop() {
+  // `dropped` is false when the drag was called off: Escape, or let go
+  // somewhere that isn't the strip. Then nothing moves.
+  function drop(dropped: boolean) {
     const a = from();
     const b = to();
     setFrom(null);
     setTo(null);
-    if (a == null || b == null || a === b) return;
+    if (!dropped || a == null || b == null || a === b) return;
     const next = props.values.slice();
     const [moved] = next.splice(a, 1);
     next.splice(b, 0, moved);
@@ -192,7 +194,14 @@ function Strip(props: {
 
   return (
     <div class="settings-strip">
-      <ol class="settings-strip-items">
+      <ol
+        class="settings-strip-items"
+        // the whole row takes the drop, gaps between items included, so
+        // letting go anywhere on it counts and anywhere else cancels
+        onDragOver={(event) => {
+          if (from() !== null) event.preventDefault();
+        }}
+      >
         <For each={props.values}>
           {(id, index) => (
             <li
@@ -212,7 +221,9 @@ function Strip(props: {
                 event.dataTransfer!.dropEffect = "move";
                 setTo(index());
               }}
-              onDragEnd={drop}
+              onDragEnd={(event) =>
+                drop(event.dataTransfer?.dropEffect !== "none")
+              }
             >
               <span>{nameOf(id)}</span>
               <button
