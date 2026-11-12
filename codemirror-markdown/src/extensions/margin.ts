@@ -149,6 +149,7 @@ function alpha(n: number) {
 }
 
 const codeLine = Decoration.line({ class: "cm-md-code" });
+const inlineCode = Decoration.mark({ class: "cm-md-inline-code" });
 const calloutMarker = Decoration.mark({ class: "cm-md-callout-marker" });
 
 /** Lines holding any part of the selection: a callout's `[!NOTE]` shows as
@@ -344,8 +345,22 @@ function build(view: EditorView): DecorationSet {
           // the body font.
           const first = doc.lineAt(node.from).number;
           const last = doc.lineAt(node.to).number;
-          for (let n = first; n <= last; n++)
-            decos.push(codeLine.range(doc.line(n).from));
+          for (let n = first; n <= last; n++) {
+            const ends =
+              (n === first ? " cm-md-code-first" : "") +
+              (n === last ? " cm-md-code-last" : "");
+            decos.push(
+              (ends ? Decoration.line({ class: "cm-md-code" + ends }) : codeLine).range(
+                doc.line(n).from
+              )
+            );
+          }
+          return false;
+        }
+
+        if (name === "InlineCode") {
+          // one tinted pill for the whole thing, backticks and all
+          decos.push(inlineCode.range(node.from, node.to));
           return false;
         }
 
@@ -499,8 +514,29 @@ const marginTheme = EditorView.baseTheme({
     position: "relative",
     paddingLeft: "calc(6px + var(--markdown-quote-indent))",
   },
+  // code sits on a faint step up the editor's fill ramp: inline, a pill;
+  // a block, a rounded panel with a little room inside
   ".cm-md-code": {
     fontFamily: "var(--text-editor-family-code)",
+    background: "var(--text-editor-fill-offset-10, rgb(0 0 0 / 0.04))",
+    paddingInline: `calc(6px + ${zoomed("0.75rem")})`,
+  },
+  ".cm-md-code-first": {
+    paddingTop: zoomed("0.5rem"),
+    borderTopLeftRadius: "6px",
+    borderTopRightRadius: "6px",
+  },
+  ".cm-md-code-last": {
+    paddingBottom: zoomed("0.5rem"),
+    borderBottomLeftRadius: "6px",
+    borderBottomRightRadius: "6px",
+  },
+  ".cm-md-inline-code": {
+    background: "var(--text-editor-fill-offset-10, rgb(0 0 0 / 0.04))",
+    borderRadius: "4px",
+    padding: "0.1em 0.3em",
+    boxDecorationBreak: "clone",
+    WebkitBoxDecorationBreak: "clone",
   },
 
   // GitHub-style callouts. Colours from theming's --studio-callout-* (the

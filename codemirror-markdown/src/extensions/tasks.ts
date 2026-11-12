@@ -17,6 +17,47 @@ import {
  * `TaskMarker` node. Lives in the same bundle as the `markdown()` call so that
  * `syntaxTree` reads the same `Language` facet (see the note in embed.ts).
  */
+/**
+ * The box, after nextaction's: a soft rounded square. Open, it's a clear grey
+ * outline; ticked, it fades back along with its task's text — a faint outline
+ * and a grey tick. The tick draws itself in (a mask slides off it) only when
+ * it's just been ticked, not every time a ticked task scrolls into view, and
+ * the box swells a little while pressed.
+ */
+const SVG = "http://www.w3.org/2000/svg";
+
+function tick(animate: boolean) {
+  const svg = document.createElementNS(SVG, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("class", "cm-task-tick");
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS(SVG, "path");
+  path.setAttribute("d", "M19 7L10 16.5l-4.5-4.5");
+  svg.append(path);
+  if (animate) {
+    // a block of the page's colour over the tick, sliding off it
+    const mask = document.createElementNS(SVG, "rect");
+    mask.setAttribute("class", "cm-task-tick-mask");
+    for (const [k, v] of [["x", "0"], ["y", "0"], ["width", "24"], ["height", "24"]])
+      mask.setAttribute(k, v);
+    const slide = document.createElementNS(SVG, "animate");
+    for (const [k, v] of [
+      ["attributeName", "x"],
+      ["values", "0;24;24"],
+      ["dur", "0.24s"],
+      ["begin", "0.1s"],
+      ["fill", "freeze"],
+    ])
+      slide.setAttribute(k, v);
+    mask.append(slide);
+    svg.append(mask);
+  }
+  return svg;
+}
+
+/** When a box was last ticked: the box drawn just after animates its tick. */
+const justTicked = new WeakMap<EditorView, number>();
+
 class TaskWidget extends WidgetType {
   constructor(readonly checked: boolean) {
     super();
@@ -27,19 +68,33 @@ class TaskWidget extends WidgetType {
   }
 
   toDOM(view: EditorView) {
-    const box = document.createElement("input");
-    box.type = "checkbox";
-    box.className = "cm-task";
-    box.checked = this.checked;
-    box.disabled = !view.state.facet(EditorView.editable);
+    const box = document.createElement("span");
+    box.className = "cm-task" + (this.checked ? " cm-task-checked" : "");
+    box.setAttribute("role", "checkbox");
+    box.setAttribute("aria-checked", String(this.checked));
     box.setAttribute("aria-label", this.checked ? "Done" : "To do");
+    const disabled = !view.state.facet(EditorView.editable);
+    if (disabled) box.setAttribute("aria-disabled", "true");
+
+    if (this.checked) {
+      const ticked = justTicked.get(view);
+      box.append(tick(ticked !== undefined && performance.now() - ticked < 400));
+    }
+
     // mousedown, not click: keeps focus/selection where it was and stops
     // CodeMirror from moving the cursor onto the line.
     box.addEventListener("mousedown", (event) => {
       // only the main button ticks it: a right-click is for the list menu.
       if (event.button !== 0) return;
       event.preventDefault();
-      if (box.disabled) return;
+      if (disabled) return;
+      box.classList.add("cm-task-pressed");
+      const up = () => {
+        box.classList.remove("cm-task-pressed");
+        window.removeEventListener("mouseup", up, true);
+      };
+      window.addEventListener("mouseup", up, true);
+      if (!this.checked) justTicked.set(view, performance.now());
       toggle(view, view.posAtDOM(box));
     });
     return box;
@@ -60,6 +115,56 @@ function toggle(view: EditorView, from: number) {
     userEvent: "input.toggle-task",
   });
 }
+
+const motion = (ms: number) =>
+  `max(1ms, calc(${ms}ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)))`;
+
+const ink = (fade: number) =>
+  `color-mix(in oklab, var(--text-editor-line, currentColor), transparent ${fade}%)`;
+
+const taskTheme = EditorView.baseTheme({
+  ".cm-task": {
+    "--cm-task-size": "calc(1.05rem * var(--markdown-zoom, 1))",
+    boxSizing: "border-box",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flex: "none",
+    width: "var(--cm-task-size)",
+    height: "var(--cm-task-size)",
+    borderRadius: "calc(var(--cm-task-size) / 3.5)",
+    border: `1.5px solid ${ink(45)}`,
+    color: ink(45),
+    verticalAlign: "-0.15em",
+    cursor: "var(--studio-cursor-pointer, pointer)",
+    userSelect: "none",
+    transition: `border-color ${motion(140)} linear, color ${motion(140)} linear, scale ${motion(100)} ease`,
+  },
+  ".cm-task-pressed": {
+    scale: "1.1",
+  },
+  // done: it steps back with its text (see .cm-task-done)
+  ".cm-task-checked": {
+    borderColor: ink(80),
+    color: ink(55),
+  },
+  ".cm-task[aria-disabled]": {
+    cursor: "default",
+  },
+  ".cm-task-tick": {
+    width: "100%",
+    height: "100%",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: "2.5",
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+  },
+  ".cm-task-tick-mask": {
+    fill: "var(--text-editor-fill, white)",
+    stroke: "none",
+  },
+});
 
 const doneMark = Decoration.mark({ class: "cm-task-done" });
 
@@ -90,7 +195,7 @@ function build(view: EditorView): DecorationSet {
   return builder.finish();
 }
 
-export const taskCheckboxes = ViewPlugin.fromClass(
+const taskPlugin = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
     constructor(view: EditorView) {
@@ -109,3 +214,5 @@ export const taskCheckboxes = ViewPlugin.fromClass(
   },
   { decorations: (v) => v.decorations }
 );
+
+export const taskCheckboxes = [taskPlugin, taskTheme];

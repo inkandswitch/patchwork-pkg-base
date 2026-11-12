@@ -41,7 +41,7 @@ function run(
 ): string {
   const view = makeView(doc);
   const { state } = view;
-  ensureSyntaxTree(state, state.doc.length);
+  ensureSyntaxTree(state, state.doc.length, 10_000);
   const list = listAt(state, doc.indexOf(needle))!;
   view.dispatch({ changes: command(state, list) });
   return view.state.doc.toString();

@@ -27,10 +27,12 @@ function makeView(doc: string, editable = true) {
 
 const boxes = (view: EditorView) =>
   Array.from(
-    view.contentDOM.querySelectorAll<HTMLInputElement>("input.cm-task")
+    view.contentDOM.querySelectorAll<HTMLElement>(".cm-task")
   );
 
-const click = (box: HTMLInputElement) =>
+const checked = (box: HTMLElement) => box.getAttribute("aria-checked") === "true";
+
+const click = (box: HTMLElement) =>
   box.dispatchEvent(
     new MouseEvent("mousedown", { bubbles: true, cancelable: true })
   );
@@ -38,7 +40,7 @@ const click = (box: HTMLInputElement) =>
 describe("gfm task lists", () => {
   it("renders a checkbox for each task marker", () => {
     const view = makeView("- [ ] todo\n- [x] done\n* [X] also done\n- plain");
-    expect(boxes(view).map((b) => b.checked)).toEqual([false, true, true]);
+    expect(boxes(view).map(checked)).toEqual([false, true, true]);
   });
 
   it("leaves things that aren't tasks alone", () => {
@@ -48,14 +50,14 @@ describe("gfm task lists", () => {
 
   it("renders tasks in ordered and nested lists", () => {
     const view = makeView("1. [ ] one\n    - [x] nested");
-    expect(boxes(view).map((b) => b.checked)).toEqual([false, true]);
+    expect(boxes(view).map(checked)).toEqual([false, true]);
   });
 
   it("ticks an unchecked task when clicked", () => {
     const view = makeView("- [ ] todo");
     click(boxes(view)[0]);
     expect(view.state.doc.toString()).toBe("- [x] todo");
-    expect(boxes(view)[0].checked).toBe(true);
+    expect(checked(boxes(view)[0])).toBe(true);
   });
 
   it("doesn't tick on a right-click", () => {
@@ -74,7 +76,7 @@ describe("gfm task lists", () => {
 
   it("doesn't toggle in a read-only editor", () => {
     const view = makeView("- [ ] todo", false);
-    expect(boxes(view)[0].disabled).toBe(true);
+    expect(boxes(view)[0].getAttribute("aria-disabled")).toBe("true");
     click(boxes(view)[0]);
     expect(view.state.doc.toString()).toBe("- [ ] todo");
   });

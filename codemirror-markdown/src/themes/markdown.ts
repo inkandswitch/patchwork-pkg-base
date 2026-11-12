@@ -59,14 +59,6 @@ const markdownStyles = (style: "serif" | "sans"): Record<string, any> => ({
   ".cm-content li": {
     marginBottom: 0,
   },
-  ".cm-task": {
-    margin: "0 0.1em",
-    verticalAlign: "-0.1em",
-    cursor: "pointer",
-  },
-  ".cm-task:disabled": {
-    cursor: "default",
-  },
   ".cm-task-done": {
     opacity: 0.6,
   },
@@ -115,17 +107,26 @@ const markdownStyles = (style: "serif" | "sans"): Record<string, any> => ({
 
 const baseHeadingStyles = {
   fontFamily: "var(--studio-heading-family, var(--text-editor-family-sans))",
-  fontWeight: "var(--studio-heading-weight, 400)",
   textDecoration: "none",
 };
 
+/** A title stands out by weight: h1 very heavy, the rest a step lighter.
+ *  A theme can still set them (--studio-heading-weight-1 for h1). */
+const H1_WEIGHT = "var(--studio-heading-weight-1, 800)";
+const HEADING_WEIGHT = "var(--studio-heading-weight, 650)";
+
 /** Size and leading per heading level, shared by the highlight rules (the
  *  heading's text) and the line classes margin.ts puts on heading lines. */
-const headingSizes: Record<number, { fontSize: string; lineHeight?: string }> = {
-  1: { fontSize: `var(--studio-heading-size-1, ${zoomed("1.5rem")})`, lineHeight: zoomed("2rem") },
-  2: { fontSize: `var(--studio-heading-size-2, ${zoomed("1.5rem")})`, lineHeight: zoomed("2rem") },
-  3: { fontSize: `var(--studio-heading-size-3, ${zoomed("1.25rem")})`, lineHeight: zoomed("1.75rem") },
-  4: { fontSize: `var(--studio-heading-size-4, ${zoomed("1.1rem")})` },
+const headingSizes: Record<
+  number,
+  { fontSize?: string; lineHeight?: string; fontWeight: string }
+> = {
+  1: { fontSize: `var(--studio-heading-size-1, ${zoomed("1.5rem")})`, lineHeight: zoomed("2rem"), fontWeight: H1_WEIGHT },
+  2: { fontSize: `var(--studio-heading-size-2, ${zoomed("1.5rem")})`, lineHeight: zoomed("2rem"), fontWeight: HEADING_WEIGHT },
+  3: { fontSize: `var(--studio-heading-size-3, ${zoomed("1.25rem")})`, lineHeight: zoomed("1.75rem"), fontWeight: HEADING_WEIGHT },
+  4: { fontSize: `var(--studio-heading-size-4, ${zoomed("1.1rem")})`, fontWeight: HEADING_WEIGHT },
+  5: { fontWeight: HEADING_WEIGHT },
+  6: { fontWeight: HEADING_WEIGHT },
 };
 
 /**
@@ -133,12 +134,25 @@ const headingSizes: Record<number, { fontSize: string; lineHeight?: string }> = 
  * rendered link) isn't wrapped in the heading's highlight span, so without
  * this it falls back to the body size.
  */
-const headingLines = Object.fromEntries(
-  Object.entries(headingSizes).map(([level, size]) => [
-    `.cm-md-h${level}`,
-    { fontFamily: baseHeadingStyles.fontFamily, fontWeight: baseHeadingStyles.fontWeight, ...size },
-  ])
-);
+const headingLines = {
+  ...Object.fromEntries(
+    Object.entries(headingSizes).map(([level, size]) => [
+      `.cm-md-h${level}`,
+      {
+        fontFamily: baseHeadingStyles.fontFamily,
+        ...size,
+        // the patchwork theme's highlighter weights headings by this; match
+        "--syntax-weight-heading": size.fontWeight,
+      },
+    ])
+  ),
+  // headings are set off by size, not colour: the theme's heading colour
+  // (--syntax-heading, which the patchwork theme's highlighter reads) is the
+  // text colour here, whatever the theme picks for code.
+  ".cm-md-h1, .cm-md-h2, .cm-md-h3, .cm-md-h4, .cm-md-h5, .cm-md-h6": {
+    "--syntax-heading": "var(--text-editor-line)",
+  },
+};
 
 const baseCodeStyles = {
   fontFamily: "var(--text-editor-family-code)",
@@ -184,6 +198,11 @@ export const markdownSyntaxHighlighting = (style: "serif" | "sans") =>
       ...headingSizes[4],
       marginBottom: zoomed("1rem"),
       marginTop: zoomed("2rem"),
+    },
+    {
+      tag: [tags.heading5, tags.heading6],
+      ...baseHeadingStyles,
+      ...headingSizes[5],
     },
     {
       tag: tags.processingInstruction,

@@ -16,7 +16,7 @@ function classesOf(doc: string, needle: string) {
     doc,
     extensions: [markdown({ base: markdownLanguage, extensions: [bareUrls] })],
   });
-  const tree = ensureSyntaxTree(state, state.doc.length) ?? syntaxTree(state);
+  const tree = ensureSyntaxTree(state, state.doc.length, 10_000) ?? syntaxTree(state);
   const from = doc.indexOf(needle);
   const to = from + needle.length;
   const found = new Set<string>();

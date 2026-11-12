@@ -96,7 +96,7 @@ describe("margin", () => {
   it("puts a task's checkbox where the bullet would be", () => {
     const view = makeView("- [ ] todo\n\nend");
     const [task] = lines(view);
-    expect(hang(task)?.querySelector("input.cm-task")).not.toBeNull();
+    expect(hang(task)?.querySelector(".cm-task")).not.toBeNull();
     expect(task.querySelector(".cm-bullet")).toBeNull();
     // the space after the box is hidden, so the text (and a caret at its
     // start) begins on the column.
@@ -108,7 +108,7 @@ describe("margin", () => {
     const view = makeView("1. [ ] todo\n\nend");
     const [task] = lines(view);
     expect(hang(task)?.textContent).toBe("1.");
-    expect(task.querySelector("input.cm-task")).not.toBeNull();
+    expect(task.querySelector(".cm-task")).not.toBeNull();
   });
 
   it("draws a quote as a bar, hiding the >s", () => {

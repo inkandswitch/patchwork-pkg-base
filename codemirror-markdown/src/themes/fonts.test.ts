@@ -22,7 +22,7 @@ function fontOf(doc: string, needle: string) {
     doc,
     extensions: [markdown({ base: markdownLanguage, extensions: [bareUrls] })],
   });
-  const tree = ensureSyntaxTree(state, state.doc.length)!;
+  const tree = ensureSyntaxTree(state, state.doc.length, 10_000)!;
   const from = doc.indexOf(needle);
   let classes: string[] = [];
   highlightTree(tree, style, (f, t, cls) => {
