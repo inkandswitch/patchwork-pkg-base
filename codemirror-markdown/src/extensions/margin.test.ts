@@ -36,11 +36,11 @@ describe("margin", () => {
     expect(h2.textContent).toBe("H2Sub");
   });
 
-  it("shows the raw #s, still hung, while the caret is on the heading", () => {
+  it("keeps the label even while the caret is on the heading", () => {
     const view = makeView("## Sub\n\nbody", 4);
     const [h2] = lines(view);
-    expect(hang(h2)?.textContent).toBe("## ");
-    expect(h2.textContent).toBe("## Sub");
+    expect(hang(h2)?.textContent).toBe("H2");
+    expect(h2.textContent).toBe("H2Sub");
   });
 
   it("hangs bullets as a dot, and numbers as themselves", () => {
@@ -49,9 +49,28 @@ describe("margin", () => {
     expect(hang(a)?.querySelector(".cm-bullet")).not.toBeNull();
     expect(a.textContent).toBe("one");
     expect(b.textContent).toBe("two");
-    expect(hang(c)?.textContent).toBe("1. ");
-    expect(hang(d)?.textContent).toBe("2. ");
-    expect(d.textContent).toBe("2. second");
+    expect(hang(c)?.textContent).toBe("1.");
+    expect(hang(d)?.textContent).toBe("2.");
+    expect(d.textContent).toBe("2.second");
+  });
+
+  it("numbers a list the way it renders, not the way it's typed", () => {
+    const view = makeView("1. a\n2. b\n10. c\n\n5) d\n1) e\n\nend");
+    const nums = lines(view).map((l) => hang(l)?.textContent);
+    expect(nums).toEqual(["1.", "2.", "3.", undefined, "5)", "6)", undefined, undefined]);
+  });
+
+  it("counts nested lists on their own", () => {
+    const view = makeView("1. a\n    1. x\n    1. y\n2. b\n\nend");
+    const nums = lines(view).map((l) => hang(l)?.textContent);
+    expect(nums.slice(0, 4)).toEqual(["1.", "1.", "2.", "2."]);
+  });
+
+  it("shows the typed number on the line the caret's on", () => {
+    const doc = "1. a\n10. b\n\nend";
+    const view = makeView(doc, doc.indexOf("b"));
+    const [, b] = lines(view);
+    expect(hang(b)?.textContent).toBe("10. ");
   });
 
   it("puts a task's checkbox where the bullet would be", () => {
@@ -67,7 +86,7 @@ describe("margin", () => {
   it("keeps the number on an ordered task", () => {
     const view = makeView("1. [ ] todo\n\nend");
     const [task] = lines(view);
-    expect(hang(task)?.textContent).toBe("1. ");
+    expect(hang(task)?.textContent).toBe("1.");
     expect(task.querySelector("input.cm-task")).not.toBeNull();
   });
 

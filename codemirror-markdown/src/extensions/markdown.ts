@@ -11,6 +11,7 @@ import { EditorView, keymap } from "@codemirror/view";
 import { markdownFormattingKeymap } from "./formatting.ts";
 import { taskCheckboxes } from "./tasks.ts";
 import { margin } from "./margin.ts";
+import { headings } from "./headings.ts";
 import { markdownZoom } from "./zoom.ts";
 
 /** Styles */
@@ -43,6 +44,7 @@ export function markdownExtensions() {
     }),
     taskCheckboxes,
     margin,
+    headings,
     indentUnit.of("    "),
   ];
 }

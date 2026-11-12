@@ -13,9 +13,9 @@ import {
  * Bear-style margin: block markers hang out to the left of the text, so the
  * body text of headings, lists and quotes all starts on the same column.
  *
- *   H1 The title           (`# ` → H1 label; raw `# ` while the caret's on it)
+ *   H1 The title           (`# ` → H1 label, always: see headings.ts)
  *    • a bullet            (`- ` → dot)
- *   1. a number            (`1. ` stays text, just hung)
+ *   3. a number            (the number it renders as; raw on the caret line)
  *    ☐ a task              (`- [ ] ` → checkbox, no bullet)
  *    ┃ a quote             (`> ` → a bar; raw `> ` while the caret's on it)
  *
@@ -25,7 +25,6 @@ import {
  * big heading doesn't hang further out than a paragraph.
  */
 
-const hangMark = Decoration.mark({ class: "cm-md-hang" });
 const numberMark = Decoration.mark({ class: "cm-md-hang cm-md-hang-number" });
 const quoteMark = Decoration.mark({ class: "cm-md-hang cm-md-hang-quote" });
 const hidden = Decoration.replace({});
@@ -65,6 +64,48 @@ class Bullet extends WidgetType {
   }
 }
 
+class NumberLabel extends WidgetType {
+  constructor(readonly text: string) {
+    super();
+  }
+  eq(other: NumberLabel) {
+    return other.text === this.text;
+  }
+  toDOM() {
+    const span = document.createElement("span");
+    span.className = "cm-md-hang cm-md-hang-number";
+    span.textContent = this.text;
+    return span;
+  }
+}
+
+type SyntaxNode = ReturnType<ReturnType<typeof syntaxTree>["resolveInner"]>;
+
+/**
+ * What an ordered list mark renders as: CommonMark numbers a list from its
+ * first item's number and counts up, whatever the later items say, so
+ * `1. 2. 10.` is 1, 2, 3. The source is left alone — rewriting it would race
+ * other people renumbering the same list — and the margin shows the truth.
+ */
+function renderedNumber(state: EditorState, mark: SyntaxNode) {
+  const text = state.doc.sliceString(mark.from, mark.to);
+  const delimiter = text.slice(-1);
+  let item = mark.parent;
+  if (!item || item.name !== "ListItem") return text;
+  let index = 0;
+  let first = item;
+  for (let prev = item.prevSibling; prev; prev = prev.prevSibling) {
+    if (prev.name !== "ListItem") continue;
+    index++;
+    first = prev;
+  }
+  const firstMark = first.getChild("ListMark");
+  const start = firstMark
+    ? parseInt(state.doc.sliceString(firstMark.from, firstMark.to), 10)
+    : 1;
+  return `${(Number.isNaN(start) ? 1 : start) + index}${delimiter}`;
+}
+
 /** Lines that hold any part of the selection: those show their raw markup. */
 function caretLines(state: EditorState) {
   const lines = new Set<number>();
@@ -101,16 +142,11 @@ function build(view: EditorView): DecorationSet {
           const mark = node.node.firstChild;
           if (!mark || mark.name !== "HeaderMark" || mark.from !== node.from)
             return;
-          const end = skipSpaces(state, mark.to);
-          if (editing.has(doc.lineAt(node.from).number)) {
-            decos.push(hangMark.range(mark.from, end));
-          } else {
-            decos.push(
-              Decoration.replace({
-                widget: new HeadingLabel(Number(heading[1])),
-              }).range(mark.from, end)
-            );
-          }
+          decos.push(
+            Decoration.replace({
+              widget: new HeadingLabel(Number(heading[1])),
+            }).range(mark.from, skipSpaces(state, mark.to))
+          );
           return;
         }
 
@@ -134,8 +170,14 @@ function build(view: EditorView): DecorationSet {
             decos.push(
               Decoration.replace({ widget: new Bullet() }).range(node.from, end)
             );
-          } else {
+          } else if (editing.has(doc.lineAt(node.from).number)) {
             decos.push(numberMark.range(node.from, end));
+          } else {
+            decos.push(
+              Decoration.replace({
+                widget: new NumberLabel(renderedNumber(state, node.node)),
+              }).range(node.from, end)
+            );
           }
           return;
         }
