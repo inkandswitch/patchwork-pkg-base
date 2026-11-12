@@ -1,6 +1,7 @@
 import type { AutomergeUrl, DocHandle } from "@automerge/automerge-repo/slim";
 import type { ToolElement } from "@inkandswitch/patchwork-plugins";
 import type { ContactDoc } from "../types";
+import { themedColor } from "../user-colors";
 import { createAvatar, setAvatarImage, setAvatarFallback, getInitials } from "./Avatar";
 import { getImportableUrlFromAutomergeUrl } from "@inkandswitch/patchwork-filesystem";
 import { subscribe } from "@inkandswitch/patchwork-providers";
@@ -51,7 +52,7 @@ export function renderContactAvatar(
     if (isPresent) {
       avatar.classList.add("contact-avatar--present");
       if (userColor) {
-        avatar.style.setProperty("--contact-presence-color", userColor);
+        avatar.style.setProperty("--contact-presence-color", themedColor(userColor));
       } else {
         avatar.style.removeProperty("--contact-presence-color");
       }

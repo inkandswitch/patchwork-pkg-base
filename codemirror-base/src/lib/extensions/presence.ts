@@ -311,9 +311,10 @@ function presence(
               // The color the peer chose in their account -- the same contact
               // doc the contact-cursor token renders from, so the tint and
               // the token can't drift apart.
-              color:
+              color: themedColor(
                 (peerContactUrl && this.contactColors.get(peerContactUrl)) ||
-                FALLBACK_PRESENCE_COLOR,
+                  FALLBACK_PRESENCE_COLOR
+              ),
               from,
               to,
               head: selection.headAtStart ? from : to,
@@ -472,6 +473,39 @@ const presenceTheme = EditorView.baseTheme({
 // picked a color. Matches the contact-cursor token's CSS fallback
 // (`var(--contact-cursor-color, #888)` in the account package).
 const FALLBACK_PRESENCE_COLOR = "#888";
+
+// The account picker's palette (account/src/user-colors.ts), by the theme
+// token each colour is drawn through. Copied, not imported: tools don't share
+// code at build time. A contact stores the colour's value; a palette value is
+// drawn as `var(--studio-presence-<name>, <value>)` so a theme can restyle it
+// (see theming's theme.css). Any other colour is drawn as it is.
+const PRESENCE_TOKENS = new Map(
+  (
+    [
+      ["sky-blue", "hsl(200, 70%, 50%)"],
+      ["coral", "hsl(10, 75%, 58%)"],
+      ["emerald", "hsl(145, 70%, 45%)"],
+      ["violet", "hsl(270, 70%, 55%)"],
+      ["amber", "hsl(38, 85%, 50%)"],
+      ["rose", "hsl(350, 70%, 55%)"],
+      ["teal", "hsl(178, 70%, 45%)"],
+      ["indigo", "hsl(235, 70%, 58%)"],
+      ["lime", "hsl(85, 70%, 45%)"],
+      ["fuchsia", "hsl(310, 70%, 55%)"],
+      ["orange", "hsl(25, 80%, 52%)"],
+      ["cyan", "hsl(188, 75%, 48%)"],
+    ] as const
+  ).map(([name, value]) => [squash(value), `--studio-presence-${name}`])
+);
+
+function squash(color: string) {
+  return color.replace(/\s+/g, "").toLowerCase();
+}
+
+export function themedColor(color: string): string {
+  const token = PRESENCE_TOKENS.get(squash(color));
+  return token ? `var(${token}, ${color})` : color;
+}
 
 // The subset of the account package's ContactDoc this extension reads.
 type ContactDoc = { color?: string };

@@ -3,12 +3,18 @@ import { completionKeymap } from "@codemirror/autocomplete";
 import { defaultKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { foldKeymap, indentOnInput, indentUnit } from "@codemirror/language";
+import { styleTags, tags } from "@lezer/highlight";
 import { languages } from "@codemirror/language-data";
 import { searchKeymap } from "@codemirror/search";
 import { EditorView, keymap } from "@codemirror/view";
 
 import { markdownFormattingKeymap } from "./formatting.ts";
 import { taskCheckboxes } from "./tasks.ts";
+import { margin } from "./margin.ts";
+import { headings } from "./headings.ts";
+import { lists } from "./lists.ts";
+import { prefixes } from "./prefix.ts";
+import { verticalMemory } from "./vertical.ts";
 import { markdownZoom } from "./zoom.ts";
 
 /** Styles */
@@ -34,8 +40,32 @@ export function markdownExtensions() {
     ]),
     EditorView.lineWrapping,
     // GFM base: task lists, tables, strikethrough, autolinks.
-    markdown({ base: markdownLanguage, codeLanguages: languages }),
+    markdown({
+      base: markdownLanguage,
+      codeLanguages: languages,
+      extensions: [bareUrls],
+    }),
     taskCheckboxes,
+    margin,
+    prefixes,
+    verticalMemory,
+    headings,
+    lists,
     indentUnit.of("    "),
   ];
 }
+
+/**
+ * A url pasted on its own is a link, not code. Only the url *inside* link
+ * syntax — `[text](url)`, `<url>`, `[ref]: url`, `![alt](url)` — is markup,
+ * so only that keeps `tags.url` (and the code font the theme gives it).
+ * Path rules outrank the plain `URL` rule lezer-markdown ships with.
+ */
+export const bareUrls = {
+  props: [
+    styleTags({
+      URL: tags.link,
+      "Link/URL Image/URL Autolink/URL LinkReference/URL": tags.url,
+    }),
+  ],
+};

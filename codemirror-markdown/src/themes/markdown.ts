@@ -1,17 +1,5 @@
-import {
-  HighlightStyle,
-  syntaxHighlighting,
-  syntaxTree,
-} from "@codemirror/language";
-import { RangeSetBuilder } from "@codemirror/state";
-import {
-  Decoration,
-  EditorView,
-  ViewPlugin,
-  WidgetType,
-  type DecorationSet,
-  type ViewUpdate,
-} from "@codemirror/view";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { EditorView } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 
 const bodyFont = (style: "serif" | "sans") =>
@@ -46,6 +34,8 @@ const markdownStyles = (style: "serif" | "sans"): Record<string, any> => ({
     background: "transparent",
   },
   ".cm-content": {
+    // for things outside the highlighter (the link widget) to match the text.
+    "--markdown-body-family": bodyFont(style),
     // Justified text makes it look more like the I&S web essay template,
     // but doesn't feel right for most documents.
     // textAlign: "justify",
@@ -60,6 +50,8 @@ const markdownStyles = (style: "serif" | "sans"): Record<string, any> => ({
     // lol i guess this is the same as box-sizing: content-box
     maxWidth: `calc(var(--max-text-line-width, 100ex) - ${zoomed("2rem")})`,
     padding: zoomed("2rem"),
+    // room for the markers hung in the margin (extensions/margin.ts).
+    paddingLeft: `calc(${zoomed("2rem")} + var(--markdown-hang, 0px))`,
     boxShadow: "none",
     marginBottom: "8em",
     borderRadius: "8px",
@@ -67,27 +59,8 @@ const markdownStyles = (style: "serif" | "sans"): Record<string, any> => ({
   ".cm-content li": {
     marginBottom: 0,
   },
-  ".cm-bullet": {
-    display: "inline-block",
-    width: "1ch",
-  },
-  ".cm-bullet::before": {
-    content: '""',
-    display: "inline-block",
-    width: "0.4em",
-    height: "0.4em",
-    borderRadius: "50%",
-    background: "currentColor",
-    color: "var(--text-editor-line)",
-    verticalAlign: "0.15em",
-  },
-  ".cm-task": {
-    margin: "0 0.1em",
-    verticalAlign: "-0.1em",
-    cursor: "pointer",
-  },
-  ".cm-task:disabled": {
-    cursor: "default",
+  ".cm-task-done": {
+    opacity: 0.6,
   },
   ".cm-activeLine": {
     backgroundColor: "inherit",
@@ -130,16 +103,55 @@ const markdownStyles = (style: "serif" | "sans"): Record<string, any> => ({
   ".cm-folded-range": {
     background: "var(--text-editor-fill)",
   },
-
-  ".codeblock": {
-    background: "orange",
-  },
 });
 
 const baseHeadingStyles = {
   fontFamily: "var(--studio-heading-family, var(--text-editor-family-sans))",
-  fontWeight: "var(--studio-heading-weight, 400)",
   textDecoration: "none",
+};
+
+/** A title stands out by weight: h1 very heavy, the rest a step lighter.
+ *  A theme can still set them (--studio-heading-weight-1 for h1). */
+const H1_WEIGHT = "var(--studio-heading-weight-1, 800)";
+const HEADING_WEIGHT = "var(--studio-heading-weight, 650)";
+
+/** Size and leading per heading level, shared by the highlight rules (the
+ *  heading's text) and the line classes margin.ts puts on heading lines. */
+const headingSizes: Record<
+  number,
+  { fontSize?: string; lineHeight?: string; fontWeight: string }
+> = {
+  1: { fontSize: `var(--studio-heading-size-1, ${zoomed("1.5rem")})`, lineHeight: zoomed("2rem"), fontWeight: H1_WEIGHT },
+  2: { fontSize: `var(--studio-heading-size-2, ${zoomed("1.5rem")})`, lineHeight: zoomed("2rem"), fontWeight: HEADING_WEIGHT },
+  3: { fontSize: `var(--studio-heading-size-3, ${zoomed("1.25rem")})`, lineHeight: zoomed("1.75rem"), fontWeight: HEADING_WEIGHT },
+  4: { fontSize: `var(--studio-heading-size-4, ${zoomed("1.1rem")})`, fontWeight: HEADING_WEIGHT },
+  5: { fontWeight: HEADING_WEIGHT },
+  6: { fontWeight: HEADING_WEIGHT },
+};
+
+/**
+ * The same, on the whole line: a widget that replaces part of a heading (a
+ * rendered link) isn't wrapped in the heading's highlight span, so without
+ * this it falls back to the body size.
+ */
+const headingLines = {
+  ...Object.fromEntries(
+    Object.entries(headingSizes).map(([level, size]) => [
+      `.cm-md-h${level}`,
+      {
+        fontFamily: baseHeadingStyles.fontFamily,
+        ...size,
+        // the patchwork theme's highlighter weights headings by this; match
+        "--syntax-weight-heading": size.fontWeight,
+      },
+    ])
+  ),
+  // headings are set off by size, not colour: the theme's heading colour
+  // (--syntax-heading, which the patchwork theme's highlighter reads) is the
+  // text colour here, whatever the theme picks for code.
+  ".cm-md-h1, .cm-md-h2, .cm-md-h3, .cm-md-h4, .cm-md-h5, .cm-md-h6": {
+    "--syntax-heading": "var(--text-editor-line)",
+  },
 };
 
 const baseCodeStyles = {
@@ -147,9 +159,14 @@ const baseCodeStyles = {
   fontSize: "1em",
 };
 
-const markdownSyntaxHighlighting = (style: "serif" | "sans") =>
+export const markdownSyntaxHighlighting = (style: "serif" | "sans") =>
   HighlightStyle.define([
-    // this is how you ensure that codeblocks are still monospace
+    // this is how you ensure that codeblocks are still monospace.
+    // a node's own class *replaces* its parent's in the highlighter, so text
+    // inside **bold**, *italic* and ~~struck~~ loses this one and falls back to
+    // `.cm-content`, which the patchwork theme sets to the code font. those
+    // rules set the body font again; inline code inside them still wins,
+    // being later in this list.
     {
       tag: tags.content,
       fontFamily: bodyFont(style),
@@ -157,33 +174,35 @@ const markdownSyntaxHighlighting = (style: "serif" | "sans") =>
     {
       tag: tags.heading1,
       ...baseHeadingStyles,
-      fontSize: `var(--studio-heading-size-1, ${zoomed("1.5rem")})`,
-      lineHeight: zoomed("2rem"),
+      ...headingSizes[1],
       marginBottom: zoomed("1rem"),
       marginTop: zoomed("2rem"),
     },
     {
       tag: tags.heading2,
       ...baseHeadingStyles,
-      fontSize: `var(--studio-heading-size-2, ${zoomed("1.5rem")})`,
-      lineHeight: zoomed("2rem"),
+      ...headingSizes[2],
       marginBottom: zoomed("1rem"),
       marginTop: zoomed("2rem"),
     },
     {
       tag: tags.heading3,
       ...baseHeadingStyles,
-      fontSize: `var(--studio-heading-size-3, ${zoomed("1.25rem")})`,
-      lineHeight: zoomed("1.75rem"),
+      ...headingSizes[3],
       marginBottom: zoomed("1rem"),
       marginTop: zoomed("2rem"),
     },
     {
       tag: tags.heading4,
       ...baseHeadingStyles,
-      fontSize: `var(--studio-heading-size-4, ${zoomed("1.1rem")})`,
+      ...headingSizes[4],
       marginBottom: zoomed("1rem"),
       marginTop: zoomed("2rem"),
+    },
+    {
+      tag: [tags.heading5, tags.heading6],
+      ...baseHeadingStyles,
+      ...headingSizes[5],
     },
     {
       tag: tags.processingInstruction,
@@ -194,17 +213,20 @@ const markdownSyntaxHighlighting = (style: "serif" | "sans") =>
       color: "var(--syntax-comment, #555)",
       fontFamily: "var(--text-editor-family-code)",
     },
-    { tag: tags.quote, fontStyle: "var(--syntax-style-quote, italic)" },
+    // quotes are set off by their bar (margin.ts), not by italics.
     {
       tag: tags.strong,
+      fontFamily: bodyFont(style),
       fontWeight: "var(--syntax-weight-strong, bold)",
     },
     {
       tag: tags.emphasis,
+      fontFamily: bodyFont(style),
       fontStyle: "var(--syntax-style-emphasis, italic)",
     },
     {
       tag: tags.strikethrough,
+      fontFamily: bodyFont(style),
       textDecoration: "line-through",
     },
     {
@@ -254,84 +276,7 @@ const markdownSyntaxHighlighting = (style: "serif" | "sans") =>
   ]);
 
 export const theme = (style: "serif" | "sans") => [
-  EditorView.theme(markdownStyles(style)),
+  EditorView.theme({ ...markdownStyles(style), ...headingLines }),
   syntaxHighlighting(markdownSyntaxHighlighting(style)),
-  bullets,
-  codeblocks,
 ];
 
-const bullets = ViewPlugin.fromClass(
-  class {
-    decorations: DecorationSet;
-    view: EditorView;
-    constructor(view: EditorView) {
-      this.view = view;
-      this.decorations = this.build();
-    }
-    update(update: ViewUpdate) {
-      if (update.docChanged || update.viewportChanged) {
-        this.decorations = this.build();
-      }
-    }
-    private build(): DecorationSet {
-      const builder = new RangeSetBuilder<Decoration>();
-      const doc = this.view.state.doc;
-      syntaxTree(this.view.state).iterate({
-        enter: ({ type, from }) => {
-          if (type.name === "ListMark") {
-            const char = doc.sliceString(from, from + 1);
-            if (["-", "+", "*"].includes(char)) {
-              builder.add(
-                from,
-                from + 1,
-                Decoration.replace({ widget: new BulletWidget() })
-              );
-            }
-          }
-        },
-      });
-      return builder.finish();
-    }
-  },
-  {
-    decorations: (v) => v.decorations,
-  }
-);
-
-class BulletWidget extends WidgetType {
-  toDOM() {
-    const span = document.createElement("span");
-    span.className = "cm-bullet";
-    return span;
-  }
-}
-const codeblocks = ViewPlugin.fromClass(
-  class BlockquotePlugin {
-    decorations: DecorationSet = Decoration.none;
-
-    constructor(view: EditorView) {
-      this.buildDeco(view);
-    }
-
-    update(update: ViewUpdate) {
-      this.buildDeco(update.view);
-    }
-
-    buildDeco(view: EditorView) {
-      const builder = new RangeSetBuilder<Decoration>();
-      view.viewportLineBlocks.forEach((line) => {
-        const lineObj = view.state.doc.lineAt(line.from);
-        const match = /^>.*/g.exec(lineObj.text);
-        if (match && match[0]) {
-          builder.add(
-            line.from,
-            line.from,
-            Decoration.line({ class: "codeblock" })
-          );
-        }
-      });
-
-      this.decorations = builder.finish();
-    }
-  }
-);

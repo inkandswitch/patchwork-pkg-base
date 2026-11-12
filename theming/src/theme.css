@@ -168,6 +168,35 @@
 	--studio-success: var(--studio-added);
 	--studio-info: var(--studio-secondary);
 
+	/* GitHub-style callouts (`> [!NOTE]` and friends). each rides the accent
+	   that already means the same thing, so a theme's palette carries over:
+	   note is information (the link blue), tip is success, warning is
+	   warning, caution is danger. important has no accent of its own; it's
+	   the link hue turned toward violet, GitHub's purple. */
+	--studio-callout-note: var(--studio-link);
+	--studio-callout-tip: var(--studio-success);
+	--studio-callout-important: oklch(from var(--studio-link) l c calc(h + 35));
+	--studio-callout-warning: var(--studio-warning);
+	--studio-callout-caution: var(--studio-danger);
+
+	/* presence: the account picker's named colours. a contact stores the
+	   colour's value; wherever it's drawn (carets, nametags, avatars) a
+	   palette value is swapped for its token here, so a theme can restyle
+	   people's colours — say, lighter on a dark theme — without touching
+	   anyone's account. the defaults are the palette's own values. */
+	--studio-presence-sky-blue: hsl(200 70% 50%);
+	--studio-presence-coral: hsl(10 75% 58%);
+	--studio-presence-emerald: hsl(145 70% 45%);
+	--studio-presence-violet: hsl(270 70% 55%);
+	--studio-presence-amber: hsl(38 85% 50%);
+	--studio-presence-rose: hsl(350 70% 55%);
+	--studio-presence-teal: hsl(178 70% 45%);
+	--studio-presence-indigo: hsl(235 70% 58%);
+	--studio-presence-lime: hsl(85 70% 45%);
+	--studio-presence-fuchsia: hsl(310 70% 55%);
+	--studio-presence-orange: hsl(25 80% 52%);
+	--studio-presence-cyan: hsl(188 75% 48%);
+
 	/* Accent surfaces. Each accent (primary/secondary/danger/warning/success/info) ships as a
 	   Bulma-style contrast pair — the same fill/line shape as --studio-chrome:
 
@@ -570,6 +599,19 @@
 	--text-editor-success-text: color-mix(in oklch, var(--studio-success), var(--text-editor-line) 35%);
 	--text-editor-info-text: color-mix(in oklch, var(--studio-info), var(--text-editor-line) 35%);
 	--text-editor-link-text: color-mix(in oklch, var(--studio-link-fill), var(--text-editor-line) 35%);
+	/* callouts on the text-editor surface: ink for the title and icon (mixed
+	   toward the line, like the -text accents above), and a faint tint of the
+	   accent for the box behind them. */
+	--text-editor-callout-note-text: color-mix(in oklch, var(--studio-callout-note), var(--text-editor-line) 35%);
+	--text-editor-callout-tip-text: color-mix(in oklch, var(--studio-callout-tip), var(--text-editor-line) 35%);
+	--text-editor-callout-important-text: color-mix(in oklch, var(--studio-callout-important), var(--text-editor-line) 35%);
+	--text-editor-callout-warning-text: color-mix(in oklch, var(--studio-callout-warning), var(--text-editor-line) 35%);
+	--text-editor-callout-caution-text: color-mix(in oklch, var(--studio-callout-caution), var(--text-editor-line) 35%);
+	--text-editor-callout-note-fill: color-mix(in oklch, var(--studio-callout-note) 9%, var(--text-editor-fill));
+	--text-editor-callout-tip-fill: color-mix(in oklch, var(--studio-callout-tip) 9%, var(--text-editor-fill));
+	--text-editor-callout-important-fill: color-mix(in oklch, var(--studio-callout-important) 9%, var(--text-editor-fill));
+	--text-editor-callout-warning-fill: color-mix(in oklch, var(--studio-callout-warning) 9%, var(--text-editor-fill));
+	--text-editor-callout-caution-fill: color-mix(in oklch, var(--studio-callout-caution) 9%, var(--text-editor-fill));
 
 	--text-editor-family-code: var(--editor-family-code);
 	--text-editor-family-sans: var(--editor-family-sans);
@@ -785,6 +827,8 @@
 	--syntax-weight-quote: var(--syntax-weight-punctuation);
 
 	--syntax-list: var(--text-editor-line);
+	/* bullets drawn in place of `-`: the theme's primary accent, as ink */
+	--syntax-list-marker: var(--text-editor-primary-text);
 	--syntax-fill-list: var(--text-editor-text-fill);
 	--syntax-style-list: var(--text-editor-text-style);
 	--syntax-weight-list: var(--text-editor-text-weight);
