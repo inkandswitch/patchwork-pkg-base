@@ -196,11 +196,11 @@ function DocPresence(handle, element) {
 	// of fresh objects on every presence event (a heartbeat every couple of
 	// seconds), so the list is keyed on the urls, which are stable, and each
 	// face looks its own peer up.
-	const peerUrls = createMemo(
-		() => session.peers().map(p => p.value.contactUrl),
-		[],
-		{equals: (a, b) => a.length === b.length && a.every((url, i) => url === b[i])},
-	)
+	const peerUrlsOf = () =>
+		createMemo(() => session.peers().map(p => p.value.contactUrl), [], {
+			equals: (a, b) =>
+				a.length === b.length && a.every((url, i) => url === b[i]),
+		})
 	// holds on to the last state it saw: a face can outlive its peer by a tick
 	const peerState = url =>
 		createMemo(
@@ -254,17 +254,20 @@ function DocPresence(handle, element) {
 	element.appendChild(style)
 
 	const dispose = render(
-		() => html`<div class="doc-presence">
-			<${Show} when=${() => selfInfo()}>
-				${() => face(selfInfo, () => !focused())}
-			<//>
-			<${For} each=${() => peerUrls()}>
-				${url => {
-					const state = peerState(url)
-					return face(state, () => !state()?.focused)
-				}}
-			<//>
-		</div>`,
+		() => {
+			const peerUrls = peerUrlsOf()
+			return html`<div class="doc-presence">
+				<${Show} when=${() => selfInfo()}>
+					${() => face(selfInfo, () => !focused())}
+				<//>
+				<${For} each=${() => peerUrls()}>
+					${url => {
+						const state = peerState(url)
+						return face(state, () => !state()?.focused)
+					}}
+				<//>
+			</div>`
+		},
 		element,
 	)
 	const live = requestAnimationFrame(() =>
