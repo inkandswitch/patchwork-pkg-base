@@ -2,13 +2,14 @@
 // would be subduction's ephemeral topics, which the repo can't hand us yet
 // (it routes every inbound ephemeral by the doc id inside it), so a key
 // room has no channel, for now
-import { isKeyRoom, pageRepo } from "./room.js";
+import { isKeyRoom, pageRepo, titleOf } from "./room.js";
 
 const found = new Map(); // room id → Promise<channel | null>
 
 /**
- * the channel for room `id`: {id, on(listener), off(listener), send(message)},
- * listeners hearing {message, senderId}. null when there isn't one
+ * the channel for room `id`: {id, on(listener), off(listener), send(message),
+ * title()}, listeners hearing {message, senderId}, title() what the room's
+ * called (a promise). null when there isn't one
  */
 export function openChannel(id) {
   if (isKeyRoom(id)) return Promise.resolve(null);
@@ -46,5 +47,6 @@ function docChannel(handle, id) {
     send(message) {
       handle.broadcast(message);
     },
+    title: () => titleOf(handle),
   };
 }
