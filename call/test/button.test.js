@@ -76,3 +76,18 @@ test("in it: hang up", async () => {
   button().click();
   expect(sent).toEqual([{ action: "hang-up" }]);
 });
+
+test("a provider that turns up later is asked again", async () => {
+  await mount({ answering: false });
+  expect(button()).toBe(null);
+  host.addEventListener("patchwork:subscribe", (event) => {
+    accept(event, (r) => {
+      respond = r;
+      return () => {};
+    });
+  });
+  window.dispatchEvent(new CustomEvent("patchwork:mounted", { detail: { componentId: "call-provider" } }));
+  await settle();
+  await say({});
+  expect(button()?.dataset.state).toBe("call");
+});

@@ -36,7 +36,9 @@ describe("the call's control panel, in the sidebar", () => {
   it("is there, last, after the configured widgets", () => {
     const panels = mount([["chee/document-list", "automerge:r" as any]]);
     expect(panels).toHaveLength(1);
-    const views = [...host.querySelectorAll(".threepane-widget > patchwork-view")];
+    const views = [
+      ...host.querySelectorAll(".threepane-widget > patchwork-view"),
+    ];
     expect(views.at(-1)).toBe(panels[0]);
   });
 
@@ -46,6 +48,11 @@ describe("the call's control panel, in the sidebar", () => {
 
   it("is only there once if it's configured as a widget too", () => {
     expect(mount(["call-control-panel"])).toHaveLength(1);
+  });
+
+  it("takes no room till the panel says it wants some (or if there's no call package)", () => {
+    const [panel] = mount([]);
+    expect(panel.getAttribute("data-sidebar-size")).toBe("none");
   });
 
   it("waits, as the widgets do, for the main document", () => {

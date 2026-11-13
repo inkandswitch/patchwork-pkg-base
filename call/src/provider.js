@@ -31,11 +31,15 @@ export function CallProvider(element) {
   // what each doc mounted inside holds: by room id, a release each time
   const mounts = new Map();
 
-  function onMounted(event) {
-    const id = "url" in (event.detail ?? {}) ? roomUrl(event.detail.url) : null;
+  function hold(url) {
+    const id = roomUrl(url);
     if (!id) return;
     if (!mounts.has(id)) mounts.set(id, []);
     mounts.get(id).push(hearRoom(id, { onScreen: true }));
+  }
+
+  function onMounted(event) {
+    if ("url" in (event.detail ?? {})) hold(event.detail.url);
   }
 
   function onUnmounted(event) {
@@ -58,7 +62,11 @@ export function CallProvider(element) {
           () => hearRoom(selector.url, { onScreen: true, name: selector.name }),
         );
       case CALL_VIDEO:
-        return answer(event, () => ({ wanted: call.videoWanted() }), holdVideoSpot);
+        return answer(
+          event,
+          () => ({ wanted: call.videoWanted() }),
+          () => holdVideoSpot({ showing: !!selector.showing }),
+        );
     }
   }
 
@@ -74,7 +82,7 @@ export function CallProvider(element) {
   layer.className = "patchwork-call";
   element.append(layer);
   const unrender = render(() => {
-    const area = stageArea(element);
+    const area = stageArea(element, () => !!call.get());
     return html`<${CallQuestion} /><${CallFloating} area=${area} /><${CallStage} area=${area} />`;
   }, layer);
 
@@ -82,6 +90,9 @@ export function CallProvider(element) {
   element.addEventListener("patchwork:unmounted", onUnmounted);
   element.addEventListener("patchwork:subscribe", onSubscribe);
   element.addEventListener(CALL_EVENT, onCall);
+  // what was mounted before this was (it was loaded late, or swapped in
+  // anew): on screen already, and unmounted like the rest later
+  for (const view of element.querySelectorAll("patchwork-view[doc-url]")) hold(view.getAttribute("doc-url"));
 
   return () => {
     element.removeEventListener("patchwork:mounted", onMounted);
