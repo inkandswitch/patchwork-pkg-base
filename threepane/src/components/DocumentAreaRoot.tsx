@@ -301,7 +301,8 @@ function DraftDocumentArea(props: {
                       }
                     />
 
-                    <div class="main-area">
+                    {/* where the call's stage goes: data-call-stage */}
+                    <div class="main-area" data-call-stage>
                       <MainDocumentView
                         viewKey={mainViewKey}
                         selectedDocUrl={props.selectedDocUrl}
