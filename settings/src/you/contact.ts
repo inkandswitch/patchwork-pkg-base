@@ -36,10 +36,8 @@ export const USER_COLOR_PALETTE = [
   { name: "Cyan", value: "hsl(188, 75%, 48%)" },
 ] as const;
 
-export function colorFromString(str: string): string {
-  const hash = Math.abs(str.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0));
-  return USER_COLOR_PALETTE[hash % USER_COLOR_PALETTE.length].value;
-}
+export const randomColor = () =>
+  USER_COLOR_PALETTE[Math.floor(Math.random() * USER_COLOR_PALETTE.length)].value;
 
 // the key the bootloader reads the account from (account picker's, kept)
 export const ACCOUNT_URL_STORAGE_KEY = "tinyPatchworkAccountUrl";

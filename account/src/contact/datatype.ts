@@ -1,9 +1,11 @@
 import { type DatatypeImplementation } from "@inkandswitch/patchwork-plugins";
 import type { ContactDoc } from "../types";
+import { getRandomUserColor } from "../user-colors";
 
 export const init = (doc: ContactDoc) => {
   Object.assign(doc, {
     type: "anonymous",
+    color: getRandomUserColor(),
   } as ContactDoc);
 };
 

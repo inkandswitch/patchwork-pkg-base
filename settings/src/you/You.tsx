@@ -8,8 +8,8 @@ import { useDocument } from "solid-automerge";
 import {
   ACCOUNT_URL_STORAGE_KEY,
   accountToken,
-  colorFromString,
   hexColor,
+  randomColor,
   squarePicture,
   USER_COLOR_PALETTE,
   type AccountDoc,
@@ -39,7 +39,7 @@ export function You(props: {
       })
       .then((handle) => {
         handle.change((doc) => {
-          doc.color = colorFromString(handle.url);
+          doc.color = randomColor();
         });
         props.handle.change((doc) => {
           doc.contactUrl = handle.url;
