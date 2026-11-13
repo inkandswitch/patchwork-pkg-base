@@ -2,6 +2,10 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { generateAutomergeUrl } from "@automerge/automerge-repo/slim";
 import { freshPage, here, settle } from "./fake.js";
 
+// happy-dom has no popovers: the menu closes itself after a choice
+HTMLElement.prototype.showPopover ??= function () {};
+HTMLElement.prototype.hidePopover ??= function () {};
+
 let engine, CallControlPanel, handles, parent, element, stop;
 beforeEach(async () => {
   handles = freshPage();
@@ -96,6 +100,18 @@ describe("in a call", () => {
     const release = engine.holdVideoSpot();
     await settle();
     expect(items()).toContain("in the sidebar");
+    release();
+  });
+
+  test("choosing in the sidebar puts faces there", async () => {
+    const release = engine.holdVideoSpot();
+    await settle();
+    const item = [...element.querySelectorAll(".patchwork-call-menu button")].find(
+      (b) => b.textContent.trim() === "in the sidebar",
+    );
+    expect(engine.call.mode()).toBe("floating");
+    item.click();
+    expect(engine.call.mode()).toBe("sidebar");
     release();
   });
 

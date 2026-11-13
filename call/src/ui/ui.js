@@ -442,7 +442,7 @@ function Wiggle(props) {
 
 /**
  * everyone's faces, floating over everything, each where you put it and the
- * size you made it (to start with, near `props.area()`, the stage's box):
+ * size you made it (to start with, near `props.area`, the stage's box):
  * dragged to move, and by its corner to size. each is a
  * circle centred on their face, or, double clicked, the picture's own shape
  * (4:3), none of it cut off (and double clicked again, a circle)
@@ -463,7 +463,7 @@ export function CallFloating(props) {
           const key = () => call.floatKey(id);
           const name = () => (mine ? "you" : peer()?.name);
           const muted = () => (mine ? !call.get()?.mic : !peer()?.mic);
-          const at = () => ({ ...startAt(index(), key(), props.area?.()), ...call.settings.floating[key()] });
+          const at = () => ({ ...startAt(index(), key(), props.area), ...call.settings.floating[key()] });
           let float;
           // what's being done to it: {sizing, dx, dy (or the width it was), at}
           let dragging = null;
@@ -747,7 +747,7 @@ export function CallTiles() {
 }
 
 /**
- * whoever's been clicked (call.stage()), filling `props.area()` (the
+ * whoever's been clicked (call.stage()), filling `props.area` (the
  * stage's box, or else the window), with you in its corner. double clicked,
  * it fills the screen, you a little bigger; escape, or its ×, puts it away
  */
@@ -790,7 +790,7 @@ export function CallStage(props) {
         stage = el;
         onTop(el, () => raise(el.closest(".patchwork-call")?.querySelector(".patchwork-call-floating")));
       }}
-      style=${() => boxStyle(props.area?.())}
+      style=${() => boxStyle(props.area)}
       onDblClick=${() => setFull(!call.full())}
       title="double click: the whole screen"
     >

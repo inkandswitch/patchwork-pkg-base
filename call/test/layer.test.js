@@ -114,6 +114,26 @@ describe("floating faces", () => {
   });
 });
 
+describe("faces floating in the stage's area", () => {
+  test("they start near it, given a box (the provider passes its area, which html makes a getter)", async () => {
+    setInCall({ room: "automerge:here", mic: true });
+    setMode("floating");
+    const box = { left: 10, top: 20, width: 300, height: 200 };
+    const host = document.body.appendChild(document.createElement("div"));
+    const area = () => box;
+    const dispose = render(() => html`<${CallFloating} area=${area} /><${CallStage} area=${area} />`, host);
+    await tick();
+    expect(host.querySelector(".patchwork-call-float")).not.toBe(null);
+    setStaged("p1");
+    await tick();
+    expect(host.querySelector(".patchwork-call-stage").style.width).toBe("300px");
+    dispose();
+    host.remove();
+    setStaged(null);
+    setInCall(null);
+  });
+});
+
 describe("the stage, and faces floating", () => {
   test("someone staged doesn't cover the floating faces", async () => {
     const shown = [];

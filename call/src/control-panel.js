@@ -174,7 +174,7 @@ function Panel(props) {
           html`<${Choice}
             label=${label}
             checked=${() => call.mode() === id}
-            choose=${() => setFaces(id)}
+            choose=${(event) => setFaces(id)}
           />`}
       <//>
       <${Devices} kind="audio" />
