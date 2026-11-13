@@ -39,6 +39,7 @@ import { useSidebarResize } from "../hooks/useSidebarResize";
 import { FrameTopBar } from "./FrameTopBar";
 import { ContextSidebar } from "./ContextSidebar";
 import { CommentsOpener } from "./CommentsOpener";
+import { CallVideoOpener } from "./CallVideoOpener";
 import { MainDocumentView } from "./MainDocumentView";
 
 /**
@@ -283,6 +284,15 @@ function DraftDocumentArea(props: {
               <Show when={areDocProvidersReady()}>
                 <CommentsOpener
                   element={focusProviderElement()!}
+                  open={(toolId) => {
+                    props.setSelectedContextToolId(toolId);
+                    props.setIsRightSidebarCollapsed(false);
+                  }}
+                />
+                <CallVideoOpener
+                  element={focusProviderElement()!}
+                  selected={props.selectedContextToolId}
+                  select={props.setSelectedContextToolId}
                   open={(toolId) => {
                     props.setSelectedContextToolId(toolId);
                     props.setIsRightSidebarCollapsed(false);
