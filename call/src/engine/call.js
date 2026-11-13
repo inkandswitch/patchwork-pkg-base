@@ -62,7 +62,9 @@ export const FACES = [
   ["floating", "floating"],
   ["sidebar", "in the sidebar"],
 ];
-const SETTINGS_KEY = "lattice-wm:call";
+// its own, not lattice's (lattice-wm:call): the same choice can mean a
+// different place in another frame, and lattice may share the origin
+const SETTINGS_KEY = "patchwork-call:settings";
 function readSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}");
