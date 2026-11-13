@@ -649,8 +649,10 @@ function restore(id) {
  */
 export function DragOut(props) {
   const drag = dragOut(props.id);
-  return html`<span
-    class="patchwork-call-drag"
+  return html`<button
+    type="button"
+    class="patchwork-call-drag patchwork-call-stage-button"
+    aria-label=${() => (props.id === "me" ? "restore your floating face" : "restore floating face")}
     data-call-face=${() => props.id}
     title=${() => (call.mode() === "floating" ? "drag out to float (minimised: click to have it back)" : undefined)}
     onPointerDown=${drag.onPointerDown}
@@ -658,7 +660,7 @@ export function DragOut(props) {
     onClick=${() => !drag.wasDrag() && restore(props.id)}
   >
     ${props.children}
-  </span>`;
+  </button>`;
 }
 
 /**
