@@ -90,6 +90,14 @@ describe("hearing a room", () => {
     offHearing();
   });
 
+  test("a bye from someone never heard is nothing", async () => {
+    const url = generateAutomergeUrl();
+    engine.hearRoom(url);
+    await tick();
+    expect(() => handles.get(url).emit({ [KEY]: "bye", from: "nobody" })).not.toThrow();
+    expect(engine.onCallIn(url)).toEqual([]);
+  });
+
   test("it stops hearing only when the last one stops", async () => {
     const url = generateAutomergeUrl();
     const one = engine.hearRoom(url);

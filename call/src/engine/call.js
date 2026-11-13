@@ -247,7 +247,8 @@ function hearCalls(channel) {
     const from = string(message.from);
     if (!from || from === live.session?.id) return;
     if (message[KEY] === "bye") {
-      setHeard(url, from, undefined);
+      // (someone never heard here: nothing to forget)
+      if (heard[url]?.[from]) setHeard(url, from, undefined);
       return;
     }
     if (message[KEY] !== "here") return;
