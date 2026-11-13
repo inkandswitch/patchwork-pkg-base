@@ -65,12 +65,12 @@ export function You(props: {
   const [wasNobody, setWasNobody] = createSignal(false);
   createEffect(() => known() && !someone() && setWasNobody(true));
   let justMade = false;
-  // making: you've pressed create account but not yet given a name, and can
+  // unsettled: you've pressed create account but not yet given a name, and can
   // still back out. a name settles it; after that it's sign out or nothing
-  const [making, setMaking] = createSignal(false);
+  const [unsettled, setUnsettled] = createSignal(false);
   async function makeAccount() {
     justMade = true;
-    setMaking(true);
+    setUnsettled(true);
     await changeMe((doc) => {
       if (doc.type !== "registered") {
         (doc as { type: string }).type = "registered";
@@ -79,7 +79,7 @@ export function You(props: {
     });
   }
   function unmakeAccount() {
-    setMaking(false);
+    setUnsettled(false);
     changeMe((doc) => {
       (doc as { type: string }).type = "anonymous";
       delete doc.name;
@@ -91,7 +91,7 @@ export function You(props: {
     const doc = me();
     return doc?.type === "registered" ? (doc.name ?? "") : "";
   };
-  createEffect(() => name().trim() && setMaking(false));
+  createEffect(() => name().trim() && setUnsettled(false));
 
   function rename(value: string, done: boolean) {
     const next = done ? value.trim() : value;
@@ -259,7 +259,7 @@ export function You(props: {
                 onChange={(event) => rename(event.currentTarget.value, true)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") event.currentTarget.blur();
-                  if (event.key === "Escape" && making()) unmakeAccount();
+                  if (event.key === "Escape" && unsettled()) unmakeAccount();
                 }}
               />
               <Show when={failed()}>
@@ -270,7 +270,7 @@ export function You(props: {
             </div>
           </div>
           <Show
-            when={!making()}
+            when={!unsettled()}
             fallback={
               <div class="settings-account settings-arriving">
                 <div class="settings-cluster">
