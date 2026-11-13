@@ -701,8 +701,10 @@
   width: min(340px, 80vw);
 }
 
-.settings-login-title {
+/* (two classes, to outdo .settings-page h3's muted label style) */
+.settings-login .settings-login-title {
   margin: 0;
+  color: var(--settings-fg);
   font-size: 15px;
   font-weight: 600;
 }
