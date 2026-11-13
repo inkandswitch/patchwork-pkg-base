@@ -13,10 +13,7 @@
 import { call, onCallIn } from "./engine/call.js";
 import { roomUrl } from "./engine/room.js";
 
-export const CALL_EVENT = "patchwork:call";
-export const CALL = "patchwork:call";
-export const CALL_ROOM = "patchwork:call-room";
-export const CALL_VIDEO = "patchwork:call-video";
+export { CALL, CALL_EVENT, CALL_ROOM, CALL_VIDEO } from "./protocol-names.js";
 
 /** {here, others, elsewhere} for the room `url`: you're in its call; how many others are; you're in one somewhere else */
 export function roomState(url) {
