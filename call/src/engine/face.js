@@ -88,7 +88,7 @@ export function watchFace(stream, onFace) {
             y: clamp01((box.y + box.height / 2) / video.videoHeight),
             size: clamp01(box.height / video.videoHeight),
           };
-          // eased (and everyone's picture glides there: wm.css)
+          // eased (and everyone's picture glides there: styles.css)
           const toward = (from, to) => from + (to - from) * EASE;
           const next = said
             ? { x: toward(said.x, face.x), y: toward(said.y, face.y), size: toward(said.size, face.size) }

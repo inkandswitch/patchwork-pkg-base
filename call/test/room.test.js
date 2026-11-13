@@ -69,7 +69,7 @@ describe("titleOf", () => {
   const handleOf = (doc) => ({ doc: () => doc });
 
   test("the datatype's title", async () => {
-    load.mockResolvedValueOnce({ getTitle: (d) => "T:" + d.x });
+    load.mockResolvedValueOnce({ module: { getTitle: (d) => "T:" + d.x } });
     expect(await titleOf(handleOf({ "@patchwork": { type: "t" }, x: 1 }))).toBe("T:1");
     expect(load).toHaveBeenCalledWith("t");
   });

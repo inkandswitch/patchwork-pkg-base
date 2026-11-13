@@ -1,4 +1,4 @@
-/* the call's look: lattice's, where it came from (wm.css, shell.css), its
+/* the call's look: lattice's, where it came from (its wm.css, shell.css), its
    colours from the theme's studio chrome: faces float over everything, and
    sit in the sidebars and the title bar */
 
@@ -17,10 +17,6 @@
 		--call-panel-shell-primary-line: var(--studio-primary-line);
 		--call-accent: var(--studio-primary-fill);
 		--call-accent-ink: var(--studio-primary-line);
-		--call-along-fade: calc(16 * var(--call-panel-px, 1px));
-		--call-aside-family: var(--call-sans);
-		--call-button-fill: var(--call-accent);
-		--call-face-size: calc(44 * var(--call-panel-px, 1px));
 		--call-chrome: var(--studio-chrome-fill-offset-20);
 		--call-chrome-hover: var(--studio-chrome-fill-offset-30);
 		--call-danger: var(--studio-danger-text);
@@ -31,8 +27,6 @@
 		--call-highlighter: var(--studio-selection-fill);
 		--call-ink: var(--studio-line);
 		--call-line: var(--studio-chrome-line);
-		--call-line-soft: var(--studio-fill-offset-20);
-		--call-mono: var(--studio-family-code);
 		--call-muted: oklch(from var(--call-fill) calc(l + (1 - 2 * round(l)) * 0.5) c h);
 		--call-round: var(--studio-radius-round);
 		--call-sans: var(--studio-family-ui);
@@ -76,8 +70,8 @@
 		box-shadow: 2px 2px 0 var(--call-line);
 		color: var(--call-ink);
 		font: 12px/1.4 var(--call-sans);
-		/* it grows out of where it was asked for (the click: ui/context-
-		   menu.js sets the origin; else its top left, under its button),
+		/* it grows out of where it was asked for (control-panel.js sets the
+		   origin; else its top left, under its button),
 		   quickly, as it's opened many times a day. it goes at once */
 		transform-origin: 0 0;
 		transition:
@@ -120,20 +114,9 @@
 		text-align: left;
 		cursor: pointer;
 
-		& small {
-			color: var(--call-muted);
-			font-size: 11px;
-		}
-
 		&:hover {
 			background: var(--call-highlighter);
 			color: var(--call-ink);
-		}
-
-		/* a remove, asking to be pressed again */
-		&[data-danger],
-		&[data-danger]:hover {
-			color: var(--call-danger);
 		}
 	}
 
@@ -148,38 +131,14 @@
 			content: "✓";
 		}
 	}
-
-	& .patchwork-call-menu-empty {
-		padding: 4px 8px;
-		color: var(--call-muted);
-	}
-
-	& .patchwork-call-menu-hint {
-		margin: 2px 8px 4px;
-		color: var(--call-muted);
-		font: italic 11.5px var(--call-aside-family);
-	}
-
-	& .patchwork-call-menu-rule {
-		height: 1px;
-		margin: 4px 0;
-		background: var(--call-line-soft);
-	}
-
 }
 
 /* something arriving while you're looking (ui/arriving.js): a face grows
-   in, a row comes down into its place. less motion: they fade in */
+   in. less motion: they fade in */
 @keyframes patchwork-call-arrive {
 	from {
 		opacity: 0;
 		scale: 0.9;
-	}
-}
-@keyframes patchwork-call-arrive-row {
-	from {
-		opacity: 0;
-		translate: 0 -3px;
 	}
 }
 @keyframes patchwork-call-arrive-fade {
@@ -279,8 +238,8 @@
 
 	& .patchwork-call-muted {
 		position: absolute;
-		right: calc(-3 * 1px);
-		bottom: calc(-3 * 1px);
+		right: -3px;
+		bottom: -3px;
 		display: grid;
 		place-items: center;
 		width: 14px;
@@ -293,8 +252,8 @@
 	/* sharing their screen: a little screen, top left */
 	& .patchwork-call-sharing {
 		position: absolute;
-		left: calc(-3 * 1px);
-		top: calc(-3 * 1px);
+		left: -3px;
+		top: -3px;
 		display: grid;
 		place-items: center;
 		width: 16px;
@@ -358,7 +317,7 @@
 		display: flex;
 
 		& .patchwork-call-face + .patchwork-call-face {
-			margin-left: calc(-6 * 1px);
+			margin-left: -6px;
 		}
 	}
 
@@ -483,7 +442,6 @@
 		}
 	}
 
-	/* a floating face's corner: drag it to size the face */
 	/* the picture's box, its shape (4:3) whichever the face is: the whole
 	   picture, or a circle as tall in the middle of it. between the two, its
 	   width and corners move */
@@ -523,7 +481,7 @@
 	   (but with reduced motion, it's the ring) */
 	& .patchwork-call-wiggle {
 		position: absolute;
-		inset: calc(-32 * 1px);
+		inset: -32px;
 		width: calc(100% + 64px);
 		height: calc(100% + 64px);
 		pointer-events: none;
@@ -533,6 +491,7 @@
 			outline-color: transparent;
 		}
 	}
+	/* a floating face's corner: drag it to size the face */
 	& .patchwork-call-size {
 		position: absolute;
 		right: 3px;
@@ -580,7 +539,6 @@
 	}
 }
 
-/* faces one under another, for a sidebar */
 /* a face to click to fill the panes with: a button that's only its face */
 .patchwork-call-stage-button {
 	padding: 0;
@@ -624,11 +582,6 @@
 		min-width: 0;
 		border-radius: 8px;
 
-		/* the one filling the panes */
-		&[data-staged] {
-			box-shadow: 0 0 0 2px var(--call-ink);
-		}
-
 		&:focus-visible {
 			outline: 2px solid var(--call-accent);
 			outline-offset: 2px;
@@ -640,11 +593,6 @@
 		align-items: center;
 		gap: 8px;
 		padding: 3px 4px;
-
-		&[data-staged] {
-			background: var(--call-chrome);
-			box-shadow: none;
-		}
 	}
 
 	& .patchwork-call-tile-name {
@@ -824,7 +772,7 @@
 	place-items: center;
 	width: 16px;
 	height: 16px;
-	margin: 0 2px 0 calc(-3 * 1px);
+	margin: 0 2px 0 -3px;
 	padding: 0;
 	border: none;
 	border-radius: 3px;
@@ -986,7 +934,7 @@
 	align-items: center;
 	gap: 3px;
 	min-width: 0;
-	margin: calc(-4 * 1px);
+	margin: -4px;
 	padding: 4px;
 }
 /* a face to fill the panes with */

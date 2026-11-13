@@ -176,7 +176,7 @@ function Panel(props) {
     <${Show} when=${() => call.settings.noise === "deepfilternet" && download().state === "failed"}>
       <p class="patchwork-call-panel-problem">couldn't get DeepFilterNet (${() => download().problem}): the browser's for now</p>
     <//>
-    <div class="patchwork-call-menu patchwork-call-panel-menu" popover="auto" role="menu" ref=${(el) => (menu = el)}>
+    <div class="patchwork-call-menu" popover="auto" role="menu" ref=${(el) => (menu = el)}>
       <div class="patchwork-call-menu-heading">faces</div>
       <${For} each=${() => FACES.filter(([id]) => id !== "sidebar" || call.canShowVideo())}>
         ${([id, label]) =>
