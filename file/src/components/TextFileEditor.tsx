@@ -31,6 +31,9 @@ import {automergeSyncPlugin} from "@automerge/automerge-codemirror"
 import {isImmutableStringFileDoc} from "../datatype"
 import {collectExtensions} from "./codemirror-extensions"
 import {createFileComments} from "./comments"
+import {createPresenceExtension} from "./presence"
+import {subscribe} from "@inkandswitch/patchwork-providers-solid"
+import type {AutomergeUrl, Repo} from "@automerge/automerge-repo/slim"
 import codemirrorTheme from "../codemirror-theme"
 import {getLanguageExtension} from "../languages"
 import type {FileDoc} from "../types"
@@ -105,6 +108,21 @@ export function TextFileEditor(props: {
 			? createFileComments({handle: props.handle, element: props.element})
 			: undefined
 
+	// Other people's carets and selections, coloured by their account. Needs
+	// to know who we are (to identify ourselves) and the repo (to read each
+	// peer's contact doc for their colour); with either missing it shows none.
+	const contactUrl = props.element
+		? subscribe<AutomergeUrl>(props.element, {type: "patchwork:contact"})
+		: () => undefined
+	const repo = (props.element as (HTMLElement & {repo?: Repo}) | undefined)
+		?.repo
+	const [presenceExtension, reconfigurePresence] = createPresenceExtension(
+		() => props.handle,
+		() => ["content"],
+		() => (props.handle && repo ? (contactUrl() ?? null) : null),
+		repo as Repo,
+	)
+
 	const view = new EditorView({
 		doc: props.doc.content?.toString() || "",
 		extensions: [
@@ -146,12 +164,14 @@ export function TextFileEditor(props: {
 			tsCompartment.of([]),
 			...codemirrorTheme,
 			automergeSyncPlugin({handle: props.handle, path: ["content"]}),
+			presenceExtension,
 			comments?.extension ?? [],
 			// last, so they can override anything above
 			collectExtensions(props.element, props.handle, props.doc, false),
 		],
 	})
 	comments?.attach(view)
+	reconfigurePresence(view)
 
 	// For code files, connect to the shared TypeScript language server (tsgo,
 	// in a worker) and add its features to the editor in place. Each document
