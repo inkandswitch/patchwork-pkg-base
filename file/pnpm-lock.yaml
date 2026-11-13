@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@automerge/automerge-codemirror@0.1.0': f2ad3cfb0669b823fa1b628e6c30ec60bf3b1cc33d401e81b343d26578413dd1
+
 importers:
 
   .:
@@ -13,7 +16,7 @@ importers:
         version: 3.2.1
       '@automerge/automerge-codemirror':
         specifier: ^0.1.0
-        version: 0.1.0
+        version: 0.1.0(patch_hash=f2ad3cfb0669b823fa1b628e6c30ec60bf3b1cc33d401e81b343d26578413dd1)
       '@automerge/automerge-repo':
         specifier: ^2.6.0-subduction.34
         version: 2.6.0-subduction.48
@@ -1306,7 +1309,7 @@ packages:
 
 snapshots:
 
-  '@automerge/automerge-codemirror@0.1.0':
+  '@automerge/automerge-codemirror@0.1.0(patch_hash=f2ad3cfb0669b823fa1b628e6c30ec60bf3b1cc33d401e81b343d26578413dd1)':
     dependencies:
       '@automerge/automerge': 2.2.9
       '@codemirror/state': 6.6.0

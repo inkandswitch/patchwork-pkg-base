@@ -7,3 +7,5 @@ allowBuilds:
   cbor-extract: true
   core-js: true
   esbuild: true
+patchedDependencies:
+  '@automerge/automerge-codemirror@0.1.0': patches/@automerge__automerge-codemirror@0.1.0.patch

@@ -1,0 +1,27 @@
+diff --git a/dist/amToCodemirror.js b/dist/amToCodemirror.js
+index 88adff8f8cc059e694757cecc2e8613f42556343..4cac0be693c20f538f6c059eb733ed26d98a1e62 100644
+--- a/dist/amToCodemirror.js
++++ b/dist/amToCodemirror.js
+@@ -1,4 +1,4 @@
+-import { ChangeSet } from "@codemirror/state";
++import { ChangeSet, Transaction } from "@codemirror/state";
+ import { reconcileAnnotationType } from "./plugin.js";
+ export const applyAmPatchesToCm = (view, target, patches) => {
+     let selection = view.state.selection;
+@@ -7,9 +7,15 @@ export const applyAmPatchesToCm = (view, target, patches) => {
+         if (changeSpec != null) {
+             const changeSet = ChangeSet.of(changeSpec, view.state.doc.length, "\n");
+             selection = selection.map(changeSet, 1);
++            // Remote changes from automerge are excluded from local undo
++            // (backport of automerge-codemirror 0.3.0).
+             view.dispatch({
+                 changes: changeSet,
+-                annotations: reconcileAnnotationType.of({}),
++                annotations: [
++                    reconcileAnnotationType.of({}),
++                    Transaction.addToHistory.of(false),
++                    Transaction.remote.of(true),
++                ],
+             });
+         }
+     }
