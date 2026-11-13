@@ -35,9 +35,16 @@
 }
 
 /* Focus mode (embeds in running text): the header only shows while focus is
-   inside the frame. The menu is a descendant, so it keeps the header up. */
+   inside the frame. The menu is a descendant, so it keeps the header up.
+   The header keeps its space while hidden, so showing it doesn't resize the
+   nested view; it fades in, and hides instantly. */
+.embed-frame[data-chrome="focus"] .header {
+  transition: opacity max(1ms, calc(150ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1))) var(--studio-ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+}
 .embed-frame[data-chrome="focus"]:not(:focus-within) .header {
-  display: none;
+  visibility: hidden;
+  opacity: 0;
+  transition: none;
 }
 
 .embed-frame .title {
