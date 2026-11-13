@@ -22,7 +22,7 @@ const [selected, setSelected] = createSignal<string | undefined>(
   "comments-view"
 );
 const open = vi.fn((id: string) => setSelected(id));
-const select = vi.fn((id: string) => setSelected(id));
+const select = vi.fn((id: string | undefined) => setSelected(id));
 
 beforeEach(() => {
   respond = null;
@@ -86,6 +86,17 @@ describe("the call's video tab", () => {
     respond!({ wanted: false });
     await settle();
     expect(select).toHaveBeenCalledWith("comments-view");
+  });
+
+  it("goes back to no tab chosen (the first) if none was", async () => {
+    setSelected(undefined);
+    mount();
+    await settle();
+    respond!({ wanted: true });
+    await settle();
+    respond!({ wanted: false });
+    await settle();
+    expect(select).toHaveBeenCalledWith(undefined);
   });
 
   it("leaves the tab alone if you've moved on from it", async () => {
