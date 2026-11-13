@@ -83,7 +83,7 @@ export function CallProvider(element) {
   element.append(layer);
   const unrender = render(() => {
     const area = stageArea(element, () => !!call.get());
-    return html`<${CallQuestion} /><${CallFloating} area=${area} /><${CallStage} area=${area} />`;
+    return html`<${CallQuestion} /><${CallFloating} area=${() => area} /><${CallStage} area=${() => area} />`;
   }, layer);
 
   element.addEventListener("patchwork:mounted", onMounted);
