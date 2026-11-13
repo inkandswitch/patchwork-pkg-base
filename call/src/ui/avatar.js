@@ -1,9 +1,8 @@
 // a face's picture: the avatar doc, through patchwork's service worker. if
 // that isn't to be had, faces are initials
-let avatarSrc = null;
-import("@inkandswitch/patchwork-filesystem").then(
-  (filesystem) => (avatarSrc = filesystem.automergeUrlToServiceWorkerUrl),
-  () => {},
+const avatarSrc = await import("@inkandswitch/patchwork-filesystem").then(
+  (filesystem) => filesystem.automergeUrlToServiceWorkerUrl,
+  () => null,
 );
 export function faceImage(url) {
   try {
