@@ -40,7 +40,7 @@ export async function titleOf(handle) {
     try {
       const { getRegistry } = await import("@inkandswitch/patchwork-plugins");
       const datatype = await getRegistry("patchwork:datatype").load(type);
-      const title = datatype?.getTitle?.(doc);
+      const title = datatype?.module?.getTitle?.(doc);
       if (typeof title === "string" && title) return title;
     } catch {}
   }
