@@ -940,6 +940,27 @@
 	font: 600 12px var(--call-panel-path-family);
 	white-space: nowrap;
 	text-overflow: ellipsis;
+
+	/* where the call is, which takes you there */
+	&:is(button) {
+		padding: 0;
+		border: 0;
+		background: none;
+		color: inherit;
+		text-align: start;
+		cursor: var(--studio-cursor-pointer, pointer);
+
+		&:hover {
+			text-decoration: underline;
+		}
+	}
+}
+
+/* who's on a call you're not in */
+.patchwork-call-panel-who {
+	margin: 2px 0 6px;
+	color: var(--call-panel-muted);
+	font-size: 12px;
 }
 .patchwork-call-panel-row {
 	display: flex;
@@ -1036,4 +1057,19 @@
 	margin: 0;
 	color: var(--call-panel-muted);
 	font-size: 11px;
+}
+
+/* ── the video, a tab in a frame's sidebar ───────────────────────────────── */
+
+.patchwork-call-video {
+	box-sizing: border-box;
+	height: 100%;
+	overflow: auto;
+	padding: 8px;
+}
+
+.patchwork-call-video-none {
+	margin: 0;
+	color: var(--call-muted);
+	font: 12px var(--call-sans);
 }

@@ -17,4 +17,22 @@ export const plugins = [
       return (await import("./call-face.js")).CallFace;
     },
   },
+  {
+    type: "patchwork:component",
+    id: "call-control-panel",
+    name: "Call",
+    async load() {
+      return (await import("./control-panel.js")).CallControlPanel;
+    },
+  },
+  {
+    type: "patchwork:component",
+    id: "call-video",
+    tags: ["context-tool"],
+    name: "Call",
+    icon: "Video",
+    async load() {
+      return (await import("./video.js")).CallVideo;
+    },
+  },
 ];
