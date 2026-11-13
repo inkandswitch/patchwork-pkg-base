@@ -158,3 +158,16 @@ test("stopped, it hears nothing more", async () => {
   await settle();
   expect(globalThis.repo.find).not.toHaveBeenCalled();
 });
+
+describe("what floats", () => {
+  test("the provider draws the question when something asks, and takes it away when stopped", async () => {
+    const url = generateAutomergeUrl();
+    deep.dispatchEvent(new CustomEvent("patchwork:call", { bubbles: true, detail: { action: "ask", url } }));
+    await settle();
+    const question = host.querySelector(".patchwork-call > .patchwork-call-question");
+    expect(question?.hasAttribute("data-open")).toBe(true);
+    stop();
+    stop = null;
+    expect(host.querySelector(".patchwork-call")).toBe(null);
+  });
+});
