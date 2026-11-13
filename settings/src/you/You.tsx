@@ -65,8 +65,12 @@ export function You(props: {
   const [wasNobody, setWasNobody] = createSignal(false);
   createEffect(() => known() && !someone() && setWasNobody(true));
   let justMade = false;
+  // making: you've pressed create account but not yet given a name, and can
+  // still back out. a name settles it; after that it's sign out or nothing
+  const [making, setMaking] = createSignal(false);
   async function makeAccount() {
     justMade = true;
+    setMaking(true);
     await changeMe((doc) => {
       if (doc.type !== "registered") {
         (doc as { type: string }).type = "registered";
@@ -74,11 +78,20 @@ export function You(props: {
       }
     });
   }
+  function unmakeAccount() {
+    setMaking(false);
+    changeMe((doc) => {
+      (doc as { type: string }).type = "anonymous";
+      delete doc.name;
+      delete doc.avatarUrl;
+    });
+  }
 
   const name = () => {
     const doc = me();
     return doc?.type === "registered" ? (doc.name ?? "") : "";
   };
+  createEffect(() => name().trim() && setMaking(false));
 
   function rename(value: string, done: boolean) {
     const next = done ? value.trim() : value;
@@ -244,9 +257,10 @@ export function You(props: {
                 }}
                 onInput={(event) => rename(event.currentTarget.value, false)}
                 onChange={(event) => rename(event.currentTarget.value, true)}
-                onKeyDown={(event) =>
-                  event.key === "Enter" && event.currentTarget.blur()
-                }
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") event.currentTarget.blur();
+                  if (event.key === "Escape" && making()) unmakeAccount();
+                }}
               />
               <Show when={failed()}>
                 <p class="settings-error" role="alert">
@@ -255,11 +269,28 @@ export function You(props: {
               </Show>
             </div>
           </div>
-          <AccountKey
-            handle={props.handle}
-            name={name}
-            arriving={wasNobody()}
-          />
+          <Show
+            when={!making()}
+            fallback={
+              <div class="settings-account settings-arriving">
+                <div class="settings-cluster">
+                  <button
+                    type="button"
+                    class="settings-button"
+                    onClick={unmakeAccount}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            }
+          >
+            <AccountKey
+              handle={props.handle}
+              name={name}
+              arriving={wasNobody()}
+            />
+          </Show>
         </Show>
       </Show>
 
