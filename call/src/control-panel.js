@@ -98,8 +98,8 @@ function Panel(props) {
     return html`<div class="patchwork-call-panel" role="group" aria-label="the call">
     <div class="patchwork-call-panel-head">
       <span class="patchwork-call-panel-phone">${icon("phone", 12)}</span>
-      <button class="patchwork-call-panel-where" title="go to it" onClick=${() => go(call.get().room)}>
-        ${() => (call.get().joining ? "joining…" : call.nameOf(call.get().room) || "a doc")}
+      <button class="patchwork-call-panel-where" title="go to it" onClick=${() => go(call.get()?.room)}>
+        ${() => (call.get()?.joining ? "joining…" : call.nameOf(call.get()?.room) || "a doc")}
       </button>
       <button
         class="patchwork-call-panel-button"
@@ -132,30 +132,30 @@ function Panel(props) {
       <span class="patchwork-call-panel-buttons">
         <button
           class="patchwork-call-panel-button"
-          data-off=${() => (call.get().mic ? undefined : "")}
-          title=${() => (call.get().mic ? "mute" : "unmute")}
-          aria-label=${() => (call.get().mic ? "mute" : "unmute")}
-          onClick=${() => setMic(!call.get().mic)}
+          data-off=${() => (call.get()?.mic ? undefined : "")}
+          title=${() => (call.get()?.mic ? "mute" : "unmute")}
+          aria-label=${() => (call.get()?.mic ? "mute" : "unmute")}
+          onClick=${() => setMic(!call.get()?.mic)}
         >
-          ${() => icon(call.get().mic ? "mic" : "mic-off", 14)}
+          ${() => icon(call.get()?.mic ? "mic" : "mic-off", 14)}
         </button>
         <button
           class="patchwork-call-panel-button"
-          data-off=${() => (call.get().camera ? undefined : "")}
-          title=${() => (call.get().camera ? "camera off" : "camera on")}
-          aria-label=${() => (call.get().camera ? "camera off" : "camera on")}
-          onClick=${() => setCamera(!call.get().camera)}
+          data-off=${() => (call.get()?.camera ? undefined : "")}
+          title=${() => (call.get()?.camera ? "camera off" : "camera on")}
+          aria-label=${() => (call.get()?.camera ? "camera off" : "camera on")}
+          onClick=${() => setCamera(!call.get()?.camera)}
         >
-          ${() => icon(call.get().camera ? "video" : "video-off", 14)}
+          ${() => icon(call.get()?.camera ? "video" : "video-off", 14)}
         </button>
         <${Show} when=${canShare}>
           <button
             class="patchwork-call-panel-button"
-            data-on=${() => (call.get().screen ? "" : undefined)}
-            aria-pressed=${() => String(!!call.get().screen)}
-            title=${() => (call.get().screen ? "stop sharing your screen" : "share your screen")}
-            aria-label=${() => (call.get().screen ? "stop sharing your screen" : "share your screen")}
-            onClick=${() => (call.get().screen ? stopScreen() : startScreen())}
+            data-on=${() => (call.get()?.screen ? "" : undefined)}
+            aria-pressed=${() => String(!!call.get()?.screen)}
+            title=${() => (call.get()?.screen ? "stop sharing your screen" : "share your screen")}
+            aria-label=${() => (call.get()?.screen ? "stop sharing your screen" : "share your screen")}
+            onClick=${() => (call.get()?.screen ? stopScreen() : startScreen())}
           >
             ${icon("screen", 14)}
           </button>
@@ -165,8 +165,8 @@ function Panel(props) {
         </button>
       </span>
     </div>
-    <${Show} when=${() => call.get().problem}>
-      <p class="patchwork-call-panel-problem">${() => call.get().problem}</p>
+    <${Show} when=${() => call.get()?.problem}>
+      <p class="patchwork-call-panel-problem">${() => call.get()?.problem}</p>
     <//>
     <${Show} when=${() => call.settings.noise === "deepfilternet" && download().state === "loading"}>
       <p class="patchwork-call-panel-note">
@@ -236,7 +236,7 @@ function Panel(props) {
       </button>
     </div>
     <${Show} when=${() => call.get()}>
-      <p class="patchwork-call-panel-note">leaves the call in ${() => call.nameOf(call.get().room) || "another doc"}</p>
+      <p class="patchwork-call-panel-note">leaves the call in ${() => call.nameOf(call.get()?.room) || "another doc"}</p>
     <//>
   </div>`;
   };

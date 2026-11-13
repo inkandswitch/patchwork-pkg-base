@@ -21,7 +21,7 @@ const CALL_VIDEO = "call-video";
  */
 export function CallVideoOpener(props: {
   selected: Accessor<string | undefined>;
-  select: (id: string) => void;
+  select: (id: string | undefined) => void;
   open: (id: string) => void;
   isCollapsed: Accessor<boolean>;
 }) {
@@ -40,10 +40,10 @@ export function CallVideoOpener(props: {
       if (!showing()) props.open(CALL_VIDEO);
       return;
     }
+    // (none chosen before: none again, which shows the first tab)
     if (
       opened &&
       props.selected() === CALL_VIDEO &&
-      previous &&
       previous !== CALL_VIDEO
     ) {
       props.select(previous);

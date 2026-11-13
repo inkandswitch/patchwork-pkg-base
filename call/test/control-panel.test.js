@@ -115,8 +115,19 @@ describe("in a call", () => {
     release();
   });
 
-  test("hanging up", () => {
-    element.querySelector('button[aria-label="hang up"]').click();
+  test("hanging up", async () => {
+    const thrown = [];
+    const onError = (event) => thrown.push(String(event.error ?? event.message));
+    window.addEventListener("error", onError);
+    try {
+      element.querySelector('button[aria-label="hang up"]').click();
+      await settle();
+    } catch (error) {
+      thrown.push(String(error));
+    } finally {
+      window.removeEventListener("error", onError);
+    }
     expect(engine.call.get()).toBe(null);
+    expect(thrown).toEqual([]);
   });
 });
