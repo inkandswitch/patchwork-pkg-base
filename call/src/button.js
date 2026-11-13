@@ -10,6 +10,7 @@ import { CALL, CALL_EVENT } from "./protocol-names.js";
 import { icon } from "./ui/icons.js";
 import "./ui/styles.css";
 
+const PROVIDER = "call-provider";
 const LABELS = { call: "call everyone here", join: "join the call", here: "hang up" };
 
 export default function CallDoctitleButton(handle, element) {
@@ -17,7 +18,15 @@ export default function CallDoctitleButton(handle, element) {
   // draft's, presenting it)
   const url = element.closest?.("patchwork-view")?.getAttribute("doc-url") ?? handle.url;
   const [room, setRoom] = createSignal(null);
-  const unsubscribe = subscribe(element, { type: CALL, url }, setRoom);
+  let unsubscribe = subscribe(element, { type: CALL, url }, setRoom);
+  // a provider that turns up after this asked (loaded late, or swapped in
+  // anew) is asked again
+  function again(event) {
+    if (event.detail?.componentId !== PROVIDER) return;
+    unsubscribe();
+    unsubscribe = subscribe(element, { type: CALL, url }, setRoom);
+  }
+  addEventListener("patchwork:mounted", again);
 
   const state = () => (room()?.here ? "here" : room()?.others > 0 ? "join" : "call");
   const send = (detail) => element.dispatchEvent(new CustomEvent(CALL_EVENT, { bubbles: true, composed: true, detail }));
@@ -49,6 +58,7 @@ export default function CallDoctitleButton(handle, element) {
     element,
   );
   return () => {
+    removeEventListener("patchwork:mounted", again);
     unsubscribe();
     dispose();
   };

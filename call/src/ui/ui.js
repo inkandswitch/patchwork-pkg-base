@@ -201,13 +201,25 @@ export function CallQuestion() {
 }
 
 // over everything (the top layer, as a frame's own popovers are), once it's
-// on the page
-function onTop(el) {
+// on the page; then `after()`
+function onTop(el, after) {
   queueMicrotask(() => {
     try {
       if (el.isConnected && !el.matches(":popover-open")) el.showPopover();
     } catch {}
+    after?.();
   });
+}
+
+// back on top of the top layer, which stacks by what was shown last, not by
+// z-index: floating faces over the stage, as they were in lattice
+function raise(el) {
+  if (!el) return;
+  try {
+    if (!el.matches(":popover-open")) return;
+    el.hidePopover();
+    el.showPopover();
+  } catch {}
 }
 
 // where the stage goes, as a style: the box, or the whole window
@@ -441,7 +453,8 @@ export function CallFloating(props) {
   const ids = createMemo(() =>
     [...call.peers().map((peer) => peer.id), "me"].filter((id) => !call.settings.floating[call.floatKey(id)]?.hidden),
   );
-  return html`<${Show} when=${() => call.get() && call.mode() === "floating"}>
+  // (in the sidebar, but nothing's showing the sidebar's: floating meanwhile)
+  return html`<${Show} when=${() => call.get() && (call.mode() === "floating" || !call.videoShowing())}>
     <div class="patchwork-call-floating" popover="manual" ref=${onTop}>
       <${For} each=${ids}>
         ${(id, index) => {
@@ -775,7 +788,7 @@ export function CallStage(props) {
       popover="manual"
       ref=${(el) => {
         stage = el;
-        onTop(el);
+        onTop(el, () => raise(el.closest(".patchwork-call")?.querySelector(".patchwork-call-floating")));
       }}
       style=${() => boxStyle(props.area?.())}
       onDblClick=${() => setFull(!call.full())}

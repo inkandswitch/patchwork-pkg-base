@@ -228,6 +228,17 @@ describe("where faces go", () => {
     expect(engine.call.videoWanted()).toBe(false);
   });
 
+  test("whether the video's actually showing somewhere, not just able to be", () => {
+    const able = engine.holdVideoSpot();
+    expect(engine.call.videoShowing()).toBe(false);
+    const showing = engine.holdVideoSpot({ showing: true });
+    expect(engine.call.videoShowing()).toBe(true);
+    expect(engine.call.canShowVideo()).toBe(true);
+    showing();
+    expect(engine.call.videoShowing()).toBe(false);
+    able();
+  });
+
   test("on cursors isn't the call's to say any more", () => {
     expect(engine.call.cursors).toBe(undefined);
     expect(engine.setCursors).toBe(undefined);

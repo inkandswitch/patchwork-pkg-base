@@ -33,14 +33,14 @@ import { icon } from "./ui/icons.js";
 import "./ui/styles.css";
 
 export function CallControlPanel(element) {
-  const showing = () => !!call.get() || call.rooms().length > 0;
+  const showing = () => !!call.get() || call.rooms().length > 0 || !!call.problem();
   const dispose = render(() => {
     createEffect(() => (element.dataset.sidebarSize = showing() ? "fit" : "none"));
     return html`<${Panel} element=${element} />`;
   }, element);
   return () => {
     dispose();
-    delete element.dataset.sidebarSize;
+    element.dataset.sidebarSize = "none";
   };
 }
 

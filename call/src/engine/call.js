@@ -104,6 +104,8 @@ const {
   setProblem,
   videoSpots,
   setVideoSpots,
+  videoShown,
+  setVideoShown,
 } = lasting("patchwork-call:state", () => createRoot(() => {
     const saved = readSettings();
     const [state, setState] = createStore({
@@ -134,8 +136,10 @@ const {
     const [titles, setTitles] = createStore({});
     // what went wrong outside a call (joining one that can't be reached)
     const [problem, setProblem] = createSignal(null);
-    // how many places can show the video (call-video)
+    // how many places can show the video (call-video), and how many are
+    // showing it now
     const [videoSpots, setVideoSpots] = createSignal(0);
+    const [videoShown, setVideoShown] = createSignal(0);
     return {
       state,
       setState,
@@ -155,6 +159,8 @@ const {
       setProblem,
       videoSpots,
       setVideoSpots,
+      videoShown,
+      setVideoShown,
     };
   }));
 
@@ -349,15 +355,19 @@ export function ask(url, { at = null } = {}) {
 
 /**
  * a place that can show the video (call-video) is there, till the function
- * this returns is called: faces can be "in the sidebar" while one is
+ * this returns is called: faces can be "in the sidebar" while one is.
+ * `showing`: it's on screen now (a tab that's open). faces in the sidebar
+ * float meanwhile, wherever nothing's showing them
  */
-export function holdVideoSpot() {
+export function holdVideoSpot({ showing = false } = {}) {
   setVideoSpots((n) => n + 1);
+  if (showing) setVideoShown((n) => n + 1);
   let held = true;
   return () => {
     if (!held) return;
     held = false;
     setVideoSpots((n) => n - 1);
+    if (showing) setVideoShown((n) => n - 1);
   };
 }
 
@@ -730,6 +740,8 @@ export const call = {
   mode: () => (settings.faces === "sidebar" && call.canShowVideo() ? "sidebar" : "floating"),
   /** whether something can show the video (call-video): holdVideoSpot */
   canShowVideo: () => videoSpots() > 0,
+  /** whether something's showing the video right now */
+  videoShowing: () => videoShown() > 0,
   /** whether the video's to be shown: you're in a call, with faces in the sidebar */
   videoWanted: () => !!state.call && call.mode() === "sidebar",
   /** what went wrong outside a call, or null */

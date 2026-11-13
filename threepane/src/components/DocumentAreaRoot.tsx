@@ -150,35 +150,47 @@ export function DocumentAreaRoot(props: DocumentAreaRootProps) {
     isDraftStateProviderReady() ? draftStateProviderHost() : undefined;
 
   return (
-    <Show when={props.selectedDocUrl()} keyed>
-      {(docUrl) => (
-        <patchwork-view
-          component="patchwork-draft-state-provider"
-          doc-url={docUrl}
-          ref={setDraftStateProviderHost}
-        >
-          <Show when={readyDraftStateHost()}>
-            {(host) => (
-              <DraftDocumentArea
-                host={host()}
-                setMainDocElement={props.setMainDocElement}
-                selectedDocUrl={props.selectedDocUrl}
-                selectedToolId={props.selectedToolId}
-                doctitleSlots={props.doctitleSlots}
-                isLeftCollapsed={props.isLeftCollapsed}
-                isRightSidebarCollapsed={isRightSidebarCollapsed}
-                setIsRightSidebarCollapsed={setIsRightSidebarCollapsed}
-                rightSidebarWidth={rightSidebarWidth}
-                handleMouseDown={sidebarResize.handleMouseDown}
-                handleToggleClick={sidebarResize.handleToggleClick}
-                selectedContextToolId={selectedContextToolId}
-                setSelectedContextToolId={setSelectedContextToolId}
-              />
-            )}
-          </Show>
-        </patchwork-view>
-      )}
-    </Show>
+    <>
+      {/* above the per-document remount, so a doc switch doesn't drop it */}
+      <CallVideoOpener
+        selected={selectedContextToolId}
+        select={setSelectedContextToolId}
+        isCollapsed={isRightSidebarCollapsed}
+        open={(toolId) => {
+          setSelectedContextToolId(toolId);
+          setIsRightSidebarCollapsed(false);
+        }}
+      />
+      <Show when={props.selectedDocUrl()} keyed>
+        {(docUrl) => (
+          <patchwork-view
+            component="patchwork-draft-state-provider"
+            doc-url={docUrl}
+            ref={setDraftStateProviderHost}
+          >
+            <Show when={readyDraftStateHost()}>
+              {(host) => (
+                <DraftDocumentArea
+                  host={host()}
+                  setMainDocElement={props.setMainDocElement}
+                  selectedDocUrl={props.selectedDocUrl}
+                  selectedToolId={props.selectedToolId}
+                  doctitleSlots={props.doctitleSlots}
+                  isLeftCollapsed={props.isLeftCollapsed}
+                  isRightSidebarCollapsed={isRightSidebarCollapsed}
+                  setIsRightSidebarCollapsed={setIsRightSidebarCollapsed}
+                  rightSidebarWidth={rightSidebarWidth}
+                  handleMouseDown={sidebarResize.handleMouseDown}
+                  handleToggleClick={sidebarResize.handleToggleClick}
+                  selectedContextToolId={selectedContextToolId}
+                  setSelectedContextToolId={setSelectedContextToolId}
+                />
+              )}
+            </Show>
+          </patchwork-view>
+        )}
+      </Show>
+    </>
   );
 }
 
@@ -284,15 +296,6 @@ function DraftDocumentArea(props: {
               <Show when={areDocProvidersReady()}>
                 <CommentsOpener
                   element={focusProviderElement()!}
-                  open={(toolId) => {
-                    props.setSelectedContextToolId(toolId);
-                    props.setIsRightSidebarCollapsed(false);
-                  }}
-                />
-                <CallVideoOpener
-                  element={focusProviderElement()!}
-                  selected={props.selectedContextToolId}
-                  select={props.setSelectedContextToolId}
                   open={(toolId) => {
                     props.setSelectedContextToolId(toolId);
                     props.setIsRightSidebarCollapsed(false);

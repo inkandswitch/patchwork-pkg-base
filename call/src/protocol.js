@@ -6,8 +6,8 @@
 //   patchwork:call {url}             → {here, others, elsewhere}
 //   patchwork:call-room {url, name}  this room is where you are, called name
 //                                    → {here, others, elsewhere}
-//   patchwork:call-video             this frame can show the video
-//                                    → {wanted}
+//   patchwork:call-video {showing}   this frame can show the video, and
+//                                    whether it is now → {wanted}
 //
 // a url is any room id (room.js): a doc's url, or "key:<hex>"
 import { call, onCallIn } from "./engine/call.js";

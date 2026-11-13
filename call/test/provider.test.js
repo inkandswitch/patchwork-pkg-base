@@ -94,6 +94,21 @@ describe("docs on screen", () => {
   });
 });
 
+describe("arriving late", () => {
+  test("docs already on screen when it mounts are heard, and their unmounts pair up", async () => {
+    stop();
+    const url = generateAutomergeUrl();
+    const view = deep.appendChild(document.createElement("patchwork-view"));
+    view.setAttribute("doc-url", `${url}#heads|abc`);
+    stop = CallProvider(host);
+    await settle();
+    here(url);
+    expect(engine.call.rooms().map((r) => r.url)).toEqual([url]);
+    unmounted(url, view);
+    expect(engine.call.rooms()).toHaveLength(0);
+  });
+});
+
 describe("subscriptions", () => {
   test("patchwork:call says whether there's a call on a doc", async () => {
     const url = generateAutomergeUrl();
@@ -133,6 +148,15 @@ describe("subscriptions", () => {
     off();
     await settle();
     expect(engine.call.canShowVideo()).toBe(false);
+  });
+
+  test("patchwork:call-video says whether the frame's showing it right now", async () => {
+    const off = subscribe(deep, { type: "patchwork:call-video", showing: true }, () => {});
+    await settle();
+    expect(engine.call.videoShowing()).toBe(true);
+    off();
+    await settle();
+    expect(engine.call.videoShowing()).toBe(false);
   });
 });
 

@@ -69,7 +69,12 @@ export function SidebarWidgets(props: {
         </Show>
         <Show when={!callConfigured()}>
           <div class="threepane-widget">
-            <patchwork-view component={CALL_CONTROL_PANEL} />
+            {/* no room till the panel says it wants some: none at all
+                without the call package */}
+            <patchwork-view
+              component={CALL_CONTROL_PANEL}
+              attr:data-sidebar-size="none"
+            />
           </div>
         </Show>
       </Show>

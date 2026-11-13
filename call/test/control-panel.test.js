@@ -32,6 +32,18 @@ describe("its size", () => {
     release();
     expect(element.dataset.sidebarSize).toBe("none");
   });
+
+  test("stopped, it takes no room", () => {
+    stop();
+    expect(element.dataset.sidebarSize).toBe("none");
+    stop = () => {};
+  });
+
+  test("a call that couldn't be joined says so", async () => {
+    await engine.join("key:" + "00".repeat(32));
+    expect(element.dataset.sidebarSize).toBe("fit");
+    expect(element.textContent).toContain("calls over a key aren't available yet");
+  });
 });
 
 describe("a call on screen you're not in", () => {
