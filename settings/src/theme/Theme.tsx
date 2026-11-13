@@ -152,59 +152,57 @@ export function Theme(props: {
         Number((b.colorScheme ?? which) !== which)
     );
 
+  const name = (id: string) =>
+    themes().find((theme) => theme.id === id)?.name ?? id;
+
+  // one mode's cards, folded away under its name and the one it's set to
+  const Picker = (p: { which: Mode }) => (
+    <details class="settings-disclosure">
+      <summary class="settings-row">
+        <span class="settings-label settings-disclosure-label">
+          {p.which === "light" ? "Light theme" : "Dark theme"}
+          <Show when={split() && mode() === p.which}>
+            <span class="settings-active">(Active)</span>
+          </Show>
+        </span>
+        <span class="settings-disclosure-value">
+          {name(chosen(p.which))}
+        </span>
+      </summary>
+      <div class="settings-group-block">
+        <Cards
+          themes={forMode(p.which)}
+          chosen={chosen(p.which)}
+          onChoose={(id) => choose(split() ? p.which : "both", id)}
+          label={p.which === "light" ? "Light theme" : "Dark theme"}
+        />
+      </div>
+    </details>
+  );
+
   return (
     <section class="settings-section" aria-labelledby="settings-theme">
       <h2 id="settings-theme">Theme</h2>
       <Show when={themes().length}>
         <div class="settings-group">
-          <Show
-            when={split()}
-            fallback={
-              <div class="settings-group-block">
-                <Cards
-                  themes={themes()}
-                  chosen={chosen(mode())}
-                  onChoose={(id) => choose("both", id)}
-                  label="Theme"
-                />
-              </div>
-            }
-          >
-            <For each={["light", "dark"] as Mode[]}>
-              {(which) => (
-                <div class="settings-group-block settings-theme-mode">
-                  <h3>
-                    {which === "light" ? "Light mode" : "Dark mode"}
-                    <Show when={mode() === which}>
-                      <span class="settings-now">Now</span>
-                    </Show>
-                  </h3>
-                  <Cards
-                    themes={forMode(which)}
-                    chosen={chosen(which)}
-                    onChoose={(id) => choose(which, id)}
-                    label={
-                      which === "light" ? "Light mode theme" : "Dark mode theme"
-                    }
-                  />
-                </div>
-              )}
-            </For>
-          </Show>
-          <div class="settings-row">
-            <label class="settings-label" for="settings-theme-split">
-              Use a different theme when Computer is in dark mode
-            </label>
+          <Picker which="light" />
+          <div class="settings-row settings-row-switch-first">
             <Toggle
               id="settings-theme-split"
               checked={split()}
               onChange={(on) => {
                 setSplitByHand(on);
-                // back to one: the one that's showing now, for both
-                if (!on) choose("both", chosen(mode()));
+                // back to one: the light one, for both
+                if (!on) choose("both", chosen("light"));
               }}
             />
+            <label class="settings-label" for="settings-theme-split">
+              Use a different theme when Computer is in dark mode
+            </label>
           </div>
+          <Show when={split()}>
+            <Picker which="dark" />
+          </Show>
         </div>
       </Show>
     </section>
