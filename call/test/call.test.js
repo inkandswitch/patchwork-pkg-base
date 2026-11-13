@@ -246,6 +246,18 @@ describe("where faces go", () => {
   });
 });
 
+describe("settings", () => {
+  test("its own, not lattice's: faces put away there aren't put away here", async () => {
+    localStorage.setItem("lattice-wm:call", JSON.stringify({ faces: "sidebar", floating: { "automerge:c1": { hidden: true } } }));
+    await fresh();
+    expect(engine.call.settings.faces).toBe("floating");
+    expect(engine.call.settings.floating).toEqual({});
+    engine.setFloating("me", { x: 0.5, y: 0.5 });
+    expect(JSON.parse(localStorage.getItem("patchwork-call:settings")).floating.me).toEqual({ x: 0.5, y: 0.5 });
+    expect(JSON.parse(localStorage.getItem("lattice-wm:call")).faces).toBe("sidebar");
+  });
+});
+
 describe("asking", () => {
   test("asking about a room, at a place", () => {
     const url = generateAutomergeUrl();

@@ -29,7 +29,8 @@ export const plugins = [
     type: "patchwork:component",
     id: "call-video",
     tags: ["context-tool"],
-    name: "Call",
+    // (tabs go by name, and with nothing chosen the first is shown: not this)
+    name: "Video",
     icon: "Video",
     async load() {
       return (await import("./video.js")).CallVideo;
