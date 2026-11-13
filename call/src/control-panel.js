@@ -106,7 +106,16 @@ function Panel(props) {
         title="faces, mic and camera"
         aria-label="faces, mic and camera"
         aria-haspopup="menu"
-        onClick=${openMenu}
+        onPointerDown=${(event) => {
+          event.currentTarget.dataset.callMenuWasOpen = String(menu.matches(":popover-open"));
+        }}
+        onClick=${(event) => {
+          const button = event.currentTarget;
+          const dismiss = event.detail > 0 && button.dataset.callMenuWasOpen === "true";
+          delete button.dataset.callMenuWasOpen;
+          if (dismiss) menu.hidePopover();
+          else openMenu(event);
+        }}
       >
         ${icon("chevron-down", 12)}
       </button>
