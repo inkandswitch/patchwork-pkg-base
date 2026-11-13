@@ -34,7 +34,8 @@ export function freshPage() {
   });
   vi.stubGlobal(
     "MediaStream",
-    class {
+    // (its own kind, so a <video> takes it)
+    class extends (globalThis.MediaStream ?? Object) {
       tracks = [];
       getTracks = () => [...this.tracks];
       getVideoTracks = () => this.tracks.filter((t) => t.kind === "video");
