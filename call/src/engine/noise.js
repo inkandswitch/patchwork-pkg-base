@@ -147,9 +147,12 @@ haveModel().then((have) => {
 
 /** the wasm's and model's urls (object urls), downloading them the first time */
 export function loadModel() {
+  let active = true;
   loading.promise ??= (async () => {
     const got = { wasm: 0, model: 0 };
-    const tell = () => setDownload({ state: "loading", got: got.wasm + got.model, total: DOWNLOAD_BYTES, problem: null });
+    const tell = () => {
+      if (active) setDownload({ state: "loading", got: got.wasm + got.model, total: DOWNLOAD_BYTES, problem: null });
+    };
     tell();
     const [wasm, model] = await Promise.all(
       ["wasm", "model"].map((which) =>
@@ -163,6 +166,7 @@ export function loadModel() {
     setDownload({ state: "ready", got: DOWNLOAD_BYTES, total: DOWNLOAD_BYTES, problem: null });
     return loading.urls;
   })().catch((error) => {
+    active = false;
     loading.promise = null;
     setDownload({ state: "failed", got: 0, total: DOWNLOAD_BYTES, problem: String(error?.message ?? error) });
     throw error;
