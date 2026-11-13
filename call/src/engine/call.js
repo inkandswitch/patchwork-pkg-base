@@ -33,7 +33,12 @@ const LATTICE_HELLO = "lattice-wm:hello?";
 const ICE_SERVERS = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
-  { urls: "turn:sync3.automerge.org:3478", username: "user", credential: "password" },
+  // over tcp too: some networks (schools) let no udp out at all
+  {
+    urls: ["turn:sync3.automerge.org:3478", "turn:sync3.automerge.org:3478?transport=tcp"],
+    username: "inkandswitch",
+    credential: "insecure",
+  },
 ];
 // saying you're in it
 const HERE_EVERY = 3000;
