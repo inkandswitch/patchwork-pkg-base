@@ -1,0 +1,12 @@
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  test: {
+    environment: "happy-dom",
+    globals: true,
+    passWithNoTests: true,
+  },
+  resolve: {
+    conditions: ["development", "browser"],
+  },
+});
