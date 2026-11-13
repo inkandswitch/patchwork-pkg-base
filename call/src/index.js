@@ -9,4 +9,12 @@ export const plugins = [
       return (await import("./provider.js")).CallProvider;
     },
   },
+  {
+    type: "patchwork:component",
+    id: "call-face",
+    name: "Call face",
+    async load() {
+      return (await import("./call-face.js")).CallFace;
+    },
+  },
 ];

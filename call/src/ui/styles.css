@@ -1,0 +1,1005 @@
+/* the call's look: lattice's, where it came from (wm.css, shell.css), its
+   colours from the theme's studio chrome: faces float over everything, and
+   sit in the sidebars and the title bar */
+
+@layer package {
+	:root,
+	:host,
+	[theme] {
+		--call-panel-muted: oklch(from var(--call-panel-shell-chrome-fill) calc(l + (1 - 2 * round(l)) * 0.5) c h);
+		--call-panel-path-family: var(--call-panel-heading-family, var(--call-panel-shell-family-code));
+		--call-panel-rule: var(--call-panel-shell-chrome-fill-offset-30);
+		--call-panel-shell-chrome-fill: var(--studio-chrome-fill);
+		--call-panel-shell-chrome-fill-offset-20: var(--studio-chrome-fill-offset-20);
+		--call-panel-shell-chrome-fill-offset-30: var(--studio-chrome-fill-offset-30);
+		--call-panel-shell-family-code: var(--studio-family-code);
+		--call-panel-shell-primary: var(--studio-primary);
+		--call-panel-shell-primary-line: var(--studio-primary-line);
+		--call-accent: var(--studio-primary-fill);
+		--call-accent-ink: var(--studio-primary-line);
+		--call-along-fade: calc(16 * var(--call-panel-px, 1px));
+		--call-aside-family: var(--call-sans);
+		--call-button-fill: var(--call-accent);
+		--call-face-size: calc(44 * var(--call-panel-px, 1px));
+		--call-chrome: var(--studio-chrome-fill-offset-20);
+		--call-chrome-hover: var(--studio-chrome-fill-offset-30);
+		--call-danger: var(--studio-danger-text);
+		--call-danger-fill: var(--studio-danger-fill);
+		--call-danger-ink: var(--studio-danger-line);
+		--call-fill: var(--studio-fill);
+		--call-heading-family: var(--call-sans);
+		--call-highlighter: var(--studio-selection-fill);
+		--call-ink: var(--studio-line);
+		--call-line: var(--studio-chrome-line);
+		--call-line-soft: var(--studio-fill-offset-20);
+		--call-mono: var(--studio-family-code);
+		--call-muted: oklch(from var(--call-fill) calc(l + (1 - 2 * round(l)) * 0.5) c h);
+		--call-round: var(--studio-radius-round);
+		--call-sans: var(--studio-family-ui);
+		--call-sheet: var(--editor-fill);
+	}
+}
+
+/* ── the call's menu ──────────────────────────────────────────────────── */
+
+.patchwork-call-menu {
+	&[popover] {
+		position: fixed;
+		inset: auto;
+		width: 260px;
+		margin: 0;
+		padding: 4px;
+		border: 1px solid var(--call-line);
+		border-radius: 3px;
+		background: var(--call-sheet);
+		box-shadow: 2px 2px 0 var(--call-line);
+		color: var(--call-ink);
+		font: 12px/1.4 var(--call-sans);
+		/* it grows out of where it was asked for (the click: ui/context-
+		   menu.js sets the origin; else its top left, under its button),
+		   quickly, as it's opened many times a day. it goes at once */
+		transform-origin: 0 0;
+		transition:
+			opacity 150ms cubic-bezier(0.23, 1, 0.32, 1),
+			scale 150ms cubic-bezier(0.23, 1, 0.32, 1);
+
+		@starting-style {
+			opacity: 0;
+			scale: 0.97;
+		}
+
+		@media (prefers-reduced-motion: reduce) {
+			transition: opacity 150ms ease-out;
+
+			@starting-style {
+				scale: none;
+			}
+		}
+	}
+
+	& .patchwork-call-menu-heading {
+		padding: 6px 8px 2px;
+		color: var(--call-muted);
+		font-size: 10px;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+	}
+
+	& .patchwork-call-menu-item {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		width: 100%;
+		padding: 4px 8px;
+		border: none;
+		border-radius: 2px;
+		background: none;
+		color: inherit;
+		font: inherit;
+		text-align: left;
+		cursor: pointer;
+
+		& small {
+			color: var(--call-muted);
+			font-size: 11px;
+		}
+
+		&:hover {
+			background: var(--call-highlighter);
+			color: var(--call-ink);
+		}
+
+		/* a remove, asking to be pressed again */
+		&[data-danger],
+		&[data-danger]:hover {
+			color: var(--call-danger);
+		}
+	}
+
+	/* a tick by what's chosen */
+	& .patchwork-call-panel-choice {
+		&::before {
+			content: "";
+			flex: none;
+			width: 1em;
+		}
+		&[aria-checked="true"]::before {
+			content: "✓";
+		}
+	}
+
+	& .patchwork-call-menu-empty {
+		padding: 4px 8px;
+		color: var(--call-muted);
+	}
+
+	& .patchwork-call-menu-hint {
+		margin: 2px 8px 4px;
+		color: var(--call-muted);
+		font: italic 11.5px var(--call-aside-family);
+	}
+
+	& .patchwork-call-menu-rule {
+		height: 1px;
+		margin: 4px 0;
+		background: var(--call-line-soft);
+	}
+
+}
+
+/* something arriving while you're looking (ui/arriving.js): a face grows
+   in, a row comes down into its place. less motion: they fade in */
+@keyframes patchwork-call-arrive {
+	from {
+		opacity: 0;
+		scale: 0.9;
+	}
+}
+@keyframes patchwork-call-arrive-row {
+	from {
+		opacity: 0;
+		translate: 0 -3px;
+	}
+}
+@keyframes patchwork-call-arrive-fade {
+	from {
+		opacity: 0;
+	}
+}
+
+/* a row of faces longer than its room (ui/along.js): it scrolls sideways,
+   no bar, and fades out at whichever end there's more past */
+.patchwork-call-along {
+	--call-along-fade: 16px;
+	flex-wrap: nowrap;
+	overflow-x: auto;
+	overflow-y: hidden;
+	overscroll-behavior-x: contain;
+	scrollbar-width: none;
+
+	&::-webkit-scrollbar {
+		display: none;
+	}
+
+	&[data-more="end"] {
+		mask-image: linear-gradient(to right, #000 calc(100% - var(--call-along-fade)), transparent);
+	}
+	&[data-more="start"] {
+		mask-image: linear-gradient(to left, #000 calc(100% - var(--call-along-fade)), transparent);
+	}
+	&[data-more="both"] {
+		mask-image: linear-gradient(
+			to right,
+			transparent,
+			#000 var(--call-along-fade),
+			#000 calc(100% - var(--call-along-fade)),
+			transparent
+		);
+	}
+}
+
+/* ── faces, the question before you're in a call, and faces floating or in
+      the video tab ────────────────────────────────────────────────────── */
+
+/* someone's face: their pictures while their camera's on, else their
+   avatar, or their initial. yours is as a mirror shows you */
+.patchwork-call-face {
+	--call-face-size: 24px;
+	position: relative;
+	display: inline-grid;
+	flex: none;
+	place-items: center;
+	box-sizing: border-box;
+	width: var(--call-face-size);
+	height: var(--call-face-size);
+	border: 2px solid var(--call-face, var(--call-line));
+	border-radius: 50%;
+	background: var(--call-chrome) center / cover;
+	color: var(--call-ink);
+	font: 600 calc(var(--call-face-size) * 0.42) / 1 var(--call-sans);
+
+	& video {
+		width: 100%;
+		height: 100%;
+		border-radius: inherit;
+		object-fit: cover;
+		/* centred on their face (face.js), which is said four times a second:
+		   it glides there between, rather than jumping */
+		transition: object-position 400ms cubic-bezier(0.25, 0.1, 0.25, 1);
+
+		@media (prefers-reduced-motion: reduce) {
+			transition: none;
+		}
+	}
+
+	&[data-mine] video {
+		scale: -1 1;
+	}
+
+	&[data-connecting] {
+		opacity: 0.55;
+	}
+
+	/* speaking: a ring round them, as it starts and stops */
+	outline: 2px solid transparent;
+	outline-offset: 1px;
+	transition: outline-color 160ms ease-out;
+	&[data-speaking] {
+		outline-color: var(--call-accent);
+	}
+
+	&[data-shape="tile"] {
+		width: 100%;
+		height: auto;
+		aspect-ratio: 4 / 3;
+		border-radius: 6px;
+		font-size: 28px;
+	}
+
+	& .patchwork-call-muted {
+		position: absolute;
+		right: calc(-3 * 1px);
+		bottom: calc(-3 * 1px);
+		display: grid;
+		place-items: center;
+		width: 14px;
+		height: 14px;
+		border-radius: 50%;
+		background: var(--call-danger-fill);
+		color: var(--call-danger-ink);
+	}
+
+	/* sharing their screen: a little screen, top left */
+	& .patchwork-call-sharing {
+		position: absolute;
+		left: calc(-3 * 1px);
+		top: calc(-3 * 1px);
+		display: grid;
+		place-items: center;
+		width: 16px;
+		height: 16px;
+		border-radius: 4px;
+		background: var(--call-accent);
+		color: var(--call-accent-ink);
+	}
+
+	&[data-shape="tile"] .patchwork-call-sharing {
+		left: 6px;
+		top: 6px;
+		width: 20px;
+		height: 20px;
+	}
+
+	&[data-shape="tile"] .patchwork-call-muted {
+		right: 6px;
+		bottom: 6px;
+		width: 18px;
+		height: 18px;
+	}
+}
+
+.patchwork-call-prompt {
+	&[popover] {
+		position: fixed;
+		inset: auto;
+		box-sizing: border-box;
+		width: 260px;
+		margin: 0;
+		padding: 10px 12px;
+		border: 1px solid var(--call-line);
+		border-radius: 3px;
+		background: var(--call-sheet);
+		box-shadow: 2px 2px 0 var(--call-line);
+		color: var(--call-ink);
+		font: 12px/1.4 var(--call-sans);
+		transition:
+			opacity 160ms cubic-bezier(0.23, 1, 0.32, 1),
+			scale 160ms cubic-bezier(0.23, 1, 0.32, 1);
+		transform-origin: top left;
+
+		@starting-style {
+			opacity: 0;
+			scale: 0.97;
+		}
+	}
+
+	& p {
+		margin: 0;
+	}
+
+	& .patchwork-call-prompt-who {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	& .patchwork-call-prompt-faces {
+		display: flex;
+
+		& .patchwork-call-face + .patchwork-call-face {
+			margin-left: calc(-6 * 1px);
+		}
+	}
+
+	& .patchwork-call-prompt-title {
+		font: 600 13px/1.3 var(--call-heading-family);
+	}
+
+	& .patchwork-call-prompt-ask {
+		margin-top: 6px;
+		color: var(--call-muted);
+	}
+
+	& .patchwork-call-prompt-buttons {
+		display: flex;
+		gap: 6px;
+		margin-top: 10px;
+	}
+
+	& .patchwork-call-go {
+		--call-button-fill: var(--call-accent);
+		display: inline-flex;
+		flex: 1;
+		align-items: center;
+		justify-content: center;
+		gap: 5px;
+		padding: 5px 8px;
+		border: 1px solid var(--call-line);
+		border-radius: 3px;
+		background: var(--call-button-fill);
+		color: var(--call-accent-ink);
+		font: 600 12px/1.2 var(--call-sans);
+		cursor: pointer;
+		transition: scale 120ms ease-out;
+
+		&[data-quiet] {
+			--call-button-fill: var(--call-sheet);
+			color: inherit;
+		}
+
+		&:active {
+			scale: 0.97;
+		}
+	}
+
+	& .patchwork-call-prompt-foot {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 8px;
+		margin-top: 8px;
+		color: var(--call-muted);
+		font-size: 11px;
+	}
+
+	& .patchwork-call-not-now {
+		padding: 2px 4px;
+		border: none;
+		background: none;
+		color: var(--call-muted);
+		font: inherit;
+		cursor: pointer;
+
+		&:hover {
+			color: var(--call-ink);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		&[popover] {
+			transition: opacity 160ms ease-out;
+
+			@starting-style {
+				scale: 1;
+			}
+		}
+	}
+}
+
+/* faces floating over everything, each where it's put */
+.patchwork-call-floating {
+	position: fixed;
+	inset: 0;
+	z-index: 50;
+	pointer-events: none;
+
+	& .patchwork-call-float {
+		position: absolute;
+		display: grid;
+		justify-items: center;
+		gap: 4px;
+		pointer-events: auto;
+		cursor: grab;
+		touch-action: none;
+		user-select: none;
+		/* arriving, it comes out of their face in the call bar, and minimised
+		   goes back into it (ui.js: arrive, minimise) */
+
+		&:active {
+			cursor: grabbing;
+		}
+
+		/* someone big (CallStage), and you: shown there, so not here too */
+		&[data-staged] {
+			visibility: hidden;
+		}
+
+		& .patchwork-call-face {
+			border-radius: 10px;
+			box-shadow: 2px 2px 0 var(--call-line);
+		}
+	}
+
+	/* a floating face's corner: drag it to size the face */
+	/* the picture's box, its shape (4:3) whichever the face is: the whole
+	   picture, or a circle as tall in the middle of it. between the two, its
+	   width and corners move */
+	& .patchwork-call-float-picture {
+		position: relative;
+		display: flex;
+		justify-content: center;
+		width: 100%;
+		aspect-ratio: 4 / 3;
+
+		& .patchwork-call-face {
+			width: 100%;
+			height: 100%;
+			aspect-ratio: auto;
+			transition:
+				width 200ms cubic-bezier(0.23, 1, 0.32, 1),
+				border-radius 200ms cubic-bezier(0.23, 1, 0.32, 1);
+		}
+	}
+	& .patchwork-call-float[data-shape="round"] {
+		& .patchwork-call-float-picture .patchwork-call-face {
+			width: 75%;
+			border-radius: 50%;
+			font-size: 32px;
+		}
+		& .patchwork-call-size {
+			right: 14%;
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		& .patchwork-call-float-picture .patchwork-call-face {
+			transition: none;
+		}
+	}
+	/* speaking: their sound, their face's border bumping out all the way
+	   round (ui.js: Wiggle), from behind it. it's the ring, so not that too
+	   (but with reduced motion, it's the ring) */
+	& .patchwork-call-wiggle {
+		position: absolute;
+		inset: calc(-32 * 1px);
+		width: calc(100% + 64px);
+		height: calc(100% + 64px);
+		pointer-events: none;
+	}
+	@media (prefers-reduced-motion: no-preference) {
+		& .patchwork-call-float-picture .patchwork-call-face[data-speaking] {
+			outline-color: transparent;
+		}
+	}
+	& .patchwork-call-size {
+		position: absolute;
+		right: 3px;
+		bottom: 3px;
+		width: 16px;
+		height: 16px;
+		cursor: nwse-resize;
+		background: linear-gradient(
+			135deg,
+			transparent 50%,
+			rgb(255 255 255 / 0.9) 50% 60%,
+			transparent 60% 70%,
+			rgb(255 255 255 / 0.9) 70% 80%,
+			transparent 80%
+		);
+		filter: drop-shadow(0 0 1px rgb(0 0 0 / 0.6));
+		opacity: 0;
+		transition: opacity 120ms ease-out;
+	}
+	& .patchwork-call-float:hover .patchwork-call-size {
+		opacity: 1;
+	}
+
+	& .patchwork-call-float-muted {
+		display: inline-grid;
+		place-items: center;
+		width: 14px;
+		height: 14px;
+		margin-left: 3px;
+		border-radius: 50%;
+		background: var(--call-danger-fill);
+		color: var(--call-danger-ink);
+		vertical-align: -3px;
+	}
+
+	& .patchwork-call-float-name {
+		/* over the wiggle */
+		position: relative;
+		padding: 1px 6px;
+		border-radius: var(--call-round);
+		background: var(--call-sheet);
+		color: var(--call-ink);
+		font: 600 10.5px/1.4 var(--call-sans);
+		white-space: nowrap;
+	}
+}
+
+/* faces one under another, for a sidebar */
+/* a face to click to fill the panes with: a button that's only its face */
+.patchwork-call-stage-button {
+	padding: 0;
+	border: none;
+	background: none;
+	color: inherit;
+	font: inherit;
+	text-align: inherit;
+	cursor: pointer;
+
+	/* someone joining while you're in the call (ui/arriving.js) */
+	&[data-arriving] {
+		animation: patchwork-call-arrive 200ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
+
+		@media (prefers-reduced-motion: reduce) {
+			animation-name: patchwork-call-arrive-fade;
+		}
+	}
+}
+
+/* the faces down a sidebar: one across while there are few, two across when
+   there are more, and past that a list of little faces and names */
+.patchwork-call-tiles {
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: 10px;
+	padding: 8px 12px 12px;
+
+	&[data-layout="grid"] {
+		grid-template-columns: 1fr 1fr;
+		gap: 8px;
+	}
+
+	&[data-layout="chips"] {
+		gap: 2px;
+	}
+
+	& .patchwork-call-tile {
+		display: grid;
+		gap: 3px;
+		min-width: 0;
+		border-radius: 8px;
+
+		/* the one filling the panes */
+		&[data-staged] {
+			box-shadow: 0 0 0 2px var(--call-ink);
+		}
+
+		&:focus-visible {
+			outline: 2px solid var(--call-accent);
+			outline-offset: 2px;
+		}
+	}
+
+	&[data-layout="chips"] .patchwork-call-tile {
+		grid-template-columns: auto 1fr;
+		align-items: center;
+		gap: 8px;
+		padding: 3px 4px;
+
+		&[data-staged] {
+			background: var(--call-chrome);
+			box-shadow: none;
+		}
+	}
+
+	& .patchwork-call-tile-name {
+		overflow: hidden;
+		color: var(--call-muted);
+		font: 11px/1.3 var(--call-sans);
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	&[data-layout="chips"] .patchwork-call-tile-name {
+		color: var(--call-ink);
+		font-size: 12px;
+	}
+}
+
+/* someone filling the panes: their picture, all of it, on dark, their name
+   in the corner, and you in the other. filling the screen, you're bigger */
+.patchwork-call-stage {
+	position: absolute;
+	z-index: 40;
+	display: grid;
+	place-items: center;
+	overflow: hidden;
+	background: #111;
+	color: white;
+	transition: opacity 180ms cubic-bezier(0.23, 1, 0.32, 1);
+
+	@starting-style {
+		opacity: 0;
+	}
+
+	& > .patchwork-call-face[data-shape="tile"] {
+		width: 100%;
+		height: 100%;
+		aspect-ratio: auto;
+		border: none;
+		border-radius: 0;
+		background-color: transparent;
+		font-size: 96px;
+
+		/* all of the picture, so nothing to centre */
+		& video {
+			object-fit: contain;
+			object-position: center !important;
+		}
+	}
+
+	& .patchwork-call-stage-name {
+		position: absolute;
+		left: 12px;
+		bottom: 12px;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 3px 8px;
+		border-radius: 4px;
+		background: rgb(0 0 0 / 0.55);
+		font: 600 13px/1.3 var(--call-sans);
+	}
+
+	& .patchwork-call-stage-close {
+		position: absolute;
+		top: 10px;
+		right: 10px;
+		display: grid;
+		place-items: center;
+		width: 28px;
+		height: 28px;
+		padding: 0;
+		border: none;
+		border-radius: 50%;
+		background: rgb(0 0 0 / 0.55);
+		color: white;
+		cursor: pointer;
+		opacity: 0;
+		transition: opacity 160ms ease-out;
+	}
+
+	&:hover .patchwork-call-stage-close,
+	& .patchwork-call-stage-close:focus-visible {
+		opacity: 1;
+	}
+
+	& .patchwork-call-stage-me {
+		position: absolute;
+		right: 12px;
+		bottom: 12px;
+		width: clamp(96px, 18%, 220px);
+		border-radius: 8px;
+		box-shadow: 0 4px 16px rgb(0 0 0 / 0.45);
+
+		& .patchwork-call-face {
+			border-radius: 8px;
+		}
+	}
+
+	&:fullscreen {
+		inset: 0 !important;
+		width: 100% !important;
+		height: 100% !important;
+
+		& .patchwork-call-stage-me {
+			right: 20px;
+			bottom: 20px;
+			width: clamp(160px, 22vw, 440px);
+			border-radius: 12px;
+
+			& .patchwork-call-face {
+				border-radius: 12px;
+			}
+		}
+
+		& .patchwork-call-stage-name {
+			left: 20px;
+			bottom: 20px;
+			font-size: 15px;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		transition: none;
+	}
+}
+
+/* someone's screen, all of it, on dark; and their face small in its corner */
+.patchwork-call-screen {
+	display: grid;
+	width: 100%;
+	height: 100%;
+	background: #111;
+
+	& video {
+		width: 100%;
+		height: 100%;
+		object-fit: contain;
+	}
+}
+.patchwork-call-them {
+	position: absolute;
+	top: 12px;
+	left: 12px;
+	width: clamp(72px, 14%, 180px);
+	border-radius: 8px;
+	box-shadow: 0 4px 16px rgb(0 0 0 / 0.45);
+
+	& .patchwork-call-face {
+		border-radius: 8px;
+	}
+}
+.patchwork-call-tiles[data-layout="focus"] .patchwork-call-focus > .patchwork-call-screen {
+	aspect-ratio: 4 / 3;
+	border-radius: 8px;
+	overflow: hidden;
+}
+.patchwork-call-tiles[data-layout="focus"] .patchwork-call-them {
+	top: 8px;
+	left: 8px;
+	width: 32%;
+}
+
+/* a floating face's minimise: an arrow before their name, down to the call
+   bar. quiet till it's pointed at */
+.patchwork-call-floating .patchwork-call-float-close {
+	display: inline-grid;
+	place-items: center;
+	width: 16px;
+	height: 16px;
+	margin: 0 2px 0 calc(-3 * 1px);
+	padding: 0;
+	border: none;
+	border-radius: 3px;
+	background: transparent;
+	color: var(--call-muted);
+	vertical-align: -4px;
+	cursor: pointer;
+	transition:
+		background-color 120ms ease-out,
+		color 120ms ease-out,
+		scale 120ms ease-out;
+
+	&:active {
+		scale: 0.9;
+	}
+
+	&:focus-visible {
+		outline: 2px solid var(--call-accent);
+		outline-offset: 1px;
+	}
+}
+@media (hover: hover) and (pointer: fine) {
+	.patchwork-call-floating .patchwork-call-float-close:hover {
+		background: var(--call-chrome-hover);
+		color: var(--call-ink);
+	}
+}
+
+/* a face that can be dragged out (of the call bar) to float */
+.patchwork-call-drag {
+	display: inline-grid;
+	touch-action: none;
+}
+
+/* what's dragged out: a copy of the face, under the pointer (its place and
+   size are its own: ui.js's ghostOf) */
+.patchwork-call-ghost {
+	box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
+}
+
+/* one face filling the sidebar's box, you in its corner */
+.patchwork-call-tiles[data-layout="focus"] {
+	& .patchwork-call-focus {
+		position: relative;
+		display: block;
+		width: 100%;
+		padding: 0;
+		border: none;
+		background: none;
+		color: inherit;
+		font: inherit;
+		cursor: pointer;
+
+		& > .patchwork-call-face {
+			aspect-ratio: 3 / 4;
+			border-radius: 8px;
+		}
+	}
+
+	& .patchwork-call-focus-name {
+		position: absolute;
+		left: 8px;
+		bottom: 8px;
+		padding: 2px 6px;
+		border-radius: 4px;
+		background: rgb(0 0 0 / 0.55);
+		color: white;
+		font: 600 11px/1.3 var(--call-sans);
+	}
+
+	& .patchwork-call-focus-me {
+		position: absolute;
+		right: 8px;
+		bottom: 8px;
+		width: 32%;
+		border-radius: 6px;
+		box-shadow: 0 2px 8px rgb(0 0 0 / 0.4);
+	}
+}
+
+/* the call you're in, above you: where it is, everyone's faces, and
+   your mic, camera and hanging up. or one on where you are, to join */
+.patchwork-call-panel {
+	display: grid;
+	flex: none;
+	gap: 6px;
+	padding: 8px 8px 8px 10px;
+	border-top: 1px solid var(--call-panel-rule);
+	font: 12px/1.3 var(--call-sans);
+	/* arriving (you join, or a call starts where you are): up from
+	   below, as it comes in over you */
+	transition:
+		opacity 200ms cubic-bezier(0.23, 1, 0.32, 1),
+		translate 200ms cubic-bezier(0.23, 1, 0.32, 1);
+
+	@starting-style {
+		opacity: 0;
+		translate: 0 6px;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		transition: opacity 200ms ease-out;
+
+		@starting-style {
+			translate: none;
+		}
+	}
+}
+.patchwork-call-panel-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+}
+.patchwork-call-panel-phone {
+	display: grid;
+	color: var(--call-panel-shell-primary);
+}
+.patchwork-call-panel-where {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	font: 600 12px var(--call-panel-path-family);
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+.patchwork-call-panel-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 6px;
+}
+/* everyone's faces, you first. more than there's room for, they scroll
+   along (.patchwork-call-along). the padding's room for a speaking ring and
+   a muted badge, which the scrolling would cut off */
+.patchwork-call-panel-faces {
+	display: flex;
+	align-items: center;
+	gap: 3px;
+	min-width: 0;
+	margin: calc(-4 * 1px);
+	padding: 4px;
+}
+/* a face to fill the panes with */
+.patchwork-call-panel-face-button {
+	display: inline-grid;
+	border-radius: 50%;
+
+	&[data-staged] .patchwork-call-face {
+		border-color: var(--call-panel-shell-primary);
+	}
+}
+.patchwork-call-panel-buttons {
+	display: flex;
+	flex: none;
+	gap: 2px;
+}
+.patchwork-call-panel-button {
+	display: grid;
+	place-items: center;
+	width: 26px;
+	height: 26px;
+	padding: 0;
+	border: none;
+	border-radius: 50%;
+	background: none;
+	color: var(--call-panel-muted);
+	cursor: pointer;
+	transition: scale 120ms ease-out;
+
+	&:hover {
+		background: var(--call-panel-shell-chrome-fill-offset-20);
+		color: inherit;
+	}
+	&:active {
+		scale: 0.95;
+	}
+	/* a mic that's muted, a camera that's off */
+	&[data-off] {
+		color: var(--call-danger);
+	}
+	/* your screen, being shared */
+	&[data-on],
+	&[data-on]:hover {
+		background: var(--call-panel-shell-primary);
+		color: var(--call-panel-shell-primary-line, white);
+	}
+}
+.patchwork-call-panel-hang-up {
+	background: var(--call-danger-fill);
+	color: var(--call-danger-ink);
+
+	&:hover {
+		background: var(--call-danger-fill);
+		color: var(--call-danger-ink);
+		filter: brightness(1.08);
+	}
+}
+.patchwork-call-panel-join {
+	padding: 2px 10px;
+	border: 1px solid var(--call-line);
+	border-radius: 999px;
+	background: var(--call-panel-shell-primary);
+	color: var(--call-panel-shell-primary-line);
+	font: 600 11px/1.4 var(--call-sans);
+	cursor: pointer;
+	transition: scale 120ms ease-out;
+
+	&:active {
+		scale: 0.95;
+	}
+}
+.patchwork-call-panel-problem {
+	margin: 0;
+	color: var(--call-danger);
+	font-size: 11px;
+}
+.patchwork-call-panel-note {
+	margin: 0;
+	color: var(--call-panel-muted);
+	font-size: 11px;
+}
