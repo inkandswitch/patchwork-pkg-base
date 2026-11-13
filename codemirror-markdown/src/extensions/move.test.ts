@@ -92,4 +92,25 @@ describe("moving list items", () => {
     step(view, moveItemUp);
     expect(text(view)).toBe("two\none");
   });
+
+  it("moves the item with Alt-↑ and Alt-↓", () => {
+    // nested items, so moving the item and moving the line differ
+    const doc = "- a\n    - a1\n- b";
+    const view = makeView(doc, doc.indexOf("b"));
+    const press = (key: string) => {
+      const event = new KeyboardEvent("keydown", {
+        key,
+        altKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      view.contentDOM.dispatchEvent(event);
+      ensureSyntaxTree(view.state, view.state.doc.length, 10_000);
+      return event;
+    };
+    expect(press("ArrowUp").defaultPrevented).toBe(true);
+    expect(text(view)).toBe("- b\n- a\n    - a1");
+    press("ArrowDown");
+    expect(text(view)).toBe("- a\n    - a1\n- b");
+  });
 });

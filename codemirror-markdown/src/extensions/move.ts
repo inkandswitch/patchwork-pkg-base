@@ -17,9 +17,11 @@ import { items, startOf } from "./lists.ts";
 /**
  * Moving list items, as in Apple Notes:
  *
- *  - Ctrl-Cmd-↑/↓ (Ctrl-Alt-↑/↓ off a Mac) moves the item the caret is in
- *    past its neighbour, nested items and all. Outside a list it moves the
- *    line, as Notes moves a paragraph.
+ *  - Alt-↑/↓ moves the item the caret is in past its neighbour, nested items
+ *    and all. Outside a list it moves the line, as it always has. (Not
+ *    Notes' Ctrl-Cmd-↑/↓: in Chrome on a Mac, Ctrl-Cmd-↓ beeps however the
+ *    page handles it — macOS binds it to a writing-direction command and
+ *    Chrome won't fix it, crbug.com/916460.)
  *  - Dragging an item's dot or number moves it among its siblings: a line
  *    shows where it'll land; Escape puts it back.
  *
@@ -131,8 +133,8 @@ export const moveItemDown = moveBy(1, moveLineDown);
 
 const moveKeys = Prec.high(
   keymap.of([
-    { key: "Ctrl-Alt-ArrowUp", mac: "Ctrl-Cmd-ArrowUp", run: moveItemUp, preventDefault: true },
-    { key: "Ctrl-Alt-ArrowDown", mac: "Ctrl-Cmd-ArrowDown", run: moveItemDown, preventDefault: true },
+    { key: "Alt-ArrowUp", run: moveItemUp, preventDefault: true },
+    { key: "Alt-ArrowDown", run: moveItemDown, preventDefault: true },
   ])
 );
 

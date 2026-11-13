@@ -1,17 +1,20 @@
 import { syntaxTree } from "@codemirror/language";
-import { RangeSetBuilder } from "@codemirror/state";
+import { Prec, RangeSetBuilder } from "@codemirror/state";
 import {
   Decoration,
   EditorView,
   ViewPlugin,
   ViewUpdate,
   WidgetType,
+  keymap,
+  type Command,
   type DecorationSet,
 } from "@codemirror/view";
 
 /**
  * GFM task list checkboxes: each `[ ]` / `[x]` marker in a list item is drawn
  * as a checkbox, and clicking it flips the character between the brackets.
+ * Mod-k (Cmd-k on a Mac) does the same for the tasks the selection is on.
  *
  * Needs the GFM markdown base (`markdownLanguage`), which is what parses the
  * `TaskMarker` node. Lives in the same bundle as the `markdown()` call so that
@@ -116,6 +119,43 @@ function toggle(view: EditorView, from: number) {
   });
 }
 
+/**
+ * Tick the tasks on the selected lines, or untick them if they're all ticked
+ * already. Off a task it does nothing and lets the key go.
+ */
+export const toggleTasks: Command = (view) => {
+  const { state } = view;
+  if (!state.facet(EditorView.editable) || state.readOnly) return false;
+  const markers = new Map<number, boolean>();
+  const tree = syntaxTree(state);
+  for (const range of state.selection.ranges) {
+    const from = state.doc.lineAt(range.from).from;
+    const to = state.doc.lineAt(range.to).to;
+    tree.iterate({
+      from,
+      to,
+      enter: (node) => {
+        if (node.name !== "TaskMarker") return;
+        // a task further down an item that starts above isn't on these lines
+        if (node.from < from || node.from > to) return;
+        markers.set(node.from, state.doc.sliceString(node.from + 1, node.to - 1) !== " ");
+      },
+    });
+  }
+  if (!markers.size) return false;
+  const tick = [...markers.values()].some((done) => !done);
+  if (tick) justTicked.set(view, performance.now());
+  view.dispatch({
+    changes: [...markers]
+      .filter(([, done]) => done !== tick)
+      .map(([at]) => ({ from: at + 1, to: at + 2, insert: tick ? "x" : " " })),
+    userEvent: "input.toggle-task",
+  });
+  return true;
+};
+
+const taskKeys = Prec.high(keymap.of([{ key: "Mod-k", run: toggleTasks }]));
+
 const motion = (ms: number) =>
   `max(1ms, calc(${ms}ms * var(--studio-motion-scale, 1) * var(--studio-motion-preference, 1)))`;
 
@@ -216,4 +256,4 @@ const taskPlugin = ViewPlugin.fromClass(
   { decorations: (v) => v.decorations }
 );
 
-export const taskCheckboxes = [taskPlugin, taskTheme];
+export const taskCheckboxes = [taskPlugin, taskTheme, taskKeys];
