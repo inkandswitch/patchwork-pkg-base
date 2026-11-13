@@ -35,4 +35,15 @@ export const plugins = [
       return (await import("./video.js")).CallVideo;
     },
   },
+  {
+    type: "patchwork:tool",
+    id: "call-doctitle-button",
+    tags: ["titlebar-tool"],
+    name: "Call button",
+    icon: "Phone",
+    supportedDatatypes: "*",
+    unlisted: true,
+    forTitleBar: true,
+    load: () => import("./button.js").then((module) => module.default),
+  },
 ];

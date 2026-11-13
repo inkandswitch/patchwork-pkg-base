@@ -45,6 +45,16 @@
 		--call-on-video-ink: oklch(1 0 0 / 0.9);
 		--call-on-video-shadow: oklch(0 0 0 / 0.6);
 		--call-on-video-scrim: oklch(0 0 0 / 0.55);
+		/* the call button, in a title bar, as its neighbours there are */
+		--call-title-fill: var(--studio-fill);
+		--call-title-ink: var(--studio-line);
+		--call-title-line: var(--studio-fill-offset-20);
+		--call-title-line-hover: var(--studio-fill-offset-30);
+		--call-title-hover: var(--studio-fill-offset-10);
+		--call-title-here: var(--studio-danger-fill);
+		--call-title-here-ink: var(--studio-danger-line);
+		--call-title-join: var(--studio-primary-fill);
+		--call-title-join-ink: var(--studio-primary-line);
 		/* faces floating over everything */
 		--call-float-shadow: oklch(0 0 0 / 0.45);
 		--call-float-shadow-soft: oklch(0 0 0 / 0.35);
@@ -1072,4 +1082,59 @@
 	margin: 0;
 	color: var(--call-muted);
 	font: 12px var(--call-sans);
+}
+
+/* ── the call button, in a doc's title bar ───────────────────────────────── */
+
+.patchwork-call-title {
+	display: flex;
+	align-items: center;
+	height: 100%;
+}
+
+.patchwork-call-button {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	height: 22px;
+	padding: 0 var(--studio-space-xs, 0.375rem);
+	border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--call-title-line);
+	border-radius: var(--studio-radius-sm, 4px);
+	background: var(--call-title-fill);
+	color: var(--call-title-ink);
+	font: inherit;
+	font-size: 0.8em;
+	font-weight: 500;
+	cursor: var(--studio-cursor-pointer, pointer);
+	transition:
+		border-color var(--studio-transition-fast, 0.1s ease),
+		background var(--studio-transition-fast, 0.1s ease);
+	user-select: none;
+
+	&:hover {
+		border-color: var(--call-title-line-hover);
+		background: var(--call-title-hover);
+	}
+
+	&:active {
+		scale: 0.97;
+	}
+
+	/* someone's on: join them */
+	&[data-state="join"] {
+		border-color: transparent;
+		background: var(--call-title-join);
+		color: var(--call-title-join-ink);
+	}
+
+	/* you're in it: hang up */
+	&[data-state="here"] {
+		border-color: transparent;
+		background: var(--call-title-here);
+		color: var(--call-title-here-ink);
+	}
+}
+
+.patchwork-call-button-count {
+	font-variant-numeric: tabular-nums;
 }
