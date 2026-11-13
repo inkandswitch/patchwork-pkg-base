@@ -2,10 +2,15 @@
 // it hears every doc mounted inside it, answers the protocol (protocol.js),
 // and draws what floats
 import { createEffect, createRoot } from "solid-js";
+import { render } from "solid-js/web";
+import html from "solid-js/html";
 import { accept } from "@inkandswitch/patchwork-providers";
 import { ask, call, hangUp, hearRoom, holdVideoSpot } from "./engine/call.js";
 import { roomUrl } from "./engine/room.js";
 import { CALL, CALL_EVENT, CALL_ROOM, CALL_VIDEO, roomState } from "./protocol.js";
+import { CallFloating, CallQuestion, CallStage } from "./ui/ui.js";
+import { stageArea } from "./ui/area.js";
+import "./ui/styles.css";
 
 /** answer `event` with `read()` now and whenever it changes, till it's unsubscribed */
 function answer(event, read, hold) {
@@ -63,6 +68,16 @@ export function CallProvider(element) {
     else if (action === "hang-up") hangUp();
   }
 
+  // what floats: the question, faces, and whoever's on the stage, in a layer
+  // of their own (each its own popover, over the frame)
+  const layer = document.createElement("div");
+  layer.className = "patchwork-call";
+  element.append(layer);
+  const unrender = render(() => {
+    const area = stageArea(element);
+    return html`<${CallQuestion} /><${CallFloating} area=${area} /><${CallStage} area=${area} />`;
+  }, layer);
+
   element.addEventListener("patchwork:mounted", onMounted);
   element.addEventListener("patchwork:unmounted", onUnmounted);
   element.addEventListener("patchwork:subscribe", onSubscribe);
@@ -75,5 +90,7 @@ export function CallProvider(element) {
     element.removeEventListener(CALL_EVENT, onCall);
     for (const held of mounts.values()) for (const release of held) release();
     mounts.clear();
+    unrender();
+    layer.remove();
   };
 }

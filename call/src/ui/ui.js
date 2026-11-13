@@ -119,44 +119,45 @@ function Picture(props) {
 
 /**
  * the question: share your video, and call (or join the one that's on).
- * shows when something asks (call.js's ask), by what asked, or else at the
- * top of `props.near`
+ * shows when something's pressed to ask (call.js's ask), where it asked, or
+ * else near the top left. pressed, it's yours to answer: it has the focus
  */
-export function CallPrompt(props) {
+export function CallQuestion() {
   let popover;
   let first;
   const asking = call.asking;
-  const others = createMemo(() => (asking() ? onCallIn(asking().room.url) : []));
+  const others = createMemo(() => (asking() ? onCallIn(asking().url) : []));
   const elsewhere = () => {
     const now = call.get();
-    return now && asking() && now.room !== asking().room.url ? now : null;
+    return now && asking() && now.room !== asking().url ? now : null;
   };
 
   createEffect(() => {
     const now = asking();
     if (!popover) return;
     if (!now) {
-      if (popover.matches(":popover-open")) popover.hidePopover();
+      popover.removeAttribute("data-open");
+      if (popover.matches?.(":popover-open")) popover.hidePopover();
       return;
     }
-    // (a getter: what it's near now)
-    const near = props.near?.getBoundingClientRect();
-    const at = now.at ?? (near ? { x: near.left + 12, y: near.top + 12 } : { x: 16, y: 16 });
+    const at = now.at ?? { x: 16, y: 16 };
     popover.style.left = `${Math.max(8, Math.min(at.x, innerWidth - 268))}px`;
     popover.style.top = `${Math.max(8, Math.min(at.y, innerHeight - 180))}px`;
-    if (!popover.matches(":popover-open")) popover.showPopover();
-    // asked for, it's yours to answer; arriving to one, it waits for you
-    if (now.focus) first?.focus({ preventScroll: true });
+    popover.setAttribute("data-open", "");
+    try {
+      if (!popover.matches(":popover-open")) popover.showPopover();
+    } catch {}
+    first?.focus({ preventScroll: true });
   });
 
   function go(video) {
     const now = asking();
     call.stopAsking();
-    if (now) join(now, { video });
+    if (now) join(now.url, { video });
   }
 
   return html`<div
-    class="patchwork-call-prompt"
+    class="patchwork-call-question"
     popover="auto"
     role="dialog"
     aria-label="a call"
@@ -165,10 +166,10 @@ export function CallPrompt(props) {
   >
     <${Show}
       when=${() => others().length}
-      fallback=${html`<p class="patchwork-call-prompt-title">start a call here?</p>`}
+      fallback=${html`<p class="patchwork-call-question-title">start a call here?</p>`}
     >
-      <div class="patchwork-call-prompt-who">
-        <span class="patchwork-call-prompt-faces">
+      <div class="patchwork-call-question-who">
+        <span class="patchwork-call-question-faces">
           <${For} each=${others}>
             ${(person) => {
               const image = faceImage(person.who.avatar);
@@ -180,23 +181,40 @@ export function CallPrompt(props) {
             }}
           <//>
         </span>
-        <p class="patchwork-call-prompt-title">
+        <p class="patchwork-call-question-title">
           ${() => `${names([...new Set(others().map((person) => person.who.name))])} on a call`}
         </p>
       </div>
     <//>
-    <p class="patchwork-call-prompt-ask">share your video?</p>
-    <div class="patchwork-call-prompt-buttons">
+    <p class="patchwork-call-question-ask">share your video?</p>
+    <div class="patchwork-call-question-buttons">
       <button class="patchwork-call-go" ref=${(el) => (first = el)} onClick=${() => go(true)}>
         ${icon("video", 13)} video on
       </button>
       <button class="patchwork-call-go" data-quiet="" onClick=${() => go(false)}>${icon("mic", 13)} just voice</button>
     </div>
-    <div class="patchwork-call-prompt-foot">
-      <span>${() => (elsewhere() ? `leaves the call in ${elsewhere().name || "another project"}` : "")}</span>
+    <div class="patchwork-call-question-foot">
+      <span>${() => (elsewhere() ? `leaves the call in ${call.nameOf(elsewhere().room) || "another doc"}` : "")}</span>
       <button class="patchwork-call-not-now" onClick=${() => call.stopAsking()}>not now</button>
     </div>
   </div>`;
+}
+
+// over everything (the top layer, as a frame's own popovers are), once it's
+// on the page
+function onTop(el) {
+  queueMicrotask(() => {
+    try {
+      if (el.isConnected && !el.matches(":popover-open")) el.showPopover();
+    } catch {}
+  });
+}
+
+// where the stage goes, as a style: the box, or the whole window
+function boxStyle(box) {
+  return box
+    ? { left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px` }
+    : { left: "0px", top: "0px", width: "100%", height: "100%" };
 }
 
 // a floating face's width, to start with, and as small and big as it goes
@@ -412,7 +430,8 @@ function Wiggle(props) {
 
 /**
  * everyone's faces, floating over everything, each where you put it and the
- * size you made it (to start with, near `props.panes`, an element): dragged to move, and by its corner to size. each is a
+ * size you made it (to start with, near `props.area()`, the stage's box):
+ * dragged to move, and by its corner to size. each is a
  * circle centred on their face, or, double clicked, the picture's own shape
  * (4:3), none of it cut off (and double clicked again, a circle)
  */
@@ -423,7 +442,7 @@ export function CallFloating(props) {
     [...call.peers().map((peer) => peer.id), "me"].filter((id) => !call.settings.floating[call.floatKey(id)]?.hidden),
   );
   return html`<${Show} when=${() => call.get() && call.mode() === "floating"}>
-    <div class="patchwork-call-floating">
+    <div class="patchwork-call-floating" popover="manual" ref=${onTop}>
       <${For} each=${ids}>
         ${(id, index) => {
           const mine = id === "me";
@@ -431,7 +450,7 @@ export function CallFloating(props) {
           const key = () => call.floatKey(id);
           const name = () => (mine ? "you" : peer()?.name);
           const muted = () => (mine ? !call.get()?.mic : !peer()?.mic);
-          const at = () => ({ ...startAt(index(), key(), props.panes?.getBoundingClientRect()), ...call.settings.floating[key()] });
+          const at = () => ({ ...startAt(index(), key(), props.area?.()), ...call.settings.floating[key()] });
           let float;
           // what's being done to it: {sizing, dx, dy (or the width it was), at}
           let dragging = null;
@@ -715,9 +734,9 @@ export function CallTiles() {
 }
 
 /**
- * whoever's been clicked (call.stage()), filling `props.box` (a style: where
- * the panes are), with you in its corner. double clicked, it fills the
- * screen, you a little bigger; escape, or its ×, puts the panes back
+ * whoever's been clicked (call.stage()), filling `props.area()` (the
+ * stage's box, or else the window), with you in its corner. double clicked,
+ * it fills the screen, you a little bigger; escape, or its ×, puts it away
  */
 export function CallStage(props) {
   let stage;
@@ -753,8 +772,12 @@ export function CallStage(props) {
   return html`<${Show} when=${id}>
     <div
       class="patchwork-call-stage"
-      ref=${(el) => (stage = el)}
-      style=${() => props.box ?? {}}
+      popover="manual"
+      ref=${(el) => {
+        stage = el;
+        onTop(el);
+      }}
+      style=${() => boxStyle(props.area?.())}
       onDblClick=${() => setFull(!call.full())}
       title="double click: the whole screen"
     >

@@ -37,6 +37,17 @@
 		--call-round: var(--studio-radius-round);
 		--call-sans: var(--studio-family-ui);
 		--call-sheet: var(--editor-fill);
+
+		/* on video, which is dark whatever the theme: the stage behind a
+		   picture, and what's written over one */
+		--call-stage-fill: oklch(0.18 0 0);
+		--call-stage-ink: oklch(0.98 0 0);
+		--call-on-video-ink: oklch(1 0 0 / 0.9);
+		--call-on-video-shadow: oklch(0 0 0 / 0.6);
+		--call-on-video-scrim: oklch(0 0 0 / 0.55);
+		/* faces floating over everything */
+		--call-float-shadow: oklch(0 0 0 / 0.45);
+		--call-float-shadow-soft: oklch(0 0 0 / 0.35);
 	}
 }
 
@@ -298,7 +309,7 @@
 	}
 }
 
-.patchwork-call-prompt {
+.patchwork-call-question {
 	&[popover] {
 		position: fixed;
 		inset: auto;
@@ -327,13 +338,13 @@
 		margin: 0;
 	}
 
-	& .patchwork-call-prompt-who {
+	& .patchwork-call-question-who {
 		display: flex;
 		align-items: center;
 		gap: 8px;
 	}
 
-	& .patchwork-call-prompt-faces {
+	& .patchwork-call-question-faces {
 		display: flex;
 
 		& .patchwork-call-face + .patchwork-call-face {
@@ -341,16 +352,16 @@
 		}
 	}
 
-	& .patchwork-call-prompt-title {
+	& .patchwork-call-question-title {
 		font: 600 13px/1.3 var(--call-heading-family);
 	}
 
-	& .patchwork-call-prompt-ask {
+	& .patchwork-call-question-ask {
 		margin-top: 6px;
 		color: var(--call-muted);
 	}
 
-	& .patchwork-call-prompt-buttons {
+	& .patchwork-call-question-buttons {
 		display: flex;
 		gap: 6px;
 		margin-top: 10px;
@@ -382,7 +393,7 @@
 		}
 	}
 
-	& .patchwork-call-prompt-foot {
+	& .patchwork-call-question-foot {
 		display: flex;
 		align-items: baseline;
 		justify-content: space-between;
@@ -422,6 +433,18 @@
 	inset: 0;
 	z-index: 50;
 	pointer-events: none;
+
+	/* in the top layer (a popover), over a frame's own: none of a popover's
+	   own look */
+	&[popover] {
+		width: auto;
+		height: auto;
+		margin: 0;
+		padding: 0;
+		border: 0;
+		background: transparent;
+		overflow: visible;
+	}
 
 	& .patchwork-call-float {
 		position: absolute;
@@ -510,12 +533,12 @@
 		background: linear-gradient(
 			135deg,
 			transparent 50%,
-			rgb(255 255 255 / 0.9) 50% 60%,
+			var(--call-on-video-ink) 50% 60%,
 			transparent 60% 70%,
-			rgb(255 255 255 / 0.9) 70% 80%,
+			var(--call-on-video-ink) 70% 80%,
 			transparent 80%
 		);
-		filter: drop-shadow(0 0 1px rgb(0 0 0 / 0.6));
+		filter: drop-shadow(0 0 1px var(--call-on-video-shadow));
 		opacity: 0;
 		transition: opacity 120ms ease-out;
 	}
@@ -631,13 +654,24 @@
 /* someone filling the panes: their picture, all of it, on dark, their name
    in the corner, and you in the other. filling the screen, you're bigger */
 .patchwork-call-stage {
-	position: absolute;
+	position: fixed;
 	z-index: 40;
+	box-sizing: border-box;
+
+	&[popover] {
+		inset: auto;
+		margin: 0;
+		padding: 0;
+		border: 0;
+		max-width: none;
+		max-height: none;
+	}
+
 	display: grid;
 	place-items: center;
 	overflow: hidden;
-	background: #111;
-	color: white;
+	background: var(--call-stage-fill);
+	color: var(--call-stage-ink);
 	transition: opacity 180ms cubic-bezier(0.23, 1, 0.32, 1);
 
 	@starting-style {
@@ -669,7 +703,7 @@
 		gap: 6px;
 		padding: 3px 8px;
 		border-radius: 4px;
-		background: rgb(0 0 0 / 0.55);
+		background: var(--call-on-video-scrim);
 		font: 600 13px/1.3 var(--call-sans);
 	}
 
@@ -684,8 +718,8 @@
 		padding: 0;
 		border: none;
 		border-radius: 50%;
-		background: rgb(0 0 0 / 0.55);
-		color: white;
+		background: var(--call-on-video-scrim);
+		color: var(--call-stage-ink);
 		cursor: pointer;
 		opacity: 0;
 		transition: opacity 160ms ease-out;
@@ -702,7 +736,7 @@
 		bottom: 12px;
 		width: clamp(96px, 18%, 220px);
 		border-radius: 8px;
-		box-shadow: 0 4px 16px rgb(0 0 0 / 0.45);
+		box-shadow: 0 4px 16px var(--call-float-shadow);
 
 		& .patchwork-call-face {
 			border-radius: 8px;
@@ -742,7 +776,7 @@
 	display: grid;
 	width: 100%;
 	height: 100%;
-	background: #111;
+	background: var(--call-stage-fill);
 
 	& video {
 		width: 100%;
@@ -756,7 +790,7 @@
 	left: 12px;
 	width: clamp(72px, 14%, 180px);
 	border-radius: 8px;
-	box-shadow: 0 4px 16px rgb(0 0 0 / 0.45);
+	box-shadow: 0 4px 16px var(--call-float-shadow);
 
 	& .patchwork-call-face {
 		border-radius: 8px;
@@ -818,7 +852,7 @@
 /* what's dragged out: a copy of the face, under the pointer (its place and
    size are its own: ui.js's ghostOf) */
 .patchwork-call-ghost {
-	box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
+	box-shadow: 0 4px 14px var(--call-float-shadow-soft);
 }
 
 /* one face filling the sidebar's box, you in its corner */
@@ -846,8 +880,8 @@
 		bottom: 8px;
 		padding: 2px 6px;
 		border-radius: 4px;
-		background: rgb(0 0 0 / 0.55);
-		color: white;
+		background: var(--call-on-video-scrim);
+		color: var(--call-stage-ink);
 		font: 600 11px/1.3 var(--call-sans);
 	}
 
@@ -857,7 +891,7 @@
 		bottom: 8px;
 		width: 32%;
 		border-radius: 6px;
-		box-shadow: 0 2px 8px rgb(0 0 0 / 0.4);
+		box-shadow: 0 2px 8px var(--call-float-shadow-soft);
 	}
 }
 
