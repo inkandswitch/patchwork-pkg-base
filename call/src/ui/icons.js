@@ -7,7 +7,6 @@ const PATHS = {
   minimise: "M11.5 4.5l-7 7M4.5 6.5v5h5",
   screen: "M2.5 3.5h11v7.5h-11zM5.5 13.5h5M8 11v2.5",
   "chevron-down": "M4.5 6.25 8 9.75l3.5-3.5",
-  check: "M3.5 8.5l3 3 6-7",
   phone: "M3.5 2.5H6l1 3-1.5 1a7 7 0 0 0 4 4l1-1.5 3 1V12.5a1 1 0 0 1-1 1A10.5 10.5 0 0 1 2.5 3.5a1 1 0 0 1 1-1Z",
   "hang-up": "M1.8 9.6c3.5-3.3 8.9-3.3 12.4 0l-.9 2-2.6-.5-.4-1.9a6.5 6.5 0 0 0-4.6 0l-.4 1.9-2.6.5Z",
   mic: "M8 2a2 2 0 0 1 2 2v4a2 2 0 0 1-4 0V4a2 2 0 0 1 2-2ZM4.5 7.5a3.5 3.5 0 0 0 7 0M8 11v2.5",
@@ -42,10 +41,4 @@ export function icon(name, size = "1em") {
   path.setAttribute("stroke-linejoin", "round");
   svg.append(path);
   return svg;
-}
-
-// put an icon before a button's words
-export function withIcon(name, button) {
-  button.prepend(icon(name), " ");
-  return button;
 }

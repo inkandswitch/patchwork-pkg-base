@@ -606,8 +606,7 @@ export function hangUp({ rejoin = false } = {}) {
   now.stopLevel?.();
   for (const track of now.local.getTracks()) track.stop();
   now.screen?.stop();
-  view.setStage(null);
-  view.setFull(false);
+  closeStage();
   setState({ call: null, peers: {} });
   bump();
 }
@@ -844,12 +843,6 @@ export function toggleStage(id) {
   const now = view.stage() === id ? null : id;
   view.setStage(now);
   if (!now) view.setFull(false);
-}
-
-/** `id`'s face filling the panes, and the screen too if `full` */
-export function showStage(id, { full = false } = {}) {
-  view.setStage(id);
-  view.setFull(!!full);
 }
 
 /** the face that's big, filling the screen or not */
@@ -1092,10 +1085,7 @@ function drop(id, from = live.session) {
   peer.stopLevel?.();
   if (from === live.session) {
     setState("peers", id, undefined);
-    if (view.stage() === id) {
-      view.setStage(null);
-      view.setFull(false);
-    }
+    if (view.stage() === id) closeStage();
     bump();
     tuneVideo();
   }

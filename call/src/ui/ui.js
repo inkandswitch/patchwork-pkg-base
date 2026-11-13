@@ -98,7 +98,7 @@ export function Face(props) {
 }
 
 /** someone's screen (`props.id`), while they're sharing it: all of it */
-export function Screen(props) {
+function Screen(props) {
   const video = videoOf(() => call.screen(props.id), () => null);
   return html`<span class="patchwork-call-screen">${video}</span>`;
 }
@@ -278,7 +278,8 @@ function inWindow({ x, y, width }) {
 // on screen, moving: in and out. coming in: out
 const EASE_MOVE = "cubic-bezier(0.77, 0, 0.175, 1)";
 const EASE_OUT = "cubic-bezier(0.23, 1, 0.32, 1)";
-const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+let stillMotion = null;
+const reducedMotion = () => (stillMotion ??= matchMedia("(prefers-reduced-motion: reduce)")).matches;
 
 // someone's face in the call bar: where their floating face goes to, and
 // comes from. scrolled along out of sight, it's brought back into it first
@@ -326,13 +327,10 @@ const dropped = new Set();
 // arriving (you've joined, they have, or faces are floating now): out of
 // their face in the call bar to where it goes, one after another
 function arrive(float, id, key, index) {
-  if (dropped.delete(key) || reducedMotion()) {
-    float.animate([{ opacity: 0, scale: 0.95 }, { opacity: 1, scale: 1 }], { duration: 160, easing: EASE_OUT });
-    return;
-  }
-  const from = towards(float, inBar(id));
+  const plain = dropped.delete(key) || reducedMotion();
+  const from = plain ? null : towards(float, inBar(id));
   if (!from) {
-    float.animate([{ opacity: 0, scale: 0.95 }, { opacity: 1, scale: 1 }], { duration: 200, easing: EASE_OUT });
+    float.animate([{ opacity: 0, scale: 0.95 }, { opacity: 1, scale: 1 }], { duration: plain ? 160 : 200, easing: EASE_OUT });
     return;
   }
   float.animate(
@@ -351,11 +349,10 @@ const WIGGLE_POINTS = 160;
 const WIGGLE_SPAN = 1024;
 // how far past the picture it can go (the canvas is that much bigger)
 const WIGGLE_PAD = 32;
-// a face's border (wm.css): the line that wiggles
+// a face's border (styles.css): the line that wiggles
 const FACE_BORDER = 2;
-// a floating face's corners, as a picture (wm.css)
+// a floating face's corners, as a picture (styles.css)
 const TILE_ROUND = 10;
-let stillMotion = null;
 
 /**
  * their sound's waveform, all the way round their floating face (in its
@@ -367,7 +364,6 @@ function Wiggle(props) {
   const canvas = document.createElement("canvas");
   canvas.className = "patchwork-call-wiggle";
   canvas.setAttribute("aria-hidden", "true");
-  stillMotion ??= matchMedia("(prefers-reduced-motion: reduce)");
   let frame = requestAnimationFrame(draw);
   onCleanup(() => cancelAnimationFrame(frame));
   // how much it's shown (0 to 1), and whether there's anything to clear
@@ -381,7 +377,7 @@ function Wiggle(props) {
 
   function draw(now) {
     frame = requestAnimationFrame(draw);
-    const analyser = !stillMotion.matches && hearing(props.id);
+    const analyser = !reducedMotion() && hearing(props.id);
     if (analyser) {
       if (samples?.length !== analyser.fftSize) samples = new Float32Array(analyser.fftSize);
       analyser.getFloatTimeDomainData(samples);
@@ -411,7 +407,7 @@ function Wiggle(props) {
     const heard = louder(ringWave(samples, WIGGLE_POINTS, WIGGLE_SPAN), loudest);
     loudest = heard.loudest;
     // the face's box, and its corners: between a picture's and a circle's
-    // as its width goes from the whole picture to round (wm.css)
+    // as its width goes from the whole picture to round (styles.css)
     const w = face.offsetWidth;
     const h = face.offsetHeight;
     const round = Math.max(0, Math.min(1, (picture.offsetWidth - w) / (picture.offsetWidth * 0.25)));
