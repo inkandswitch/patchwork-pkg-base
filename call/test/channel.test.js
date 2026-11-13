@@ -60,3 +60,10 @@ test("no repo, or a doc that can't be found, is no channel", async () => {
   expect(await openChannel(url)).not.toBe(null);
   warn.mockRestore();
 });
+
+test("a doc's channel knows what the doc's called", async () => {
+  const url = generateAutomergeUrl();
+  const handle = { ...fakeHandle(url), doc: () => ({ title: "the doc" }) };
+  globalThis.repo = { find: vi.fn(async () => handle) };
+  expect(await (await openChannel(url)).title()).toBe("the doc");
+});
