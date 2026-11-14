@@ -286,6 +286,7 @@ function Strip(props: {
             <button
               type="submit"
               class="settings-button"
+              data-primary
               disabled={!custom().trim()}
             >
               Add
@@ -293,10 +294,9 @@ function Strip(props: {
             <button
               type="button"
               class="settings-button"
-              data-primary
               onClick={() => setAdding(false)}
             >
-              Done
+              Cancel
             </button>
           </form>
         </div>
