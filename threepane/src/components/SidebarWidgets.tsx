@@ -1,8 +1,8 @@
 import type { AutomergeUrl, DocHandle } from "@automerge/automerge-repo/slim";
 import { For, Show, type Accessor } from "solid-js";
 import type { ThreepaneConfigDoc, ToolSlot } from "../types";
-import { SlotView } from "./SlotView";
-import { DOCUMENT_LIST_TOOL } from "../datatypes";
+import { SlotView, slotId } from "./SlotView";
+import { CALL_CONTROL_PANEL, DOCUMENT_LIST_TOOL } from "../datatypes";
 
 /**
  * The left pane: a stack of configured widgets, each rendered via SlotView — a
@@ -10,6 +10,13 @@ import { DOCUMENT_LIST_TOOL } from "../datatypes";
  * string renders a `patchwork:component`. Normally seeded with a document list
  * on the account's root folder; the empty-state add button is a fallback for
  * when no widgets are configured (there's no add/remove UI yet).
+ *
+ * The call's control panel always comes last, whatever's configured (unless
+ * it's configured itself). It takes no room until there's a call to show.
+ *
+ * A widget says how much room it wants with `data-sidebar-size` on its own
+ * element: `fill` (the default: shares what's left), `fit` (as tall as it
+ * is) or `none` (no room at all). styles.css reads it.
  */
 export function SidebarWidgets(props: {
   widgets: Accessor<ToolSlot[]>;
@@ -27,6 +34,9 @@ export function SidebarWidgets(props: {
       doc.sidebar.widgets.push([DOCUMENT_LIST_TOOL, root]);
     });
   };
+
+  const callConfigured = () =>
+    props.widgets().some((slot) => slotId(slot) === CALL_CONTROL_PANEL);
 
   return (
     <div class="threepane-widgets">
@@ -56,6 +66,16 @@ export function SidebarWidgets(props: {
               </div>
             )}
           </For>
+        </Show>
+        <Show when={!callConfigured()}>
+          <div class="threepane-widget">
+            {/* no room till the panel says it wants some: none at all
+                without the call package */}
+            <patchwork-view
+              component={CALL_CONTROL_PANEL}
+              attr:data-sidebar-size="none"
+            />
+          </div>
         </Show>
       </Show>
     </div>

@@ -700,6 +700,20 @@
   height: 100%;
 }
 
+/* a widget as tall as it is (data-sidebar-size="fit" on its view), or with
+   no room at all ("none"); "fill", or nothing said, shares what's left */
+.threepane-widget:has(> [data-sidebar-size="fit"]) {
+  flex: 0 0 auto;
+}
+
+.threepane-widget:has(> [data-sidebar-size="fit"]) patchwork-view {
+  height: auto;
+}
+
+.threepane-widget:has(> [data-sidebar-size="none"]) {
+  display: none;
+}
+
 /* empty state: offer to add the document list */
 .threepane-widgets__empty {
   flex: 1;

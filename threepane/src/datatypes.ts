@@ -27,6 +27,14 @@ export const DEFAULT_DOCTITLE_TOOLS: string[] = [
 export const DOCUMENT_LIST_TOOL = "chee/document-list";
 
 /**
+ * The call (the `call` package): its provider, mounted round the whole frame,
+ * and its control panel, always at the bottom of the sidebar's widgets.
+ * Late-bound component ids: without the package they render nothing.
+ */
+export const CALL_PROVIDER = "call-provider";
+export const CALL_CONTROL_PANEL = "call-control-panel";
+
+/**
  * The threepane config doc's schema version. Defaults are only filled in when a
  * doc is created or migrated up to this version, never on later mounts, so a
  * default someone removed stays removed.
