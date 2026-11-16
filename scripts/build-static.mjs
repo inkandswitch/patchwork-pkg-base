@@ -152,6 +152,14 @@ async function main() {
   // bundleless tools (single .js at root)
   const noBuild = tools.filter((n) => !readPkg(join(ROOT, n))?.scripts?.build);
 
+  // Fetch pnpm into npx's cache once, before the parallel loop. On a cold cache
+  // (every fresh Netlify build) each concurrent `npx pnpm@x` otherwise unpacks
+  // it into the same ~/.npm/_npx/<hash> dir at once; they race (ENOTEMPTY),
+  // and every tool whose npx loses is quietly left out of the bundle.
+  if ((install || build) && !run("npx", ["--yes", PNPM, "--version"], ROOT)) {
+    console.error(`[fail]  couldn't fetch ${PNPM} with npx`);
+  }
+
   if (install) {
     console.log(`\nInstalling ${tools.length} tool(s) (concurrency: ${concurrency})\n`);
     failures.push(...(await runEach("install", tools, concurrency)).failures);
