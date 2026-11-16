@@ -1,5 +1,5 @@
 import { syntaxTree } from "@codemirror/language";
-import { type EditorState, type Range } from "@codemirror/state";
+import { type EditorState, type Line, type Range } from "@codemirror/state";
 import {
   Decoration,
   EditorView,
@@ -60,15 +60,21 @@ class HeadingLabel extends WidgetType {
 const BULLET_SHAPES = ["disc", "circle", "diamond"] as const;
 
 class Bullet extends WidgetType {
-  constructor(readonly shape: (typeof BULLET_SHAPES)[number]) {
+  /** `shift`: a style moving it out past what's nested in its item on its
+   *  line (see markerShift) */
+  constructor(
+    readonly shape: (typeof BULLET_SHAPES)[number],
+    readonly shift?: string
+  ) {
     super();
   }
   eq(other: Bullet) {
-    return other.shape === this.shape;
+    return other.shape === this.shape && other.shift === this.shift;
   }
   toDOM() {
     const span = document.createElement("span");
     span.className = "cm-md-hang cm-md-list-marker";
+    if (this.shift) span.setAttribute("style", this.shift);
     const dot = document.createElement("span");
     dot.className = `cm-bullet cm-bullet-${this.shape}`;
     span.append(dot);
@@ -96,15 +102,16 @@ class Rule extends WidgetType {
 }
 
 class NumberLabel extends WidgetType {
-  constructor(readonly text: string) {
+  constructor(readonly text: string, readonly shift?: string) {
     super();
   }
   eq(other: NumberLabel) {
-    return other.text === this.text;
+    return other.text === this.text && other.shift === this.shift;
   }
   toDOM() {
     const span = document.createElement("span");
     span.className = "cm-md-hang cm-md-list-marker cm-md-hang-number";
+    if (this.shift) span.setAttribute("style", this.shift);
     span.textContent = this.text;
     return span;
   }
@@ -174,7 +181,6 @@ function alpha(n: number) {
   return out;
 }
 
-const codeLine = Decoration.line({ class: "cm-md-code" });
 const inlineCode = Decoration.mark({ class: "cm-md-inline-code" });
 const calloutMarker = Decoration.mark({ class: "cm-md-callout-marker" });
 
@@ -261,45 +267,139 @@ class CalloutTitle extends WidgetType {
 }
 
 /**
- * Lists are laid out with indentation, not spaces: every line in one is
- * padded by its depth (one list indent per list it's in), its markdown
- * indentation is hidden, and the marker sits in the padding — on the body's
- * column at the top level — so an item's text, and its wrapped lines, start
- * one indent in.
+ * Quotes and lists nest, in any mix, and are laid out with indentation, not
+ * markup: a line is padded one indent for every quote and list item it's in
+ * (its *containers*, outermost first), the `>`s and spaces in front of it are
+ * hidden, and what marks each container goes in that padding. A quote draws a
+ * bar down its own indent; a list item's marker sits in its indent on the
+ * item's first line. So text, and its wrapped lines, start one indent in per
+ * level, and the markers of `> - x` sit side by side rather than on top of
+ * each other.
  */
-function listLines(
-  state: EditorState,
-  from: number,
-  to: number,
-  decos: Range<Decoration>[]
-) {
-  const { doc } = state;
-  const tree = syntaxTree(state);
-  const last = doc.lineAt(to).number;
-  for (let n = doc.lineAt(from).number; n <= last; n++) {
-    const line = doc.line(n);
-    const indent = /^[ \t]*/.exec(line.text)![0].length;
-    if (indent === line.length) continue; // blank
-    let depth = 0;
-    let code = false;
-    for (
-      let node: SyntaxNode | null = tree.resolveInner(line.from + indent, 1);
-      node;
-      node = node.parent
-    ) {
-      if (node.name === "ListItem") depth++;
-      if (node.name === "FencedCode" || node.name === "CodeBlock") code = true;
-    }
-    if (!depth) continue;
-    decos.push(
-      Decoration.line({
-        class: "cm-md-list-line",
-        attributes: { style: `--md-list-depth: ${depth}` },
-      }).range(line.from)
-    );
-    // code keeps its spaces: they're part of what it says.
-    if (indent && !code) decos.push(hidden.range(line.from, line.from + indent));
+type Quote = {
+  kind: "quote";
+  from: number;
+  /** its first and last line numbers */
+  first: number;
+  last: number;
+  callout: ReturnType<typeof calloutAt>;
+};
+type Item = { kind: "list"; from: number };
+type Container = Quote | Item;
+
+/** how far in a run of containers reaches, as CSS */
+function inset(containers: readonly Container[]) {
+  let quotes = 0;
+  let items = 0;
+  for (const c of containers) c.kind === "quote" ? quotes++ : items++;
+  return (
+    `calc(${quotes} * var(--markdown-quote-indent) + ` +
+    `${items} * var(--markdown-list-indent))`
+  );
+}
+
+/** One bar for each quote a line is in, each down its own indent. */
+type Bar = { left: string; first: boolean; last: boolean; callout?: CalloutType };
+
+class QuoteBars extends WidgetType {
+  constructor(readonly bars: Bar[]) {
+    super();
   }
+  eq(other: QuoteBars) {
+    return JSON.stringify(other.bars) === JSON.stringify(this.bars);
+  }
+  toDOM() {
+    // empty and in the flow, so it takes no room and a caret beside it is
+    // drawn at the text; the bars are placed against the line.
+    const box = document.createElement("span");
+    box.className = "cm-md-quote-bars";
+    box.setAttribute("aria-hidden", "true");
+    for (const bar of this.bars) {
+      const span = document.createElement("span");
+      span.className =
+        "cm-md-quote-bar" +
+        (bar.first ? " cm-md-quote-bar-first" : "") +
+        (bar.last ? " cm-md-quote-bar-last" : "") +
+        (bar.callout ? ` cm-md-callout-bar cm-md-callout-${bar.callout}` : "");
+      span.setAttribute("style", `left: calc(6px + ${bar.left})`);
+      box.append(span);
+    }
+    return box;
+  }
+  ignoreEvent() {
+    return false;
+  }
+}
+
+type Layout = {
+  /** each line's containers, outermost first, by line number */
+  containers: Map<number, Container[]>;
+  /** each code line's fence column, by line number: in a container, that
+   *  much of its start is the container's markup, the rest is the code's */
+  code: Map<number, number>;
+};
+
+/** Every visible line's containers, and where its code (if any) starts. */
+function layout(view: EditorView): Layout {
+  const { state } = view;
+  const { doc } = state;
+  const containers = new Map<number, Container[]>();
+  const code = new Map<number, number>();
+  // a callout belongs to the innermost quote starting on its line: in
+  // `> > [!NOTE]` that's the inner one. (outer quotes are entered first.)
+  const startingOn = new Map<number, Quote>();
+
+  for (const { from, to } of view.visibleRanges) {
+    const top = doc.lineAt(from).number;
+    const bottom = doc.lineAt(to).number;
+    const each = (node: { from: number; to: number }, f: (n: number) => void) => {
+      const first = Math.max(top, doc.lineAt(node.from).number);
+      const last = Math.min(bottom, doc.lineAt(node.to).number);
+      for (let n = first; n <= last; n++) f(n);
+    };
+    syntaxTree(state).iterate({
+      from,
+      to,
+      enter: (node) => {
+        let c: Container | null = null;
+        if (node.name === "Blockquote") {
+          const first = doc.lineAt(node.from).number;
+          c = { kind: "quote", from: node.from, first, last: doc.lineAt(node.to).number, callout: null };
+          startingOn.set(first, c);
+        } else if (node.name === "ListItem") {
+          c = { kind: "list", from: node.from };
+        } else if (node.name === "FencedCode" || node.name === "CodeBlock") {
+          const column = node.from - doc.lineAt(node.from).from;
+          each(node, (n) => code.set(n, column));
+          return false;
+        }
+        if (c) {
+          const container = c;
+          each(node, (n) => {
+            const list = containers.get(n);
+            if (list) list.push(container);
+            else containers.set(n, [container]);
+          });
+        }
+      },
+    });
+  }
+
+  for (const [first, quote] of startingOn) {
+    quote.callout = calloutAt(doc.line(first));
+  }
+  return { containers, code };
+}
+
+/**
+ * Where the markup at the start of a line in a container ends: the `>`s and
+ * spaces before its text. In code, only up to the fence's column — the rest
+ * of its indentation (and any `>` past it) is the code's own.
+ */
+function markupEnd(line: Line, codeColumn: number | undefined) {
+  let end = /^[ \t>]*/.exec(line.text)![0].length;
+  if (codeColumn !== undefined) end = Math.min(end, codeColumn);
+  return line.from + end;
 }
 
 /** `pos` moved past any spaces (not newlines) that follow it. */
@@ -314,6 +414,91 @@ function build(view: EditorView): DecorationSet {
   const { doc } = state;
   const editing = caretLines(state);
   const decos: Range<Decoration>[] = [];
+  const { containers, code } = layout(view);
+
+  // every line decoration a line gets, merged into one
+  const lineClasses = new Map<number, string[]>();
+  const lineStyles = new Map<number, string[]>();
+  const addLine = (n: number, cls: string, style?: string) => {
+    const classes = lineClasses.get(n);
+    if (classes) classes.push(cls);
+    else lineClasses.set(n, [cls]);
+    if (style) {
+      const styles = lineStyles.get(n);
+      if (styles) styles.push(style);
+      else lineStyles.set(n, [style]);
+    }
+  };
+
+  /**
+   * A list marker sits in its item's indent: one indent left of the text,
+   * unless the line's text is further in, inside something nested in the
+   * item on the same line (`- > a quote`) — then it moves out past that too.
+   */
+  const markerShift = (line: Line, item: SyntaxNode | null) => {
+    const on = containers.get(line.number);
+    if (!on || !item) return undefined;
+    const at = on.findIndex((c) => c.kind === "list" && c.from === item.from);
+    const inner = at < 0 ? [] : on.slice(at + 1);
+    if (!inner.length) return undefined;
+    // out by that much more, and given it back after, so the text stays put
+    return (
+      `margin-left: calc(-1 * (var(--markdown-list-indent) + ${inset(inner)})); ` +
+      `margin-right: ${inset(inner)}`
+    );
+  };
+
+  const quotes = new Set<Quote>();
+  for (const [n, on] of containers) {
+    const line = doc.line(n);
+    const end = markupEnd(line, code.get(n));
+    if (end > line.from) decos.push(hidden.range(line.from, end));
+
+    const items = on.filter((c) => c.kind === "list").length;
+    addLine(n, "cm-md-inset", `--md-inset: ${inset(on)}`);
+    if (items) addLine(n, "cm-md-list-line", `--md-list-depth: ${items}`);
+
+    const bars: Bar[] = [];
+    let callout: { quote: Quote; at: number } | null = null;
+    on.forEach((c, at) => {
+      if (c.kind !== "quote") return;
+      quotes.add(c);
+      bars.push({
+        left: inset(on.slice(0, at)),
+        first: n === c.first,
+        last: n === c.last,
+        ...(c.callout ? { callout: c.callout.type } : {}),
+      });
+      if (c.callout) callout = { quote: c, at };
+    });
+    if (!bars.length) continue;
+    addLine(n, "cm-md-quote");
+    if (bars.some((b) => b.first)) addLine(n, "cm-md-quote-first");
+    if (bars.some((b) => b.last)) addLine(n, "cm-md-quote-last");
+    decos.push(
+      Decoration.widget({ widget: new QuoteBars(bars), side: -1 }).range(line.from)
+    );
+    // the innermost callout a line is in tints it, from that callout's bar
+    if (callout) {
+      const { quote, at } = callout as { quote: Quote; at: number };
+      const type = quote.callout!.type;
+      addLine(n, `cm-md-callout cm-md-callout-${type}`, `--md-callout-left: ${inset(on.slice(0, at))}`);
+      if (n === quote.first) addLine(n, "cm-md-callout-title-line cm-md-callout-first");
+      if (n === quote.last) addLine(n, "cm-md-callout-last");
+    }
+  }
+
+  for (const quote of quotes) {
+    const callout = quote.callout;
+    if (!callout) continue;
+    decos.push(
+      editing.has(quote.first)
+        ? calloutMarker.range(callout.from, callout.to)
+        : Decoration.replace({
+            widget: new CalloutTitle(callout.type, !callout.titled),
+          }).range(callout.from, callout.to)
+    );
+  }
 
   for (const { from, to } of view.visibleRanges) {
     syntaxTree(state).iterate({
@@ -327,19 +512,27 @@ function build(view: EditorView): DecorationSet {
           const mark = node.node.firstChild;
           if (!mark || mark.name !== "HeaderMark") return;
           const line = doc.lineAt(node.from);
+          // in a quote or list, the `>`s and spaces before it are already
+          // hidden; the label replaces only the `#`s.
+          const start = containers.has(line.number)
+            ? markupEnd(line, undefined)
+            : line.from;
           decos.push(
             Decoration.replace({
               widget: new HeadingLabel(Number(heading[1]), editing.has(line.number)),
-            }).range(line.from, skipSpaces(state, mark.to)),
-            // the heading's size on the whole line, for what the highlighter
-            // doesn't wrap (a rendered link): see headingLines in the theme.
-            Decoration.line({ class: `cm-md-h${heading[1]}` }).range(line.from)
+            }).range(start, skipSpaces(state, mark.to))
           );
+          // the heading's size on the whole line, for what the highlighter
+          // doesn't wrap (a rendered link): see headingLines in the theme.
+          addLine(line.number, `cm-md-h${heading[1]}`);
           return;
         }
 
         if (name === "ListMark") {
-          const end = skipSpaces(state, node.to);
+          // the mark, its spaces, and any `>`s straight after (`- > a quote`
+          // in the item): all markup, all hidden under the marker
+          let end = skipSpaces(state, node.to);
+          while (doc.sliceString(end, end + 1) === ">") end = skipSpaces(state, end + 1);
           const char = doc.sliceString(node.from, node.to);
           const bullet = ["-", "+", "*"].includes(char);
           const task = node.node.nextSibling?.firstChild;
@@ -347,11 +540,21 @@ function build(view: EditorView): DecorationSet {
             bullet &&
             task?.name === "TaskMarker" &&
             doc.sliceString(end, task.from).trim() === "";
+          const shift = markerShift(doc.lineAt(node.from), node.node.parent);
           if (isTask && task) {
             // the checkbox takes the bullet's place: drop the mark, and hang
             // the task marker (which tasks.ts draws as a checkbox).
             if (end > node.from) decos.push(hidden.range(node.from, end));
-            decos.push(taskMark.range(task.from, task.to));
+            decos.push(
+              (shift
+                ? Decoration.mark({
+                    class: "cm-md-hang cm-md-list-marker",
+                    inclusive: true,
+                    attributes: { style: shift },
+                  })
+                : taskMark
+              ).range(task.from, task.to)
+            );
             // the space after the box is hidden, not hung: hung, the caret
             // at the start of the text would be drawn at the end of the hang.
             const after = skipSpaces(state, task.to);
@@ -362,26 +565,19 @@ function build(view: EditorView): DecorationSet {
             decos.push(
               Decoration.replace({
                 widget: new Bullet(
-                  BULLET_SHAPES[(bulletDepth(node.node) - 1) % BULLET_SHAPES.length]
+                  BULLET_SHAPES[(bulletDepth(node.node) - 1) % BULLET_SHAPES.length],
+                  shift
                 ),
               }).range(node.from, end)
             );
           } else {
             decos.push(
               Decoration.replace({
-                widget: new NumberLabel(renderedNumber(state, node.node)),
+                widget: new NumberLabel(renderedNumber(state, node.node), shift),
               }).range(node.from, end)
             );
           }
           return;
-        }
-
-        if (
-          (name === "BulletList" || name === "OrderedList") &&
-          node.node.parent?.name !== "ListItem"
-        ) {
-          listLines(state, node.from, node.to, decos);
-          return; // carry on into it for its marks
         }
 
         if (name === "FencedCode" || name === "CodeBlock") {
@@ -391,14 +587,9 @@ function build(view: EditorView): DecorationSet {
           const first = doc.lineAt(node.from).number;
           const last = doc.lineAt(node.to).number;
           for (let n = first; n <= last; n++) {
-            const ends =
-              (n === first ? " cm-md-code-first" : "") +
-              (n === last ? " cm-md-code-last" : "");
-            decos.push(
-              (ends ? Decoration.line({ class: "cm-md-code" + ends }) : codeLine).range(
-                doc.line(n).from
-              )
-            );
+            addLine(n, "cm-md-code");
+            if (n === first) addLine(n, "cm-md-code-first");
+            if (n === last) addLine(n, "cm-md-code-last");
           }
           return false;
         }
@@ -419,54 +610,20 @@ function build(view: EditorView): DecorationSet {
           return false;
         }
 
-        if (name === "Blockquote") {
-          // one bar per quote, however deeply it nests.
-          for (let p = node.node.parent; p; p = p.parent)
-            if (p.name === "Blockquote") return;
-          const first = doc.lineAt(node.from).number;
-          const last = doc.lineAt(node.to).number;
-          const callout = calloutAt(doc.line(first));
-          for (let n = first; n <= last; n++) {
-            const line = doc.line(n);
-            const classes = ["cm-md-quote"];
-            if (n === first) classes.push("cm-md-quote-first");
-            if (n === last) classes.push("cm-md-quote-last");
-            if (callout) {
-              classes.push("cm-md-callout", `cm-md-callout-${callout.type}`);
-              if (n === first) classes.push("cm-md-callout-title-line");
-            }
-            decos.push(
-              Decoration.line({ class: classes.join(" ") }).range(line.from)
-            );
-          }
-          if (callout) {
-            decos.push(
-              editing.has(first)
-                ? calloutMarker.range(callout.from, callout.to)
-                : Decoration.replace({
-                    widget: new CalloutTitle(callout.type, !callout.titled),
-                  }).range(callout.from, callout.to)
-            );
-          }
-          return; // carry on into it for its QuoteMarks
-        }
-
-        if (name === "QuoteMark") {
-          const line = doc.lineAt(node.from);
-          // only the first mark on a line starts the prefix; `>>` nests.
-          const before = doc.sliceString(line.from, node.from);
-          if (before.trim() !== "") return;
-          let end = node.to;
-          for (;;) {
-            const next = skipSpaces(state, end);
-            if (doc.sliceString(next, next + 1) !== ">") break;
-            end = next + 1;
-          }
-          end = skipSpaces(state, end);
-          decos.push(hidden.range(line.from, end));
-        }
+        // (quotes and list items were laid out above, from layout(); their
+        // `>`s and indentation are hidden there.)
       },
     });
+  }
+
+  for (const [n, classes] of lineClasses) {
+    const style = lineStyles.get(n);
+    decos.push(
+      Decoration.line({
+        class: classes.join(" "),
+        ...(style ? { attributes: { style: style.join("; ") } } : {}),
+      }).range(doc.line(n).from)
+    );
   }
 
   return Decoration.set(decos, true);
@@ -540,9 +697,10 @@ const marginTheme = EditorView.baseTheme({
   ".cm-md-heading-label-idle": {
     visibility: "hidden",
   },
-  // a list line: padded one indent per level (CodeMirror's own 6px first)
-  ".cm-md-list-line": {
-    paddingLeft: "calc(6px + var(--md-list-depth, 1) * var(--markdown-list-indent))",
+  // a line in quotes and lists: padded one indent per container it's in
+  // (CodeMirror's own 6px first; --md-inset from margin.ts's layout)
+  ".cm-md-inset": {
+    paddingLeft: "calc(6px + var(--md-inset))",
   },
   // its marker, in that padding: from the start of the indent, not hung
   // right; at the text's size, sitting on its line like text does, so a
@@ -594,28 +752,29 @@ const marginTheme = EditorView.baseTheme({
   ".cm-md-hang .cm-task": {
     margin: "0",
   },
-  // a quote: its bar on the body's column, its text one quote indent in
+  // a quote's lines hold its bars (QuoteBars), placed against the line
   ".cm-md-quote": {
     position: "relative",
-    paddingLeft: "calc(6px + var(--markdown-quote-indent))",
   },
   // code sits on a faint step up the editor's fill ramp: inline, a pill;
   // a block, a rounded panel laid out like a callout: its left edge where a
-  // quote's bar is, its text where a quote's text starts
+  // quote's bar would be, its text where a quote's text would start — one
+  // indent in from wherever the block is (in a list item, a quote, …)
   ".cm-md-code": {
     position: "relative",
     // a stacking context, so the tint drawn behind the text (z-index -1)
     // stays above the editor's own background.
     isolation: "isolate",
     fontFamily: "var(--text-editor-family-code)",
-    paddingLeft: "calc(6px + var(--markdown-quote-indent))",
+    paddingLeft:
+      "calc(6px + var(--md-inset, 0px) + var(--markdown-quote-indent))",
     paddingRight: zoomed("0.75rem"),
   },
   ".cm-md-code::after": {
     content: '""',
     position: "absolute",
     zIndex: "-1",
-    left: "calc(6px + var(--markdown-marker-centre) - 1.5px)",
+    left: "calc(6px + var(--md-inset, 0px) + var(--markdown-marker-centre) - 1.5px)",
     right: "0",
     top: "0",
     bottom: "0",
@@ -679,36 +838,43 @@ const marginTheme = EditorView.baseTheme({
     paddingRight: zoomed("0.75rem"),
   },
   // (doubled up to outrank the plain quote bar's rule further down)
-  ".cm-md-quote.cm-md-callout::before": {
+  ".cm-md-quote-bar.cm-md-callout-bar": {
     background: "var(--md-callout)",
     opacity: "1",
   },
+  // the tint starts at the callout's own bar (--md-callout-left), wherever
+  // the line's text is
   ".cm-md-callout::after": {
     content: '""',
     position: "absolute",
     zIndex: "-1",
-    left: "calc(6px + var(--markdown-marker-centre) - 1.5px)",
+    left: "calc(6px + var(--md-callout-left, 0px) + var(--markdown-marker-centre) - 1.5px)",
     right: "0",
     top: "0",
     bottom: "0",
     background: "var(--md-callout-fill)",
   },
-  ".cm-md-callout.cm-md-quote-first": {
+  ".cm-md-callout.cm-md-callout-first": {
     paddingTop: zoomed("0.5rem"),
   },
-  ".cm-md-callout.cm-md-quote-last": {
+  ".cm-md-callout.cm-md-callout-last": {
     paddingBottom: zoomed("0.5rem"),
   },
-  ".cm-md-callout.cm-md-quote-first::before, .cm-md-callout.cm-md-quote-first::after": {
-    top: "0",
+  ".cm-md-callout.cm-md-callout-first::after": {
     borderTopRightRadius: "6px",
   },
-  ".cm-md-callout.cm-md-quote-last::before, .cm-md-callout.cm-md-quote-last::after": {
-    bottom: "0",
+  ".cm-md-callout.cm-md-callout-last::after": {
     borderBottomRightRadius: "6px",
   },
-  ".cm-md-callout.cm-md-quote-first::before": { borderTopRightRadius: "0" },
-  ".cm-md-callout.cm-md-quote-last::before": { borderBottomRightRadius: "0" },
+  // a callout's bar runs the whole height of its tint
+  ".cm-md-quote-bar.cm-md-callout-bar.cm-md-quote-bar-first": {
+    top: "0",
+    borderTopRightRadius: "0",
+  },
+  ".cm-md-quote-bar.cm-md-callout-bar.cm-md-quote-bar-last": {
+    bottom: "0",
+    borderBottomRightRadius: "0",
+  },
   ".cm-md-callout-title-line": {
     color: "var(--md-callout-text)",
     fontWeight: "600",
@@ -736,11 +902,16 @@ const marginTheme = EditorView.baseTheme({
     fontFamily: "var(--text-editor-family-code)",
     fontSize: "0.9em",
   },
-  ".cm-md-quote::before": {
-    content: '""',
+  // empty, in the flow: holds the bars without taking room on the line
+  ".cm-md-quote-bars": {
+    display: "inline",
+  },
+  // a bar down a quote's indent; its widget's inline style says how far in
+  // (`left`, the indents of what the quote's inside), and this centres it on
+  // that indent's marker column
+  ".cm-md-quote-bar": {
     position: "absolute",
-    // centred on the markers' column (past CodeMirror's own 6px padding)
-    left: "calc(6px + var(--markdown-marker-centre) - 1.5px)",
+    marginLeft: "calc(var(--markdown-marker-centre) - 1.5px)",
     top: "0",
     bottom: "0",
     width: "3px",
@@ -748,13 +919,14 @@ const marginTheme = EditorView.baseTheme({
     background:
       "var(--syntax-quote-bar, var(--syntax-list-marker, var(--text-editor-primary-text, currentColor)))",
     opacity: "0.6",
+    pointerEvents: "none",
   },
-  ".cm-md-quote-first::before": {
+  ".cm-md-quote-bar-first": {
     top: "0.2em",
     borderTopLeftRadius: "3px",
     borderTopRightRadius: "3px",
   },
-  ".cm-md-quote-last::before": {
+  ".cm-md-quote-bar-last": {
     bottom: "0.2em",
     borderBottomLeftRadius: "3px",
     borderBottomRightRadius: "3px",

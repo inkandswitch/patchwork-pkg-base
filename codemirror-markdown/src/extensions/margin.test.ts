@@ -129,11 +129,66 @@ describe("margin", () => {
     expect(q2.textContent).toBe("the world");
   });
 
-  it("gives a nested quote one bar and hides all its >s", () => {
-    const view = makeView("> > deep\n\nafter");
-    const [q] = lines(view);
-    expect(q.className.match(/cm-md-quote-first/g)).toHaveLength(1);
-    expect(q.textContent).toBe("deep");
+  const bars = (line: HTMLElement) =>
+    Array.from(line.querySelectorAll<HTMLElement>(".cm-md-quote-bar"));
+  const inset = (line: HTMLElement) => line.style.getPropertyValue("--md-inset");
+
+  it("gives a nested quote a bar of its own, and hides all its >s", () => {
+    const view = makeView("> out\n> > deep\n> > > deeper\n\nafter");
+    const [out, deep, deeper, , after] = lines(view);
+    expect([out, deep, deeper].map((l) => bars(l).length)).toEqual([1, 2, 3]);
+    expect(deep.textContent).toBe("deep");
+    expect(deeper.textContent).toBe("deeper");
+    // each bar one indent further in than the one before
+    expect(new Set(bars(deeper).map((b) => b.getAttribute("style"))).size).toBe(3);
+    expect(inset(deeper)).toContain("3 * var(--markdown-quote-indent)");
+    // the inner quote's bar starts on its own first line
+    expect(bars(deep)[1].classList).toContain("cm-md-quote-bar-first");
+    expect(bars(deep)[0].classList).not.toContain("cm-md-quote-bar-first");
+    expect(bars(after)).toHaveLength(0);
+  });
+
+  it("puts a list in a quote inside the bar, not on it", () => {
+    const view = makeView("> - a\n> - b\n\nafter");
+    const [a, b] = lines(view);
+    for (const l of [a, b]) {
+      expect(bars(l)).toHaveLength(1);
+      expect(inset(l)).toBe(
+        "calc(1 * var(--markdown-quote-indent) + 1 * var(--markdown-list-indent))"
+      );
+      expect(l.querySelector(".cm-bullet")).not.toBeNull();
+    }
+    expect(a.textContent).toBe("a");
+  });
+
+  it("moves an item's marker out past a quote that starts on its line", () => {
+    const view = makeView("- > quoted\n  > more\n\nafter");
+    const [first, more] = lines(view);
+    expect(first.textContent).toBe("quoted");
+    expect(more.textContent).toBe("more");
+    expect(bars(first)).toHaveLength(1);
+    const marker = first.querySelector<HTMLElement>(".cm-md-list-marker")!;
+    expect(marker.getAttribute("style")).toContain("var(--markdown-quote-indent)");
+  });
+
+  it("indents code in a list item, hiding the item's indentation but not the code's", () => {
+    const doc = "- item\n\n  ```js\n  if (a)\n    b()\n  ```\n\nend";
+    const view = makeView(doc);
+    const [, , fence, ifLine, body, close] = lines(view);
+    for (const l of [fence, ifLine, body, close]) {
+      expect(l.classList).toContain("cm-md-code");
+      expect(inset(l)).toContain("1 * var(--markdown-list-indent)");
+    }
+    expect(fence.textContent).toBe("```js");
+    expect(ifLine.textContent).toBe("if (a)");
+    expect(body.textContent).toBe("  b()");
+  });
+
+  it("keeps a quote's > inside its code as code", () => {
+    const view = makeView("> ```\n> >x\n> ```\n\nend");
+    const [, code] = lines(view);
+    expect(code.textContent).toBe(">x");
+    expect(bars(code)).toHaveLength(1);
   });
 
   it("shows a heading's label only on the caret's line", () => {
