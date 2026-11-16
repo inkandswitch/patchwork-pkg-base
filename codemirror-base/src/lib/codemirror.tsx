@@ -19,6 +19,7 @@ import {
   createDiffExtension,
   createScrollHighlightIntoViewExtension,
   createPresenceExtension,
+  createCaretExtension,
 } from "./extensions";
 
 /** Utility function to lookup a value along the specified pathin an Automerge document */
@@ -124,6 +125,7 @@ export function CodeMirror<T>(props: CodeMirrorProps<T>) {
     diffExtension,
     scrollHighlightIntoViewExtension,
     presenceExtension,
+    createCaretExtension(),
     userExtensionsCompartment.of(props.extensions || []),
     readOnlyExtension,
   ].filter(Boolean) as Extension[];

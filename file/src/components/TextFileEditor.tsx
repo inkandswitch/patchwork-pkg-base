@@ -29,6 +29,7 @@ import {
 } from "@codemirror/commands"
 import {automergeSyncPlugin} from "@automerge/automerge-codemirror"
 import {isImmutableStringFileDoc} from "../datatype"
+import {createCaretExtension} from "./caret"
 import {collectExtensions} from "./codemirror-extensions"
 import {createFileComments} from "./comments"
 import {createPresenceExtension} from "./presence"
@@ -165,6 +166,7 @@ export function TextFileEditor(props: {
 			...codemirrorTheme,
 			automergeSyncPlugin({handle: props.handle, path: ["content"]}),
 			presenceExtension,
+			createCaretExtension(),
 			comments?.extension ?? [],
 			// last, so they can override anything above
 			collectExtensions(props.element, props.handle, props.doc, false),
