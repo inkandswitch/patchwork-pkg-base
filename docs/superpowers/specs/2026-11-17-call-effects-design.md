@@ -27,7 +27,7 @@ type `patchwork:call-effect`, registered like any other plugin:
   icon: "Cat",                      // as other plugins' icons
   kind: "overlay",                  // "overlay" | "background" | "filter": how it's grouped
   needs: ["landmarks"],             // what it wants in `frame`: "landmarks", later "mask"
-  effect: "./effect.js",            // the module that draws, relative to this package's entry
+  effect: new URL(EFFECT, import.meta.url).href, // the module that draws, by its whole url
   load: () => import("./effect.js") // for the same module on the main thread (tests, tools)
 }
 ```
@@ -56,14 +56,17 @@ the model to be downloaded.
 Frames are processed in a worker, so `draw` has to run there. The worker can't
 see the registry or the plugins' `load()`s. Two things make it work:
 
-1. the plugin's `importUrl` (set by `registerPlugins`) is the url of its
-   package's entry, as the page loaded it (in patchwork, a service-worker url
-   for that package's doc). `effect` is resolved against it:
-   `new URL(plugin.effect, plugin.importUrl)`. the main thread does that and
-   tells the worker the absolute url.
-2. the worker `import()`s that url. dynamic import works in a classic worker,
-   and the url is same-origin and answered by the same service worker as the
-   page's modules.
+1. the plugin says where its effect module is, by its whole url, made from
+   the module that lists it: `new URL(EFFECT, import.meta.url).href`. (not
+   resolved against the registry's `importUrl`: in the tools bundle that's
+   the package's folder, not its built entry, so `./effect.js` against it
+   was a 404. a relative `effect` is still resolved against `importUrl`, for
+   a loader where that's the entry.) the main thread tells the worker the url.
+2. the worker `import()`s that url. dynamic import works in a classic worker.
+   it can be another origin's (a preview's tools bundle is), served with
+   `Access-Control-Allow-Origin`; the worker itself is started from a blob of
+   the page's own that `importScripts` the call's worker script, since a
+   worker can't be started from another origin's script.
 
 So the effect module must be **self-contained**: a worker has no import map,
 so it can't have bare imports (`solid-js`, `@inkandswitch/...`), and it must

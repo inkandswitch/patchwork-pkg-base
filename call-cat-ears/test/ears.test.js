@@ -169,8 +169,9 @@ describe("the plugin", () => {
       id: "cat-ears",
       kind: "overlay",
       needs: ["landmarks"],
-      effect: "./effect.js",
     });
+    // (its whole url: test/plugins.test.js)
+    expect(plugin.effect).toMatch(/\/effect\.js$/);
   });
 
   test("and loads the same module", async () => {

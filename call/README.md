@@ -354,7 +354,7 @@ drawn on your camera before it's sent. It's only offered in browsers that can
   icon: "Cat",
   kind: "overlay",           // or "background", "filter"
   needs: ["landmarks"],      // what draw() is given: "landmarks", later "mask"
-  effect: "./effect.js",     // the module that draws, relative to your entry
+  effect: new URL(EFFECT, import.meta.url).href, // the module that draws, by its whole url
 }
 ```
 
@@ -365,10 +365,17 @@ y as fractions of the picture), or `null` with no face. `mask` is `null` for
 now. It's called for every frame, so keep it quick, and draw nothing without a
 face. It can export `dispose()` too.
 
-It runs in a worker, which `import()`s it by the url of `effect` against your
-entry's. So it must be **self-contained**: no bare imports (a worker has no
-import map), and its own entry in your build, not a chunk shared with your
-plugin list.
+It runs in a worker, which `import()`s it by the url in `effect`. Give it
+whole, from the module that lists your plugins, with
+`const EFFECT = "./effect.js"` and `new URL(EFFECT, import.meta.url).href`:
+the registry's idea of where your package is can be its folder, not your
+built entry, so a relative `effect` would land in the wrong place. (The name,
+not a string written into `new URL()`, or Vite copies `effect.js`'s source in
+as an unbundled asset.) It must be **self-contained**: no bare imports (a
+worker has no import map), and its own entry in your build, next to the
+module that lists it, not a chunk shared with your plugin list. It can be on
+another origin from the page (a preview's tools bundle is) as long as it's
+served with `Access-Control-Allow-Origin`.
 
 ## Working on this package
 
