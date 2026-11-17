@@ -15,8 +15,7 @@ This README is for two kinds of people (or their agents):
   and you want it to have calls.
 - **[tool authors](#making-your-tool-call-aware)**: you've made a tool (a
   canvas, an editor) and you want calls to fit it well. For example, faces on
-  cursors, cameras pinned to places on a canvas, or following someone's
-  viewport.
+  cursors, or cameras pinned to places on a canvas.
 
 Neither kind of code takes a build-time dependency on this package. Everything
 is looked up at runtime: by component id, by the `patchwork:call*`
@@ -142,28 +141,7 @@ function listen(showing) {
 > threepane: `src/components/CallVideoOpener.tsx` does exactly this, including
 > putting back whatever tab was open before.
 
-### 6. Optional: let people follow each other
-
-```html
-<div data-call-follow="main">
-  <patchwork-view doc-url="…" tool-id="…"></patchwork-view>
-</div>
-```
-
-Mark an area with `data-call-follow="<name>"` and people in a call can follow
-each other there. Whatever the person you're following has open in their
-`"main"` opens in yours too. If the tool supports it, how they're looking at it
-follows as well: their scroll position, their canvas camera (see
-[being followed](#being-followed-share-your-view-state)). A line in their
-colour goes around the area while you follow. Pressing it, or opening something
-else there yourself, stops following.
-
-Only the `patchwork-view` at the top of each marked area is shared. Nothing
-outside a marked area is ever shared. Use the same name for the same kind of
-place across frames (`"main"` for the main view), so that people using
-different frames can still follow each other.
-
-### 7. Optional: name a room that isn't a doc on screen
+### 6. Optional: name a room that isn't a doc on screen
 
 The provider names rooms after the docs that are mounted in it. If your frame
 has a sense of "where you are" that isn't a mounted doc (a project, a folder
@@ -344,40 +322,6 @@ working around it:
   (`others`). Use presence to know who's around, and `call-face` to show the
   ones who are in the call.
 
-### Being followed: share your view state
-
-When your tool is inside an area the frame marks with `data-call-follow`, it
-can share how it's being looked at (scroll position, camera, zoom, the
-selected page), so people following see what the person they follow sees.
-
-```js
-import { subscribe } from "@inkandswitch/patchwork-providers";
-
-subscribe(element, { type: "patchwork:view-state" }, async (url) => {
-  const view = await repo.find(url); // the repo your tool was given
-  // write yours as it changes:
-  editor.on("camera", (cam) => view.change((doc) => Object.assign(doc, { x: cam.x, y: cam.y, z: cam.z })));
-  // and take it when it changes:
-  view.on("change", ({ doc }) => editor.setCamera(doc));
-});
-```
-
-You get back the url of a doc in the realm's scratch repo, which is never
-saved or synced. Write your view state into it, and keep it small (a few KB of
-plain JSON, and nothing over 32 KB). **Always find it with the repo you were
-given**, not the page's own repo. While someone else is following you, nothing
-changes for you. While *you* follow someone, that same url quietly resolves to
-a copy of their view state that keeps updating, so all you have to do is
-listen for `change` and apply what you get. When you stop following, your own
-view state is left wherever theirs had got to.
-
-Make applying a view state idempotent: apply it without writing it back if it's
-already what you have. Otherwise your write and their update keep bouncing off
-each other.
-
-Outside a marked area, or with no call package, nothing answers the
-subscription and nothing happens.
-
 ---
 
 ## Working on this package
@@ -394,7 +338,7 @@ pnpm sync      # build, then pushwork sync
 - `src/provider.js` and `src/protocol.js` are the boundary everything else
   talks through.
 - `src/engine/` is the call: rooms, signalling over ephemeral messages
-  (`channel.js`), WebRTC, following, noise suppression. `call.js` has the full
+  (`channel.js`), WebRTC, noise suppression. `call.js` has the full
   story at the top of the file.
 - `src/ui/` holds the Solid views (`solid-js/html`, no JSX), and `styles.css`.
 
