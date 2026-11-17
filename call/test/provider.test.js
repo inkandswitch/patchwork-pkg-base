@@ -139,6 +139,15 @@ describe("subscriptions", () => {
     expect(engine.call.nameOf(url)).toBe("");
   });
 
+  test("patchwork:call-now says which room your call's in (none), and hears no room itself", async () => {
+    const heard = [];
+    const off = subscribe(deep, { type: "patchwork:call-now" }, (value) => heard.push(value));
+    await settle();
+    expect(heard.at(-1)).toEqual({ room: null });
+    expect(globalThis.repo.find).not.toHaveBeenCalled();
+    off();
+  });
+
   test("patchwork:call-video says a frame can show the video, and is told when it's wanted", async () => {
     const heard = [];
     const off = subscribe(deep, { type: "patchwork:call-video" }, (value) => heard.push(value));

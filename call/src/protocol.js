@@ -8,12 +8,16 @@
 //                                    → {here, others, elsewhere}
 //   patchwork:call-video {showing}   this frame can show the video, and
 //                                    whether it is now → {wanted}
+//   patchwork:call-now               which room your call's in → {room}: its
+//                                    url, or null. it hears no room, so ask
+//                                    it as often as you like (a list of docs,
+//                                    a row each)
 //
 // a url is any room id (room.js): a doc's url, or "key:<hex>"
 import { call, onCallIn } from "./engine/call.js";
 import { roomUrl } from "./engine/room.js";
 
-export { CALL, CALL_EVENT, CALL_ROOM, CALL_VIDEO } from "./protocol-names.js";
+export { CALL, CALL_EVENT, CALL_NOW, CALL_ROOM, CALL_VIDEO } from "./protocol-names.js";
 
 /** {here, others, elsewhere} for the room `url`: you're in its call; how many others are; you're in one somewhere else */
 export function roomState(url) {

@@ -4,3 +4,4 @@ export const CALL_EVENT = "patchwork:call";
 export const CALL = "patchwork:call";
 export const CALL_ROOM = "patchwork:call-room";
 export const CALL_VIDEO = "patchwork:call-video";
+export const CALL_NOW = "patchwork:call-now";

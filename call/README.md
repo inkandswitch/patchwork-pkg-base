@@ -208,6 +208,18 @@ const off = subscribe(element, { type: "patchwork:call", url: handle.url }, ({ h
 });
 ```
 
+Each `patchwork:call` subscription makes the call listen in on that doc's
+room. That's fine for the doc you're showing, but not for a list of hundreds.
+To mark which of many docs the call is in (a doc list, a search result), ask
+once, with `patchwork:call-now`, and compare:
+
+```js
+const off = subscribe(element, { type: "patchwork:call-now" }, ({ room }) => {
+  // room: the bare url of the doc your call's in, or null
+  // (compare it with each url with its #heads and /path cut off)
+});
+```
+
 As in the frame section above, subscribe again if the provider mounts later.
 With no provider, you never hear back. Treat that as "there are no calls here"
 and show nothing.

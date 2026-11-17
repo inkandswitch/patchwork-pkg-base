@@ -102,6 +102,7 @@ export function Face(props) {
     title=${() => (props.title === false ? undefined : mine() ? "you" : person()?.name)}
   >
     ${() => (stream() ? video : image() ? "" : initial(person()?.name))}
+    <${Show} when=${() => !mine() && person()?.connection !== "connected"}>${Quilt}<//>
     <${Show} when=${() => props.muted !== false && person() && !person().mic}>
       <span class="patchwork-call-muted" aria-label="muted">${icon("mic-off", 9)}</span>
     <//>
@@ -111,6 +112,52 @@ export function Face(props) {
       >
     <//>
   </span>`;
+}
+
+// ── connecting: a quilt being mended ───────────────────────────────────
+
+// the eight patches round the middle, anticlockwise from the top left: where
+// each sits (row, column), and which way is out from the middle (it's pulled
+// away that way)
+const PATCHES = [
+  [1, 1, -1, -1],
+  [2, 1, -1, 0],
+  [3, 1, -1, 1],
+  [3, 2, 0, 1],
+  [3, 3, 1, 1],
+  [2, 3, 1, 0],
+  [1, 3, 1, -1],
+  [1, 2, 0, -1],
+];
+// how many fabrics there are (styles.css: --patchwork-call-fabric-*)
+const FABRICS = 8;
+
+/**
+ * while someone's connecting: a little patchwork quilt over their face, one
+ * patch at a time peeled away and a new one laid in its place, round it
+ * anticlockwise. the middle is theirs (their colour), and stays
+ */
+function Quilt() {
+  const quilt = document.createElement("span");
+  quilt.className = "patchwork-call-quilt";
+  quilt.setAttribute("role", "img");
+  quilt.setAttribute("aria-label", "connecting");
+  PATCHES.forEach(([row, column, dx, dy], i) => {
+    const patch = document.createElement("span");
+    patch.className = "patchwork-call-quilt-patch";
+    patch.style.gridArea = `${row} / ${column}`;
+    // what it is, and what it's mended with: never the same
+    patch.style.setProperty("--was", `var(--patchwork-call-fabric-${(i % FABRICS) + 1})`);
+    patch.style.setProperty("--now", `var(--patchwork-call-fabric-${((i + 3) % FABRICS) + 1})`);
+    patch.style.setProperty("--i", String(i));
+    patch.style.setProperty("--dx", String(dx));
+    patch.style.setProperty("--dy", String(dy));
+    quilt.append(patch);
+  });
+  const middle = document.createElement("span");
+  middle.className = "patchwork-call-quilt-middle";
+  quilt.append(middle);
+  return quilt;
 }
 
 /** someone's screen (`props.id`), while they're sharing it: all of it */

@@ -216,10 +216,6 @@
 		scale: -1 1;
 	}
 
-	&[data-connecting] {
-		opacity: 0.55;
-	}
-
 	/* speaking: a ring round them, as it starts and stops */
 	outline: 2px solid transparent;
 	outline-offset: 1px;
@@ -1116,4 +1112,161 @@
 
 .patchwork-call-button-count {
 	font-variant-numeric: tabular-nums;
+}
+
+/* ── connecting: a quilt being mended (ui.js: Quilt) ─────────────────────
+   over the middle of their face: a 3×3 quilt, their colour in the middle.
+   one patch at a time is pulled away (out from the middle, with a twist)
+   and a new one's laid in its place, going round anticlockwise. a patch's
+   turn is a step: its going and the next one's coming overlap, so it flows
+   round. each patch has two fabrics and goes round twice before it's back
+   where it started */
+
+.patchwork-call-face {
+	/* the fabrics: each a tile (its size, in the patch) of gradients on a
+	   ground. a picture, so the same whatever the theme */
+	--patchwork-call-fabric-1:
+		linear-gradient(90deg, oklch(0.52 0.17 27 / 0.6) 50%, transparent 0),
+		linear-gradient(oklch(0.52 0.17 27 / 0.6) 50%, transparent 0),
+		linear-gradient(oklch(0.95 0.02 85), oklch(0.95 0.02 85));
+	--patchwork-call-fabric-2:
+		radial-gradient(circle, oklch(0.93 0.03 85) 24%, transparent 30%),
+		linear-gradient(oklch(0.36 0.09 265), oklch(0.36 0.09 265));
+	--patchwork-call-fabric-3:
+		linear-gradient(90deg, oklch(0.74 0.15 85) 50%, oklch(0.84 0.11 90) 0);
+	--patchwork-call-fabric-4:
+		linear-gradient(45deg, transparent 42%, oklch(1 0 0 / 0.4) 42% 58%, transparent 58%),
+		linear-gradient(oklch(0.64 0.08 125), oklch(0.64 0.08 125));
+	--patchwork-call-fabric-5:
+		conic-gradient(oklch(0.45 0.08 50) 25%, oklch(0.6 0.09 55) 0 50%, oklch(0.45 0.08 50) 0 75%, oklch(0.6 0.09 55) 0);
+	--patchwork-call-fabric-6:
+		radial-gradient(circle, oklch(0.58 0.14 5) 22%, transparent 28%),
+		linear-gradient(oklch(0.93 0.03 70), oklch(0.93 0.03 70));
+	--patchwork-call-fabric-7:
+		linear-gradient(90deg, oklch(1 0 0 / 0.22) 30%, transparent 0),
+		linear-gradient(oklch(1 0 0 / 0.22) 30%, transparent 0),
+		linear-gradient(oklch(0.48 0.07 190), oklch(0.48 0.07 190));
+	--patchwork-call-fabric-8:
+		linear-gradient(oklch(0.5 0.14 32), oklch(0.5 0.14 32));
+}
+
+.patchwork-call-quilt {
+	/* a patch's turn */
+	--step: 240ms;
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	translate: -50% -50%;
+	/* the square that fits inside a round face (1/√2), and no bigger than
+	   it needs to be on a big tile */
+	height: min(70%, 72px);
+	aspect-ratio: 1;
+	display: grid;
+	grid-template: repeat(3, 1fr) / repeat(3, 1fr);
+	/* the seams, and the batting a peeled patch leaves showing */
+	gap: 1px;
+	padding: 1px;
+	box-sizing: border-box;
+	border-radius: 2px;
+	background: oklch(0.88 0.02 85);
+	box-shadow: 0 1px 3px oklch(0 0 0 / 0.35);
+	pointer-events: none;
+}
+
+.patchwork-call-quilt-middle {
+	grid-area: 2 / 2;
+	background: var(--call-face, oklch(0.5 0.14 32));
+}
+
+.patchwork-call-quilt-patch {
+	background-image: var(--was);
+	background-size: 33.334% 33.334%;
+	animation: patchwork-call-quilt calc(var(--step) * 16) linear infinite both;
+	animation-delay: calc(var(--i) * var(--step));
+}
+
+/* sixteen steps: its going (one), the new one laid (the next), then the
+   rest of the way round; and the same again with the other fabric */
+@keyframes patchwork-call-quilt {
+	0% {
+		background-image: var(--was);
+		transform: none;
+		opacity: 1;
+		animation-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+	}
+	6.2% {
+		background-image: var(--was);
+		transform: translate(calc(var(--dx) * 45%), calc(var(--dy) * 45%)) rotate(-16deg) scale(1.08);
+		opacity: 0;
+	}
+	6.3% {
+		background-image: var(--now);
+		transform: scale(1.22);
+		opacity: 0;
+		animation-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+	}
+	12.5%,
+	50% {
+		background-image: var(--now);
+		transform: none;
+		opacity: 1;
+		/* (for what starts at 50%: its going again) */
+		animation-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+	}
+	56.2% {
+		background-image: var(--now);
+		transform: translate(calc(var(--dx) * 45%), calc(var(--dy) * 45%)) rotate(-16deg) scale(1.08);
+		opacity: 0;
+	}
+	56.3% {
+		background-image: var(--was);
+		transform: scale(1.22);
+		opacity: 0;
+		animation-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+	}
+	62.5%,
+	100% {
+		background-image: var(--was);
+		transform: none;
+		opacity: 1;
+	}
+}
+
+/* less motion: nothing's pulled or laid, each patch fades to its new
+   fabric in turn, so it's still plainly connecting */
+@keyframes patchwork-call-quilt-still {
+	0%,
+	62.5%,
+	100% {
+		background-image: var(--was);
+		opacity: 1;
+	}
+	6.2% {
+		background-image: var(--was);
+		opacity: 0.2;
+	}
+	6.3% {
+		background-image: var(--now);
+		opacity: 0.2;
+	}
+	12.5%,
+	50% {
+		background-image: var(--now);
+		opacity: 1;
+	}
+	56.2% {
+		background-image: var(--now);
+		opacity: 0.2;
+	}
+	56.3% {
+		background-image: var(--was);
+		opacity: 0.2;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.patchwork-call-quilt-patch {
+		animation-name: patchwork-call-quilt-still;
+		animation-timing-function: ease;
+	}
 }

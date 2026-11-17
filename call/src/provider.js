@@ -7,7 +7,7 @@ import html from "solid-js/html";
 import { accept } from "@inkandswitch/patchwork-providers";
 import { ask, call, hangUp, hearRoom, holdVideoSpot } from "./engine/call.js";
 import { roomUrl } from "./engine/room.js";
-import { CALL, CALL_EVENT, CALL_ROOM, CALL_VIDEO, roomState } from "./protocol.js";
+import { CALL, CALL_EVENT, CALL_NOW, CALL_ROOM, CALL_VIDEO, roomState } from "./protocol.js";
 import { CallFloating, CallQuestion, CallStage } from "./ui/ui.js";
 import { stageArea } from "./ui/area.js";
 import { chimes } from "./engine/chimes.js";
@@ -78,6 +78,9 @@ export function CallProvider(element) {
           () => roomState(selector.url),
           () => hearRoom(selector.url, { onScreen: true, name: selector.name }),
         );
+      case CALL_NOW:
+        // (it holds nothing: the room your call's in is heard already)
+        return answer(event, () => ({ room: call.get()?.room ?? null }), () => () => {});
       case CALL_VIDEO:
         return answer(
           event,

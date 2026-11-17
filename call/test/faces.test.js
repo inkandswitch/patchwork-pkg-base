@@ -106,6 +106,37 @@ describe("call-face", () => {
     expect(element.querySelector(".patchwork-call-face")).toBe(null);
   });
 
+  test("while they're connecting, a quilt being mended: eight patches round theirs, anticlockwise", () => {
+    setInCall({ room: "automerge:r", mic: true });
+    setPeers([{ ...ana, connection: "connecting" }]);
+    element.setAttribute("contact", "automerge:c1");
+    stop = CallFace(element);
+    const quilt = element.querySelector(".patchwork-call-face > .patchwork-call-quilt");
+    expect(quilt?.getAttribute("aria-label")).toBe("connecting");
+    const patches = [...quilt.querySelectorAll(".patchwork-call-quilt-patch")];
+    // down the left, along the bottom, up the right, back along the top
+    expect(patches.map((patch) => patch.style.gridArea.replace(/\s/g, ""))).toEqual([
+      "1/1", "2/1", "3/1", "3/2", "3/3", "2/3", "1/3", "1/2",
+    ]);
+    expect(patches.map((patch) => patch.style.getPropertyValue("--i"))).toEqual(["0", "1", "2", "3", "4", "5", "6", "7"]);
+    // a patch is never mended with what it was
+    for (const patch of patches) {
+      expect(patch.style.getPropertyValue("--was")).not.toBe(patch.style.getPropertyValue("--now"));
+    }
+    expect(quilt.querySelector(".patchwork-call-quilt-middle")).not.toBe(null);
+  });
+
+  test("connected, no quilt", async () => {
+    setInCall({ room: "automerge:r", mic: true });
+    setPeers([{ ...ana, connection: "connecting" }]);
+    element.setAttribute("contact", "automerge:c1");
+    stop = CallFace(element);
+    expect(element.querySelector(".patchwork-call-quilt")).not.toBe(null);
+    setPeers([{ ...ana, connection: "connected" }]);
+    await flush();
+    expect(element.querySelector(".patchwork-call-quilt")).toBe(null);
+  });
+
   test("stopped, it's gone", () => {
     setInCall({ room: "automerge:r", mic: true });
     setPeers([ana]);
