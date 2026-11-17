@@ -621,8 +621,8 @@
 	}
 }
 
-/* someone filling the panes: their picture, all of it, on dark, their name
-   in the corner, and you in the other. filling the screen, you're bigger */
+/* someone filling the panes, or their screen: all of it, on dark, their
+   name in the corner. everyone else floats over it */
 .patchwork-call-stage {
 	position: fixed;
 	z-index: 40;
@@ -700,34 +700,10 @@
 		opacity: 1;
 	}
 
-	& .patchwork-call-stage-me {
-		position: absolute;
-		right: 12px;
-		bottom: 12px;
-		width: clamp(96px, 18%, 220px);
-		border-radius: 8px;
-		box-shadow: 0 4px 16px var(--call-float-shadow);
-
-		& .patchwork-call-face {
-			border-radius: 8px;
-		}
-	}
-
 	&:fullscreen {
 		inset: 0 !important;
 		width: 100% !important;
 		height: 100% !important;
-
-		& .patchwork-call-stage-me {
-			right: 20px;
-			bottom: 20px;
-			width: clamp(160px, 22vw, 440px);
-			border-radius: 12px;
-
-			& .patchwork-call-face {
-				border-radius: 12px;
-			}
-		}
 
 		& .patchwork-call-stage-name {
 			left: 20px;

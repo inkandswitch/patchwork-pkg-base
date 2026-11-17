@@ -185,8 +185,8 @@ function saveSettings() {
 // has the same one
 const live = lasting("patchwork-call:session", () => ({ session: null }));
 
-// whose face fills the panes (their id, or null), and whether it fills the
-// screen. a lasting of its own, not more of the state's above: a page that
+// whose face fills the panes (their id, "me", or null), and whether it fills
+// the screen. a lasting of its own, not more of the state's above: a page that
 // swaps in a new version keeps the state it made, with nothing added since
 const view = lasting("patchwork-call:view", () =>
   createRoot(() => {
@@ -195,8 +195,8 @@ const view = lasting("patchwork-call:view", () =>
     return { stage, setStage, full, setFull };
   }),
 );
-// a floating face made to fill the window, not the panes: {screen} (whether
-// it's their screen, not their face), or null. of its own, for the same reason
+// what of theirs fills the panes: {screen} (whether it's their screen, not
+// their face), or null. of its own, for the same reason
 const filled = lasting("patchwork-call:filled", () =>
   createRoot(() => {
     const [fill, setFill] = createSignal(null);
@@ -784,19 +784,15 @@ export const call = {
   floatKey: (id, screen = false) => `${id === "me" ? "me" : state.peers[id]?.contact || id}${screen ? "/screen" : ""}`,
   asking,
   stopAsking: () => setAsking(null),
-  /** whose face fills the panes, or the window (one still in the call, or "me"), or null */
+  /** whose face fills the panes (one still in the call, or "me"), or null */
   stage: () => {
     const id = view.stage();
     return id && (state.peers[id] || (id === "me" && state.call)) ? id : null;
   },
-  /**
-   * what's filling the window, a floating face made to (toggleFill), or
-   * null: {id, screen}, `screen` whether it's their screen
-   */
+  /** what's filling the panes, or null: {id, screen}, `screen` whether it's their screen */
   filling: () => {
     const id = call.stage();
-    const fill = filled.fill();
-    return id && fill ? { id, screen: fill.screen } : null;
+    return id ? { id, screen: !!filled.fill()?.screen } : null;
   },
   /** whether it fills the screen */
   full: () => view.full() && !!call.stage(),
@@ -844,6 +840,7 @@ export async function startScreen() {
     else lost(id);
   }
   setState("call", "screen", true);
+  sharingScreen("me", true);
   bump();
   sayHere();
 }
@@ -857,6 +854,7 @@ export function stopScreen() {
   for (const peer of now.peers.values()) screenOf(peer.pc)?.sender.replaceTrack(null).catch(() => {});
   track.stop();
   setState("call", "screen", false);
+  sharingScreen("me", false);
   bump();
   sayHere();
 }
@@ -864,25 +862,40 @@ export function stopScreen() {
 // ── who's big ───────────────────────────────────────────────────────────
 
 /**
- * fill the panes with `id`'s face, or, theirs already (the panes, or the
- * window), put them back
+ * fill the panes with `id` (their screen, while they're sharing it, else
+ * their face), or, theirs already, put the panes back
  */
 export function toggleStage(id) {
-  const now = view.stage() === id ? null : id;
-  filled.setFill(null);
-  view.setStage(now);
-  if (!now) view.setFull(false);
+  if (view.stage() === id) return closeStage();
+  fill(id, !!call.screen(id));
 }
 
 /**
- * fill the window with a floating face (`id`'s, or with `screen`, their
- * screen), the rest floating over it; or, filling it already, it floats again
+ * fill the panes with a floating face (`id`'s, or with `screen`, their
+ * screen), the rest floating over it; or, filling them already, it floats again
  */
 export function toggleFill(id, screen = false) {
   const now = call.filling();
   if (now && now.id === id && now.screen === !!screen) return closeStage();
-  view.setStage(id);
+  fill(id, screen);
+}
+
+function fill(id, screen) {
   filled.setFill({ screen: !!screen });
+  view.setStage(id);
+}
+
+// someone's (`id`, or "me") started sharing their screen: it floats, a face
+// of its own, out again if it was put away last time. or stopped: filling
+// the panes, it doesn't now
+function sharingScreen(id, sharing) {
+  if (sharing) {
+    const key = call.floatKey(id, true);
+    if (settings.floating[key]?.hidden) showFloating(key, {});
+    return;
+  }
+  const filling = call.filling();
+  if (filling?.id === id && filling.screen) closeStage();
 }
 
 /** the face that's big, filling the screen or not */
@@ -1016,26 +1029,12 @@ function onHere(from, tab, message) {
   }
 }
 
-// someone's started sharing their screen. faces floating, it floats too, a
-// face of its own (put away last time, it's out again). in the sidebar, it
-// fills the panes, unless someone's there already. stopped, it's put back,
-// if that's what put it there, or it was filling the window
+// someone's started sharing their screen, or stopped (sharingScreen). with
+// faces in the sidebar, it fills the panes too, unless something's there
+// already: faces float over it meanwhile
 function onSharing(id, sharing) {
-  const now = live.session;
-  if (sharing) {
-    const key = call.floatKey(id, true);
-    if (settings.floating[key]?.hidden) showFloating(key, {});
-    if (call.mode() === "sidebar" && !view.stage()) {
-      view.setStage(id);
-      now.shown = id;
-    }
-  } else {
-    const filling = call.filling();
-    if (now.shown === id || (filling?.id === id && filling.screen)) {
-      if (view.stage() === id) closeStage();
-    }
-    if (now.shown === id) now.shown = null;
-  }
+  sharingScreen(id, sharing);
+  if (sharing && call.mode() === "sidebar" && !view.stage()) fill(id, true);
   bump();
 }
 

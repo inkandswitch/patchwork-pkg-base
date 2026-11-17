@@ -25,7 +25,7 @@ vi.mock("../src/engine/call.js", () => {
     mode: () => mode(),
     videoShowing: () => showing(),
     stage: () => staged(),
-    filling: () => (staged() && filling() ? { id: staged(), screen: filling().screen } : null),
+    filling: () => (staged() ? { id: staged(), screen: !!filling()?.screen } : null),
     full: () => false,
     asking: () => asking(),
     stopAsking: () => setAsking(null),
@@ -283,18 +283,16 @@ describe("a screen being shared", () => {
     expect(toggleFill).toHaveBeenLastCalledWith("p1", true);
   });
 
-  test("filling the window, it's only that: the rest float over it, you too", async () => {
+  test("filling the panes, it's only that: the rest float over it, you too", async () => {
     setScreens({ p1: new MediaStream() });
     setStaged("p1");
     setFilling({ screen: true });
     await tick();
     await tick();
     const stage = host.querySelector(".patchwork-call-stage");
-    expect(stage.hasAttribute("data-filling")).toBe(true);
     expect(stage.style.width).toBe("100%");
     expect(stage.querySelector(".patchwork-call-screen")).not.toBe(null);
     expect(stage.querySelector(".patchwork-call-them")).toBe(null);
-    expect(stage.querySelector(".patchwork-call-stage-me")).toBe(null);
     expect(named("ana's screen").hasAttribute("data-staged")).toBe(true);
     expect(named("ana").hasAttribute("data-staged")).toBe(false);
     expect(named("you").hasAttribute("data-staged")).toBe(false);
@@ -304,5 +302,42 @@ describe("a screen being shared", () => {
     expect(stage.querySelector(".patchwork-call-screen")).toBe(null);
     expect(named("ana's screen").hasAttribute("data-staged")).toBe(false);
     expect(floats().find((f) => f.hasAttribute("data-staged")).textContent).not.toContain("screen");
+  });
+});
+
+describe("something filling the panes, faces in the sidebar", () => {
+  test("they float over it, meanwhile", async () => {
+    setInCall({ room: "automerge:here", mic: true });
+    setMode("sidebar");
+    setShowing(true);
+    const host = document.body.appendChild(document.createElement("div"));
+    const dispose = render(() => html`<${CallFloating} area=${() => null} />`, host);
+    expect(host.querySelector(".patchwork-call-floating")).toBe(null);
+    setStaged("me");
+    expect(host.querySelector(".patchwork-call-floating")).not.toBe(null);
+    setStaged(null);
+    expect(host.querySelector(".patchwork-call-floating")).toBe(null);
+    dispose();
+    host.remove();
+    setMode("floating");
+    setShowing(false);
+    setInCall(null);
+  });
+});
+
+describe("your own screen", () => {
+  test("floats too, while you share it", async () => {
+    setInCall({ room: "automerge:here", mic: true });
+    setMode("floating");
+    const host = document.body.appendChild(document.createElement("div"));
+    const dispose = render(() => html`<${CallFloating} area=${() => null} />`, host);
+    setScreens({ me: new MediaStream() });
+    await tick();
+    const names = [...host.querySelectorAll(".patchwork-call-float-name")].map((name) => name.textContent.trim());
+    expect(names).toContain("your screen");
+    dispose();
+    host.remove();
+    setScreens({});
+    setInCall(null);
   });
 });

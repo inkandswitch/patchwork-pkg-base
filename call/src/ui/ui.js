@@ -3,7 +3,7 @@
 // stage (CallStage), and that, double clicked, the screen. in the video tab,
 // clicked, they fill its box. floating, each face can be put away, and
 // dragged out of the control panel again (DragOut), or made to fill the
-// window, the rest floating over it. a screen being shared floats too, a
+// panes, the rest floating over it. a screen being shared floats too, a
 // face of its own
 import { createEffect, createMemo, createSignal, For, Show, onCleanup } from "solid-js";
 import html from "solid-js/html";
@@ -223,6 +223,11 @@ function onTop(el, after) {
     after?.();
   });
 }
+
+// whether faces float: they're to, or they're to be in the sidebar but
+// nothing's showing it, or something fills the panes (the rest float over it)
+const floatingNow = () =>
+  !!call.get() && (call.mode() === "floating" || !call.videoShowing() || !!call.stage());
 
 // back on top of the top layer, which stacks by what was shown last, not by
 // z-index: floating faces over the stage, as they were in lattice
@@ -478,7 +483,7 @@ export function CallFloating(props) {
     [
       ...call.peers().map((peer) => peer.id),
       "me",
-      ...call.peers().flatMap((peer) => (call.screen(peer.id) ? [`${peer.id}${SCREEN}`] : [])),
+      ...[...call.peers().map((peer) => peer.id), "me"].flatMap((id) => (call.screen(id) ? [`${id}${SCREEN}`] : [])),
     ].filter((item) => {
       const { id, screen } = floatOf(item);
       return !call.settings.floating[call.floatKey(id, screen)]?.hidden;
@@ -489,8 +494,7 @@ export function CallFloating(props) {
     const screen = floatOf(item).screen;
     return items().filter((other) => floatOf(other).screen === screen).indexOf(item);
   };
-  // (in the sidebar, but nothing's showing the sidebar's: floating meanwhile)
-  return html`<${Show} when=${() => call.get() && (call.mode() === "floating" || !call.videoShowing())}>
+  return html`<${Show} when=${floatingNow}>
     <div class="patchwork-call-floating" popover="manual" ref=${onTop}>
       <${For} each=${items}>
         ${(item, index) => {
@@ -498,16 +502,13 @@ export function CallFloating(props) {
           const mine = id === "me";
           const peer = () => (mine ? null : call.peers().find((peer) => peer.id === id));
           const key = () => call.floatKey(id, screen);
-          const name = () => (mine ? "you" : screen ? `${peer()?.name}'s screen` : peer()?.name);
-          const whose = () => (mine ? "your face" : screen ? `${peer()?.name}'s screen` : `${peer()?.name}'s face`);
+          const who = () => (mine ? "your" : `${peer()?.name}'s`);
+          const name = () => (screen ? `${who()} screen` : mine ? "you" : peer()?.name);
+          const whose = () => `${who()} ${screen ? "screen" : "face"}`;
           const muted = () => !screen && (mine ? !call.get()?.mic : !peer()?.mic);
           const at = () => ({ ...startAt(placeOf(item), key(), props.area, screen), ...call.settings.floating[key()] });
-          // shown big already: filling the window as this, or (their face
-          // and their screen) the panes
-          const staged = () => {
-            const filling = call.filling();
-            return filling ? filling.id === id && filling.screen === screen : !mine && call.stage() === id;
-          };
+          // filling the panes already
+          const staged = () => call.filling()?.id === id && call.filling().screen === screen;
           let float;
           // what's being done to it: {sizing, dx, dy (or the width it was), at}
           let dragging = null;
@@ -584,8 +585,8 @@ export function CallFloating(props) {
               <button
                 class="patchwork-call-float-button"
                 data-fill=""
-                aria-label=${() => `fill the window with ${whose()}`}
-                title="fill the window (the rest float over it)"
+                aria-label=${() => `fill the panes with ${whose()}`}
+                title="fill the panes (the rest float over it)"
                 onClick=${() => toggleFill(id, screen)}
                 onDblClick=${(event) => event.stopPropagation()}
               >
@@ -610,7 +611,7 @@ const GHOST_SIZE = 56;
 function dragOut(id) {
   let dragged = false;
   function onPointerDown(event) {
-    if (event.button !== 0 || call.mode() !== "floating") return;
+    if (event.button !== 0 || !floatingNow()) return;
     const from = event.target.closest("[data-call-face]");
     if (!from) return;
     // no text selected, no picture dragged by the browser
@@ -698,7 +699,7 @@ function ghostOf(face) {
 // was, out of the call bar, and their screen, while they share it. whether
 // either was
 function restore(id) {
-  if (call.mode() !== "floating") return false;
+  if (!floatingNow()) return false;
   const keys = [call.floatKey(id), ...(call.screen(id) ? [call.floatKey(id, true)] : [])].filter(
     (key) => call.settings.floating[key]?.hidden,
   );
@@ -717,7 +718,7 @@ export function DragOut(props) {
     class="patchwork-call-drag patchwork-call-stage-button"
     aria-label=${() => (props.id === "me" ? "restore your floating face" : "restore floating face")}
     data-call-face=${() => props.id}
-    title=${() => (call.mode() === "floating" ? "drag out to float (minimised: click to have it back)" : undefined)}
+    title=${() => (floatingNow() ? "drag out to float (minimised: click to have it back)" : undefined)}
     onPointerDown=${drag.onPointerDown}
     onDragStart=${(event) => event.preventDefault()}
     onClick=${() => !drag.wasDrag() && restore(props.id)}
@@ -742,7 +743,7 @@ export function StageButton(props) {
     title=${() =>
       call.stage() === props.id
         ? "back to the panes"
-        : call.mode() === "floating"
+        : floatingNow()
           ? "fill the panes with them (or drag out to float)"
           : "fill the panes with them"}
     onPointerDown=${drag.onPointerDown}
@@ -812,22 +813,18 @@ export function CallTiles() {
 }
 
 /**
- * whoever's been clicked (call.stage()), filling `props.area` (the
- * stage's box, or else the window), with you in its corner. or a floating
- * face made to fill the window (call.filling()): just it, the rest floating
- * over it, you too. double clicked, it fills the screen, you a little bigger;
- * escape, or its ×, puts it away
+ * what fills `props.area` (the stage's box, or else the window), clicked in
+ * the call bar or made to fill it from its floating face (call.filling()):
+ * someone's face, or their screen. everyone else floats over it, you too.
+ * double clicked, it fills the screen; escape, or its corner, puts it away
  */
 export function CallStage(props) {
   let stage;
   const id = () => call.stage();
-  const filling = () => call.filling();
+  const screen = () => !!call.filling()?.screen;
   const person = () => call.peers().find((peer) => peer.id === id());
   const name = () => (id() === "me" ? "you" : person()?.name);
-  // whether it's their screen that's shown
-  const sharing = () => (filling() ? filling().screen : !!call.screen(id()));
-  // faces floating over it: you're one of them, so not in its corner too
-  const floating = () => call.get() && (call.mode() === "floating" || !call.videoShowing());
+  const what = () => (screen() ? `${id() === "me" ? "your" : `${name()}'s`} screen` : name());
 
   // the whole screen, while it's wanted, and not once it's left (escape)
   createEffect(() => {
@@ -865,38 +862,29 @@ export function CallStage(props) {
         stage = el;
         onTop(el, () => raise(el.closest(".patchwork-call")?.querySelector(".patchwork-call-floating")));
       }}
-      style=${() => boxStyle(filling() ? null : props.area)}
-      data-filling=${() => (filling() ? "" : undefined)}
+      style=${() => boxStyle(props.area)}
       onDblClick=${() => setFull(!call.full())}
       title="double click: the whole screen"
     >
-      <${Show} when=${() => !filling() && id()} keyed>
-        ${(staged) => html`<${Picture} id=${staged} />`}
-      <//>
-      <${Show} when=${() => filling() && !filling().screen && id()} keyed>
+      <${Show} when=${() => !screen() && id()} keyed>
         ${(staged) => html`<${Face} id=${staged} shape="tile" muted=${false} title=${false} />`}
       <//>
-      <${Show} when=${() => filling()?.screen && id()} keyed>
+      <${Show} when=${() => screen() && id()} keyed>
         ${(staged) => html`<${Screen} id=${staged} />`}
       <//>
       <span class="patchwork-call-stage-name">
-        ${() => (sharing() ? `${name()}'s screen` : name())}
-        <${Show} when=${() => !sharing() && person() && !person().mic}>${icon("mic-off", 12)}<//>
+        ${what}
+        <${Show} when=${() => !screen() && person() && !person().mic}>${icon("mic-off", 12)}<//>
       </span>
       <button
         class="patchwork-call-stage-close"
-        aria-label=${() => (filling() ? "float again" : "back to the panes")}
-        title=${() => (filling() ? "float again (escape)" : "back to the panes (escape)")}
+        aria-label="float again"
+        title="float again, out of the panes (escape)"
         onClick=${closeStage}
         onDblClick=${(event) => event.stopPropagation()}
       >
-        ${() => icon(filling() ? "unfill" : "close", 14)}
+        ${icon("unfill", 14)}
       </button>
-      <${Show} when=${() => !floating()}>
-        <span class="patchwork-call-stage-me">
-          <${Face} id="me" shape="tile" title=${false} />
-        </span>
-      <//>
     </div>
   <//>`;
 }

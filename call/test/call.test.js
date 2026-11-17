@@ -266,7 +266,7 @@ describe("settings", () => {
   });
 });
 
-describe("filling the window", () => {
+describe("filling the panes", () => {
   test("a floating face fills it, and again floats", async () => {
     await engine.join(generateAutomergeUrl());
     expect(engine.call.filling()).toBe(null);
@@ -281,10 +281,8 @@ describe("filling the window", () => {
     engine.toggleStage("me");
     expect(engine.call.stage()).toBe(null);
     expect(engine.call.filling()).toBe(null);
-    // and the panes aren't the window
+    // clicked in the call bar, it's their face (they're not sharing)
     engine.toggleStage("me");
-    expect(engine.call.filling()).toBe(null);
-    engine.toggleFill("me");
     expect(engine.call.filling()).toEqual({ id: "me", screen: false });
   });
 
