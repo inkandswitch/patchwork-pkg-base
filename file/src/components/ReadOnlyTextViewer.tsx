@@ -19,6 +19,7 @@ import type {FileDoc} from "../types"
 import {fileText} from "../datatype"
 import {collectExtensions} from "./codemirror-extensions"
 import {createFileComments} from "./comments"
+import {shareScroll} from "./scroll-state"
 
 // Read-only text: ImmutableString files, and any text file opened through a
 // read-only handle. It follows the file as it changes (an ImmutableString is
@@ -71,8 +72,18 @@ export function ReadOnlyTextViewer(props: {
 	}
 	props.handle?.on("change", follow)
 	comments?.attach(view)
+	// where it's scrolled to, for anyone following (the call)
+	const stopScroll = props.element
+		? shareScroll(
+				props.element,
+				(props.element as HTMLElement & {repo?: Parameters<typeof shareScroll>[1]})
+					.repo,
+				view,
+			)
+		: undefined
 
 	onCleanup(() => {
+		stopScroll?.()
 		props.handle?.off("change", follow)
 		view.destroy()
 	})
