@@ -527,6 +527,48 @@
 		opacity: 1;
 	}
 
+	/* filling the panes with it: its top right corner, the other side from
+	   sizing it, there while it's pointed at */
+	& .patchwork-call-float-fill {
+		position: absolute;
+		top: 3px;
+		right: 3px;
+		display: grid;
+		place-items: center;
+		width: 22px;
+		height: 22px;
+		padding: 0;
+		border: none;
+		border-radius: 4px;
+		background: transparent;
+		color: var(--call-on-video-ink);
+		filter: drop-shadow(0 0 1px var(--call-on-video-shadow));
+		cursor: pointer;
+		opacity: 0;
+		transition:
+			opacity 120ms ease-out,
+			background-color 120ms ease-out,
+			scale 120ms ease-out;
+
+		&:hover {
+			background: var(--call-on-video-scrim);
+		}
+		&:active {
+			scale: 0.9;
+		}
+		&:focus-visible {
+			opacity: 1;
+			outline: 2px solid var(--call-accent);
+			outline-offset: 1px;
+		}
+	}
+	& .patchwork-call-float:hover .patchwork-call-float-fill {
+		opacity: 1;
+	}
+	& .patchwork-call-float[data-shape="round"] .patchwork-call-float-fill {
+		right: 14%;
+	}
+
 	& .patchwork-call-float-muted {
 		display: inline-grid;
 		place-items: center;
@@ -754,8 +796,7 @@
 }
 
 /* a floating face's minimise: an arrow before their name, down to the call
-   bar; and after it, filling the window, out to its corner. quiet till
-   they're pointed at */
+   bar. quiet till it's pointed at */
 .patchwork-call-floating .patchwork-call-float-button {
 	display: inline-grid;
 	place-items: center;
@@ -781,10 +822,6 @@
 	&:focus-visible {
 		outline: 2px solid var(--call-accent);
 		outline-offset: 1px;
-	}
-
-	&[data-fill] {
-		margin: 0 -3px 0 2px;
 	}
 }
 @media (hover: hover) and (pointer: fine) {

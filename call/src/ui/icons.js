@@ -5,9 +5,9 @@ const SVG = "http://www.w3.org/2000/svg";
 const PATHS = {
   close: "M4.5 4.5l7 7M11.5 4.5l-7 7",
   minimise: "M11.5 4.5l-7 7M4.5 6.5v5h5",
-  // out to the corner, and back in from it
-  fill: "M4.5 11.5l7-7M6.5 4.5h5v5",
-  unfill: "M2.5 2.5 7 7M7 3.5V7H3.5M13.5 13.5 9 9M9 12.5V9h3.5",
+  // a box's corners, out to fill it, and in from it
+  fill: "M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10",
+  unfill: "M6 2.5V6H2.5M10 2.5V6h3.5M13.5 10H10v3.5M6 13.5V10H2.5",
   screen: "M2.5 3.5h11v7.5h-11zM5.5 13.5h5M8 11v2.5",
   "chevron-down": "M4.5 6.25 8 9.75l3.5-3.5",
   phone: "M3.5 2.5H6l1 3-1.5 1a7 7 0 0 0 4 4l1-1.5 3 1V12.5a1 1 0 0 1-1 1A10.5 10.5 0 0 1 2.5 3.5a1 1 0 0 1 1-1Z",

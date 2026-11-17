@@ -13,6 +13,7 @@ const [peers, setPeers] = createSignal([]);
 const [screens, setScreens] = createSignal({});
 const join = vi.fn();
 const toggleFill = vi.fn();
+const setFloating = vi.fn();
 const names = { "automerge:other": "other" };
 vi.mock("../src/engine/call.js", () => {
   const call = {
@@ -39,7 +40,7 @@ vi.mock("../src/engine/call.js", () => {
     call,
     onCallIn: () => [],
     join,
-    setFloating: nothing,
+    setFloating,
     hideFloating: nothing,
     showFloating: nothing,
     toggleStage: nothing,
@@ -339,5 +340,46 @@ describe("your own screen", () => {
     host.remove();
     setScreens({});
     setInCall(null);
+  });
+});
+
+describe("holding a floating face", () => {
+  test("it stays under the pointer, whatever else changes meanwhile, and stays where it's let go", async () => {
+    const ana = { id: "p1", name: "ana", mic: true, connection: "connected" };
+    setInCall({ room: "automerge:here", mic: true });
+    setMode("floating");
+    setPeers([ana]);
+    const proto = HTMLElement.prototype;
+    const saved = { capture: proto.setPointerCapture };
+    proto.setPointerCapture = () => {};
+    const host = document.body.appendChild(document.createElement("div"));
+    const dispose = render(() => html`<${CallFloating} area=${() => null} />`, host);
+    await tick();
+    try {
+      const float = host.querySelector(".patchwork-call-float");
+      const size = float.querySelector(".patchwork-call-size");
+      const was = parseFloat(float.style.width);
+      const pointer = (type, target, init) =>
+        target.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, button: 0, ...init }));
+      pointer("pointerdown", size, { clientX: 100, clientY: 100, buttons: 1 });
+      pointer("pointermove", float, { clientX: 140, clientY: 100, buttons: 1 });
+      expect(parseFloat(float.style.width)).toBe(was + 40);
+      // someone speaks: everyone's said again
+      setPeers([{ ...ana, speaking: true }]);
+      await tick();
+      expect(parseFloat(float.style.width)).toBe(was + 40);
+      // let go where it wasn't heard: the next move, no button held, ends it
+      setFloating.mockClear();
+      pointer("pointermove", float, { clientX: 300, clientY: 100, buttons: 0 });
+      pointer("pointermove", float, { clientX: 400, clientY: 100, buttons: 0 });
+      expect(setFloating).toHaveBeenCalledTimes(1);
+      expect(setFloating.mock.calls[0][1].width).toBe(was + 40);
+    } finally {
+      proto.setPointerCapture = saved.capture;
+      dispose();
+      host.remove();
+      setPeers([]);
+      setInCall(null);
+    }
   });
 });

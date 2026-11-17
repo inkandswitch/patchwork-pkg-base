@@ -510,34 +510,45 @@ export function CallFloating(props) {
           // filling the panes already
           const staged = () => call.filling()?.id === id && call.filling().screen === screen;
           let float;
-          // what's being done to it: {sizing, dx, dy (or the width it was), at}
+          // what's being done to it: {pointer, sizing, dx, dy (or the width
+          // it was)}, and where it is meanwhile. where it's shown from while
+          // it's held, so nothing else moving (someone speaking, coming or
+          // going) puts it back where it was from under the pointer
           let dragging = null;
+          const [held, setHeld] = createSignal(null);
+          const where = () => held() ?? at();
           function onPointerDown(event) {
-            if (event.button !== 0 || event.target.closest(".patchwork-call-float-button")) return;
+            if (event.button !== 0 || event.target.closest(".patchwork-call-float-button, .patchwork-call-float-fill")) return;
             const box = float.getBoundingClientRect();
             const sizing = !!event.target.closest(".patchwork-call-size");
+            const pointer = event.pointerId;
             dragging = sizing
-              ? { sizing, x: event.clientX, width: at().width, at: at() }
-              : { sizing, dx: event.clientX - box.left, dy: event.clientY - box.top, at: at() };
-            float.setPointerCapture(event.pointerId);
+              ? { pointer, sizing, x: event.clientX, width: at().width }
+              : { pointer, sizing, dx: event.clientX - box.left, dy: event.clientY - box.top };
+            setHeld(at());
+            float.setPointerCapture(pointer);
             event.preventDefault();
           }
           function onPointerMove(event) {
-            if (!dragging) return;
+            if (!dragging || event.pointerId !== dragging.pointer) return;
+            // let go somewhere it wasn't heard
+            if (event.buttons === 0) return onPointerUp(event);
             if (dragging.sizing) {
               const width = Math.round(Math.max(FLOAT_MIN, Math.min(FLOAT_MAX, dragging.width + event.clientX - dragging.x)));
-              dragging.at = { ...dragging.at, width };
-              Object.assign(float.style, { ...inWindow(dragging.at, screen), width: `${width}px` });
+              setHeld({ ...held(), width });
               return;
             }
             const x = Math.max(0, Math.min(1, (event.clientX - dragging.dx) / innerWidth));
             const y = Math.max(0, Math.min(1, (event.clientY - dragging.dy) / innerHeight));
-            dragging.at = { ...dragging.at, x, y };
-            Object.assign(float.style, inWindow(dragging.at, screen));
+            setHeld({ ...held(), x, y });
           }
-          function onPointerUp() {
-            if (dragging) setFloating(key(), dragging.at);
+          // let go, or the pointer's gone elsewhere: it stays where it got to
+          function onPointerUp(event) {
+            if (!dragging || event.pointerId !== dragging.pointer) return;
             dragging = null;
+            const now = held();
+            if (now) setFloating(key(), now);
+            setHeld(null);
           }
           // a screen's the shape it is, always
           const shape = () => (screen ? "screen" : at().shape === "tile" ? "tile" : "round");
@@ -552,11 +563,12 @@ export function CallFloating(props) {
               // once it's where it goes
               requestAnimationFrame(() => float.isConnected && arrive(float, id, key(), index()));
             }}
-            style=${() => ({ ...inWindow(at(), screen), width: `${at().width}px` })}
+            style=${() => ({ ...inWindow(where(), screen), width: `${where().width}px` })}
             onPointerDown=${onPointerDown}
             onPointerMove=${onPointerMove}
             onPointerUp=${onPointerUp}
             onPointerCancel=${onPointerUp}
+            onLostPointerCapture=${onPointerUp}
           >
             <span class="patchwork-call-float-picture">
               <${Show}
@@ -567,6 +579,16 @@ export function CallFloating(props) {
                 <${Screen} id=${id} />
               <//>
               <span class="patchwork-call-size" title="drag to size"></span>
+              <button
+                class="patchwork-call-float-fill"
+                data-fill=""
+                aria-label=${() => `fill the panes with ${whose()}`}
+                title="fill the panes (the rest float over it)"
+                onClick=${() => toggleFill(id, screen)}
+                onDblClick=${(event) => event.stopPropagation()}
+              >
+                ${icon("fill", 14)}
+              </button>
             </span>
             <span class="patchwork-call-float-name">
               <button
@@ -582,16 +604,6 @@ export function CallFloating(props) {
               <${Show} when=${muted}>
                 <span class="patchwork-call-float-muted" aria-label="muted">${icon("mic-off", 10)}</span>
               <//>
-              <button
-                class="patchwork-call-float-button"
-                data-fill=""
-                aria-label=${() => `fill the panes with ${whose()}`}
-                title="fill the panes (the rest float over it)"
-                onClick=${() => toggleFill(id, screen)}
-                onDblClick=${(event) => event.stopPropagation()}
-              >
-                ${icon("fill", 11)}
-              </button>
             </span>
           </div>`;
         }}
