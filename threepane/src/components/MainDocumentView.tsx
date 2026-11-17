@@ -22,8 +22,12 @@ export function MainDocumentView({
   toolId,
   ref,
 }: MainDocumentViewProps) {
+  // data-call-follow: the one place here that can be followed, in a call
+  // (the call package): what's open in it, and how it's being looked at, is
+  // what's shared, and following someone it's theirs that shows here, with
+  // their colour round it. late-bound: without the call it's nothing
   return (
-    <div class="document-view" ref={ref}>
+    <div class="document-view" data-call-follow="main" ref={ref}>
       <Show when={viewKey()} keyed>
         {(_key) => (
           <patchwork-view doc-url={selectedDocUrl()!} tool-id={toolId()} />
