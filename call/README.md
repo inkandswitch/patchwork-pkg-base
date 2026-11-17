@@ -239,6 +239,9 @@ muted. The attributes are live, so you can change them and the face follows.
 - `contact`: their contact doc's url (who they are, across tabs). If no one in
   the call matches the `peer`, the face is looked up by `contact` instead. Give
   both if you can.
+- `person`: `"me"` for yourself, or someone's id in the call. Your own
+  `contact` shows you too, unless someone else in the call has it (your other
+  tab).
 - `size`: in px.
 - `no-title`: leave their name off the face (when you already show it, for
   example on a cursor).
@@ -324,8 +327,6 @@ at their streams.
 you need one of them, it belongs in the protocol, so open an issue rather than
 working around it:
 
-- `call-face` can't show **you**. It only finds other people in the call. Your
-  own face is still in the floating faces, the panel and the video tab.
 - The floating faces don't know your tool is already showing them, so for now
   people appear twice. A natural fix would be a subscription like
   `patchwork:call-video`, where a tool says "I'm showing faces for this room"

@@ -8,7 +8,7 @@ vi.mock("../src/engine/call.js", () => {
   const call = {
     get: () => inCall(),
     peers: () => peers(),
-    me: () => ({ name: "me", contact: "", colour: "", avatar: "" }),
+    me: () => ({ name: "me", contact: "automerge:mine", colour: "", avatar: "" }),
     local: () => null,
     stream: () => null,
     screen: () => null,
@@ -104,6 +104,35 @@ describe("call-face", () => {
     element.setAttribute("contact", "automerge:nobody");
     await flush();
     expect(element.querySelector(".patchwork-call-face")).toBe(null);
+  });
+
+  test("you, by person=me, or by your own contact", () => {
+    setInCall({ room: "automerge:r", mic: true });
+    setPeers([ana]);
+    element.setAttribute("person", "me");
+    stop = CallFace(element);
+    const face = element.querySelector(".patchwork-call-face");
+    expect(face?.hasAttribute("data-mine")).toBe(true);
+    expect(face.getAttribute("title")).toBe("you");
+    stop();
+    element.removeAttribute("person");
+    element.setAttribute("contact", "automerge:mine");
+    stop = CallFace(element);
+    expect(element.querySelector(".patchwork-call-face")?.hasAttribute("data-mine")).toBe(true);
+  });
+
+  test("not you, out of a call", () => {
+    element.setAttribute("person", "me");
+    stop = CallFace(element);
+    expect(element.querySelector(".patchwork-call-face")).toBe(null);
+  });
+
+  test("someone by their id in the call", () => {
+    setInCall({ room: "automerge:r", mic: true });
+    setPeers([ana]);
+    element.setAttribute("person", "p1");
+    stop = CallFace(element);
+    expect(element.querySelector(".patchwork-call-face")?.getAttribute("title")).toBe("ana");
   });
 
   test("while they're connecting, a quilt being mended: four patches, anticlockwise", () => {
