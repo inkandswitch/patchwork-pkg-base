@@ -336,6 +336,40 @@ working around it:
 
 ---
 
+## Making a video effect
+
+A package can give the call an effect (cat ears, a hat, a blur) as a plugin of
+type `patchwork:call-effect`. Someone picks it from the "effects" part of the
+control panel's menu, and everyone in the call sees it on their video: it's
+drawn on your camera before it's sent. It's only offered in browsers that can
+(Chrome and Edge: Firefox and Safari have no `MediaStreamTrackProcessor`).
+`call-cat-ears/` is the reference. The design is in
+`docs/superpowers/specs/2026-11-17-call-effects-design.md`.
+
+```js
+{
+  type: "patchwork:call-effect",
+  id: "cat-ears",
+  name: "Cat ears",
+  icon: "Cat",
+  kind: "overlay",           // or "background", "filter"
+  needs: ["landmarks"],      // what draw() is given: "landmarks", later "mask"
+  effect: "./effect.js",     // the module that draws, relative to your entry
+}
+```
+
+`effect.js` exports `draw(ctx, {landmarks, mask, time, width, height})`. `ctx`
+is an OffscreenCanvas 2d context with the camera's picture already drawn on
+it, unmirrored. `landmarks` is MediaPipe's 478 face points (`{x, y, z}`, x and
+y as fractions of the picture), or `null` with no face. `mask` is `null` for
+now. It's called for every frame, so keep it quick, and draw nothing without a
+face. It can export `dispose()` too.
+
+It runs in a worker, which `import()`s it by the url of `effect` against your
+entry's. So it must be **self-contained**: no bare imports (a worker has no
+import map), and its own entry in your build, not a chunk shared with your
+plugin list.
+
 ## Working on this package
 
 ```sh

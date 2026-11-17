@@ -48,15 +48,15 @@ export function place(landmarks, width, height, time = 0) {
   const ears = [-1, 1].map((side) => {
     const [a, b] = side < 0 ? BROW.left : BROW.right;
     // sunk a little into the head, so nothing shows between it and the ear
-    const root = along(mid(at(a), at(b)), up, -0.03 * size);
-    const lean = turned(up, side * 0.24 + twitch(time, side));
-    const halfBase = 0.2 * size;
+    const root = along(mid(at(a), at(b)), up, -0.07 * size);
+    const lean = turned(up, side * 0.14 + twitch(time, side));
+    const halfBase = 0.18 * size;
     const base = [along(root, across, -halfBase), along(root, across, halfBase)];
-    const tip = along(root, lean, 0.52 * size);
+    const tip = along(root, lean, 0.5 * size);
     const innerRoot = along(root, lean, 0.04 * size);
     const inner = {
       base: [along(innerRoot, across, -halfBase * 0.55), along(innerRoot, across, halfBase * 0.55)],
-      tip: along(root, lean, 0.4 * size),
+      tip: along(root, lean, 0.38 * size),
     };
     return { base, tip, inner };
   });
@@ -64,7 +64,7 @@ export function place(landmarks, width, height, time = 0) {
   const whiskers = [];
   for (const side of [-1, 1]) {
     const cheek = at(side < 0 ? CHEEK.left : CHEEK.right);
-    for (const spread of [-0.2, 0, 0.2]) {
+    for (const spread of [-0.3, 0, 0.3]) {
       // out from the face along the eye line, fanned, and drooping a touch
       const out = turned({ x: across.x * side, y: across.y * side }, spread * side + 0.08 * side);
       const from = along(cheek, out, -0.02 * size);
