@@ -21,13 +21,18 @@ export type SortKey =
   | "id"
   | "package"
   | "origin"
-  | "unlisted";
+  | "unlisted"
+  | "inUse";
 
 /** A registry entry plus what we worked out about where it came from. */
 export interface Enriched extends RegistryEntry {
   origin: Origin;
   pkgMeta?: PkgMeta;
   pkgName: string;
+  /** When it isn't in use: the name of the package whose plugin is. */
+  shadowedByName?: string;
+  /** When it's in use over others: the names of the packages it shadows. */
+  shadowsNames?: string[];
 }
 
 export interface PackageGroup {
@@ -77,6 +82,8 @@ export function filterEntries(
         e.pkgName,
         datatypesLabel(e.supportedDatatypes),
         e.unlisted ? "unlisted" : "",
+        e.inUse ? "" : "shadowed",
+        e.shadows?.length ? "overrides" : "",
       ]
         .filter(Boolean)
         .join(" ")
@@ -87,6 +94,7 @@ export function filterEntries(
   });
 }
 
+/** How many of each origin's plugins are in use (shadowed ones aren't counted). */
 export function countOrigins(entries: Enriched[]): Record<Origin, number> {
   const counts: Record<Origin, number> = {
     installed: 0,
@@ -94,7 +102,7 @@ export function countOrigins(entries: Enriched[]): Record<Origin, number> {
     core: 0,
     unknown: 0,
   };
-  for (const e of entries) counts[e.origin]++;
+  for (const e of entries) if (e.inUse) counts[e.origin]++;
   return counts;
 }
 
@@ -128,10 +136,14 @@ export function groupByPackage(entries: Enriched[]): PackageGroup[] {
   return arr;
 }
 
-/** One group per registry (plugin type), alphabetical. */
+/**
+ * One group per registry (plugin type), alphabetical: the plugins in use, one
+ * per id. What each shadows is on it (`shadowsNames`).
+ */
 export function groupByType(entries: Enriched[]): TypeGroup[] {
   const groups = new Map<string, Enriched[]>();
   for (const e of entries) {
+    if (!e.inUse) continue;
     const list = groups.get(e.registry);
     if (list) list.push(e);
     else groups.set(e.registry, [e]);
@@ -162,6 +174,9 @@ export function sortRows(
       // this column to find.
       case "unlisted":
         return e.unlisted ? "0" : "1";
+      // Likewise the shadowed ones.
+      case "inUse":
+        return e.inUse ? "1" : "0";
       default:
         return e.name;
     }

@@ -9,7 +9,7 @@
 // subscribing to each registry's "changed" event.
 
 import { createMemo, createSignal, onCleanup, type Accessor } from "solid-js";
-import { getAllRegistries } from "@inkandswitch/patchwork-plugins";
+import * as plugins from "@inkandswitch/patchwork-plugins";
 import type { PluginRegistry } from "@inkandswitch/patchwork-plugins";
 import { moduleKey } from "./origin.ts";
 
@@ -27,6 +27,16 @@ export interface RegistryEntry {
   importUrl?: string;
   supportedDatatypes?: string | string[];
   unlisted?: boolean;
+  /**
+   * Whether this is the plugin in use for its id. False when another
+   * package's registration of the id is on top of it (a host whose registries
+   * have `shadows(id)`); always true on a host that only keeps the one in use.
+   */
+  inUse: boolean;
+  /** When it isn't in use: the importUrl of the one that is. */
+  shadowedBy?: string;
+  /** When it's in use over others: the importUrls of the ones it shadows. */
+  shadows?: string[];
 }
 
 // Minimal structural aliases for the tool contract — kept here so the entry
@@ -45,34 +55,88 @@ export type ToolElement = HTMLElement;
 
 function safeGetRegistries(): Map<string, PluginRegistry<any>> {
   try {
-    return getAllRegistries();
+    return plugins.getAllRegistries();
   } catch {
     return new Map();
   }
 }
 
-/** Flatten every registry into one list. */
-export function readRegistrySnapshot(): RegistryEntry[] {
+// A registry as this tool reads it: the host's, whatever its version.
+// `shadows(id)` (the registrations of an id the plugin in use shadows, in the
+// order they'd take over) is only on newer hosts.
+interface ReadableRegistry {
+  all(): any[];
+  shadows?: (id: string) => any[];
+}
+
+/**
+ * Each plugin in use, followed by what it shadows: [[in use, ...shadowed]]
+ * per id. Just the plugins in use on a host that doesn't keep shadowed ones.
+ */
+function registrationsOf(reg: ReadableRegistry): any[][] {
+  const shadows = reg.shadows?.bind(reg);
+  return reg
+    .all()
+    .map((p) => [
+      p,
+      ...(shadows && typeof p?.id === "string" ? shadows(p.id) : []),
+    ]);
+}
+
+/** Does the host keep shadowed registrations? */
+export function hostKeepsShadows(
+  registries: Map<string, unknown> = safeGetRegistries()
+): boolean {
+  for (const reg of registries.values()) {
+    return typeof (reg as ReadableRegistry).shadows === "function";
+  }
+  return false;
+}
+
+function entryOf(registry: string, p: any): RegistryEntry | undefined {
+  if (!p || typeof p.id !== "string") return undefined;
+  return {
+    registry,
+    id: p.id,
+    type: typeof p.type === "string" ? p.type : registry,
+    name: typeof p.name === "string" ? p.name : p.id,
+    icon: p.icon,
+    importUrl: typeof p.importUrl === "string" ? p.importUrl : undefined,
+    supportedDatatypes: p.supportedDatatypes,
+    unlisted: p.unlisted === true ? true : undefined,
+    inUse: true,
+  };
+}
+
+/**
+ * Flatten every registry into one list: every package's registration of each
+ * id, the ones in use and, where the host keeps them, the ones they shadow.
+ */
+export function readRegistrySnapshot(
+  registries: Map<string, unknown> = safeGetRegistries()
+): RegistryEntry[] {
   const out: RegistryEntry[] = [];
-  for (const [registry, reg] of safeGetRegistries()) {
-    let entries: any[];
+  for (const [registry, reg] of registries) {
+    let registrations: any[][];
     try {
-      entries = reg.all();
+      registrations = registrationsOf(reg as ReadableRegistry);
     } catch {
       continue;
     }
-    for (const p of entries as any[]) {
-      if (!p || typeof p.id !== "string") continue;
-      out.push({
-        registry,
-        id: p.id,
-        type: typeof p.type === "string" ? p.type : registry,
-        name: typeof p.name === "string" ? p.name : p.id,
-        icon: p.icon,
-        importUrl: typeof p.importUrl === "string" ? p.importUrl : undefined,
-        supportedDatatypes: p.supportedDatatypes,
-        unlisted: p.unlisted === true ? true : undefined,
-      });
+    for (const registered of registrations) {
+      const entries = registered
+        .map((p) => entryOf(registry, p))
+        .filter((e): e is RegistryEntry => !!e);
+      const [top, ...under] = entries;
+      if (!top) continue;
+      if (under.length) {
+        top.shadows = under.map((e) => e.importUrl ?? "");
+        for (const e of under) {
+          e.inUse = false;
+          e.shadowedBy = top.importUrl;
+        }
+      }
+      out.push(top, ...under);
     }
   }
   return out;
@@ -84,10 +148,12 @@ export function readRegistrySnapshot(): RegistryEntry[] {
 // plugins it already registered linger in memory until reload. To make removal
 // take effect now, we also pull them from the registries here.
 //
-// `registry.remove(id)` is in the types we build against, but the host's live
-// @inkandswitch/patchwork-plugins may be older than that. We feature-detect it,
-// so on an older host this is a no-op: the doc edit still lands and the plugin
-// lingers until reload.
+// A host whose registries keep shadowed registrations has `unregisterPlugins`,
+// which takes out all of a package's registrations, shadowed ones too, and
+// puts whatever they shadowed back in use. On such a host `remove(id)` only
+// removes the plugin in use for the id, so it isn't used. On an older host we
+// remove each of the module's plugins by id, feature-detecting `remove` (older
+// still: a no-op, and the plugin lingers until reload).
 interface RemovableRegistry {
   remove?: (id: string) => boolean;
   all: () => any[];
@@ -100,8 +166,18 @@ interface RemovableRegistry {
  */
 export function deactivateModule(importUrl: string | undefined): void {
   const key = moduleKey(importUrl);
-  if (!key) return;
-  for (const [, reg] of safeGetRegistries()) {
+  if (!key || !importUrl) return;
+  const registries = safeGetRegistries();
+  if (hostKeepsShadows(registries)) {
+    const { unregisterPlugins } = plugins as {
+      unregisterPlugins?: (url: string) => void;
+    };
+    if (typeof unregisterPlugins === "function") {
+      unregisterPlugins(importUrl);
+      return;
+    }
+  }
+  for (const [, reg] of registries) {
     const registry = reg as unknown as RemovableRegistry;
     if (typeof registry.remove !== "function") continue; // older host: no-op
     let entries: any[];

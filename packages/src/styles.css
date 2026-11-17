@@ -333,6 +333,39 @@
   color: var(--pw-packages-faint);
 }
 
+/* A shadowed plugin is registered but not in use: another package's plugin
+   with the same id is. The whole row recedes to the faint ink tier, like an
+   unlisted name, and says what's in use instead. */
+.pw-pkg-plugin.is-shadowed,
+.pw-pkg-table__row.is-shadowed {
+  color: var(--pw-packages-faint);
+}
+.pw-pkg-plugin.is-shadowed .pw-pkg-plugin__name {
+  font-weight: 400;
+  text-decoration: line-through;
+  text-decoration-color: var(--pw-packages-border-strong);
+}
+.pw-pkg-plugin.is-shadowed .pw-pkg-plugin__dot {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--pw-packages-faint);
+}
+.pw-pkg-shadow {
+  font-size: 0.75rem;
+  color: var(--pw-packages-faint);
+  font-style: italic;
+}
+.pw-pkg-shadow--overrides {
+  color: var(--pw-packages-muted);
+}
+.pw-pkg-plugin .pw-pkg-shadow {
+  flex-basis: 100%;
+  padding-left: 0.9rem;
+}
+.pw-pkg-table__use {
+  text-align: center;
+  color: var(--pw-packages-muted);
+}
+
 .pw-pkg-packages__copy {
   font-family: var(--pw-packages-family-code);
   font-size: 0.75rem;

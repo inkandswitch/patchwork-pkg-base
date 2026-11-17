@@ -47,6 +47,23 @@ heads it's at; automerge sources get an **open** button, and anything in your li
 gets **delete**. Modules in your list that registered nothing and fail to import
 show as red boxes with the error (in the By package view).
 
+## Shadowed plugins
+
+On a host whose registries keep every package's registration of an id
+(`registry.shadows(id)`, in newer patchwork-plugins), a plugin another package
+overrides is still listed, as **shadowed**: dimmed, struck through, and saying
+which package's plugin is in use instead. The one in use says what it
+**overrides**. By package shows both, and a card with shadowed plugins counts
+"1 of 3 plugins in use". By type lists the plugin in use for each id, with what
+it overrides. The table gets an **In use** column, and "shadowed" or
+"overrides" in the filter box finds them. The origin chips and the plugin
+count only count plugins in use.
+
+Deleting a package there unregisters it (`unregisterPlugins`), shadowed
+registrations too, so what it was overriding is in use again straight away.
+On an older host none of this shows, and deleting removes its plugins by id as
+before.
+
 ## Build & publish
 
 Bundled Solid tool (vite). `@inkandswitch/patchwork-plugins` is left **external** so
