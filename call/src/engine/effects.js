@@ -5,6 +5,8 @@
 // camera's, so everyone sees it. all of it's in the design doc,
 // docs/superpowers/specs/2026-11-17-call-effects-design.md
 import { loadModel } from "./landmarks.js";
+// the worker, bundled into one classic script (its url, where it's served)
+import workerScript from "./effects.worker.js?worker&url";
 
 export const EFFECT = "patchwork:call-effect";
 export const KINDS = ["overlay", "background", "filter"];
@@ -87,8 +89,26 @@ export function watch(onChange) {
  * `onProblem(text, {drop})` hears what goes wrong; `drop` says the effect's
  * to go (the camera as it is). throws if it can't be started
  */
+/**
+ * the worker, made here: a worker can only be started from a script of the
+ * page's own origin, and a package can be served from another (a preview's
+ * tools bundle is). so it's a blob of the page's, that brings in the
+ * package's script (a classic worker may, from anywhere). {worker, done()}
+ */
+function startWorker() {
+  const script = new URL(workerScript, import.meta.url).href;
+  const blob = new Blob([`importScripts(${JSON.stringify(script)});`], { type: "text/javascript" });
+  const url = URL.createObjectURL(blob);
+  try {
+    return { worker: new Worker(url), done: () => URL.revokeObjectURL(url) };
+  } catch (error) {
+    URL.revokeObjectURL(url);
+    throw error;
+  }
+}
+
 export function processed(raw, effect, { onProblem = () => {} } = {}) {
-  const worker = new Worker(new URL("./effects.worker.js", import.meta.url));
+  const { worker, done } = startWorker();
   let track;
   try {
     const processor = new MediaStreamTrackProcessor({ track: raw });
@@ -100,6 +120,7 @@ export function processed(raw, effect, { onProblem = () => {} } = {}) {
     track = generator;
   } catch (error) {
     worker.terminate();
+    done();
     throw error;
   }
 
@@ -140,6 +161,7 @@ export function processed(raw, effect, { onProblem = () => {} } = {}) {
     stopped = true;
     stop();
     worker.terminate();
+    done();
     raw.stop();
   };
   track.setEffect(effect);

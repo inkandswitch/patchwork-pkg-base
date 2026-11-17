@@ -151,6 +151,22 @@ describe("the pipeline", () => {
     expect(track.source).toBe(raw);
   });
 
+  test("the worker's made here, from a blob that brings in the package's script: a package from another origin can't start one itself", async () => {
+    const made = [];
+    vi.spyOn(URL, "createObjectURL").mockImplementation((blob) => {
+      made.push(blob);
+      return "blob:https://page.test/worker";
+    });
+    const revoked = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const workers = fakeMedia();
+    const track = effects.processed(camera(), found);
+    expect(workers[0].url).toBe("blob:https://page.test/worker");
+    const script = await made[0].text();
+    expect(script).toMatch(/^importScripts\("[^"]*effects\.worker[^"]*"\);?$/);
+    track.stop();
+    expect(revoked).toHaveBeenCalledWith("blob:https://page.test/worker");
+  });
+
   test("another effect is another message, on the same track", () => {
     const workers = fakeMedia();
     const track = effects.processed(camera(), found);
