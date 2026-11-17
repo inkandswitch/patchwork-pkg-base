@@ -25,6 +25,7 @@ import { callToRejoin, forgetCall, keepCall, leavingCall } from "./rejoin.js";
 import { listen } from "./speaking.js";
 import { haveModel, isNoise, loadModel, suppressed } from "./noise.js";
 import { videoFor } from "./sizes.js";
+import { connectFollow, followNews, forgetViews, heardViews, resetFollow } from "./follow.js";
 
 // (lattice's name for it: its calls and these hear each other)
 export const KEY = "lattice-wm:call";
@@ -620,6 +621,7 @@ export function hangUp({ rejoin = false } = {}) {
   for (const track of now.local.getTracks()) track.stop();
   now.screen?.stop();
   closeStage();
+  resetFollow();
   setState({ call: null, peers: {} });
   bump();
 }
@@ -947,12 +949,16 @@ function send(message) {
 
 // who you are, and your mic and camera: in what you say
 const about = () => ({
+  ...followNews(),
   who: live.session.who,
   mic: !!state.call?.mic,
   camera: !!state.call?.camera,
   screen: !!live.session?.screen,
   face: state.call?.camera ? (state.call.face ?? null) : null,
 });
+
+// what's said of following (follow.js), as it changes
+connectFollow({ send: (news) => send({ [KEY]: "views", ...news }) });
 
 function sayHere() {
   if (!live.session || state.call?.joining) return;
@@ -997,6 +1003,9 @@ function onMessage(event) {
       return drop(from);
     case "face":
       return showPeer(from, { face: faceFrom(message.face) });
+    case "views":
+      // (whoever they are, as they said in "here")
+      return heardViews(from, state.peers[from]?.contact ?? live.session.waiting?.get(from)?.contact, message);
     case "again":
       // they lost us: start again
       drop(from);
@@ -1026,6 +1035,7 @@ function onHere(from, tab, message) {
   if (!who) return;
   let peer = live.session.peers.get(from);
   if (!peer && offers(from)) peer = connect(from, crypto.randomUUID());
+  heardViews(from, who.contact, message);
   const fields = { ...who, peer: tab, mic: !!message.mic, camera: !!message.camera, face: faceFrom(message.face), screen: !!message.screen };
   if (peer) {
     peer.heard = Date.now();
@@ -1132,7 +1142,10 @@ function drop(id, from = live.session) {
   const peer = from?.peers.get(id);
   from?.pendingIce.delete(id);
   if (!peer) {
-    if (from === live.session) setState("peers", id, undefined);
+    if (from === live.session) {
+      setState("peers", id, undefined);
+      forgetViews(id);
+    }
     return;
   }
   from.peers.delete(id);
@@ -1144,6 +1157,7 @@ function drop(id, from = live.session) {
   peer.stopLevel?.();
   if (from === live.session) {
     setState("peers", id, undefined);
+    forgetViews(id);
     if (view.stage() === id) closeStage();
     bump();
     tuneVideo();

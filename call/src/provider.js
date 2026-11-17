@@ -1,6 +1,7 @@
 // the call provider: put round a frame (threepane mounts it round everything)
 // it hears every doc mounted inside it, answers the protocol (protocol.js),
-// and draws what floats
+// draws what floats, and follows along in the places the frame lets
+// (follow-area.js)
 import { createEffect, createRoot } from "solid-js";
 import { render } from "solid-js/web";
 import html from "solid-js/html";
@@ -10,6 +11,7 @@ import { roomUrl } from "./engine/room.js";
 import { CALL, CALL_EVENT, CALL_ROOM, CALL_VIDEO, roomState } from "./protocol.js";
 import { CallFloating, CallQuestion, CallStage } from "./ui/ui.js";
 import { stageArea } from "./ui/area.js";
+import { followAreas } from "./follow-area.js";
 import { chimes } from "./engine/chimes.js";
 import "./ui/styles.css";
 
@@ -98,13 +100,14 @@ export function CallProvider(element) {
   const layer = document.createElement("div");
   layer.className = "patchwork-call";
   element.append(layer);
+  const areas = followAreas(element);
   // the sounds of people coming and going (one frame, one set of them)
   const stopChimes = holdChimes();
   const unrender = render(() => {
     // passed as it is: html calls it for the prop (a getter). wrapped in
     // another function, the prop would be this, not the box
     const area = stageArea(element, () => !!call.get());
-    return html`<${CallQuestion} /><${CallFloating} area=${area} /><${CallStage} area=${area} />`;
+    return html`<${areas.Outlines} /><${CallQuestion} /><${CallFloating} area=${area} /><${CallStage} area=${area} />`;
   }, layer);
 
   element.addEventListener("patchwork:mounted", onMounted);
@@ -123,6 +126,7 @@ export function CallProvider(element) {
     for (const held of mounts.values()) for (const release of held) release();
     mounts.clear();
     unrender();
+    areas.stop();
     stopChimes();
     layer.remove();
   };

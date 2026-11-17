@@ -4,7 +4,8 @@
 // clicked, they fill its box. floating, each face can be put away, and
 // dragged out of the control panel again (DragOut), or made to fill the
 // panes, the rest floating over it. a screen being shared floats too, a
-// face of its own
+// face of its own. anyone with something to follow (engine/follow.js) has a
+// button on their face, floating or in the video tab, to follow them
 import { createEffect, createMemo, createSignal, For, Show, onCleanup } from "solid-js";
 import html from "solid-js/html";
 import {
@@ -20,6 +21,7 @@ import {
   closeStage,
 } from "../engine/call.js";
 import { tilesFor } from "../engine/sizes.js";
+import { canFollow, follow, following } from "../engine/follow.js";
 import { hearing } from "../engine/speaking.js";
 import { ringWave, louder, wiggle, WIGGLE_HEARD, WIGGLE_HOLD } from "../engine/wiggle.js";
 import { faceImage } from "./avatar.js";
@@ -526,7 +528,7 @@ export function CallFloating(props) {
           const [held, setHeld] = createSignal(null);
           const where = () => held() ?? at();
           function onPointerDown(event) {
-            if (event.button !== 0 || event.target.closest(".patchwork-call-float-button, .patchwork-call-float-fill")) return;
+            if (event.button !== 0 || event.target.closest(".patchwork-call-float-button, .patchwork-call-float-fill, .patchwork-call-follow")) return;
             const box = float.getBoundingClientRect();
             const sizing = !!event.target.closest(".patchwork-call-size");
             const pointer = event.pointerId;
@@ -597,6 +599,9 @@ export function CallFloating(props) {
               >
                 ${icon("fill", 14)}
               </button>
+              <${Show} when=${!mine && !screen}>
+                <${FollowButton} id=${id} class="patchwork-call-float-follow" />
+              <//>
             </span>
             <span class="patchwork-call-float-name">
               <button
@@ -758,6 +763,7 @@ export function StageButton(props) {
     class=${() => `patchwork-call-stage-button ${props.class ?? ""}`}
     data-call-face=${() => props.id}
     data-staged=${() => (call.stage() === props.id ? "" : undefined)}
+    data-following=${() => (following() === props.id ? "" : undefined)}
     data-arriving=${props.arriving}
     aria-pressed=${() => String(call.stage() === props.id)}
     title=${() =>
@@ -772,6 +778,32 @@ export function StageButton(props) {
   >
     ${props.children}
   </button>`;
+}
+
+/**
+ * following someone (`props.id`), or not: there while they've something
+ * you can follow, or you're following them. pressed, their colour
+ */
+export function FollowButton(props) {
+  const on = () => following() === props.id;
+  const peer = () => call.peers().find((peer) => peer.id === props.id);
+  const label = () => `${on() ? "stop following" : "follow"} ${peer()?.name ?? "them"}`;
+  return html`<${Show} when=${() => on() || canFollow(props.id)}>
+    <button
+      class=${() => `patchwork-call-follow ${props.class ?? ""}`}
+      style=${() => ({ "--call-following": peer()?.colour || null })}
+      aria-pressed=${() => String(on())}
+      aria-label=${label}
+      title=${() => (on() ? label() : `${label()}: what they've open opens here, as they look at it`)}
+      onClick=${(event) => {
+        event.stopPropagation();
+        follow(props.id);
+      }}
+      onDblClick=${(event) => event.stopPropagation()}
+    >
+      ${icon("follow", 14)}
+    </button>
+  <//>`;
 }
 
 /**
@@ -802,19 +834,22 @@ export function CallTiles() {
 
   return html`<${Show} when=${focused} fallback=${html`<div class="patchwork-call-tiles" data-layout=${layout}>
     <${For} each=${peers}>
-      ${(peer) => html`<button
-        class="patchwork-call-stage-button patchwork-call-tile"
-        title="fill the box with them"
-        onClick=${() => setFocus(peer.id)}
-      >
-        <${Show}
-          when=${() => layout() !== "chips"}
-          fallback=${html`<${Face} id=${peer.id} size=${28} title=${false} />`}
+      ${(peer) => html`<div class="patchwork-call-tile-place">
+        <button
+          class="patchwork-call-stage-button patchwork-call-tile"
+          title="fill the box with them"
+          onClick=${() => setFocus(peer.id)}
         >
-          <${Face} id=${peer.id} shape="tile" title=${false} />
-        <//>
-        <span class="patchwork-call-tile-name">${() => peer.name}</span>
-      </button>`}
+          <${Show}
+            when=${() => layout() !== "chips"}
+            fallback=${html`<${Face} id=${peer.id} size=${28} title=${false} />`}
+          >
+            <${Face} id=${peer.id} shape="tile" title=${false} />
+          <//>
+          <span class="patchwork-call-tile-name">${() => peer.name}</span>
+        </button>
+        <${FollowButton} id=${peer.id} class="patchwork-call-tile-follow" />
+      </div>`}
     <//>
     <${Show} when=${() => call.get()}>
       <div class="patchwork-call-tile" data-mine="">
