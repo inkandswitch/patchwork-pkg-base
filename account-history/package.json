@@ -12,7 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@inkandswitch/patchwork-providers": "^0.5.2",
+    "@inkandswitch/patchwork-providers": "^0.5.5",
     "@inkandswitch/patchwork-providers-solid": "^0.2.8"
   },
   "devDependencies": {
