@@ -49,14 +49,14 @@ export function place(landmarks, width, height, time = 0) {
     const [a, b] = side < 0 ? BROW.left : BROW.right;
     // sunk a little into the head, so nothing shows between it and the ear
     const root = along(mid(at(a), at(b)), up, -0.03 * size);
-    const lean = turned(up, side * 0.2 + twitch(time, side));
-    const halfBase = 0.17 * size;
+    const lean = turned(up, side * 0.24 + twitch(time, side));
+    const halfBase = 0.2 * size;
     const base = [along(root, across, -halfBase), along(root, across, halfBase)];
-    const tip = along(root, lean, 0.44 * size);
+    const tip = along(root, lean, 0.52 * size);
     const innerRoot = along(root, lean, 0.04 * size);
     const inner = {
       base: [along(innerRoot, across, -halfBase * 0.55), along(innerRoot, across, halfBase * 0.55)],
-      tip: along(root, lean, 0.34 * size),
+      tip: along(root, lean, 0.4 * size),
     };
     return { base, tip, inner };
   });
