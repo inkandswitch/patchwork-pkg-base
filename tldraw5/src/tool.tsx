@@ -35,6 +35,7 @@ import {
   useIsHandleReadOnly,
 } from "./lith/useAutomergeStore.ts";
 import type { TLDrawDoc } from "./datatype.ts";
+import { shareCamera } from "./view/camera-state.ts";
 import type { DocLink } from "@inkandswitch/patchwork-filesystem";
 import type { TldrawConfig } from "./script.ts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -500,6 +501,11 @@ function TldrawInner(props: {
 
   usePatchworkDrop(props.element);
   useClearHistoryOnScopeSwap(handle);
+  // where it's being looked at, for anyone following (the call)
+  useEffect(
+    () => (editor ? shareCamera(props.element, repo, editor) : undefined),
+    [editor, repo, props.element]
+  );
   useDocumentScript(props.docUrl, editor, repo);
 
   const onChange = useCallback(() => {
