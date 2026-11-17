@@ -959,6 +959,15 @@ function sayHere() {
   send({ [KEY]: "here", ...about() });
 }
 
+// whoever says bye, as they go: they've left, not only lost their
+// connection a moment (chimes.js)
+const byes = new Set();
+/** hear `fn(person)` as anyone in your call says bye, till what this returns is called */
+export function onBye(fn) {
+  byes.add(fn);
+  return () => byes.delete(fn);
+}
+
 function forgetGone() {
   const now = Date.now();
   for (const [id, peer] of live.session?.peers ?? []) {
@@ -984,6 +993,7 @@ function onMessage(event) {
     case "here":
       return onHere(from, peer, message);
     case "bye":
+      for (const heard of byes) heard(state.peers[from] ?? { id: from });
       return drop(from);
     case "face":
       return showPeer(from, { face: faceFrom(message.face) });

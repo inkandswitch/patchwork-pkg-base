@@ -10,6 +10,7 @@ import { roomUrl } from "./engine/room.js";
 import { CALL, CALL_EVENT, CALL_ROOM, CALL_VIDEO, roomState } from "./protocol.js";
 import { CallFloating, CallQuestion, CallStage } from "./ui/ui.js";
 import { stageArea } from "./ui/area.js";
+import { chimes } from "./engine/chimes.js";
 import "./ui/styles.css";
 
 /** answer `event` with `read()` now and whenever it changes, till it's unsubscribed */
@@ -25,6 +26,22 @@ function answer(event, read, hold) {
       release();
     };
   });
+}
+
+// however many providers a page has, the sounds play once
+let chiming = null;
+let chimers = 0;
+function holdChimes() {
+  if (chimers++ === 0) chiming = chimes();
+  let held = true;
+  return () => {
+    if (!held) return;
+    held = false;
+    if (--chimers === 0) {
+      chiming();
+      chiming = null;
+    }
+  };
 }
 
 export function CallProvider(element) {
@@ -81,6 +98,8 @@ export function CallProvider(element) {
   const layer = document.createElement("div");
   layer.className = "patchwork-call";
   element.append(layer);
+  // the sounds of people coming and going (one frame, one set of them)
+  const stopChimes = holdChimes();
   const unrender = render(() => {
     // passed as it is: html calls it for the prop (a getter). wrapped in
     // another function, the prop would be this, not the box
@@ -104,6 +123,7 @@ export function CallProvider(element) {
     for (const held of mounts.values()) for (const release of held) release();
     mounts.clear();
     unrender();
+    stopChimes();
     layer.remove();
   };
 }
