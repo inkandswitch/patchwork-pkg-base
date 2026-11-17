@@ -1168,108 +1168,128 @@
 	pointer-events: none;
 }
 
+/* a patch: two pieces of fabric in its place, each always its own fabric,
+   and only ever moved and faded (never repainted): the one that's there
+   (before) and the one it's mended with (after) */
 .patchwork-call-quilt-patch {
-	background-image: var(--was);
-	background-size: 33.334% 33.334%;
-	animation: patchwork-call-quilt calc(var(--step) * 8) linear infinite both;
-	animation-delay: calc(var(--i) * var(--step));
+	position: relative;
+
+	&::before,
+	&::after {
+		content: "";
+		position: absolute;
+		inset: 0;
+		background-size: 33.334% 33.334%;
+		animation: calc(var(--step) * 8) linear infinite both;
+		animation-delay: calc(var(--i) * var(--step));
+	}
+	&::before {
+		background-image: var(--was);
+		animation-name: patchwork-call-quilt-was;
+	}
+	&::after {
+		background-image: var(--now);
+		animation-name: patchwork-call-quilt-now;
+	}
 }
 
-/* eight steps: its going (one), the new one laid (the next), then the rest
-   of the way round; and the same again with the other fabric */
-@keyframes patchwork-call-quilt {
+/* eight steps, two patches' worth round: the first piece is pulled away
+   (step one), the second laid in its place (step two) and left; four steps
+   on, the second's pulled away and the first laid back. lifted, still all
+   there; then pulled out from the middle, with a twist; laid in from just
+   above. between, the piece that isn't there waits where it's next laid
+   from, unseen */
+@keyframes patchwork-call-quilt-was {
 	0% {
-		background-image: var(--was);
 		transform: none;
 		opacity: 1;
 		animation-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
 	}
-	/* lifted, still all there; then pulled away */
 	6.25% {
-		background-image: var(--was);
 		transform: translate(calc(var(--dx) * 12%), calc(var(--dy) * 12%)) rotate(-8deg) scale(1.12);
 		opacity: 1;
 		animation-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
 	}
-	12.4% {
-		background-image: var(--was);
+	12.5% {
 		transform: translate(calc(var(--dx) * 45%), calc(var(--dy) * 45%)) rotate(-16deg) scale(1.08);
 		opacity: 0;
 	}
+	12.6%,
+	62.5% {
+		transform: scale(1.22);
+		opacity: 0;
+		animation-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+	}
+	75%,
+	100% {
+		transform: none;
+		opacity: 1;
+	}
+}
+@keyframes patchwork-call-quilt-now {
+	0%,
 	12.5% {
-		background-image: var(--now);
 		transform: scale(1.22);
 		opacity: 0;
 		animation-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
 	}
 	25%,
 	50% {
-		background-image: var(--now);
 		transform: none;
 		opacity: 1;
-		/* (for what starts at 50%: its going again) */
 		animation-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
 	}
 	56.25% {
-		background-image: var(--now);
 		transform: translate(calc(var(--dx) * 12%), calc(var(--dy) * 12%)) rotate(-8deg) scale(1.12);
 		opacity: 1;
 		animation-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
 	}
-	62.4% {
-		background-image: var(--now);
+	62.5% {
 		transform: translate(calc(var(--dx) * 45%), calc(var(--dy) * 45%)) rotate(-16deg) scale(1.08);
 		opacity: 0;
 	}
-	62.5% {
-		background-image: var(--was);
+	62.6%,
+	100% {
 		transform: scale(1.22);
 		opacity: 0;
-		animation-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
-	}
-	75%,
-	100% {
-		background-image: var(--was);
-		transform: none;
-		opacity: 1;
 	}
 }
 
-/* less motion: nothing's pulled or laid, each patch fades to its new
-   fabric in turn, so it's still plainly connecting */
-@keyframes patchwork-call-quilt-still {
+/* less motion: nothing's pulled or laid; each piece fades out, and the
+   other in, in turn, so it's still plainly connecting */
+@keyframes patchwork-call-quilt-was-still {
 	0%,
 	75%,
 	100% {
-		background-image: var(--was);
 		opacity: 1;
 	}
-	12.4% {
-		background-image: var(--was);
-		opacity: 0.2;
+	12.5%,
+	62.5% {
+		opacity: 0;
 	}
-	12.5% {
-		background-image: var(--now);
-		opacity: 0.2;
+}
+@keyframes patchwork-call-quilt-now-still {
+	0%,
+	12.5%,
+	62.5%,
+	100% {
+		opacity: 0;
 	}
 	25%,
 	50% {
-		background-image: var(--now);
 		opacity: 1;
-	}
-	62.4% {
-		background-image: var(--now);
-		opacity: 0.2;
-	}
-	62.5% {
-		background-image: var(--was);
-		opacity: 0.2;
 	}
 }
 
 @media (prefers-reduced-motion: reduce) {
 	.patchwork-call-quilt-patch {
-		animation-name: patchwork-call-quilt-still;
-		animation-timing-function: ease;
+		&::before {
+			animation-name: patchwork-call-quilt-was-still;
+			animation-timing-function: ease;
+		}
+		&::after {
+			animation-name: patchwork-call-quilt-now-still;
+			animation-timing-function: ease;
+		}
 	}
 }
