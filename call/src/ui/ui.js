@@ -24,7 +24,7 @@ import { hearing } from "../engine/speaking.js";
 import { ringWave, louder, wiggle, WIGGLE_HEARD, WIGGLE_HOLD } from "../engine/wiggle.js";
 import { faceImage } from "./avatar.js";
 import { centreOn } from "../engine/face.js";
-import { colourFor } from "./colour.js";
+import { colourFor, themed } from "./colour.js";
 import { icon } from "./icons.js";
 import { bringAlong } from "./along.js";
 
@@ -69,7 +69,7 @@ function videoOf(stream, face) {
 
 // someone's colour (`person`, `id` theirs in the call): theirs, or one for
 // them, as presence would give them
-const colourOf = (person, id) => person.colour || colourFor(person.contact || id);
+const colourOf = (person, id) => themed(person.colour || colourFor(person.contact || id));
 
 /**
  * someone in the call (`props.id`, or "me" for you), as a round face: their
@@ -196,7 +196,7 @@ export function CallQuestion() {
               const image = faceImage(person.who.avatar);
               return html`<span
                 class="patchwork-call-face"
-                style=${{ "--call-face": person.who.colour || null, "background-image": image ? `url("${image}")` : null }}
+                style=${{ "--call-face": person.who.colour ? themed(person.who.colour) : null, "background-image": image ? `url("${image}")` : null }}
                 >${image ? "" : initial(person.who.name)}</span
               >`;
             }}
