@@ -791,7 +791,7 @@ export function FollowButton(props) {
   return html`<${Show} when=${() => on() || canFollow(props.id)}>
     <button
       class=${() => `patchwork-call-follow ${props.class ?? ""}`}
-      style=${() => ({ "--call-following": peer()?.colour || null })}
+      style=${() => ({ "--call-following": peer()?.colour ? themed(peer().colour) : null })}
       aria-pressed=${() => String(on())}
       aria-label=${label}
       title=${() => (on() ? label() : `${label()}: what they've open opens here, as they look at it`)}

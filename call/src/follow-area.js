@@ -23,6 +23,7 @@ import * as providers from "@inkandswitch/patchwork-providers";
 import { parseAutomergeUrl } from "@automerge/automerge-repo/slim";
 import { openDocument } from "@inkandswitch/patchwork-elements";
 import { call } from "./engine/call.js";
+import { themed } from "./ui/colour.js";
 import { follow, following, holdArea, leaderView, shareView } from "./engine/follow.js";
 
 export const AREA = "data-call-follow";
@@ -335,7 +336,7 @@ function Outline(props) {
         top: `${box().top}px`,
         width: `${box().width}px`,
         height: `${box().height}px`,
-        "--call-following": props.leader?.colour || null,
+        "--call-following": props.leader?.colour ? themed(props.leader.colour) : null,
       })}
     >
       <button class="patchwork-call-following-tag" title="stop following" onClick=${() => follow(null)}>
