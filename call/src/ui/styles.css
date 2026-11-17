@@ -465,8 +465,9 @@
 	& .patchwork-call-float[data-shape="screen"] .patchwork-call-float-picture {
 		aspect-ratio: 16 / 10;
 
+		/* theirs, as their face is */
 		& .patchwork-call-screen {
-			border: 2px solid var(--call-line);
+			border: 2px solid var(--call-face, var(--call-line));
 			border-radius: 10px;
 			box-shadow: 2px 2px 0 var(--call-line);
 			overflow: hidden;

@@ -82,8 +82,10 @@ export function CallProvider(element) {
   layer.className = "patchwork-call";
   element.append(layer);
   const unrender = render(() => {
+    // passed as it is: html calls it for the prop (a getter). wrapped in
+    // another function, the prop would be this, not the box
     const area = stageArea(element, () => !!call.get());
-    return html`<${CallQuestion} /><${CallFloating} area=${() => area} /><${CallStage} area=${() => area} />`;
+    return html`<${CallQuestion} /><${CallFloating} area=${area} /><${CallStage} area=${area} />`;
   }, layer);
 
   element.addEventListener("patchwork:mounted", onMounted);

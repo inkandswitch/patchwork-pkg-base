@@ -67,6 +67,10 @@ function videoOf(stream, face) {
   return video;
 }
 
+// someone's colour (`person`, `id` theirs in the call): theirs, or one for
+// them, as presence would give them
+const colourOf = (person, id) => person.colour || colourFor(person.contact || id);
+
 /**
  * someone in the call (`props.id`, or "me" for you), as a round face: their
  * pictures while their camera's on, else their avatar, or their initial.
@@ -91,8 +95,7 @@ export function Face(props) {
     data-connecting=${() => (!mine() && person()?.connection !== "connected" ? "" : undefined)}
     data-speaking=${() => ((mine() ? call.get()?.speaking : person()?.speaking) ? "" : undefined)}
     style=${() => ({
-      // theirs, or one for them, as presence would give them
-      "--call-face": person() ? person().colour || colourFor(person().contact || props.id) : null,
+      "--call-face": person() ? colourOf(person(), props.id) : null,
       "--call-face-size": props.size ? `${props.size}px` : null,
       "background-image": !stream() && image() ? `url("${image()}")` : null,
     })}
@@ -113,7 +116,12 @@ export function Face(props) {
 /** someone's screen (`props.id`), while they're sharing it: all of it */
 function Screen(props) {
   const video = videoOf(() => call.screen(props.id), () => null);
-  return html`<span class="patchwork-call-screen">${video}</span>`;
+  const person = () => (props.id === "me" ? call.me() : call.peers().find((peer) => peer.id === props.id));
+  return html`<span
+    class="patchwork-call-screen"
+    style=${() => ({ "--call-face": person() ? colourOf(person(), props.id) : null })}
+    >${video}</span
+  >`;
 }
 
 /**

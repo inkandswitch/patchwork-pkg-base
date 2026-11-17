@@ -195,3 +195,34 @@ describe("what floats", () => {
     expect(host.querySelector(".patchwork-call")).toBe(null);
   });
 });
+
+describe("the stage", () => {
+  test("someone made to fill the panes fills the box the frame marked, not just what they need", async () => {
+    vi.stubGlobal("navigator", {
+      ...globalThis.navigator,
+      mediaDevices: { getUserMedia: () => Promise.reject(new Error("no media here")), enumerateDevices: async () => [] },
+    });
+    vi.stubGlobal(
+      "MediaStream",
+      class extends (globalThis.MediaStream ?? Object) {
+        getTracks = () => [];
+        getVideoTracks = () => [];
+      },
+    );
+    HTMLElement.prototype.animate ??= function () {
+      return { finished: Promise.resolve(), cancel() {}, onfinish: null };
+    };
+    const panes = deep.appendChild(document.createElement("div"));
+    panes.getBoundingClientRect = () => ({ left: 10, top: 20, width: 300, height: 200 });
+    panes.setAttribute("data-call-stage", "");
+    await engine.join(generateAutomergeUrl());
+    engine.toggleFill("me");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    const stage = host.querySelector(".patchwork-call-stage");
+    expect(stage).not.toBe(null);
+    expect(stage.style.left).toBe("10px");
+    expect(stage.style.width).toBe("300px");
+    expect(stage.style.height).toBe("200px");
+    vi.unstubAllGlobals();
+  });
+});
