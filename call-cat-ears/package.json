@@ -1,0 +1,20 @@
+{
+  "name": "@tiny-patchwork/call-cat-ears",
+  "version": "0.1.0",
+  "description": "cat ears and whiskers for your camera in a call",
+  "type": "module",
+  "private": true,
+  "main": "./dist/index.js",
+  "scripts": {
+    "dev": "vite build --watch",
+    "build": "vite build",
+    "sync": "vite build && pushwork sync",
+    "register": "pw-modules add \"$MODULE_SETTINGS_DOC_URL\" \"$(pushwork url)\"",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "vite": "^7.1.9",
+    "vitest": "^3.2.4"
+  }
+}

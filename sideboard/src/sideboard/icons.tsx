@@ -82,3 +82,25 @@ export function Chevron(props: JSX.SvgSVGAttributes<SVGSVGElement>) {
     </svg>
   );
 }
+
+/** a phone: the call's own (the call package's icons.js), so they match */
+export function PhoneIcon(props: JSX.SvgSVGAttributes<SVGSVGElement>) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="12"
+      height="12"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.4"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+      class="phone-icon icon"
+      {...props}
+    >
+      <path d="M3.5 2.5H6l1 3-1.5 1a7 7 0 0 0 4 4l1-1.5 3 1V12.5a1 1 0 0 1-1 1A10.5 10.5 0 0 1 2.5 3.5a1 1 0 0 1 1-1Z" />
+    </svg>
+  );
+}
