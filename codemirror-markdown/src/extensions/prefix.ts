@@ -135,6 +135,48 @@ const enter: StateCommand = ({ state, dispatch }) => {
   return true;
 };
 
+/**
+ * Enter in a fenced code block that's in a quote or list item keeps the new
+ * line there: lang-markdown's Enter gives up inside fenced code, and the
+ * usual one doesn't know about `>`s or an item's indent, so the new line
+ * would fall out of both (and, unfenced, end the code). The new line gets
+ * the container markup the fence's own line has (`>`s kept, list markers as
+ * spaces) and the current line's code indentation.
+ */
+const enterInCode: StateCommand = ({ state, dispatch }) => {
+  let dont = false;
+  const changes = state.changeByRange((range) => {
+    let fence = null;
+    let contained = false;
+    for (
+      let n: SyntaxNode | null = syntaxTree(state).resolveInner(range.head, -1);
+      n;
+      n = n.parent
+    ) {
+      if (!fence && n.name === "FencedCode") fence = n;
+      else if (fence && (n.name === "Blockquote" || n.name === "ListItem"))
+        contained = true;
+    }
+    if (!fence || !contained) {
+      dont = true;
+      return { range };
+    }
+    const fenceLine = state.doc.lineAt(fence.from);
+    const column = fence.from - fenceLine.from;
+    const markup = fenceLine.text.slice(0, column).replace(/[^>\t]/g, " ");
+    const line = state.doc.lineAt(range.from);
+    const own = /^[ \t]*/.exec(line.text.slice(column))![0];
+    const insert = state.lineBreak + markup + own;
+    return {
+      changes: { from: range.from, to: range.to, insert },
+      range: EditorSelection.cursor(range.from + insert.length),
+    };
+  });
+  if (dont) return false;
+  dispatch(state.update(changes, { scrollIntoView: true, userEvent: "input" }));
+  return true;
+};
+
 const deleteForward: StateCommand = ({ state, dispatch }) => {
   const sel = state.selection;
   if (sel.ranges.length !== 1 || !sel.main.empty) return false;
@@ -151,9 +193,11 @@ const deleteForward: StateCommand = ({ state, dispatch }) => {
   return true;
 };
 
+type SyntaxNode = ReturnType<ReturnType<typeof syntaxTree>["resolveInner"]>;
+
 const inCode = (state: EditorState, pos: number) => {
   for (
-    let n: ReturnType<ReturnType<typeof syntaxTree>["resolveInner"]> | null =
+    let n: SyntaxNode | null =
       syntaxTree(state).resolveInner(pos, -1);
     n;
     n = n.parent
@@ -169,11 +213,40 @@ const LIST_OR_HEADING = /^(\d{1,9}[.)]|[-*+]|#{1,6})$/;
 const HEADING = /^#{1,6}$/;
 
 /**
+ * A swap that turned a spaced `* * ` back into `* `, kept until the next
+ * keystroke: if that's a third `*`, it was a dinkus (`* * *`, a rule) being
+ * typed, not a marker typed twice, so the swap is undone and the `*` added.
+ */
+const swapped = new WeakMap<
+  EditorView,
+  { state: EditorState; from: number; to: number; was: string; char: string }
+>();
+
+const RULE_CHARS = ["-", "*"];
+
+/**
  * Typing a space after a marker at the start of a list item's or heading's
  * text swaps the line's innermost marker for the typed one. Quotes are left
  * alone: `> - ` is a list in a quote, which is what you meant.
  */
 const replaceMarker = EditorView.inputHandler.of((view, from, to, text) => {
+  const last = swapped.get(view);
+  swapped.delete(view);
+  if (
+    last &&
+    last.state === view.state &&
+    text === last.char &&
+    from === to &&
+    from === last.to
+  ) {
+    const insert = last.was + text;
+    view.dispatch({
+      changes: { from: last.from, to: last.to, insert },
+      selection: EditorSelection.cursor(last.from + insert.length),
+      userEvent: "input.type",
+    });
+    return true;
+  }
   if (text !== " " || from !== to) return false;
   const { state } = view;
   const line = state.doc.lineAt(from);
@@ -193,11 +266,20 @@ const replaceMarker = EditorView.inputHandler.of((view, from, to, text) => {
   if (marks[mine] === "TaskMarker" && marks[mine - 1] === "ListMark") mine--;
   const ok = marks[mine] === "HeaderMark" ? HEADING : LIST_OR_HEADING;
   if (!ok.test(typed)) return false;
+  const was = doc(state, starts[mine], from) + " ";
   view.dispatch({
     changes: { from: starts[mine], to: from, insert: typed + " " },
     selection: EditorSelection.cursor(starts[mine] + typed.length + 1),
     userEvent: "input.type",
   });
+  if (RULE_CHARS.includes(typed) && was === `${typed} ${typed} `)
+    swapped.set(view, {
+      state: view.state,
+      from: starts[mine],
+      to: starts[mine] + typed.length + 1,
+      was,
+      char: typed,
+    });
   return true;
 });
 
@@ -207,6 +289,7 @@ export const prefixes = [
   // above lang-markdown's own (Prec.high) Backspace and Enter.
   Prec.highest(
     keymap.of([
+      { key: "Enter", run: enterInCode },
       { key: "Enter", run: enter },
       { key: "Backspace", run: backspace },
       { key: "Delete", run: deleteForward },

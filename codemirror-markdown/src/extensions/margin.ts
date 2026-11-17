@@ -120,6 +120,23 @@ class NumberLabel extends WidgetType {
 type SyntaxNode = ReturnType<ReturnType<typeof syntaxTree>["resolveInner"]>;
 
 /**
+ * A `-`, `*` or `+` with nothing after it, not even its space: CommonMark
+ * makes it an empty list item, but it's almost always a marker (or a rule)
+ * still being typed, so it's left as typed until its space comes — drawn as a
+ * dot, `-a` would look like `- a` until the `a` showed it wasn't.
+ */
+function bareBullet(state: EditorState, item: SyntaxNode) {
+  const mark = item.getChild("ListMark");
+  if (!mark) return false;
+  const line = state.doc.lineAt(mark.from);
+  return (
+    mark.to === line.to &&
+    item.to <= line.to &&
+    ["-", "*", "+"].includes(state.doc.sliceString(mark.from, mark.to))
+  );
+}
+
+/**
  * What an ordered list mark renders as: CommonMark numbers a list from its
  * first item's number and counts up, whatever the later items say, so
  * `1. 2. 10.` is 1, 2, 3. The source is left alone — rewriting it would race
@@ -367,6 +384,7 @@ function layout(view: EditorView): Layout {
           c = { kind: "quote", from: node.from, first, last: doc.lineAt(node.to).number, callout: null };
           startingOn.set(first, c);
         } else if (node.name === "ListItem") {
+          if (bareBullet(state, node.node)) return false;
           c = { kind: "list", from: node.from };
         } else if (node.name === "FencedCode" || node.name === "CodeBlock") {
           const column = node.from - doc.lineAt(node.from).from;
@@ -529,6 +547,7 @@ function build(view: EditorView): DecorationSet {
         }
 
         if (name === "ListMark") {
+          if (node.node.parent && bareBullet(state, node.node.parent)) return;
           // the mark, its spaces, and any `>`s straight after (`- > a quote`
           // in the item): all markup, all hidden under the marker
           let end = skipSpaces(state, node.to);

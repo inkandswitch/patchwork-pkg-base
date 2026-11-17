@@ -127,6 +127,48 @@ describe("block prefixes", () => {
     expect(text(view)).toBe("> - go");
   });
 
+  it("enter in a code block in a quote or list stays in the quote or list", () => {
+    for (const [doc, then] of [
+      ["> ```js", "> ```js\n> "],
+      ["- ```js", "- ```js\n  "],
+      ["1. ```js", "1. ```js\n   "],
+      ["> - ```js", "> - ```js\n>   "],
+      ["> > ```js", "> > ```js\n> > "],
+      // the code's own indentation comes along
+      ["> ```js\n>   if (x) {", "> ```js\n>   if (x) {\n>   "],
+      // and after the closing fence, still in the quote
+      ["> ```\n> a\n> ```", "> ```\n> a\n> ```\n> "],
+    ]) {
+      const view = makeView(doc, doc.length);
+      press(view, "Enter");
+      expect(text(view), doc).toBe(then);
+      expect(head(view), doc).toBe(then.length);
+    }
+  });
+
+  it("enter in a code block on its own leaves it to the usual Enter", () => {
+    const doc = "```js\n  a";
+    const view = makeView(doc, doc.length);
+    press(view, "Enter");
+    expect(text(view)).toBe("```js\n  a\n  ");
+  });
+
+  it("lets a dinkus of spaced stars or dashes be typed", () => {
+    for (const rule of ["* * *", "- - -"]) {
+      const view = makeView("", 0);
+      type(view, rule);
+      expect(text(view)).toBe(rule);
+    }
+  });
+
+  it("still swaps a bullet typed again at the start of an empty item", () => {
+    const view = makeView("- ", 2);
+    type(view, "- ");
+    expect(text(view)).toBe("- ");
+    type(view, "x");
+    expect(text(view)).toBe("- x");
+  });
+
   it("delete before a list item pulls in its text, not its marker", () => {
     const view = makeView("para\n- item", 4);
     press(view, "Delete");

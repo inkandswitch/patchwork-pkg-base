@@ -67,6 +67,25 @@ describe("margin", () => {
     expect(d.textContent).toBe("2.second");
   });
 
+  it("leaves a bare bullet as typed until its space comes", () => {
+    for (const ch of ["-", "*", "+"]) {
+      const view = makeView(ch);
+      const [line] = lines(view);
+      expect(line.querySelector(".cm-bullet"), ch).toBeNull();
+      expect(line.textContent, ch).toBe(ch);
+      expect(line.classList.contains("cm-md-list-line"), ch).toBe(false);
+    }
+    const spaced = makeView("- ");
+    expect(lines(spaced)[0].querySelector(".cm-bullet")).not.toBeNull();
+  });
+
+  it("leaves a bare bullet nested in an item as typed, at the item's text", () => {
+    const view = makeView("* *");
+    const [line] = lines(view);
+    expect(line.querySelectorAll(".cm-bullet").length).toBe(1);
+    expect(line.textContent).toBe("*");
+  });
+
   it("numbers a list the way it renders, not the way it's typed", () => {
     const view = makeView("1. a\n2. b\n10. c\n\n5) d\n1) e\n\nend");
     const nums = lines(view).map((l) => hang(l)?.textContent);
