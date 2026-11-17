@@ -63,8 +63,7 @@ optional field `layout: "<automerge url>"`.
 | name                    | kind              | |
 | ----------------------- | ----------------- | - |
 | `patchwork:call-faces`  | subscription `{url}` | held while a tool is showing faces on the doc `url`. Answers `{here, people, spots}`. |
-| `patchwork:call` event  | `{action: "place-faces", url, spots: {[person]: {x, y, size}}}` | writes to the layout doc (making it if needed) |
-| `patchwork:call` event  | `{action: "unplace-face", url, person}` | takes a face off the canvas |
+| `patchwork:call` event  | `{action: "place-faces", url, spots: {[person]: {x, y, size} \| null}}` | writes to the layout doc (making it if needed); `null` takes a face off the canvas |
 
 Answer: `here` is whether you are in a call at all; `people` is everyone in it,
 you first: `[{key, id, name, colour, me}]` (`key` the person key; `id` the
@@ -93,7 +92,7 @@ where a face actually is. Subscribes with `useSubscribe` to
 
 - Each placed person in the call is a `<patchwork-view component="call-face">`
   in a wrapper: drag the face to move, drag its bottom-right corner to resize,
-  a small "off the canvas" button (on hover or focus) to take it back to
+  a small "off the canvas" button (×) (on hover or focus) to take it back to
   floating. Writes go out as events while dragging (one per animation frame),
   so everyone sees it move.
 - A single pill at the top centre ("Put faces on the canvas") appears while you

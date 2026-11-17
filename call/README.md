@@ -30,7 +30,7 @@ nothing. Keep it that way. Don't import from `call/src`.
 | `call-provider`        | component                           | The call itself. It goes around your frame, answers the protocol, and draws everything that floats.    |
 | `call-control-panel`   | component                           | For a sidebar: calls you could join, the call you're in, mic, camera, screen, hang up, settings.       |
 | `call-video`           | component, tagged `context-tool`    | Everyone's video as tiles, as a sidebar tab. Faces go here when someone picks "in the sidebar".        |
-| `call-face`            | component                           | One person's face, to put anywhere. Shows nothing if that person isn't in your call.                   |
+| `call-face`            | component                           | One person's face, to put anywhere (you too). Shows nothing if not in your call.                |
 | `call-doctitle-button` | tool, tagged `titlebar-tool`        | The phone button in a doc's title bar: call, join (with a count of who's in), or hang up.               |
 
 The protocol is described in [`src/protocol.js`](src/protocol.js), and its
@@ -239,6 +239,8 @@ muted. The attributes are live, so you can change them and the face follows.
 - `contact`: their contact doc's url (who they are, across tabs). If no one in
   the call matches the `peer`, the face is looked up by `contact` instead. Give
   both if you can.
+- `person`: their id in the call (from `patchwork:call-faces`' `people`), or
+  `"me"` for yourself. A `contact` that is your own also shows you.
 - `size`: in px.
 - `no-title`: leave their name off the face (when you already show it, for
   example on a cursor).
@@ -272,67 +274,76 @@ tldraw5 already has both ids to hand: its presence records are keyed by
 ### Cameras that live in your canvas
 
 Suppose your tool is a canvas (a tldraw, a whiteboard, a map) and you want the
-people in a call to choose where their camera sits, *in the canvas*, so that
-it pans and zooms along with everything else. Treat it as two separate
-problems: where each person's camera is (your data, in your doc), and what each
-camera shows (`call-face`).
+people in a call to arrange their faces *in the canvas*, so they pan and zoom
+with everything else, and so that **anyone in the call can arrange anyone's
+face**. The call owns the arrangement (it's shared by everyone in the call and
+isn't written into your doc), and you own where on screen it's drawn. tldraw5
+does this (`tldraw5/src/CallFaces.tsx`); copy it.
 
-1. **Store the placements in your doc.** Key them by contact, so a camera
-   belongs to a person and not to a tab. It's still there after they reload,
-   and if they rejoin from their phone it comes back in the same place:
+1. **Subscribe, and keep holding it while you show faces.**
 
    ```js
-   /** @typedef {{x: number, y: number, size: number}} CameraSpot  canvas coordinates */
-   /** doc.callCameras: {[contactUrl]: CameraSpot} */
-   handle.change((doc) => {
-     doc.callCameras ??= {};
-     doc.callCameras[myContactUrl] = { x, y, size: 160 };
+   const off = subscribe(element, { type: "patchwork:call-faces", url: handle.url }, ({ here, people, spots }) => {
+     // here: you're in a call
+     // people: everyone in it, you first: [{key, id, name, colour, me}]
+     // spots: where they've been put on *this* doc: {[key]: {x, y, size}}
+     //        in your own coordinates; x, y the top left, size the diameter
    });
    ```
 
-   Because they're in the doc, everyone sees the same layout, it syncs and
-   merges like the rest of your data, and undo works on it. If you'd rather the
-   layout belonged to the call and not the doc, broadcast it over presence
-   instead. It's gone when everyone leaves.
+   While you hold it, anyone with a spot on this doc stops floating (they'd
+   appear twice otherwise). Anyone without one keeps floating. Let go (`off()`)
+   and they float again. With no call, or no call package, you hear `here:
+   false` or nothing at all: render nothing.
 
-2. **Draw a `call-face` at each spot, in canvas space.** Put it in whatever
-   layer moves with the camera (a tldraw custom shape, or an absolutely
-   positioned overlay that you transform with the viewport):
+2. **Draw a `call-face` at each spot.** Use `person` (the `id` from `people`,
+   which also works for you: `"me"`):
 
    ```js
-   for (const [contact, spot] of Object.entries(doc.callCameras ?? {})) {
-     const face = faceFor(contact); // one <patchwork-view component="call-face"> per contact, kept
-     face.setAttribute("contact", contact);
-     face.setAttribute("size", String(Math.round(spot.size * zoom)));
-     face.style.transform = `translate(${spot.x}px, ${spot.y}px)`;
-   }
+   const face = document.createElement("patchwork-view");
+   face.setAttribute("component", "call-face");
+   face.setAttribute("person", person.id); // or "me"
+   face.setAttribute("size", String(Math.round(spot.size * zoom)));
+   face.style.transform = `translate(${screenX}px, ${screenY}px)`;
    ```
 
-   The face renders nothing for anyone who isn't in your call. So a placement
-   that's left over from last week costs nothing and shows nothing until that
-   person joins again. You don't have to clean placements up.
+3. **Let people arrange them.** To place, move, resize or take faces off, say so:
 
-3. **Let people place themselves.** For example, have a "pin my camera here"
-   action, or make someone's face draggable once they're in the call. To know
-   whether *you're* in the call, use the `patchwork:call` subscription.
+   ```js
+   // `key`s are people's `key`s. null takes a face off the canvas
+   element.dispatchEvent(new CustomEvent("patchwork:call", {
+     bubbles: true,
+     composed: true,
+     detail: { action: "place-faces", url: handle.url, spots: { [key]: { x, y, size }, [otherKey]: null } },
+   }));
+   ```
 
-The rule underneath all of this: **your tool owns the layout and the call owns
-the media.** Keep your data about where people's cameras are. Don't try to get
-at their streams.
+   The change comes back through the subscription for everyone in the call.
+   Send it as often as you like while dragging; show your own pointer position
+   meanwhile and let go of it when the answer catches up.
 
-**Not there yet.** These are the rough edges for in-canvas cameras today. If
-you need one of them, it belongs in the protocol, so open an issue rather than
-working around it:
+**How the layout is shared.** The first time anything places a face, the call
+makes an automerge doc for itself (the *layout doc*) in the page's repo, and
+adds its url to the "here" message that it already sends over the room's
+channel every few seconds. Anyone who hears a url that sorts lower than the one
+they hold switches to it (copying across what they had written). Two made at
+once therefore end up as one; late joiners take the one they hear; when the
+call ends it simply stops being announced. Its shape is
+`{spots: {"<doc url>|<person>": {x, y, size}}}`, per doc because one call can be
+on several docs, and by person (their contact url, or their call id with no
+contact) so a face belongs to a person across tabs and reloads. See
+`docs/superpowers/specs/2026-11-17-call-canvas-faces-design.md`.
 
-- `call-face` can't show **you**. It only finds other people in the call. Your
-  own face is still in the floating faces, the panel and the video tab.
-- The floating faces don't know your tool is already showing them, so for now
-  people appear twice. A natural fix would be a subscription like
-  `patchwork:call-video`, where a tool says "I'm showing faces for this room"
-  and the floating ones step aside while it does.
-- There's no list of who's in the call through the protocol, only a count
-  (`others`). Use presence to know who's around, and `call-face` to show the
-  ones who are in the call.
+Peers on an older version of the call don't announce a layout and ignore
+others'. They're not stopped from being in the call; they just keep floating
+faces and don't see the canvas ones.
+
+**Not there yet.**
+
+- Layout docs aren't cleaned up. A call's is abandoned when it ends.
+- Placing faces from a call that's in another doc's room works, but a
+  `key:` room has no channel yet, so no layout can be agreed over one.
+- Everyone in the call can arrange everyone's face; there's no "only mine".
 
 ---
 
