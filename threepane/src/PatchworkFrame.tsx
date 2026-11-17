@@ -45,6 +45,7 @@ import { seedExampleDocuments } from "./account/seedExampleDocuments";
 import { handleAddToSidebar } from "./account/addToSidebar";
 import { ensureFrameStyles } from "./ensureFrameStyles";
 import { useHandleDoc } from "./hooks/useHandleDoc";
+import { CALL_PROVIDER } from "./datatypes";
 
 type SelectedView = {
   url: AutomergeUrl;
@@ -179,13 +180,21 @@ export function PatchworkFrame({
                 element is the ctx a worker spec's open(ctx) gets.
               */}
               <patchwork-view component="patchwork-worker-provider">
-                <Show when={areProvidersReady()}>
-                  <PatchworkFrameInner
-                    handle={handle}
-                    repo={repo}
-                    isolation={props.isolation}
-                  />
-                </Show>
+                {/*
+                  The call (the call package): round everything, so it hears
+                  every doc on screen, reaches the title bar and both
+                  sidebars, and carries on as docs change. Not waited on: it's
+                  late-bound, and renders nothing without the package.
+                */}
+                <patchwork-view component={CALL_PROVIDER}>
+                  <Show when={areProvidersReady()}>
+                    <PatchworkFrameInner
+                      handle={handle}
+                      repo={repo}
+                      isolation={props.isolation}
+                    />
+                  </Show>
+                </patchwork-view>
               </patchwork-view>
             </patchwork-view>
           </patchwork-view>

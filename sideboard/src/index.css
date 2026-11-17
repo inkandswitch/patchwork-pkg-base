@@ -455,6 +455,14 @@
   }
 }
 
+/* the doc you're in a call on (call-room.ts) */
+.document-list-item__call {
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--document-list-line-offset-20);
+}
+
 .document-list-item__name {
   overflow: hidden;
   text-overflow: ellipsis;

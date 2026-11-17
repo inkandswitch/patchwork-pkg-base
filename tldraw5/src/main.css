@@ -65,3 +65,94 @@
 .tldraw5-migrate [data-note] {
   opacity: 0.7;
 }
+
+/* Faces of the people in your call, placed in the canvas (CallFaces.tsx).
+   The layer is click-through; only a face is not. */
+.tldraw5-call-face {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: all;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  outline: none;
+  box-shadow: 0 1px 6px rgb(0 0 0 / 0.25);
+}
+.tldraw5-call-face[data-dragging] {
+  cursor: grabbing;
+}
+.tldraw5-call-face > patchwork-view {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  pointer-events: none;
+}
+.tldraw5-call-face:focus-visible {
+  outline: 2px solid var(--color-selected, #2f80ed);
+  outline-offset: 2px;
+}
+.tldraw5-call-face-off,
+.tldraw5-call-face-size {
+  position: absolute;
+  opacity: 0;
+  transition: opacity 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.tldraw5-call-face:hover > .tldraw5-call-face-off,
+.tldraw5-call-face:hover > .tldraw5-call-face-size,
+.tldraw5-call-face:focus-within > .tldraw5-call-face-off,
+.tldraw5-call-face:focus-within > .tldraw5-call-face-size,
+.tldraw5-call-face[data-dragging] > .tldraw5-call-face-size {
+  opacity: 1;
+}
+.tldraw5-call-face-off {
+  inset-block-start: 0;
+  inset-inline-end: 0;
+  inline-size: 20px;
+  block-size: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--color-panel, #fff);
+  color: var(--color-text, #111);
+  font: 14px/20px system-ui, sans-serif;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.3);
+}
+/* the corner you size it from: a grip on the face's rim, bottom right */
+.tldraw5-call-face-size {
+  inset-block-end: 4%;
+  inset-inline-end: 4%;
+  inline-size: 14px;
+  block-size: 14px;
+  border-radius: 50%;
+  background: var(--color-panel, #fff);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.4);
+  cursor: nwse-resize;
+}
+.tldraw5-call-put {
+  position: absolute;
+  inset-block-start: 8px;
+  inset-inline-start: 50%;
+  translate: -50% 0;
+  pointer-events: all;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--color-panel, #fff);
+  color: var(--color-text, #111);
+  font: 13px system-ui, sans-serif;
+  cursor: pointer;
+  box-shadow: 0 1px 6px rgb(0 0 0 / 0.25);
+  transition: scale 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.tldraw5-call-put:active {
+  scale: 0.97;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tldraw5-call-face-off,
+  .tldraw5-call-face-size,
+  .tldraw5-call-put {
+    transition: none;
+  }
+}

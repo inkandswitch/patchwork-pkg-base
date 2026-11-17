@@ -43,6 +43,7 @@ import { hasDocumentDrag } from "./dnd/payload.ts";
 import { createMarquee } from "./document-list/marquee.ts";
 import { createTreeNav } from "./document-list/tree-nav.ts";
 import { menuTarget } from "./state.ts";
+import { CallRoom, createCallRoom } from "./document-list/call-room.ts";
 
 const ItemMenu = lazy(() =>
   import("./document-list/item-menu.tsx").then((m) => ({
@@ -92,6 +93,9 @@ export function DocumentListPanel(props: {
   createEffect(() => {
     if (folderHandle.latest) watchFolder(folderHandle.latest);
   });
+
+  // the doc your call's in, for its row's phone
+  const isCallRoom = createCallRoom(props.element);
 
   const selectedDocUrls = subscribe<AutomergeUrl[]>(
     props.element,
@@ -215,6 +219,7 @@ export function DocumentListPanel(props: {
           </div>
         </div>
         <Show when={folderReady()} fallback={<LoadingRows depth={0} />}>
+          <CallRoom.Provider value={isCallRoom}>
           <Suspense fallback={<LoadingRows depth={0} />}>
             <DocumentList
               depth={0}
@@ -229,6 +234,7 @@ export function DocumentListPanel(props: {
               clearFilter={() => setFilter("")}
             />
           </Suspense>
+          </CallRoom.Provider>
           <Show when={menuTarget()}>
             <ItemMenu
               repo={props.repo}

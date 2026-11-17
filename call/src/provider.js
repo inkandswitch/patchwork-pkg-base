@@ -1,0 +1,135 @@
+// the call provider: put round a frame (threepane mounts it round everything)
+// it hears every doc mounted inside it, answers the protocol (protocol.js),
+// and draws what floats
+import { createEffect, createRoot } from "solid-js";
+import { render } from "solid-js/web";
+import html from "solid-js/html";
+import { accept } from "@inkandswitch/patchwork-providers";
+import { ask, call, hangUp, hearRoom, holdFaces, holdVideoSpot, placeFaces } from "./engine/call.js";
+import { roomUrl } from "./engine/room.js";
+import { CALL, CALL_EVENT, CALL_FACES, CALL_NOW, CALL_ROOM, CALL_VIDEO, facesState, roomState } from "./protocol.js";
+import { CallFloating, CallQuestion, CallStage } from "./ui/ui.js";
+import { stageArea } from "./ui/area.js";
+import { chimes } from "./engine/chimes.js";
+import "./ui/styles.css";
+
+/** answer `event` with `read()` now and whenever it changes, till it's unsubscribed */
+function answer(event, read, hold) {
+  accept(event, (respond) => {
+    const release = hold();
+    const dispose = createRoot((dispose) => {
+      createEffect(() => respond(read()));
+      return dispose;
+    });
+    return () => {
+      dispose();
+      release();
+    };
+  });
+}
+
+// however many providers a page has, the sounds play once
+let chiming = null;
+let chimers = 0;
+function holdChimes() {
+  if (chimers++ === 0) chiming = chimes();
+  let held = true;
+  return () => {
+    if (!held) return;
+    held = false;
+    if (--chimers === 0) {
+      chiming();
+      chiming = null;
+    }
+  };
+}
+
+export function CallProvider(element) {
+  // what each doc mounted inside holds: by room id, a release each time
+  const mounts = new Map();
+
+  function hold(url) {
+    const id = roomUrl(url);
+    if (!id) return;
+    if (!mounts.has(id)) mounts.set(id, []);
+    mounts.get(id).push(hearRoom(id, { onScreen: true }));
+  }
+
+  function onMounted(event) {
+    if ("url" in (event.detail ?? {})) hold(event.detail.url);
+  }
+
+  function onUnmounted(event) {
+    const id = "url" in (event.detail ?? {}) ? roomUrl(event.detail.url) : null;
+    const held = id && mounts.get(id);
+    if (!held) return;
+    held.pop()();
+    if (!held.length) mounts.delete(id);
+  }
+
+  function onSubscribe(event) {
+    const selector = event.detail?.selector ?? {};
+    switch (selector.type) {
+      case CALL:
+        return answer(event, () => roomState(selector.url), () => hearRoom(selector.url));
+      case CALL_ROOM:
+        return answer(
+          event,
+          () => roomState(selector.url),
+          () => hearRoom(selector.url, { onScreen: true, name: selector.name }),
+        );
+      case CALL_NOW:
+        // (it holds nothing: the room your call's in is heard already)
+        return answer(event, () => ({ room: call.get()?.room ?? null }), () => () => {});
+      case CALL_FACES:
+        return answer(event, () => facesState(selector.url), () => holdFaces(selector.url));
+      case CALL_VIDEO:
+        return answer(
+          event,
+          () => ({ wanted: call.videoWanted() }),
+          () => holdVideoSpot({ showing: !!selector.showing }),
+        );
+    }
+  }
+
+  function onCall(event) {
+    const { action, url, at, spots } = event.detail ?? {};
+    if (action === "ask") ask(url, { at: at ?? null });
+    else if (action === "hang-up") hangUp();
+    else if (action === "place-faces") placeFaces(url, spots);
+  }
+
+  // what floats: the question, faces, and whoever's on the stage, in a layer
+  // of their own (each its own popover, over the frame)
+  const layer = document.createElement("div");
+  layer.className = "patchwork-call";
+  element.append(layer);
+  // the sounds of people coming and going (one frame, one set of them)
+  const stopChimes = holdChimes();
+  const unrender = render(() => {
+    // passed as it is: html calls it for the prop (a getter). wrapped in
+    // another function, the prop would be this, not the box
+    const area = stageArea(element, () => !!call.get());
+    return html`<${CallQuestion} /><${CallFloating} area=${area} /><${CallStage} area=${area} />`;
+  }, layer);
+
+  element.addEventListener("patchwork:mounted", onMounted);
+  element.addEventListener("patchwork:unmounted", onUnmounted);
+  element.addEventListener("patchwork:subscribe", onSubscribe);
+  element.addEventListener(CALL_EVENT, onCall);
+  // what was mounted before this was (it was loaded late, or swapped in
+  // anew): on screen already, and unmounted like the rest later
+  for (const view of element.querySelectorAll("patchwork-view[doc-url]")) hold(view.getAttribute("doc-url"));
+
+  return () => {
+    element.removeEventListener("patchwork:mounted", onMounted);
+    element.removeEventListener("patchwork:unmounted", onUnmounted);
+    element.removeEventListener("patchwork:subscribe", onSubscribe);
+    element.removeEventListener(CALL_EVENT, onCall);
+    for (const held of mounts.values()) for (const release of held) release();
+    mounts.clear();
+    unrender();
+    stopChimes();
+    layer.remove();
+  };
+}

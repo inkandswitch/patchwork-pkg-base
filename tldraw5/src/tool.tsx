@@ -42,6 +42,7 @@ import type { UnixFileEntry } from "@inkandswitch/patchwork-filesystem";
 import { automergeUrlToServiceWorkerUrl } from "@inkandswitch/patchwork-filesystem";
 import { useSubscribe } from "@inkandswitch/patchwork-providers-react";
 import { createRoot } from "react-dom/client";
+import { CallFacesContext, CallFacesLayer } from "./CallFaces.tsx";
 import { diffStore, type ShapeDiff } from "./diff.ts";
 import {
   DiffShapeWrapper,
@@ -355,13 +356,23 @@ function TldrawConfiguredCanvas({
   // `useDeletedGhosts`.
   useDeletedGhosts(store, handle, diff);
 
-  const components = config.components as TLComponents;
+  // The call's faces, in the canvas, unless the script put its own layer there.
+  // (They render nothing when there's no call package, or no call.)
+  const components = useMemo<TLComponents>(
+    () => ({
+      InFrontOfTheCanvas: CallFacesLayer,
+      ...(config.components as TLComponents),
+    }),
+    [config.components],
+  );
+  const callFaces = useMemo(() => ({ docUrl, element }), [docUrl, element]);
 
   const fileContext = useMemo(() => ({ handle, element }), [handle, element]);
 
   return (
     <DiffStatusContext.Provider value={statusAtom}>
       <TldrFileContext.Provider value={fileContext}>
+        <CallFacesContext.Provider value={callFaces}>
         <Tldraw
           colorScheme={colorScheme}
           autoFocus
@@ -377,6 +388,7 @@ function TldrawConfiguredCanvas({
         >
           <TldrawInner docUrl={docUrl} element={element} readOnly={readOnly} />
         </Tldraw>
+        </CallFacesContext.Provider>
       </TldrFileContext.Provider>
     </DiffStatusContext.Provider>
   );
