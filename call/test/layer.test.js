@@ -8,25 +8,30 @@ const [inCall, setInCall] = createSignal(null);
 const [mode, setMode] = createSignal("floating");
 const [showing, setShowing] = createSignal(false);
 const [staged, setStaged] = createSignal(null);
+const [filling, setFilling] = createSignal(null);
+const [peers, setPeers] = createSignal([]);
+const [screens, setScreens] = createSignal({});
 const join = vi.fn();
+const toggleFill = vi.fn();
 const names = { "automerge:other": "other" };
 vi.mock("../src/engine/call.js", () => {
   const call = {
     get: () => inCall(),
-    peers: () => [],
+    peers: () => peers(),
     me: () => ({ name: "me" }),
     local: () => null,
     stream: () => null,
-    screen: () => null,
+    screen: (id) => screens()[id] ?? null,
     mode: () => mode(),
     videoShowing: () => showing(),
     stage: () => staged(),
+    filling: () => (staged() && filling() ? { id: staged(), screen: filling().screen } : null),
     full: () => false,
     asking: () => asking(),
     stopAsking: () => setAsking(null),
     nameOf: (url) => names[url] ?? "",
     settings: { floating: {} },
-    floatKey: (id) => id,
+    floatKey: (id, screen) => (screen ? `${id}/screen` : id),
     find: () => null,
   };
   const nothing = () => {};
@@ -38,6 +43,7 @@ vi.mock("../src/engine/call.js", () => {
     hideFloating: nothing,
     showFloating: nothing,
     toggleStage: nothing,
+    toggleFill,
     setFull: nothing,
     closeStage: nothing,
   };
@@ -226,5 +232,77 @@ describe("the stage's area", () => {
     expect(looked).not.toHaveBeenCalled();
     dispose();
     root.remove();
+  });
+});
+
+describe("a screen being shared", () => {
+  const ana = { id: "p1", name: "ana", mic: true, connection: "connected" };
+  let host, dispose;
+  beforeEach(async () => {
+    setInCall({ room: "automerge:here", mic: true });
+    setMode("floating");
+    setPeers([ana]);
+    host = document.body.appendChild(document.createElement("div"));
+    host.className = "patchwork-call";
+    dispose = render(() => html`<${CallFloating} area=${() => null} /><${CallStage} area=${() => null} />`, host);
+    await tick();
+  });
+  afterEach(() => {
+    dispose();
+    host.remove();
+    setScreens({});
+    setPeers([]);
+    setStaged(null);
+    setFilling(null);
+    setInCall(null);
+    toggleFill.mockClear();
+  });
+  const floats = () => [...host.querySelectorAll(".patchwork-call-float")];
+  const named = (name) => floats().find((float) => float.querySelector(".patchwork-call-float-name").textContent.includes(name));
+
+  test("floats, a face of its own, and doesn't fill anything", async () => {
+    expect(floats()).toHaveLength(2);
+    setScreens({ p1: new MediaStream() });
+    await tick();
+    expect(floats()).toHaveLength(3);
+    const screen = named("ana's screen");
+    expect(screen.dataset.shape).toBe("screen");
+    expect(screen.querySelector(".patchwork-call-screen")).not.toBe(null);
+    expect(host.querySelector(".patchwork-call-stage")).toBe(null);
+    setScreens({});
+    await tick();
+    expect(floats()).toHaveLength(2);
+  });
+
+  test("each floating face can be made to fill the window, its screen too", async () => {
+    setScreens({ p1: new MediaStream() });
+    await tick();
+    named("you").querySelector("[data-fill]").click();
+    expect(toggleFill).toHaveBeenLastCalledWith("me", false);
+    named("ana's screen").querySelector("[data-fill]").click();
+    expect(toggleFill).toHaveBeenLastCalledWith("p1", true);
+  });
+
+  test("filling the window, it's only that: the rest float over it, you too", async () => {
+    setScreens({ p1: new MediaStream() });
+    setStaged("p1");
+    setFilling({ screen: true });
+    await tick();
+    await tick();
+    const stage = host.querySelector(".patchwork-call-stage");
+    expect(stage.hasAttribute("data-filling")).toBe(true);
+    expect(stage.style.width).toBe("100%");
+    expect(stage.querySelector(".patchwork-call-screen")).not.toBe(null);
+    expect(stage.querySelector(".patchwork-call-them")).toBe(null);
+    expect(stage.querySelector(".patchwork-call-stage-me")).toBe(null);
+    expect(named("ana's screen").hasAttribute("data-staged")).toBe(true);
+    expect(named("ana").hasAttribute("data-staged")).toBe(false);
+    expect(named("you").hasAttribute("data-staged")).toBe(false);
+    // their face, not their screen
+    setFilling({ screen: false });
+    await tick();
+    expect(stage.querySelector(".patchwork-call-screen")).toBe(null);
+    expect(named("ana's screen").hasAttribute("data-staged")).toBe(false);
+    expect(floats().find((f) => f.hasAttribute("data-staged")).textContent).not.toContain("screen");
   });
 });

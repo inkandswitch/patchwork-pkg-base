@@ -266,6 +266,41 @@ describe("settings", () => {
   });
 });
 
+describe("filling the window", () => {
+  test("a floating face fills it, and again floats", async () => {
+    await engine.join(generateAutomergeUrl());
+    expect(engine.call.filling()).toBe(null);
+    engine.toggleFill("me");
+    expect(engine.call.stage()).toBe("me");
+    expect(engine.call.filling()).toEqual({ id: "me", screen: false });
+    engine.toggleFill("me");
+    expect(engine.call.stage()).toBe(null);
+    expect(engine.call.filling()).toBe(null);
+    // clicked in the call bar, as it's big, it floats again too
+    engine.toggleFill("me");
+    engine.toggleStage("me");
+    expect(engine.call.stage()).toBe(null);
+    expect(engine.call.filling()).toBe(null);
+    // and the panes aren't the window
+    engine.toggleStage("me");
+    expect(engine.call.filling()).toBe(null);
+    engine.toggleFill("me");
+    expect(engine.call.filling()).toEqual({ id: "me", screen: false });
+  });
+
+  test("hanging up, nothing fills it", async () => {
+    await engine.join(generateAutomergeUrl());
+    engine.toggleFill("me");
+    engine.hangUp();
+    expect(engine.call.filling()).toBe(null);
+  });
+
+  test("a screen's floating face is kept apart from theirs", () => {
+    expect(engine.call.floatKey("me")).toBe("me");
+    expect(engine.call.floatKey("me", true)).toBe("me/screen");
+  });
+});
+
 describe("asking", () => {
   test("asking about a room, at a place", () => {
     const url = generateAutomergeUrl();

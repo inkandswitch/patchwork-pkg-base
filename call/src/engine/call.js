@@ -195,6 +195,14 @@ const view = lasting("patchwork-call:view", () =>
     return { stage, setStage, full, setFull };
   }),
 );
+// a floating face made to fill the window, not the panes: {screen} (whether
+// it's their screen, not their face), or null. of its own, for the same reason
+const filled = lasting("patchwork-call:filled", () =>
+  createRoot(() => {
+    const [fill, setFill] = createSignal(null);
+    return { fill, setFill };
+  }),
+);
 
 // ── who you are ─────────────────────────────────────────────────────────
 
@@ -769,14 +777,26 @@ export const call = {
     const names = rooms[id]?.names;
     return names?.length ? names[names.length - 1] : (titles[id] ?? "");
   },
-  /** what someone's floating face is kept by: who they are, so it's theirs next call too */
-  floatKey: (id) => (id === "me" ? "me" : state.peers[id]?.contact || id),
+  /**
+   * what someone's floating face is kept by: who they are, so it's theirs
+   * next call too. `screen`: their screen's, while they share it
+   */
+  floatKey: (id, screen = false) => `${id === "me" ? "me" : state.peers[id]?.contact || id}${screen ? "/screen" : ""}`,
   asking,
   stopAsking: () => setAsking(null),
-  /** whose face fills the panes (one still in the call), or null */
+  /** whose face fills the panes, or the window (one still in the call, or "me"), or null */
   stage: () => {
     const id = view.stage();
-    return id && state.peers[id] ? id : null;
+    return id && (state.peers[id] || (id === "me" && state.call)) ? id : null;
+  },
+  /**
+   * what's filling the window, a floating face made to (toggleFill), or
+   * null: {id, screen}, `screen` whether it's their screen
+   */
+  filling: () => {
+    const id = call.stage();
+    const fill = filled.fill();
+    return id && fill ? { id, screen: fill.screen } : null;
   },
   /** whether it fills the screen */
   full: () => view.full() && !!call.stage(),
@@ -843,11 +863,26 @@ export function stopScreen() {
 
 // ── who's big ───────────────────────────────────────────────────────────
 
-/** fill the panes with `id`'s face, or, theirs already, put the panes back */
+/**
+ * fill the panes with `id`'s face, or, theirs already (the panes, or the
+ * window), put them back
+ */
 export function toggleStage(id) {
   const now = view.stage() === id ? null : id;
+  filled.setFill(null);
   view.setStage(now);
   if (!now) view.setFull(false);
+}
+
+/**
+ * fill the window with a floating face (`id`'s, or with `screen`, their
+ * screen), the rest floating over it; or, filling it already, it floats again
+ */
+export function toggleFill(id, screen = false) {
+  const now = call.filling();
+  if (now && now.id === id && now.screen === !!screen) return closeStage();
+  view.setStage(id);
+  filled.setFill({ screen: !!screen });
 }
 
 /** the face that's big, filling the screen or not */
@@ -858,6 +893,7 @@ export function setFull(full) {
 /** nobody big */
 export function closeStage() {
   view.setStage(null);
+  filled.setFill(null);
   view.setFull(false);
 }
 
@@ -980,16 +1016,25 @@ function onHere(from, tab, message) {
   }
 }
 
-// someone's started sharing their screen: it fills the panes, unless
-// someone's there already. stopped, it's put back, if that's what put it there
+// someone's started sharing their screen. faces floating, it floats too, a
+// face of its own (put away last time, it's out again). in the sidebar, it
+// fills the panes, unless someone's there already. stopped, it's put back,
+// if that's what put it there, or it was filling the window
 function onSharing(id, sharing) {
   const now = live.session;
-  if (sharing && !view.stage()) {
-    view.setStage(id);
-    now.shown = id;
-  } else if (!sharing && now.shown === id) {
-    now.shown = null;
-    if (view.stage() === id) closeStage();
+  if (sharing) {
+    const key = call.floatKey(id, true);
+    if (settings.floating[key]?.hidden) showFloating(key, {});
+    if (call.mode() === "sidebar" && !view.stage()) {
+      view.setStage(id);
+      now.shown = id;
+    }
+  } else {
+    const filling = call.filling();
+    if (now.shown === id || (filling?.id === id && filling.screen)) {
+      if (view.stage() === id) closeStage();
+    }
+    if (now.shown === id) now.shown = null;
   }
   bump();
 }

@@ -461,6 +461,18 @@
 				border-radius 200ms cubic-bezier(0.23, 1, 0.32, 1);
 		}
 	}
+	/* a screen: its own shape, wider, all of it */
+	& .patchwork-call-float[data-shape="screen"] .patchwork-call-float-picture {
+		aspect-ratio: 16 / 10;
+
+		& .patchwork-call-screen {
+			border: 2px solid var(--call-line);
+			border-radius: 10px;
+			box-shadow: 2px 2px 0 var(--call-line);
+			overflow: hidden;
+			box-sizing: border-box;
+		}
+	}
 	& .patchwork-call-float[data-shape="round"] {
 		& .patchwork-call-float-picture .patchwork-call-face {
 			width: 75%;
@@ -766,8 +778,9 @@
 }
 
 /* a floating face's minimise: an arrow before their name, down to the call
-   bar. quiet till it's pointed at */
-.patchwork-call-floating .patchwork-call-float-close {
+   bar; and after it, filling the window, out to its corner. quiet till
+   they're pointed at */
+.patchwork-call-floating .patchwork-call-float-button {
 	display: inline-grid;
 	place-items: center;
 	width: 16px;
@@ -793,9 +806,13 @@
 		outline: 2px solid var(--call-accent);
 		outline-offset: 1px;
 	}
+
+	&[data-fill] {
+		margin: 0 -3px 0 2px;
+	}
 }
 @media (hover: hover) and (pointer: fine) {
-	.patchwork-call-floating .patchwork-call-float-close:hover {
+	.patchwork-call-floating .patchwork-call-float-button:hover {
 		background: var(--call-chrome-hover);
 		color: var(--call-ink);
 	}

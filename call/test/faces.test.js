@@ -35,6 +35,7 @@ vi.mock("../src/engine/call.js", () => {
     hideFloating: nothing,
     showFloating: nothing,
     toggleStage: nothing,
+    toggleFill: nothing,
     setFull: nothing,
     closeStage: nothing,
   };
