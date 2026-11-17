@@ -224,10 +224,14 @@ function Panel(props) {
   // an effect's line of the menu says how its face model's coming, while
   // that's what it's waiting for
   function effectNote(effect) {
-    if (!effect.needs.includes("landmarks") || call.settings.effect !== effect.id) return "";
-    const { state, got, total } = faceModel();
-    if (state === "loading") return `· downloading ${Math.floor((got / total) * 100)}%`;
-    if (state === "failed") return "· couldn't download it";
+    if (call.settings.effect !== effect.id) return "";
+    if (effect.needs.includes("landmarks")) {
+      const { state, got, total } = faceModel();
+      if (state === "loading") return `· downloading ${Math.floor((got / total) * 100)}%`;
+      if (state === "failed") return "· couldn't download it";
+    }
+    // chosen, with your camera on, and not what's going out: never quietly
+    if (call.get()?.camera && call.effectOn?.() === false) return "· not on yet";
     return "";
   }
 

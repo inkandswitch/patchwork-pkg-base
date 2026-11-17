@@ -298,6 +298,42 @@ describe("in a call", () => {
     expect(sentVideo().source).toBeUndefined();
   });
 
+  test("chosen before its package has loaded (a reload, rejoining), it goes on once it's there", async () => {
+    await engine.setEffect("late");
+    await engine.join(room, { video: true });
+    await settle();
+    expect(workers).toHaveLength(0);
+    expect(engine.call.effectOn()).toBe(false);
+    plugins.registerPlugins([effect({ id: "late", needs: [] })], ENTRY);
+    await settle();
+    expect(workers).toHaveLength(1);
+    expect(sentVideo().source).toBe(cameras.at(-1));
+    expect(engine.call.effectOn()).toBe(true);
+  });
+
+  test("choosing the one that's chosen, while it isn't on, puts it on", async () => {
+    vi.stubGlobal("MediaStreamTrackProcessor", undefined);
+    await engine.setEffect("cat-ears");
+    await engine.join(room, { video: true });
+    await settle();
+    expect(engine.call.effectOn()).toBe(false);
+    fakeMedia();
+    await engine.setEffect("cat-ears");
+    await settle();
+    expect(engine.call.effectOn()).toBe(true);
+  });
+
+  test("a package turning up doesn't take the camera again while the effect's on", async () => {
+    await engine.setEffect("cat-ears");
+    await engine.join(room, { video: true });
+    await settle();
+    const before = cameras.length;
+    plugins.registerPlugins([effect({ id: "hat", needs: [] })], ENTRY);
+    await settle();
+    expect(cameras.length).toBe(before);
+    expect(workers).toHaveLength(1);
+  });
+
   test("in a browser without them, the choice is as good as off", async () => {
     vi.stubGlobal("MediaStreamTrackProcessor", undefined);
     await engine.setEffect("cat-ears");

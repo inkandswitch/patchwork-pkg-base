@@ -623,6 +623,9 @@ export async function join(url, { video = false } = {}) {
   for (const person of onCallIn(roomId)) onHere(person.id, person.peer, person);
   now.timers.push(setInterval(sayHere, HERE_EVERY));
   now.timers.push(setInterval(forgetGone, GONE_AFTER / 3));
+  // the effect that's chosen, from a package that's loaded after the camera
+  // was taken (a reload rejoins before every package is in): on, once it's in
+  if (effects.supported()) now.stopEffects = effects.watch(effectTurnedUp);
   // the page going (a reload, say): you're back in it if it's back soon
   now.onPageHide = () => hangUp({ rejoin: true });
   addEventListener("pagehide", now.onPageHide);
@@ -648,6 +651,7 @@ export function hangUp({ rejoin = false } = {}) {
   } catch {}
   for (const id of [...now.peers.keys()]) drop(id, now);
   now.stopFace?.();
+  now.stopEffects?.();
   now.stopLevel?.();
   for (const track of now.local.getTracks()) track.stop();
   now.screen?.stop();
@@ -715,12 +719,28 @@ export async function setDevice(kind, device) {
 
 // your camera taken again (a different one, or with another effect on it),
 // in place of the one you had
-async function refreshCamera() {
+function refreshCamera() {
   const now = live.session;
   if (!now || !state.call?.camera) return;
-  const track = await getVideo();
-  if (live.session !== now || !track) return track?.stop();
-  useTrack("video", track);
+  // (one at a time: each takes the camera again)
+  return (now.refreshingCamera ??= (async () => {
+    try {
+      const track = await getVideo();
+      if (live.session !== now || !track) return track?.stop();
+      useTrack("video", track);
+    } finally {
+      now.refreshingCamera = null;
+    }
+  })());
+}
+
+// the effects there are, changed: the one that's chosen is there now, and
+// your camera's going out without it
+function effectTurnedUp(list) {
+  const now = live.session;
+  if (!now || state.call?.joining || !state.call?.camera || settings.effect === "off") return;
+  if (trackOf("video")?.setEffect || now.refreshingCamera) return;
+  if (list.some((effect) => effect.id === settings.effect)) refreshCamera();
 }
 
 /**
@@ -729,7 +749,9 @@ async function refreshCamera() {
  */
 export async function setEffect(id) {
   id = string(id) || "off";
-  if (settings.effect === id) return;
+  // as it is already. but the one that's chosen and isn't on (its package
+  // wasn't in yet, say) is put on, chosen again
+  if (settings.effect === id && (id === "off" || !state.call?.camera || call.effectOn())) return;
   setSettings("effect", id);
   saveSettings();
   const now = live.session;
@@ -801,6 +823,11 @@ export const call = {
       return now.screenView;
     }
     return state.peers[id]?.screen ? (now.peers.get(id)?.screen ?? null) : null;
+  },
+  /** whether what you're sending is drawn on by an effect (settings.effect's) */
+  effectOn() {
+    version();
+    return !!trackOf("video")?.setEffect;
   },
   /** yours */
   local() {
