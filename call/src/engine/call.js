@@ -23,6 +23,7 @@ import { isKeyRoom, pageRepo, roomUrl } from "./room.js";
 import { openChannel } from "./channel.js";
 import { callToRejoin, forgetCall, keepCall, leavingCall } from "./rejoin.js";
 import { listen } from "./speaking.js";
+import { createLayout, layoutFrom, spotKey } from "./layout.js";
 import { haveModel, isNoise, loadModel, suppressed } from "./noise.js";
 import { videoFor } from "./sizes.js";
 
@@ -204,6 +205,17 @@ const filled = lasting("patchwork-call:filled", () =>
   }),
 );
 
+// the layout the call's faces are placed in (layout.js), once you're in a call,
+// and the docs something's showing faces on now (holdFaces): by room id, how
+// many hold it. a lasting of its own, for the same reason
+const placing = lasting("patchwork-call:placing", () =>
+  createRoot(() => {
+    const [layout, setLayout] = createSignal(null);
+    const [shown, setShown] = createSignal({});
+    return { layout, setLayout, shown, setShown };
+  }),
+);
+
 // ── who you are ─────────────────────────────────────────────────────────
 
 const myContact = () => {
@@ -268,7 +280,14 @@ function hearCalls(channel) {
     const who = whoFrom(message.who);
     if (!who) return;
     if (!heard[url]) setHeard(url, {});
-    setHeard(url, from, { who, peer: string(event.senderId), mic: !!message.mic, camera: !!message.camera, at: Date.now() });
+    setHeard(url, from, {
+      who,
+      peer: string(event.senderId),
+      mic: !!message.mic,
+      camera: !!message.camera,
+      layout: layoutFrom(message.layout) ?? "",
+      at: Date.now(),
+    });
   }
   channel.on(onMessage);
   pruning ??= setInterval(prune, 2000);
@@ -289,7 +308,7 @@ function hearCalls(channel) {
 export function onCallIn(url) {
   return Object.entries(heard[url] ?? {})
     .filter(([id, person]) => person && id !== state.call?.id)
-    .map(([id, { who, peer, mic, camera }]) => ({ id, who, peer, mic, camera }));
+    .map(([id, { who, peer, mic, camera, layout }]) => ({ id, who, peer, mic, camera, layout }));
 }
 
 // ── the rooms heard ─────────────────────────────────────────────────────
@@ -554,6 +573,8 @@ export async function join(url, { video = false } = {}) {
     dead: false,
   };
   live.session = now;
+  now.layout = createLayout({ repo, onUrl: sayHere });
+  placing.setLayout(now.layout);
   setState({ call: { room: roomId, name: call.nameOf(roomId), id, mic: true, camera: !!video, joining: true, problem: null }, peers: {} });
 
   // your name and face, when your contact's found: it's said again then,
@@ -610,6 +631,8 @@ export function hangUp({ rejoin = false } = {}) {
   else forgetCall();
   removeEventListener("pagehide", now.onPageHide);
   now.timers.forEach(clearInterval);
+  now.layout?.close();
+  placing.setLayout(null);
   now.room.off(now.onMessage);
   try {
     now.room.send({ [KEY]: "bye", from: now.id });
@@ -719,6 +742,41 @@ export function showFloating(key, at) {
   setFloating(key, { ...call.settings.floating[key], ...at, hidden: false });
 }
 
+// ── faces placed in a doc (layout.js) ───────────────────────────────────
+
+/**
+ * something's showing the faces of the call on the doc `url` names (a canvas)
+ * until the function this returns is called. anyone it's placed there
+ * (placeFaces) stops floating meanwhile
+ */
+export function holdFaces(url) {
+  const id = roomUrl(url);
+  if (!id) return () => {};
+  const count = (n) => placing.setShown((was) => ({ ...was, [id]: (was[id] ?? 0) + n }));
+  count(1);
+  let held = true;
+  return () => {
+    if (!held) return;
+    held = false;
+    placing.setShown((was) => {
+      const { [id]: n, ...rest } = was;
+      return n > 1 ? { ...rest, [id]: n - 1 } : rest;
+    });
+  };
+}
+
+/**
+ * put faces on the doc `url` names: `spots` by person (call.people's key),
+ * each {x, y, size}, or null to take one off. the call's layout is made if
+ * there's none. nothing, with no call
+ */
+export async function placeFaces(url, spots) {
+  const id = roomUrl(url);
+  const layout = placing.layout();
+  if (!id || !layout || !isObject(spots)) return;
+  await layout.set(Object.fromEntries(Object.entries(spots).map(([person, spot]) => [spotKey(id, person), spot])));
+}
+
 // ── reading it ──────────────────────────────────────────────────────────
 
 export const call = {
@@ -784,6 +842,43 @@ export const call = {
   floatKey: (id, screen = false) => `${id === "me" ? "me" : state.peers[id]?.contact || id}${screen ? "/screen" : ""}`,
   asking,
   stopAsking: () => setAsking(null),
+  /**
+   * what someone's placed by (the layout's): who they are, else their id in
+   * the call. `id` is theirs, or "me"
+   */
+  personKey: (id) => (id === "me" ? (call.me()?.contact || state.call?.id || "") : state.peers[id]?.contact || id),
+  /** everyone in the call, you first: [{key, id, name, colour, me}] */
+  people() {
+    if (!state.call) return [];
+    const me = call.me();
+    return [
+      { key: call.personKey("me"), id: "me", name: me?.name ?? "", colour: me?.colour ?? "", me: true },
+      ...call.peers().map((peer) => ({
+        key: call.personKey(peer.id),
+        id: peer.id,
+        name: peer.name ?? "",
+        colour: peer.colour ?? "",
+        me: false,
+      })),
+    ];
+  },
+  /** where faces are placed in the doc `url` names: {[person key]: {x, y, size}} */
+  spots(url) {
+    const id = roomUrl(url);
+    const all = placing.layout()?.spots() ?? {};
+    const prefix = spotKey(id, "");
+    const here = {};
+    if (id) for (const [key, spot] of Object.entries(all)) if (key.startsWith(prefix)) here[key.slice(prefix.length)] = spot;
+    return here;
+  },
+  /** whether someone's face is on a doc being shown (holdFaces), so it needn't float */
+  onCanvas(id) {
+    const key = call.personKey(id);
+    const all = placing.layout()?.spots() ?? {};
+    return Object.keys(placing.shown()).some((room) => spotKey(room, key) in all);
+  },
+  /** the url of the layout the call's faces are in, or null */
+  layoutUrl: () => placing.layout()?.url() ?? null,
   /** whose face fills the panes (one still in the call, or "me"), or null */
   stage: () => {
     const id = view.stage();
@@ -952,6 +1047,8 @@ const about = () => ({
   camera: !!state.call?.camera,
   screen: !!live.session?.screen,
   face: state.call?.camera ? (state.call.face ?? null) : null,
+  // where faces are placed, once something's placed them (layout.js)
+  layout: live.session.layout?.url() ?? undefined,
 });
 
 function sayHere() {
@@ -1022,6 +1119,8 @@ function showPeer(id, fields) {
 }
 
 function onHere(from, tab, message) {
+  // (said by anyone, even someone not connected yet)
+  live.session.layout?.hear(message.layout);
   const who = whoFrom(message.who);
   if (!who) return;
   let peer = live.session.peers.get(from);

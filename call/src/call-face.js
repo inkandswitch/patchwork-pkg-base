@@ -1,8 +1,9 @@
 // one person's face in your call, for anywhere: lattice puts one on each
 // cursor. who it's of is said on its element, as attributes: `peer` (their
-// tab, as presence knows it) and/or `contact` (who they are), `size` (px),
-// and `no-title` to leave their name off it (a cursor says it already).
-// nobody in your call by those, and it's nothing
+// tab, as presence knows it) and/or `contact` (who they are), or `person`
+// (their id in the call, or "me": yourself), `size` (px), and `no-title` to
+// leave their name off it (a cursor says it already). nobody in your call by
+// those, and it's nothing
 import { createSignal, Show } from "solid-js";
 import { render } from "solid-js/web";
 import html from "solid-js/html";
@@ -10,12 +11,13 @@ import { call } from "./engine/call.js";
 import { Face } from "./ui/ui.js";
 import "./ui/styles.css";
 
-const ASKS = ["peer", "contact", "size", "no-title"];
+const ASKS = ["peer", "contact", "person", "size", "no-title"];
 
 export function CallFace(element) {
   const read = () => ({
     peer: element.getAttribute("peer") ?? "",
     contact: element.getAttribute("contact") ?? "",
+    person: element.getAttribute("person") ?? "",
     size: Number(element.getAttribute("size")) || undefined,
     title: !element.hasAttribute("no-title"),
   });
@@ -25,8 +27,14 @@ export function CallFace(element) {
 
   const id = () => {
     if (!call.get()) return null;
-    const { peer, contact } = asked();
-    return call.find({ peer, contact })?.id ?? null;
+    const { peer, contact, person } = asked();
+    // you, or someone by their id in the call
+    if (person === "me") return "me";
+    if (person && call.peers().some((other) => other.id === person)) return person;
+    const found = call.find({ peer, contact })?.id;
+    if (found) return found;
+    // (someone else in another tab is found first)
+    return contact && contact === call.me()?.contact ? "me" : null;
   };
   const dispose = render(
     () => html`<${Show} when=${id} keyed>

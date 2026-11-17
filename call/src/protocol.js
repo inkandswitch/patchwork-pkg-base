@@ -12,12 +12,21 @@
 //                                    url, or null. it hears no room, so ask
 //                                    it as often as you like (a list of docs,
 //                                    a row each)
+//   patchwork:call-faces {url}       a tool is showing the call's faces on the doc
+//                                    `url`, at the spots it's given (the
+//                                    layout, engine/layout.js). anyone placed
+//                                    there stops floating while it's held
+//                                    → {here, people: [{key, id, name, colour,
+//                                    me}], spots: {[key]: {x, y, size}}}
+//   patchwork:call (an event)        {action: "place-faces", url, spots: {[key]:
+//                                    {x, y, size} | null}}: place faces (null
+//                                    takes one off)
 //
 // a url is any room id (room.js): a doc's url, or "key:<hex>"
 import { call, onCallIn } from "./engine/call.js";
 import { roomUrl } from "./engine/room.js";
 
-export { CALL, CALL_EVENT, CALL_NOW, CALL_ROOM, CALL_VIDEO } from "./protocol-names.js";
+export { CALL, CALL_EVENT, CALL_FACES, CALL_NOW, CALL_ROOM, CALL_VIDEO } from "./protocol-names.js";
 
 /** {here, others, elsewhere} for the room `url`: you're in its call; how many others are; you're in one somewhere else */
 export function roomState(url) {
@@ -25,4 +34,9 @@ export function roomState(url) {
   const now = call.get()?.room ?? null;
   const here = !!id && now === id;
   return { here, others: id ? onCallIn(id).length : 0, elsewhere: !!now && !here };
+}
+
+/** {here, people, spots} for the faces on the doc `url`: you're in a call; who's in it; where they're placed there */
+export function facesState(url) {
+  return { here: !!call.get(), people: call.people(), spots: call.spots(url) };
 }

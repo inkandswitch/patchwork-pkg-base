@@ -533,6 +533,7 @@ export function CallFloating(props) {
       ...[...call.peers().map((peer) => peer.id), "me"].flatMap((id) => (call.screen(id) ? [`${id}${SCREEN}`] : [])),
     ].filter((item) => {
       const { id, screen } = floatOf(item);
+      if (!screen && call.onCanvas(id)) return false;
       return !call.settings.floating[call.floatKey(id, screen)]?.hidden;
     }),
   );

@@ -11,6 +11,7 @@ const [staged, setStaged] = createSignal(null);
 const [filling, setFilling] = createSignal(null);
 const [peers, setPeers] = createSignal([]);
 const [screens, setScreens] = createSignal({});
+const [onCanvas, setOnCanvas] = createSignal([]);
 const join = vi.fn();
 const toggleFill = vi.fn();
 const setFloating = vi.fn();
@@ -34,6 +35,7 @@ vi.mock("../src/engine/call.js", () => {
     settings: { floating: {} },
     floatKey: (id, screen) => (screen ? `${id}/screen` : id),
     find: () => null,
+    onCanvas: (id) => onCanvas().includes(id),
   };
   const nothing = () => {};
   return {
@@ -117,6 +119,29 @@ describe("floating faces", () => {
     expect(host.querySelector(".patchwork-call-floating")).not.toBe(null);
     dispose();
     host.remove();
+    setInCall(null);
+  });
+});
+
+describe("faces placed in a doc", () => {
+  test("they step aside while it's showing them, and come back when it's not", async () => {
+    setInCall({ room: "automerge:here", mic: true });
+    setPeers([{ id: "p1", name: "ana" }]);
+    const host = document.body.appendChild(document.createElement("div"));
+    const dispose = render(() => html`<${CallFloating} area=${() => null} />`, host);
+    await tick();
+    const floating = () => host.querySelectorAll(".patchwork-call-float").length;
+    expect(floating()).toBe(2);
+    // ana's on a canvas: you still float
+    setOnCanvas(["p1"]);
+    await tick();
+    expect(floating()).toBe(1);
+    setOnCanvas([]);
+    await tick();
+    expect(floating()).toBe(2);
+    dispose();
+    host.remove();
+    setPeers([]);
     setInCall(null);
   });
 });

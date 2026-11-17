@@ -5,9 +5,9 @@ import { createEffect, createRoot } from "solid-js";
 import { render } from "solid-js/web";
 import html from "solid-js/html";
 import { accept } from "@inkandswitch/patchwork-providers";
-import { ask, call, hangUp, hearRoom, holdVideoSpot } from "./engine/call.js";
+import { ask, call, hangUp, hearRoom, holdFaces, holdVideoSpot, placeFaces } from "./engine/call.js";
 import { roomUrl } from "./engine/room.js";
-import { CALL, CALL_EVENT, CALL_NOW, CALL_ROOM, CALL_VIDEO, roomState } from "./protocol.js";
+import { CALL, CALL_EVENT, CALL_FACES, CALL_NOW, CALL_ROOM, CALL_VIDEO, facesState, roomState } from "./protocol.js";
 import { CallFloating, CallQuestion, CallStage } from "./ui/ui.js";
 import { stageArea } from "./ui/area.js";
 import { chimes } from "./engine/chimes.js";
@@ -81,6 +81,8 @@ export function CallProvider(element) {
       case CALL_NOW:
         // (it holds nothing: the room your call's in is heard already)
         return answer(event, () => ({ room: call.get()?.room ?? null }), () => () => {});
+      case CALL_FACES:
+        return answer(event, () => facesState(selector.url), () => holdFaces(selector.url));
       case CALL_VIDEO:
         return answer(
           event,
@@ -91,9 +93,10 @@ export function CallProvider(element) {
   }
 
   function onCall(event) {
-    const { action, url, at } = event.detail ?? {};
+    const { action, url, at, spots } = event.detail ?? {};
     if (action === "ask") ask(url, { at: at ?? null });
     else if (action === "hang-up") hangUp();
+    else if (action === "place-faces") placeFaces(url, spots);
   }
 
   // what floats: the question, faces, and whoever's on the stage, in a layer
