@@ -116,26 +116,21 @@ export function Face(props) {
 
 // ── connecting: a quilt being mended ───────────────────────────────────
 
-// the eight patches round the middle, anticlockwise from the top left: where
-// each sits (row, column), and which way is out from the middle (it's pulled
-// away that way)
+// the four patches, anticlockwise from the top left: where each sits (row,
+// column), and which way is out from the middle (it's pulled away that way)
 const PATCHES = [
   [1, 1, -1, -1],
-  [2, 1, -1, 0],
-  [3, 1, -1, 1],
-  [3, 2, 0, 1],
-  [3, 3, 1, 1],
-  [2, 3, 1, 0],
-  [1, 3, 1, -1],
-  [1, 2, 0, -1],
+  [2, 1, -1, 1],
+  [2, 2, 1, 1],
+  [1, 2, 1, -1],
 ];
-// how many fabrics there are (styles.css: --patchwork-call-fabric-*)
-const FABRICS = 8;
+// (eight fabrics, styles.css: --patchwork-call-fabric-*: each patch has two
+// of its own)
 
 /**
  * while someone's connecting: a little patchwork quilt over their face, one
  * patch at a time peeled away and a new one laid in its place, round it
- * anticlockwise. the middle is theirs (their colour), and stays
+ * anticlockwise
  */
 function Quilt() {
   const quilt = document.createElement("span");
@@ -147,16 +142,13 @@ function Quilt() {
     patch.className = "patchwork-call-quilt-patch";
     patch.style.gridArea = `${row} / ${column}`;
     // what it is, and what it's mended with: never the same
-    patch.style.setProperty("--was", `var(--patchwork-call-fabric-${(i % FABRICS) + 1})`);
-    patch.style.setProperty("--now", `var(--patchwork-call-fabric-${((i + 3) % FABRICS) + 1})`);
+    patch.style.setProperty("--was", `var(--patchwork-call-fabric-${i + 1})`);
+    patch.style.setProperty("--now", `var(--patchwork-call-fabric-${i + 1 + PATCHES.length})`);
     patch.style.setProperty("--i", String(i));
     patch.style.setProperty("--dx", String(dx));
     patch.style.setProperty("--dy", String(dy));
     quilt.append(patch);
   });
-  const middle = document.createElement("span");
-  middle.className = "patchwork-call-quilt-middle";
-  quilt.append(middle);
   return quilt;
 }
 

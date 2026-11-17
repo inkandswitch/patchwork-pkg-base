@@ -1115,12 +1115,12 @@
 }
 
 /* ── connecting: a quilt being mended (ui.js: Quilt) ─────────────────────
-   over the middle of their face: a 3×3 quilt, their colour in the middle.
-   one patch at a time is pulled away (out from the middle, with a twist)
-   and a new one's laid in its place, going round anticlockwise. a patch's
-   turn is a step: its going and the next one's coming overlap, so it flows
-   round. each patch has two fabrics and goes round twice before it's back
-   where it started */
+   over the middle of their face: four patches, nothing behind them. one
+   at a time is pulled away (out from the middle, with a twist) and a new
+   one's laid in its place, going round anticlockwise. a patch's turn is a
+   step: its going and the next one's coming overlap, so it flows round.
+   each patch has two fabrics and goes round twice before it's back where
+   it started */
 
 .patchwork-call-face {
 	/* the fabrics: each a tile (its size, in the patch) of gradients on a
@@ -1152,7 +1152,7 @@
 
 .patchwork-call-quilt {
 	/* a patch's turn */
-	--step: 240ms;
+	--step: 300ms;
 	position: absolute;
 	left: 50%;
 	top: 50%;
@@ -1162,31 +1162,21 @@
 	height: min(70%, 72px);
 	aspect-ratio: 1;
 	display: grid;
-	grid-template: repeat(3, 1fr) / repeat(3, 1fr);
-	/* the seams, and the batting a peeled patch leaves showing */
+	grid-template: repeat(2, 1fr) / repeat(2, 1fr);
+	/* the seams */
 	gap: 1px;
-	padding: 1px;
-	box-sizing: border-box;
-	border-radius: 2px;
-	background: oklch(0.88 0.02 85);
-	box-shadow: 0 1px 3px oklch(0 0 0 / 0.35);
 	pointer-events: none;
-}
-
-.patchwork-call-quilt-middle {
-	grid-area: 2 / 2;
-	background: var(--call-face, oklch(0.5 0.14 32));
 }
 
 .patchwork-call-quilt-patch {
 	background-image: var(--was);
 	background-size: 33.334% 33.334%;
-	animation: patchwork-call-quilt calc(var(--step) * 16) linear infinite both;
+	animation: patchwork-call-quilt calc(var(--step) * 8) linear infinite both;
 	animation-delay: calc(var(--i) * var(--step));
 }
 
-/* sixteen steps: its going (one), the new one laid (the next), then the
-   rest of the way round; and the same again with the other fabric */
+/* eight steps: its going (one), the new one laid (the next), then the rest
+   of the way round; and the same again with the other fabric */
 @keyframes patchwork-call-quilt {
 	0% {
 		background-image: var(--was);
@@ -1195,24 +1185,24 @@
 		animation-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
 	}
 	/* lifted, still all there; then pulled away */
-	3.1% {
+	6.25% {
 		background-image: var(--was);
 		transform: translate(calc(var(--dx) * 12%), calc(var(--dy) * 12%)) rotate(-8deg) scale(1.12);
 		opacity: 1;
 		animation-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
 	}
-	6.2% {
+	12.4% {
 		background-image: var(--was);
 		transform: translate(calc(var(--dx) * 45%), calc(var(--dy) * 45%)) rotate(-16deg) scale(1.08);
 		opacity: 0;
 	}
-	6.3% {
+	12.5% {
 		background-image: var(--now);
 		transform: scale(1.22);
 		opacity: 0;
 		animation-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
 	}
-	12.5%,
+	25%,
 	50% {
 		background-image: var(--now);
 		transform: none;
@@ -1220,24 +1210,24 @@
 		/* (for what starts at 50%: its going again) */
 		animation-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
 	}
-	53.1% {
+	56.25% {
 		background-image: var(--now);
 		transform: translate(calc(var(--dx) * 12%), calc(var(--dy) * 12%)) rotate(-8deg) scale(1.12);
 		opacity: 1;
 		animation-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
 	}
-	56.2% {
+	62.4% {
 		background-image: var(--now);
 		transform: translate(calc(var(--dx) * 45%), calc(var(--dy) * 45%)) rotate(-16deg) scale(1.08);
 		opacity: 0;
 	}
-	56.3% {
+	62.5% {
 		background-image: var(--was);
 		transform: scale(1.22);
 		opacity: 0;
 		animation-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
 	}
-	62.5%,
+	75%,
 	100% {
 		background-image: var(--was);
 		transform: none;
@@ -1249,29 +1239,29 @@
    fabric in turn, so it's still plainly connecting */
 @keyframes patchwork-call-quilt-still {
 	0%,
-	62.5%,
+	75%,
 	100% {
 		background-image: var(--was);
 		opacity: 1;
 	}
-	6.2% {
+	12.4% {
 		background-image: var(--was);
 		opacity: 0.2;
 	}
-	6.3% {
+	12.5% {
 		background-image: var(--now);
 		opacity: 0.2;
 	}
-	12.5%,
+	25%,
 	50% {
 		background-image: var(--now);
 		opacity: 1;
 	}
-	56.2% {
+	62.4% {
 		background-image: var(--now);
 		opacity: 0.2;
 	}
-	56.3% {
+	62.5% {
 		background-image: var(--was);
 		opacity: 0.2;
 	}
