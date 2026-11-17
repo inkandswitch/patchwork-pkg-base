@@ -4,9 +4,10 @@
 // the one you're in: where it is, everyone in it, and your mic, camera,
 // screen (where there's one to share) and hanging up. its menu says where
 // faces go (floating, or in the sidebar where a frame can show them there),
-// which mic and camera, and what's done about noise. with nothing to show,
+// which mic and camera, the video effect on your camera (where the browser
+// can, and a package has given one), and what's done about noise. with nothing to show,
 // it takes no room (data-sidebar-size: none)
-import { createEffect, createSignal, For, Show } from "solid-js";
+import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
 import { render } from "solid-js/web";
 import html from "solid-js/html";
 import { openDocument } from "@inkandswitch/patchwork-elements";
@@ -19,6 +20,7 @@ import {
   join,
   setCamera,
   setDevice,
+  setEffect,
   setFaces,
   setMic,
   setNoise,
@@ -26,6 +28,8 @@ import {
   stopScreen,
 } from "./engine/call.js";
 import { download, DOWNLOAD_BYTES, NOISE } from "./engine/noise.js";
+import * as effects from "./engine/effects.js";
+import { download as faceModel } from "./engine/landmarks.js";
 import { DragOut, Face, StageButton, names } from "./ui/ui.js";
 import { scrollsAlong } from "./ui/along.js";
 import { arrivals } from "./ui/arriving.js";
@@ -48,6 +52,10 @@ function Panel(props) {
   let menu;
   const [found, setFound] = createSignal({ audio: [], video: [] });
   const go = (url) => openDocument(props.element, url);
+  // the video effects there are (any package's: effects.js), and none where
+  // this browser can't draw them
+  const [offered, setOffered] = createSignal([]);
+  if (effects.supported()) onCleanup(effects.watch(setOffered));
 
   async function openMenu(event) {
     if (menu.matches(":popover-open")) return menu.hidePopover();
@@ -197,9 +205,31 @@ function Panel(props) {
           />`}
       <//>
       <${Devices} kind="video" />
+      <${Show} when=${() => offered().length > 0}>
+        <div class="patchwork-call-menu-heading">effects</div>
+        <${Choice} label="off" checked=${() => call.settings.effect === "off"} choose=${(event) => setEffect("off")} />
+        <${For} each=${offered}>
+          ${(effect) =>
+            html`<${Choice}
+              label=${() => `${effect.name} ${effectNote(effect)}`.trim()}
+              checked=${() => call.settings.effect === effect.id}
+              choose=${(event) => setEffect(effect.id)}
+            />`}
+        <//>
+      <//>
     </div>
   </div>`;
   };
+
+  // an effect's line of the menu says how its face model's coming, while
+  // that's what it's waiting for
+  function effectNote(effect) {
+    if (!effect.needs.includes("landmarks") || call.settings.effect !== effect.id) return "";
+    const { state, got, total } = faceModel();
+    if (state === "loading") return `· downloading ${Math.floor((got / total) * 100)}%`;
+    if (state === "failed") return "· couldn't download it";
+    return "";
+  }
 
   // DeepFilterNet's download, in its line of the menu and under the call
   // while it's going: what it is till it's here, how far it's got, or why not

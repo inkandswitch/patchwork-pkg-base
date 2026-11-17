@@ -24,6 +24,7 @@ import { openChannel } from "./channel.js";
 import { callToRejoin, forgetCall, keepCall, leavingCall } from "./rejoin.js";
 import { listen } from "./speaking.js";
 import { haveModel, isNoise, loadModel, suppressed } from "./noise.js";
+import * as effects from "./effects.js";
 import { videoFor } from "./sizes.js";
 
 // (lattice's name for it: its calls and these hear each other)
@@ -128,6 +129,9 @@ const {
       mic: string(saved.mic),
       // what's done about the noise round your voice (noise.js)
       noise: isNoise(saved.noise) ? saved.noise : "browser",
+      // which video effect (effects.js) is drawn on your camera: a plugin's
+      // id, or "off"
+      effect: string(saved.effect) || "off",
       floating: isObject(saved.floating) ? saved.floating : {},
     });
     // who's heard to be on a call, in each room heard: {[room]: {[id]: {who, at}}}
@@ -177,6 +181,7 @@ function saveSettings() {
     camera: settings.camera,
     mic: settings.mic,
     noise: settings.noise,
+    effect: settings.effect,
     floating: settings.floating,
   });
 }
@@ -416,6 +421,32 @@ async function getTrack(kind, { noiseSuppression = true } = {}) {
   }
 }
 
+// your camera, with the video effect that's on drawn on it (effects.js). with
+// none on, or none that can be (this browser can't, the plugin's gone, it won't
+// start), it's the camera as it is
+async function getVideo() {
+  const raw = await getTrack("video");
+  const wanted = settings.effect;
+  if (!raw || wanted === "off" || !effects.supported()) return raw;
+  try {
+    const effect = await effects.find(wanted);
+    if (!effect) return raw;
+    return effects.processed(raw, effect, { onProblem: effectProblem });
+  } catch (error) {
+    console.warn("[call] couldn't start the video effect", error);
+    if (live.session) setState("call", "problem", "couldn't start the video effect");
+    return raw;
+  }
+}
+
+// the effect said something's wrong: said to you, and if it can't go on,
+// it's off, and your camera's as it is
+function effectProblem(text, { drop }) {
+  if (!live.session) return;
+  setState("call", "problem", text);
+  if (drop && settings.effect !== "off") setEffect("off");
+}
+
 // your mic, the noise round it dealt with as settings.noise says. with
 // DeepFilterNet not downloaded yet, it's the browser's suppression till it
 // is: it's downloaded meanwhile, and then the mic's taken again (refreshMic)
@@ -485,7 +516,8 @@ function useTrack(kind, track) {
     old.stop();
   }
   if (track) live.session.local.addTrack(track);
-  if (kind === "video") watchMine(track);
+  // the face is looked for in the camera itself, not what's drawn on it
+  if (kind === "video") watchMine(track?.source ?? track);
   if (kind === "audio") listenMine(track);
   for (const peer of live.session.peers.values()) {
     for (const transceiver of peer.pc.getTransceivers()) {
@@ -566,7 +598,7 @@ export async function join(url, { video = false } = {}) {
   });
   const [audio, camera] = await Promise.all([
     getAudio(),
-    video ? getTrack("video") : null,
+    video ? getVideo() : null,
     Promise.race([who, new Promise((resolve) => setTimeout(resolve, 800))]),
   ]);
   if (now.dead) {
@@ -576,7 +608,7 @@ export async function join(url, { video = false } = {}) {
   }
   if (audio) now.local.addTrack(audio);
   if (camera) now.local.addTrack(camera);
-  if (camera) watchMine(camera);
+  if (camera) watchMine(camera.source ?? camera);
   if (audio) listenMine(audio);
   const problem = !audio ? (video && !camera ? "no mic or camera" : "no mic") : video && !camera ? "no camera" : null;
   setState("call", { joining: false, camera: !!camera, mic: !!audio, problem });
@@ -662,7 +694,7 @@ export async function setCamera(on) {
     return;
   }
   const now = live.session;
-  const track = await getTrack("video");
+  const track = await getVideo();
   if (live.session !== now) return track?.stop();
   if (!track) return setState("call", "problem", "no camera");
   useTrack("video", track);
@@ -678,10 +710,37 @@ export async function setDevice(kind, device) {
   if (!live.session) return;
   if (kind === "video" && !state.call?.camera) return;
   if (kind === "audio") return refreshMic();
+  return refreshCamera();
+}
+
+// your camera taken again (a different one, or with another effect on it),
+// in place of the one you had
+async function refreshCamera() {
   const now = live.session;
-  const track = await getTrack(kind);
+  if (!now || !state.call?.camera) return;
+  const track = await getVideo();
   if (live.session !== now || !track) return track?.stop();
-  useTrack(kind, track);
+  useTrack("video", track);
+}
+
+/**
+ * the video effect drawn on your camera, for everyone to see: the id of a
+ * "patchwork:call-effect" plugin (effects.js), or "off"
+ */
+export async function setEffect(id) {
+  id = string(id) || "off";
+  if (settings.effect === id) return;
+  setSettings("effect", id);
+  saveSettings();
+  const now = live.session;
+  if (!now || !state.call?.camera) return;
+  // one already going just draws another: the track's the same
+  const going = trackOf("video");
+  if (going?.setEffect && id !== "off") {
+    const effect = await effects.find(id);
+    if (live.session === now && settings.effect === id && effect) return going.setEffect(effect);
+  }
+  if (live.session === now && settings.effect === id) refreshCamera();
 }
 
 /** the mics and cameras there are: {audio: [{id, label}], video: [...]} */
