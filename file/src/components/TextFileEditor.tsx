@@ -33,6 +33,7 @@ import {createCaretExtension} from "./caret"
 import {collectExtensions} from "./codemirror-extensions"
 import {createFileComments} from "./comments"
 import {createPresenceExtension} from "./presence"
+import {shareScroll} from "./scroll-state"
 import {subscribe} from "@inkandswitch/patchwork-providers-solid"
 import type {AutomergeUrl, Repo} from "@automerge/automerge-repo/slim"
 import codemirrorTheme from "../codemirror-theme"
@@ -174,6 +175,11 @@ export function TextFileEditor(props: {
 	})
 	comments?.attach(view)
 	reconfigurePresence(view)
+	// where it's scrolled to, for anyone following (the call)
+	const stopScroll = props.element
+		? shareScroll(props.element, repo, view)
+		: undefined
+	onCleanup(() => stopScroll?.())
 
 	// For code files, connect to the shared TypeScript language server (tsgo,
 	// in a worker) and add its features to the editor in place. Each document

@@ -1,4 +1,5 @@
 import { CodeMirror } from "./lib/codemirror.tsx";
+import { shareScroll } from "./lib/view/scroll-state.ts";
 import { render } from "solid-js/web";
 import type { ToolImplementation } from "@inkandswitch/patchwork-plugins";
 
@@ -324,6 +325,10 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
               onChangeSelection={onChangeSelection}
               scrollTarget={scrollTarget}
               contactUrl={() => contactUrl() ?? null}
+              // where it's scrolled to, for anyone following (the call)
+              withView={(view) =>
+                onCleanup(shareScroll(props.element, props.repo, view))
+              }
             />
           </Show>
         </div>
