@@ -123,23 +123,46 @@ const baseHeadingStyles = {
   textDecoration: "none",
 };
 
-/** A title stands out by weight: h1 very heavy, the rest a step lighter.
- *  A theme can still set them (--studio-heading-weight-1 for h1). */
+/** Bulma's title/subtitle pair: h1 is the one title, heavy and tight; h2–h6
+ *  are subtitles, stepping down in size with only a little weight, and a
+ *  touch softer in colour. A theme can still set them
+ *  (--studio-heading-weight-1 for h1, --studio-heading-weight for the rest). */
 const H1_WEIGHT = "var(--studio-heading-weight-1, 800)";
-const HEADING_WEIGHT = "var(--studio-heading-weight, 650)";
+const HEADING_WEIGHT = "var(--studio-heading-weight, 500)";
+const SUBTITLE_COLOUR =
+  "color-mix(in oklab, var(--text-editor-line) 82%, var(--text-editor-fill, transparent))";
+
+type HeadingSize = {
+  fontSize: string;
+  lineHeight: string;
+  fontWeight: string;
+  letterSpacing?: string;
+  color?: string;
+};
+
+const subtitle = (level: number, size: string, leading: string): HeadingSize => ({
+  fontSize: `var(--studio-heading-size-${level}, ${zoomed(size)})`,
+  lineHeight: zoomed(leading),
+  fontWeight: HEADING_WEIGHT,
+  color: SUBTITLE_COLOUR,
+});
 
 /** Size and leading per heading level, shared by the highlight rules (the
- *  heading's text) and the line classes margin.ts puts on heading lines. */
-const headingSizes: Record<
-  number,
-  { fontSize?: string; lineHeight?: string; fontWeight: string }
-> = {
-  1: { fontSize: `var(--studio-heading-size-1, ${zoomed("1.5rem")})`, lineHeight: zoomed("2rem"), fontWeight: H1_WEIGHT },
-  2: { fontSize: `var(--studio-heading-size-2, ${zoomed("1.5rem")})`, lineHeight: zoomed("2rem"), fontWeight: HEADING_WEIGHT },
-  3: { fontSize: `var(--studio-heading-size-3, ${zoomed("1.25rem")})`, lineHeight: zoomed("1.75rem"), fontWeight: HEADING_WEIGHT },
-  4: { fontSize: `var(--studio-heading-size-4, ${zoomed("1.1rem")})`, fontWeight: HEADING_WEIGHT },
-  5: { fontWeight: HEADING_WEIGHT },
-  6: { fontWeight: HEADING_WEIGHT },
+ *  heading's text) and the line classes margin.ts puts on heading lines.
+ *  Bulma's 3 / 2.5 / 2 / 1.5 / 1.25 / 1rem, pulled in a little for a page
+ *  you write on rather than a landing page. */
+const headingSizes: Record<number, HeadingSize> = {
+  1: {
+    fontSize: `var(--studio-heading-size-1, ${zoomed("2.25rem")})`,
+    lineHeight: zoomed("2.75rem"),
+    fontWeight: H1_WEIGHT,
+    letterSpacing: "-0.02em",
+  },
+  2: subtitle(2, "1.75rem", "2.25rem"),
+  3: subtitle(3, "1.5rem", "2rem"),
+  4: subtitle(4, "1.25rem", "1.75rem"),
+  5: subtitle(5, "1.125rem", "1.5rem"),
+  6: subtitle(6, "1rem", "1.5rem"),
 };
 
 /**
@@ -154,17 +177,15 @@ const headingLines = {
       {
         fontFamily: baseHeadingStyles.fontFamily,
         ...size,
-        // the patchwork theme's highlighter weights headings by this; match
+        // the patchwork theme's highlighter weights and colours headings by
+        // these; match. headings are set off by size, not by the theme's
+        // code colour for headings: the title is the text colour, subtitles
+        // a touch softer.
         "--syntax-weight-heading": size.fontWeight,
+        "--syntax-heading": size.color ?? "var(--text-editor-line)",
       },
     ])
   ),
-  // headings are set off by size, not colour: the theme's heading colour
-  // (--syntax-heading, which the patchwork theme's highlighter reads) is the
-  // text colour here, whatever the theme picks for code.
-  ".cm-md-h1, .cm-md-h2, .cm-md-h3, .cm-md-h4, .cm-md-h5, .cm-md-h6": {
-    "--syntax-heading": "var(--text-editor-line)",
-  },
 };
 
 const baseCodeStyles = {
@@ -213,9 +234,14 @@ export const markdownSyntaxHighlighting = (style: "serif" | "sans") =>
       marginTop: zoomed("2rem"),
     },
     {
-      tag: [tags.heading5, tags.heading6],
+      tag: tags.heading5,
       ...baseHeadingStyles,
       ...headingSizes[5],
+    },
+    {
+      tag: tags.heading6,
+      ...baseHeadingStyles,
+      ...headingSizes[6],
     },
     {
       tag: tags.processingInstruction,

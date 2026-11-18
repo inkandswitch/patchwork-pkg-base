@@ -117,7 +117,7 @@ function Panel(props) {
           else openMenu(event);
         }}
       >
-        ${icon("chevron-down", 12)}
+        ${icon("cog", 12)}
       </button>
     </div>
     <div class="patchwork-call-panel-row">
