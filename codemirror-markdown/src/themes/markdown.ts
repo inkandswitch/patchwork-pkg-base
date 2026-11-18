@@ -124,20 +124,17 @@ const baseHeadingStyles = {
 };
 
 /** Bulma's title/subtitle pair: h1 is the one title, heavy and tight; h2–h6
- *  are subtitles, stepping down in size with only a little weight, and a
- *  touch softer in colour. A theme can still set them
+ *  are subtitles, stepping down in size with only a little weight. All of
+ *  them are the text colour. A theme can still set the weights
  *  (--studio-heading-weight-1 for h1, --studio-heading-weight for the rest). */
 const H1_WEIGHT = "var(--studio-heading-weight-1, 800)";
 const HEADING_WEIGHT = "var(--studio-heading-weight, 500)";
-const SUBTITLE_COLOUR =
-  "color-mix(in oklab, var(--text-editor-line) 82%, var(--text-editor-fill, transparent))";
 
 type HeadingSize = {
   fontSize: string;
   lineHeight: string;
   fontWeight: string;
   letterSpacing?: string;
-  color?: string;
 };
 
 /** `size` is in body ems; `leading` too, turned into a ratio of the
@@ -150,7 +147,6 @@ const sized = (level: number, size: number, leading: number) => ({
 const subtitle = (level: number, size: number, leading: number): HeadingSize => ({
   ...sized(level, size, leading),
   fontWeight: HEADING_WEIGHT,
-  color: SUBTITLE_COLOUR,
 });
 
 /** Size and leading per heading level, in ems of the body text, so they
@@ -187,10 +183,9 @@ const headingLines = {
         ...size,
         // the patchwork theme's highlighter weights and colours headings by
         // these; match. headings are set off by size, not by the theme's
-        // code colour for headings: the title is the text colour, subtitles
-        // a touch softer.
+        // code colour for headings: they're all the text colour.
         "--syntax-weight-heading": size.fontWeight,
-        "--syntax-heading": size.color ?? "var(--text-editor-line)",
+        "--syntax-heading": "var(--text-editor-line)",
       },
     ])
   ),
@@ -207,7 +202,6 @@ const headingLines = {
 const headingText = (level: number) => ({
   ...baseHeadingStyles,
   fontWeight: headingSizes[level].fontWeight,
-  color: headingSizes[level].color,
 });
 
 const baseCodeStyles = {
