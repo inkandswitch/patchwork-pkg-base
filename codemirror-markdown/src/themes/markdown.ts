@@ -140,35 +140,43 @@ type HeadingSize = {
   color?: string;
 };
 
-const subtitle = (level: number, size: string, leading: string): HeadingSize => ({
-  fontSize: `var(--studio-heading-size-${level}, ${zoomed(size)})`,
-  lineHeight: zoomed(leading),
+/** `size` is in body ems; `leading` too, turned into a ratio of the
+ *  heading's own size so it follows a theme's --studio-heading-size-N. */
+const sized = (level: number, size: number, leading: number) => ({
+  fontSize: `var(--studio-heading-size-${level}, ${size}em)`,
+  lineHeight: String(Math.round((leading / size) * 1000) / 1000),
+});
+
+const subtitle = (level: number, size: number, leading: number): HeadingSize => ({
+  ...sized(level, size, leading),
   fontWeight: HEADING_WEIGHT,
   color: SUBTITLE_COLOUR,
 });
 
-/** Size and leading per heading level, shared by the highlight rules (the
- *  heading's text) and the line classes margin.ts puts on heading lines.
- *  Bulma's 3 / 2.5 / 2 / 1.5 / 1.25 / 1rem, pulled in a little for a page
- *  you write on rather than a landing page. */
+/** Size and leading per heading level, in ems of the body text, so they
+ *  follow the editor's font size (and its zoom) with nothing else to scale.
+ *  Bulma's 3 / 2.5 / 2 / 1.5 / 1.25 / 1, pulled in a little for a page you
+ *  write on rather than a landing page. */
 const headingSizes: Record<number, HeadingSize> = {
   1: {
-    fontSize: `var(--studio-heading-size-1, ${zoomed("2.25rem")})`,
-    lineHeight: zoomed("2.75rem"),
+    ...sized(1, 2.25, 2.75),
     fontWeight: H1_WEIGHT,
     letterSpacing: "-0.02em",
   },
-  2: subtitle(2, "1.75rem", "2.25rem"),
-  3: subtitle(3, "1.5rem", "2rem"),
-  4: subtitle(4, "1.25rem", "1.75rem"),
-  5: subtitle(5, "1.125rem", "1.5rem"),
-  6: subtitle(6, "1rem", "1.5rem"),
+  2: subtitle(2, 1.75, 2.25),
+  3: subtitle(3, 1.5, 2),
+  4: subtitle(4, 1.25, 1.75),
+  5: subtitle(5, 1.125, 1.5),
+  6: subtitle(6, 1, 1.5),
 };
 
 /**
- * The same, on the whole line: a widget that replaces part of a heading (a
- * rendered link) isn't wrapped in the heading's highlight span, so without
- * this it falls back to the body size.
+ * Headings are sized on their line (margin.ts marks it `.cm-md-hN`), and only
+ * there: it's a child of `.cm-content`, so its `em` is the body's. The
+ * highlighter's spans inside it inherit the size rather than set their own —
+ * an `em` there would be the heading's, and compound. The line also covers a
+ * widget that replaces part of a heading (a rendered link), which the
+ * highlighter doesn't wrap.
  */
 const headingLines = {
   ...Object.fromEntries(
@@ -186,7 +194,21 @@ const headingLines = {
       },
     ])
   ),
+  // a `#` still waiting for its space (margin.ts): the parser has it as an
+  // empty heading already, but it's drawn as body text until it is one. its
+  // line isn't `.cm-md-hN`, so it's at the body's size already.
+  ".cm-md-bare-heading span": {
+    fontFamily: "inherit",
+    fontWeight: "inherit",
+  },
 };
+
+/** What the highlighter puts on a heading's text: everything but its size. */
+const headingText = (level: number) => ({
+  ...baseHeadingStyles,
+  fontWeight: headingSizes[level].fontWeight,
+  color: headingSizes[level].color,
+});
 
 const baseCodeStyles = {
   fontFamily: "var(--text-editor-family-code)",
@@ -205,44 +227,12 @@ export const markdownSyntaxHighlighting = (style: "serif" | "sans") =>
       tag: tags.content,
       fontFamily: bodyFont(style),
     },
-    {
-      tag: tags.heading1,
-      ...baseHeadingStyles,
-      ...headingSizes[1],
-      marginBottom: zoomed("1rem"),
-      marginTop: zoomed("2rem"),
-    },
-    {
-      tag: tags.heading2,
-      ...baseHeadingStyles,
-      ...headingSizes[2],
-      marginBottom: zoomed("1rem"),
-      marginTop: zoomed("2rem"),
-    },
-    {
-      tag: tags.heading3,
-      ...baseHeadingStyles,
-      ...headingSizes[3],
-      marginBottom: zoomed("1rem"),
-      marginTop: zoomed("2rem"),
-    },
-    {
-      tag: tags.heading4,
-      ...baseHeadingStyles,
-      ...headingSizes[4],
-      marginBottom: zoomed("1rem"),
-      marginTop: zoomed("2rem"),
-    },
-    {
-      tag: tags.heading5,
-      ...baseHeadingStyles,
-      ...headingSizes[5],
-    },
-    {
-      tag: tags.heading6,
-      ...baseHeadingStyles,
-      ...headingSizes[6],
-    },
+    { tag: tags.heading1, ...headingText(1) },
+    { tag: tags.heading2, ...headingText(2) },
+    { tag: tags.heading3, ...headingText(3) },
+    { tag: tags.heading4, ...headingText(4) },
+    { tag: tags.heading5, ...headingText(5) },
+    { tag: tags.heading6, ...headingText(6) },
     {
       tag: tags.processingInstruction,
       color: "var(--text-editor-line-offset-40)",

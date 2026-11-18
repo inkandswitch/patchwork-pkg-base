@@ -616,6 +616,7 @@
 	--text-editor-family-code: var(--editor-family-code);
 	--text-editor-family-sans: var(--editor-family-sans);
 	--text-editor-family: var(--text-editor-family-code);
+	--text-editor-font-size: var(--editor-font-size);
 	--text-editor-cursor-fill: var(--editor-cursor-fill);
 	--text-editor-selection-fill: var(--editor-selection-fill);
 	--text-editor-selection-line: var(--editor-selection-line);

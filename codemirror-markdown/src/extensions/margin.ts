@@ -125,20 +125,18 @@ class NumberLabel extends WidgetType {
 type SyntaxNode = ReturnType<ReturnType<typeof syntaxTree>["resolveInner"]>;
 
 /**
- * A `-`, `*` or `+` with nothing after it, not even its space: CommonMark
- * makes it an empty list item, but it's almost always a marker (or a rule)
- * still being typed, so it's left as typed until its space comes — drawn as a
- * dot, `-a` would look like `- a` until the `a` showed it wasn't.
+ * A list or heading mark with nothing after it, not even its space: `-`,
+ * `1.`, `##`. CommonMark makes it an empty item or heading, but it's almost
+ * always a marker (or a rule, or a number, or a hashtag) still being typed, so
+ * it's left as typed until its space comes — drawn as a dot, `-a` would look
+ * like `- a` until the `a` showed it wasn't; drawn as a heading, `#` would
+ * jump to a big empty H1 at the first keystroke.
  */
-function bareBullet(state: EditorState, item: SyntaxNode) {
-  const mark = item.getChild("ListMark");
-  if (!mark) return false;
+function bareMark(state: EditorState, mark: SyntaxNode) {
+  if (mark.name !== "ListMark" && mark.name !== "HeaderMark") return false;
   const line = state.doc.lineAt(mark.from);
-  return (
-    mark.to === line.to &&
-    item.to <= line.to &&
-    ["-", "*", "+"].includes(state.doc.sliceString(mark.from, mark.to))
-  );
+  // an item whose text starts on the next line (`-\n  a`) isn't bare
+  return mark.to === line.to && (!mark.parent || mark.parent.to <= line.to);
 }
 
 /**
@@ -389,7 +387,8 @@ function layout(view: EditorView): Layout {
           c = { kind: "quote", from: node.from, first, last: doc.lineAt(node.to).number, callout: null };
           startingOn.set(first, c);
         } else if (node.name === "ListItem") {
-          if (bareBullet(state, node.node)) return false;
+          const mark = node.node.getChild("ListMark");
+          if (mark && bareMark(state, mark)) return false;
           c = { kind: "list", from: node.from };
         } else if (node.name === "FencedCode" || node.name === "CodeBlock") {
           const column = node.from - doc.lineAt(node.from).from;
@@ -535,6 +534,11 @@ function build(view: EditorView): DecorationSet {
           const mark = node.node.firstChild;
           if (!mark || mark.name !== "HeaderMark") return;
           const line = doc.lineAt(node.from);
+          // `#` with no space yet: left as typed, at the body's size.
+          if (bareMark(state, mark)) {
+            addLine(line.number, "cm-md-bare-heading");
+            return;
+          }
           // in a quote or list, the `>`s and spaces before it are already
           // hidden; the label replaces only the `#`s.
           const start = containers.has(line.number)
@@ -551,8 +555,21 @@ function build(view: EditorView): DecorationSet {
           return;
         }
 
+        // `Title\n===`: the heading's size is on its line (as above), so the
+        // text lines get it too — not the `===` under them.
+        const setext = /^SetextHeading(\d)$/.exec(name);
+        if (setext) {
+          const underline = node.node.lastChild;
+          if (!underline || underline.name !== "HeaderMark") return;
+          const last = doc.lineAt(underline.from).number;
+          for (let n = doc.lineAt(node.from).number; n < last; n++) {
+            addLine(n, `cm-md-h${setext[1]}`);
+          }
+          return;
+        }
+
         if (name === "ListMark") {
-          if (node.node.parent && bareBullet(state, node.node.parent)) return;
+          if (bareMark(state, node.node)) return;
           // the mark, its spaces, and any `>`s straight after (`- > a quote`
           // in the item): all markup, all hidden under the marker
           let end = skipSpaces(state, node.to);

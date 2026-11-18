@@ -49,6 +49,16 @@ describe("margin", () => {
     expect(h2.querySelector("a.cm-link")).toBeNull(); // links are another plugin
   });
 
+  it("marks setext heading text lines with their level, not the underline", () => {
+    const view = makeView("Title\nmore\n===\n\nSub\n---\n\nbody");
+    const [t1, t2, u1, , s, u2] = lines(view);
+    expect(t1.classList).toContain("cm-md-h1");
+    expect(t2.classList).toContain("cm-md-h1");
+    expect(u1.className).not.toMatch(/cm-md-h\d/);
+    expect(s.classList).toContain("cm-md-h2");
+    expect(u2.className).not.toMatch(/cm-md-h\d/);
+  });
+
   it("keeps the label even while the caret is on the heading", () => {
     const view = makeView("## Sub\n\nbody", 4);
     const [h2] = lines(view);
@@ -77,6 +87,39 @@ describe("margin", () => {
     }
     const spaced = makeView("- ");
     expect(lines(spaced)[0].querySelector(".cm-bullet")).not.toBeNull();
+  });
+
+  it("leaves a bare number as typed until its space comes", () => {
+    for (const mark of ["1.", "10.", "1)"]) {
+      const view = makeView(mark);
+      const [line] = lines(view);
+      expect(hang(line), mark).toBeNull();
+      expect(line.textContent, mark).toBe(mark);
+      expect(line.classList.contains("cm-md-list-line"), mark).toBe(false);
+    }
+    expect(hang(lines(makeView("1. "))[0])?.textContent).toBe("1.");
+  });
+
+  it("leaves a bare # as typed until its space comes", () => {
+    for (const mark of ["#", "##", "######"]) {
+      const view = makeView(mark);
+      const [line] = lines(view);
+      expect(hang(line), mark).toBeNull();
+      expect(line.textContent, mark).toBe(mark);
+      expect(line.className, mark).not.toMatch(/cm-md-h\d/);
+      expect(line.classList, mark).toContain("cm-md-bare-heading");
+    }
+    const spaced = lines(makeView("# "))[0];
+    expect(hang(spaced)?.textContent).toBe("H1");
+    expect(spaced.classList).not.toContain("cm-md-bare-heading");
+  });
+
+  it("leaves a bare # or number in an item as typed, at the item's text", () => {
+    for (const [doc, shown] of [["- #", "#"], ["- 1.", "1."], ["> ##", "##"]]) {
+      const [line] = lines(makeView(doc));
+      expect(line.textContent, doc).toBe(shown);
+      expect(line.querySelector(".cm-md-heading-label"), doc).toBeNull();
+    }
   });
 
   it("leaves a bare bullet nested in an item as typed, at the item's text", () => {
