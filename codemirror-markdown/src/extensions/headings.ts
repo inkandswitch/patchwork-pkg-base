@@ -6,7 +6,9 @@ import {
   type Line,
   type StateCommand,
 } from "@codemirror/state";
-import { keymap } from "@codemirror/view";
+import { EditorView, ViewPlugin, keymap, type Command } from "@codemirror/view";
+import { blockPrefix } from "./prefix.ts";
+import { menuTheme, openMenu } from "./menu.ts";
 
 /**
  * Headings behave like the block type they are in lush and rich, not like
@@ -18,6 +20,10 @@ import { keymap } from "@codemirror/view";
  *  - Mod-Shift-h / Mod-Shift-j make a heading / subheading (lush's keys), and
  *    Mod-Shift-b makes body text. Mod-Alt-1…3 and Mod-Alt-0 do the same.
  *    (lush's Title key, Mod-Shift-t, belongs to the browser.)
+ *  - Left at the start of a heading's text, or a click on its H label, opens
+ *    a menu of levels by the label: Up and Down to choose, Enter to pick,
+ *    Escape or Right to go back to the text, Left again to go on to the line
+ *    above as Left otherwise would.
  */
 
 export type HeadingPrefix = { from: number; to: number; level: number };
@@ -116,11 +122,132 @@ const enter: StateCommand = ({ state, dispatch }) => {
   return true;
 };
 
+/** The `#`s at the start of the text of the caret's line, if it's a heading:
+ *  in a quote or list item too, where headingPrefix doesn't look. */
+function caretHeading(state: EditorState) {
+  const line = state.doc.lineAt(state.selection.main.head);
+  const prefix = blockPrefix(state, line);
+  if (!prefix || prefix.marks.at(-1) !== "HeaderMark") return null;
+  const from = prefix.starts.at(-1)!;
+  const level = state.doc.sliceString(from, prefix.to).trim().length;
+  return { line, from, to: prefix.to, level };
+}
+
+/** The H label the margin draws for the heading on `line`, if it's drawn. */
+function labelOn(view: EditorView, line: Line) {
+  const { node } = view.domAtPos(line.from);
+  const el = node instanceof Element ? node : node.parentElement;
+  return el?.closest(".cm-line")?.querySelector<HTMLElement>(".cm-md-heading-label") ?? null;
+}
+
+/** Open the level menu for the heading on the caret's line. */
+function openLevels(view: EditorView) {
+  const heading = caretHeading(view.state);
+  if (!heading) return false;
+  const label = labelOn(view, heading.line);
+  const box = label?.getBoundingClientRect();
+  const at = box ?? view.coordsAtPos(heading.to);
+  if (!at) return false;
+  label?.classList.add("cm-md-heading-label-open");
+  label?.setAttribute("aria-expanded", "true");
+  const levels = [1, 2, 3, 4, 5, 6].map((level) => ({
+    label: `Heading ${level}`,
+    checked: level === heading.level,
+    // the caret's line again, not the one it opened on: someone else may
+    // have moved it while the menu was up.
+    run: () => {
+      const now = caretHeading(view.state);
+      if (!now || now.level === level) return;
+      const insert = "#".repeat(level) + " ";
+      view.dispatch({
+        changes: { from: now.from, to: now.to, insert },
+        selection: EditorSelection.cursor(now.from + insert.length),
+        userEvent: "input.format",
+      });
+    },
+  }));
+  openMenu(view, at.left, at.bottom, levels, {
+    focus: heading.level - 1,
+    onKey: (event, close) => {
+      if (event.key === "ArrowRight") {
+        close();
+        view.focus();
+        return true;
+      }
+      if (event.key === "ArrowLeft") {
+        close();
+        view.focus();
+        const { line } = caretHeading(view.state) ?? heading;
+        if (line.from > 0)
+          view.dispatch({ selection: EditorSelection.cursor(line.from - 1) });
+        return true;
+      }
+      return false;
+    },
+    onClose: () => {
+      label?.classList.remove("cm-md-heading-label-open");
+      label?.removeAttribute("aria-expanded");
+    },
+  });
+  return true;
+}
+
+const leftIntoLabel: Command = (view) => {
+  const sel = view.state.selection;
+  if (sel.ranges.length !== 1 || !sel.main.empty) return false;
+  const heading = caretHeading(view.state);
+  if (!heading || sel.main.head !== heading.to) return false;
+  return openLevels(view);
+};
+
+// a plain listener, not `eventHandlers`: the label is a widget, and
+// CodeMirror doesn't pass events inside widgets on to its handlers.
+const labelClicks = ViewPlugin.fromClass(
+  class {
+    constructor(readonly view: EditorView) {
+      view.contentDOM.addEventListener("mousedown", this.down);
+    }
+    down = (event: MouseEvent) => {
+      const { view } = this;
+      if (event.button !== 0) return;
+      const label = (event.target as Element | null)?.closest?.(".cm-md-heading-label");
+      if (!label || !view.contentDOM.contains(label)) return;
+      event.preventDefault();
+      const line = view.state.doc.lineAt(view.posAtDOM(label));
+      const prefix = blockPrefix(view.state, line);
+      if (!prefix) return;
+      view.dispatch({ selection: EditorSelection.cursor(prefix.to) });
+      openLevels(view);
+    };
+    destroy() {
+      this.view.contentDOM.removeEventListener("mousedown", this.down);
+    }
+  }
+);
+
+const headingsTheme = EditorView.baseTheme({
+  ".cm-md-heading-label": {
+    cursor: "var(--studio-cursor-pointer, pointer)",
+  },
+  // picked out while its menu is open, as if it were selected
+  ".cm-md-heading-label-open .cm-md-heading-text": {
+    borderRadius: "4px",
+    padding: "0 0.2em",
+    marginRight: "-0.2em",
+    background: "var(--text-editor-selection, var(--studio-fill-offset-20, rgb(0 0 0 / 0.08)))",
+    color: "var(--text-editor-line, inherit)",
+  },
+});
+
 export const headings = [
+  labelClicks,
+  menuTheme,
+  headingsTheme,
   // above lang-markdown's own (Prec.high) Enter.
   Prec.highest(
     keymap.of([
       { key: "Enter", run: enter },
+      { key: "ArrowLeft", run: leftIntoLabel },
       { key: "Mod-Shift-h", run: setHeading(2), preventDefault: true },
       { key: "Mod-Shift-j", run: setHeading(3), preventDefault: true },
       { key: "Mod-Shift-b", run: setHeading(0), preventDefault: true },

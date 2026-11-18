@@ -47,10 +47,15 @@ class HeadingLabel extends WidgetType {
     const span = document.createElement("span");
     span.className = `cm-md-hang cm-md-heading-label${this.shown ? "" : " cm-md-heading-label-idle"}`;
     span.setAttribute("aria-hidden", "true");
+    // the text in a box of its own, to be picked out while the level menu
+    // (headings.ts) is open, without the hang's empty room around it
+    const text = document.createElement("span");
+    text.className = "cm-md-heading-text";
     const n = document.createElement("span");
     n.className = "cm-md-heading-level";
     n.textContent = String(this.level);
-    span.append("H", n);
+    text.append("H", n);
+    span.append(text);
     return span;
   }
 }

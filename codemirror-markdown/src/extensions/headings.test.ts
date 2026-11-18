@@ -97,4 +97,83 @@ describe("headings", () => {
     press(view, "Backspace");
     expect(text(view)).toBe("```# not a heading\n```");
   });
+
+  describe("level menu", () => {
+    const menu = () => document.querySelector<HTMLElement>(".cm-md-menu");
+    const entries = () =>
+      Array.from(document.querySelectorAll<HTMLButtonElement>(".cm-md-menu-item"));
+    const key = (key: string) =>
+      document.activeElement!.dispatchEvent(
+        new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true })
+      );
+
+    it("opens on left at the start of a heading's text, on its level", () => {
+      const view = makeView("above\n## Title", 9);
+      expect(press(view, "ArrowLeft")).toBe(true);
+      expect(entries().map((b) => b.textContent)).toEqual([
+        "Heading 1", "Heading 2", "Heading 3", "Heading 4", "Heading 5", "Heading 6",
+      ]);
+      expect(document.activeElement).toBe(entries()[1]);
+      expect(entries()[1].getAttribute("aria-checked")).toBe("true");
+      expect(text(view)).toBe("above\n## Title");
+    });
+
+    it("doesn't open from inside the text, or off a heading", () => {
+      const view = makeView("# Title\nbody", 4);
+      press(view, "ArrowLeft");
+      expect(menu()).toBeNull();
+      expect(head(view)).toBe(3);
+      view.dispatch({ selection: { anchor: 8 } });
+      press(view, "ArrowLeft");
+      expect(menu()).toBeNull();
+    });
+
+    it("moves with up and down, and picks a level", () => {
+      const view = makeView("# Title", 2);
+      press(view, "ArrowLeft");
+      key("ArrowDown");
+      key("ArrowDown");
+      expect(document.activeElement).toBe(entries()[2]);
+      entries()[2].click();
+      expect(text(view)).toBe("### Title");
+      expect(head(view)).toBe(4);
+      expect(menu()).toBeNull();
+    });
+
+    it("closes on escape or right, leaving the heading as it was", () => {
+      for (const k of ["Escape", "ArrowRight"]) {
+        const view = makeView("# Title", 2);
+        press(view, "ArrowLeft");
+        key(k);
+        expect(menu(), k).toBeNull();
+        expect(text(view)).toBe("# Title");
+        expect(head(view)).toBe(2);
+        view.destroy();
+      }
+    });
+
+    it("a second left goes on to the line above", () => {
+      const view = makeView("above\n# Title", 8);
+      press(view, "ArrowLeft");
+      key("ArrowLeft");
+      expect(menu()).toBeNull();
+      expect(head(view)).toBe(5);
+    });
+
+    it("opens on a click on the label", () => {
+      const view = makeView("## Title", 3);
+      const label = view.contentDOM.querySelector(".cm-md-heading-label")!;
+      label.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+      expect(entries()).toHaveLength(6);
+      entries()[0].click();
+      expect(text(view)).toBe("# Title");
+    });
+
+    it("changes a heading in a quote, keeping the quote", () => {
+      const view = makeView("> ## Title", 5);
+      press(view, "ArrowLeft");
+      entries()[3].click();
+      expect(text(view)).toBe("> #### Title");
+    });
+  });
 });
