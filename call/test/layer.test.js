@@ -14,12 +14,15 @@ const [screens, setScreens] = createSignal({});
 const join = vi.fn();
 const toggleFill = vi.fn();
 const setFloating = vi.fn();
+const toggleSharp = vi.fn();
+const hideFloating = vi.fn();
 const names = { "automerge:other": "other" };
 vi.mock("../src/engine/call.js", () => {
   const call = {
     get: () => inCall(),
     peers: () => peers(),
     me: () => ({ name: "me" }),
+    sharp: () => false,
     local: () => null,
     stream: () => null,
     screen: (id) => screens()[id] ?? null,
@@ -41,12 +44,13 @@ vi.mock("../src/engine/call.js", () => {
     onCallIn: () => [],
     join,
     setFloating,
-    hideFloating: nothing,
+    hideFloating,
     showFloating: nothing,
     toggleStage: nothing,
     toggleFill,
     setFull: nothing,
     closeStage: nothing,
+    toggleSharp,
   };
 });
 
@@ -273,6 +277,35 @@ describe("a screen being shared", () => {
     setScreens({});
     await tick();
     expect(floats()).toHaveLength(2);
+  });
+
+  test("alt clicked, their video in full, just for you; alt double clicked, everyone else put away", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      setScreens({ p1: new MediaStream() });
+      await Promise.resolve();
+      const alt = (float) => float.dispatchEvent(new MouseEvent("click", { bubbles: true, altKey: true }));
+      alt(named("ana"));
+      vi.advanceTimersByTime(300);
+      expect(toggleSharp).toHaveBeenCalledWith("p1");
+      toggleSharp.mockClear();
+      // not yours, nor a screen
+      alt(named("you"));
+      alt(named("ana's screen"));
+      vi.advanceTimersByTime(300);
+      expect(toggleSharp).not.toHaveBeenCalled();
+      // a double: no toggling, just everyone else gone
+      alt(named("ana"));
+      alt(named("ana"));
+      named("ana").dispatchEvent(new MouseEvent("dblclick", { bubbles: true, altKey: true }));
+      vi.advanceTimersByTime(300);
+      expect(toggleSharp).not.toHaveBeenCalled();
+      await vi.waitFor(() => expect(hideFloating.mock.calls.map(([key]) => key).sort()).toEqual(["me", "p1/screen"]));
+    } finally {
+      vi.useRealTimers();
+      toggleSharp.mockClear();
+      hideFloating.mockClear();
+    }
   });
 
   test("each floating face can be made to fill the window, its screen too", async () => {

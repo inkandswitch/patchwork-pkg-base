@@ -235,3 +235,55 @@ describe("the stage", () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe("the controls, for anything to read and set", () => {
+  const call = (detail) => deep.dispatchEvent(new CustomEvent("patchwork:call", { bubbles: true, composed: true, detail }));
+
+  test("patchwork:call-controls says what's chosen, and set says it again, changed", async () => {
+    const heard = [];
+    const unsubscribe = subscribe(deep, { type: "patchwork:call-controls" }, (value) => heard.push(value));
+    await settle();
+    expect(heard.at(-1)).toMatchObject({ send: "full", receive: "full", prefer: "balanced", hint: null, strain: 0 });
+    call({ action: "set", key: "send", value: "low" });
+    call({ action: "set", key: "prefer", value: "detail" });
+    call({ action: "set", key: "receive", value: "nonsense" });
+    await settle();
+    expect(heard.at(-1)).toMatchObject({ send: "low", receive: "full", prefer: "detail" });
+    call({ action: "set", key: "send", value: "full" });
+    call({ action: "set", key: "prefer", value: "balanced" });
+    unsubscribe();
+  });
+
+  test("a hint for now, over what's chosen, and back", async () => {
+    const heard = [];
+    const unsubscribe = subscribe(deep, { type: "patchwork:call-controls" }, (value) => heard.push(value));
+    call({ action: "hint", value: "text" });
+    await settle();
+    expect(heard.at(-1).hint).toBe("text");
+    call({ action: "hint", value: "nonsense" });
+    await settle();
+    expect(heard.at(-1).hint).toBe(null);
+    unsubscribe();
+  });
+
+  test("patchwork:call-media hands over the live media, directly, till it's unsubscribed", async () => {
+    const got = [];
+    const unsubscribe = subscribe(deep, { type: "patchwork:call-media", onMedia: (media) => got.push(media) }, () => {});
+    await settle();
+    // out of a call: nothing
+    expect(got.at(-1)).toBe(null);
+    unsubscribe();
+    await settle();
+    const before = got.length;
+    expect(got.length).toBe(before);
+  });
+
+  test("patchwork:call-mic puts something over your mic while it's subscribed", async () => {
+    const process = vi.fn((track) => track);
+    const answers = [];
+    const unsubscribe = subscribe(deep, { type: "patchwork:call-mic", process }, (value) => answers.push(value));
+    await settle();
+    expect(answers.at(-1)).toEqual({ processing: true });
+    unsubscribe();
+  });
+});
