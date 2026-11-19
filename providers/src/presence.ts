@@ -5,8 +5,9 @@ import type { DocHandle, Repo } from "@automerge/automerge-repo/slim";
  * so a list of folders (the sideboard) can show who's where without loading
  * every doc in it.
  *
- * On each folder that's open in this repo and holds the doc (directly, or
- * through other open folders), every few seconds, an ephemeral message:
+ * On every folder that holds the doc, as far as can be found from the
+ * folders this tab has open (each searched all the way down, folders only,
+ * never the docs in them), every few seconds, an ephemeral message:
  *
  *   { "patchwork:presence": "here", from, who, doc }   looking at `doc`
  *   { "patchwork:presence": "here", from, who, call }  in a call in `call`
@@ -23,6 +24,10 @@ import type { DocHandle, Repo } from "@automerge/automerge-repo/slim";
 export const PRESENCE = "patchwork:presence";
 export const PRESENCE_EVERY = 5_000;
 export const PRESENCE_GONE = 15_000;
+// how often the folders holding where you are are looked for again (they change)
+export const PRESENCE_LOOK = 30_000;
+// no more folders than this are loaded looking
+const MOST_FOLDERS = 2_000;
 
 export type Who = { contact: string; name: string; colour: string; avatar: string };
 export type Where = { doc: string } | { call: string };
@@ -30,8 +35,9 @@ export type Where = { doc: string } | { call: string };
 /** a doc url without its heads or path: every version of a doc is the same doc */
 export const bare = (url: string) => url.split(/[#/]/, 1)[0];
 
-type FolderLike = { docs?: { url?: unknown }[] };
-const docsOf = (handle: DocHandle<unknown>): { url?: unknown }[] | null => {
+type Link = { url?: unknown; type?: unknown };
+type FolderLike = { docs?: Link[] };
+const docsOf = (handle: DocHandle<unknown>): Link[] | null => {
   try {
     if (!handle.isReady()) return null;
     const docs = (handle.doc() as FolderLike | undefined)?.docs;
@@ -67,10 +73,40 @@ export function foldersHolding(handles: Iterable<DocHandle<unknown>>, url: strin
 }
 
 /**
+ * every folder under `roots` (handles), all the way down, loading the
+ * folders (only: links of type "folder") it hasn't got, a level at a time,
+ * each once however many link to it, no more than `most`
+ */
+export async function folderTree(
+  repo: Pick<Repo, "find">,
+  roots: DocHandle<unknown>[],
+  most = MOST_FOLDERS,
+): Promise<DocHandle<unknown>[]> {
+  const seen = new Map<string, DocHandle<unknown>>();
+  let level = roots;
+  while (level.length && seen.size < most) {
+    const next: Promise<DocHandle<unknown> | null>[] = [];
+    for (const handle of level) {
+      const url = bare(handle.url);
+      if (seen.has(url) || seen.size >= most) continue;
+      seen.set(url, handle);
+      for (const link of docsOf(handle) ?? []) {
+        if (link?.type !== "folder" || typeof link.url !== "string" || seen.has(bare(link.url))) continue;
+        next.push(Promise.resolve(repo.find(link.url as never)).catch(() => null) as Promise<DocHandle<unknown> | null>);
+      }
+    }
+    level = (await Promise.all(next)).filter((handle): handle is DocHandle<unknown> => !!handle);
+  }
+  return [...seen.values()];
+}
+
+/**
  * tell the folders holding where you are (`where()`: a {doc} or {call}, or
  * null for nowhere) that you're there, as `who()`, every PRESENCE_EVERY and
  * as soon as `update()` is called; folders it's no longer in are told bye.
- * `stop()` tells them all bye
+ * which folders those are is looked for (folderTree, from every folder open
+ * in the repo) as where you are changes, and every PRESENCE_LOOK. `stop()`
+ * tells them all bye
  */
 export function announce({
   repo,
@@ -78,14 +114,35 @@ export function announce({
   where,
   who,
   every = PRESENCE_EVERY,
+  look = PRESENCE_LOOK,
 }: {
   repo: () => Repo | null | undefined;
   from: string;
   where: () => Where | null;
   who: () => Who | null;
   every?: number;
+  look?: number;
 }) {
   let told = new Map<string, DocHandle<unknown>>();
+  // the folders found holding `foundFor` (a bare url), and which look's latest
+  let folders: DocHandle<unknown>[] = [];
+  let foundFor: string | null = null;
+  let looking = 0;
+  const target = () => {
+    const now = where();
+    return now ? bare("doc" in now ? now.doc : now.call) : null;
+  };
+  async function find(url: string) {
+    const r = repo();
+    if (!r) return;
+    const mine = ++looking;
+    const roots = Object.values(r.handles).filter((handle) => docsOf(handle) !== null);
+    const tree = await folderTree(r, roots);
+    if (mine !== looking) return;
+    folders = foldersHolding(tree, url);
+    foundFor = url;
+    tell();
+  }
   const say = (handle: DocHandle<unknown>, message: object) => {
     try {
       handle.broadcast({ [PRESENCE]: "here", from, ...message });
@@ -97,24 +154,36 @@ export function announce({
     } catch {}
   };
 
-  function update() {
+  // tell the folders found for where you are now (none, till they're found)
+  function tell() {
     const now = where();
     const me = who();
-    const open = repo()?.handles;
-    const url = now && ("doc" in now ? now.doc : now.call);
-    const folders = url && me && open ? foldersHolding(Object.values(open), url) : [];
-    const next = new Map(folders.map((handle) => [handle.url as string, handle]));
+    const url = target();
+    const holding = url && me && foundFor === url ? folders : [];
+    const next = new Map(holding.map((handle) => [handle.url as string, handle]));
     for (const [url, handle] of told) if (!next.has(url)) bye(handle);
     for (const handle of next.values()) say(handle, { who: me, ...now });
     told = next;
   }
 
-  const timer = setInterval(update, every);
+  function update() {
+    const url = target();
+    if (url && url !== foundFor) find(url);
+    tell();
+  }
+
+  const timer = setInterval(tell, every);
+  const again = setInterval(() => {
+    const url = target();
+    if (url) find(url);
+  }, look);
   update();
   return {
     update,
     stop() {
       clearInterval(timer);
+      clearInterval(again);
+      looking++;
       for (const handle of told.values()) bye(handle);
       told = new Map();
     },

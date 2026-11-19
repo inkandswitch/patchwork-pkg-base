@@ -461,6 +461,8 @@
 .document-list-presence {
   display: inline-flex;
   flex: none;
+  /* the row doesn't centre what's in it (its name's taller than this) */
+  align-self: center;
   align-items: center;
   gap: 3px;
   max-width: 76px;
@@ -480,6 +482,11 @@
   display: grid;
   flex: none;
   place-items: center;
+
+  /* (no line box under it) */
+  & svg {
+    display: block;
+  }
 }
 
 .document-list-presence__faces {
