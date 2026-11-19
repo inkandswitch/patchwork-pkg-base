@@ -33,7 +33,7 @@ import { createDragOut } from "../dnd/drag-out.ts";
 import { createHoverTimer } from "../lib/hover-timer.ts";
 import { revealSelectedRow } from "./reveal.ts";
 import { useCallRoom } from "./call-room.ts";
-import { PhoneIcon } from "../icons.tsx";
+import { Presence } from "./presence-pill.tsx";
 
 // Spring-loading: while a drag is in progress, hovering it over a document
 // row for a moment opens that document in the main view *without ending the
@@ -297,11 +297,11 @@ export default function Item(props: {
       }}
     >
       {props.children}
-      <Show when={isCallRoom(props.url)}>
-        <span class="document-list-item__call" title="you're in a call here">
-          <PhoneIcon />
-        </span>
-      </Show>
+      <Presence
+        url={props.url}
+        inside={isFolder() && !props.isExpanded}
+        mine={isCallRoom(props.url)}
+      />
     </div>
   );
 }

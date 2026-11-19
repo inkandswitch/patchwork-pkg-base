@@ -185,6 +185,68 @@ describe("joining", () => {
   });
 });
 
+describe("how much video you want", () => {
+  test("isn't said to the room: who you've alt clicked, or how big anyone is, is between the two of you", async () => {
+    const url = generateAutomergeUrl();
+    await engine.join(url);
+    engine.setQuality("receive", "potato");
+    engine.toggleSharp("ana");
+    expect(engine.call.sharp("ana")).toBe(true);
+    const said = handles.get(url).broadcast.mock.calls.map(([m]) => m);
+    for (const message of said) {
+      expect(message).not.toHaveProperty("sharp");
+      expect(message).not.toHaveProperty("seen");
+      expect(message).not.toHaveProperty("wants");
+    }
+    engine.toggleSharp("ana");
+    expect(engine.call.sharp("ana")).toBe(false);
+    engine.toggleSharp("me");
+    expect(engine.call.sharp("me")).toBe(false);
+    engine.setQuality("receive", "full");
+  });
+});
+
+describe("your mic, for something to go over", () => {
+  const fakeTrack = (label) => ({ kind: "audio", label, enabled: true, stop: vi.fn(), getSettings: () => ({}) });
+
+  test("it goes through what's asked before it's sent, and stopped, so is what it was given", async () => {
+    const raw = fakeTrack("raw");
+    vi.stubGlobal("navigator", {
+      ...globalThis.navigator,
+      mediaDevices: { getUserMedia: async () => ({ getTracks: () => [raw] }), enumerateDevices: async () => [] },
+    });
+    const url = generateAutomergeUrl();
+    await engine.join(url, { video: false });
+    expect(engine.call.media().mic).toBe(raw);
+    const processed = fakeTrack("processed");
+    const done = vi.fn();
+    const release = engine.onMic(async (track) => {
+      expect(track.label).toBe("raw");
+      return { track: processed, stop: done };
+    });
+    await vi.waitFor(() => expect(engine.call.media().mic).toBe(processed));
+    release();
+    await vi.waitFor(() => expect(engine.call.media().mic).toBe(raw));
+    // the processed one, stopped, stopped what it was given too
+    expect(done).toHaveBeenCalled();
+    expect(raw.stop).toHaveBeenCalled();
+  });
+
+  test("something that fails leaves the mic as it was", async () => {
+    const raw = fakeTrack("raw");
+    vi.stubGlobal("navigator", {
+      ...globalThis.navigator,
+      mediaDevices: { getUserMedia: async () => ({ getTracks: () => [raw] }), enumerateDevices: async () => [] },
+    });
+    await engine.join(generateAutomergeUrl(), { video: false });
+    const release = engine.onMic(() => {
+      throw new Error("nope");
+    });
+    await vi.waitFor(() => expect(engine.call.media().mic?.label).toBe("raw"));
+    release();
+  });
+});
+
 describe("rejoining after a reload", () => {
   async function remembered(url) {
     const { keepCall, leavingCall } = await import("../src/engine/rejoin.js");

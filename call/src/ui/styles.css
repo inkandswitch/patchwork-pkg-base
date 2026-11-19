@@ -70,6 +70,9 @@
 		box-shadow: 2px 2px 0 var(--call-line);
 		color: var(--call-ink);
 		font: 12px/1.4 var(--call-sans);
+		box-sizing: border-box;
+		overflow-y: auto;
+		overscroll-behavior: contain;
 		/* it grows out of where it was asked for (control-panel.js sets the
 		   origin; else its top left, under its button),
 		   quickly, as it's opened many times a day. it goes at once */
@@ -120,6 +123,106 @@
 		}
 	}
 
+	/* a submenu, or the list of them, coming in: from the right going into
+	   one, from the left coming back */
+	& .patchwork-call-menu-page {
+		animation: 160ms cubic-bezier(0.23, 1, 0.32, 1);
+
+		&[data-came="into"] {
+			animation-name: patchwork-call-menu-in;
+		}
+		&[data-came="back"] {
+			animation-name: patchwork-call-menu-back;
+		}
+		@media (prefers-reduced-motion: reduce) {
+			&[data-came] {
+				animation-name: patchwork-call-arrive-fade;
+			}
+		}
+	}
+
+	/* a setting, as it is now, to open to its choices */
+	& .patchwork-call-menu-into {
+		gap: 8px;
+
+		& .patchwork-call-menu-into-title {
+			flex: none;
+		}
+		& .patchwork-call-menu-into-now {
+			flex: 1;
+			min-width: 0;
+			overflow: hidden;
+			color: var(--call-muted);
+			text-align: right;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+		& svg {
+			flex: none;
+			color: var(--call-muted);
+		}
+	}
+
+	/* back out of a submenu: its name, over its choices */
+	& .patchwork-call-menu-back {
+		gap: 4px;
+		margin-bottom: 2px;
+		padding-left: 4px;
+		border-bottom: 1px solid var(--call-line);
+		border-radius: 2px 2px 0 0;
+		color: var(--call-muted);
+		font-weight: 600;
+
+		& svg {
+			flex: none;
+		}
+	}
+
+	/* something said about what's chosen, under it */
+	& .patchwork-call-menu-note {
+		margin: 2px 8px 4px;
+		color: var(--call-muted);
+		font-size: 11px;
+	}
+
+	/* a row of choices, one chosen (control-panel.js: Segments) */
+	& .patchwork-call-menu-segments {
+		display: grid;
+		grid-auto-columns: 1fr;
+		grid-auto-flow: column;
+		gap: 2px;
+		margin: 2px 8px 4px;
+		padding: 2px;
+		border-radius: 4px;
+		background: var(--call-chrome);
+	}
+
+	& .patchwork-call-menu-segment {
+		padding: 3px 0;
+		border: none;
+		border-radius: 3px;
+		background: none;
+		color: var(--call-muted);
+		font: inherit;
+		cursor: pointer;
+		transition:
+			background-color 120ms ease-out,
+			color 120ms ease-out;
+
+		&:hover {
+			color: var(--call-ink);
+		}
+		&[aria-checked="true"] {
+			background: var(--call-sheet);
+			color: var(--call-ink);
+			box-shadow: 0 0 0 1px var(--call-line);
+		}
+		&:focus-visible {
+			outline: 2px solid var(--call-accent);
+			outline-offset: 1px;
+		}
+	}
+
 	/* a tick by what's chosen */
 	& .patchwork-call-panel-choice {
 		&::before {
@@ -130,6 +233,19 @@
 		&[aria-checked="true"]::before {
 			content: "✓";
 		}
+	}
+}
+
+@keyframes patchwork-call-menu-in {
+	from {
+		opacity: 0;
+		translate: 12px 0;
+	}
+}
+@keyframes patchwork-call-menu-back {
+	from {
+		opacity: 0;
+		translate: -12px 0;
 	}
 }
 
@@ -198,7 +314,12 @@
 	color: var(--call-ink);
 	font: 600 calc(var(--call-face-size) * 0.42) / 1 var(--call-sans);
 
+	/* over the whole face, not in its grid: a tall picture (a phone's camera,
+	   upright) sized its row taller than the face, and spilled out of it, an
+	   oval */
 	& video {
+		position: absolute;
+		inset: 0;
 		width: 100%;
 		height: 100%;
 		border-radius: inherit;
@@ -243,6 +364,34 @@
 		border-radius: 50%;
 		background: var(--call-danger-fill);
 		color: var(--call-danger-ink);
+	}
+
+	/* their video in full, just for you (alt clicked): a glint, top right,
+	   on the circle where it's round */
+	& .patchwork-call-glint {
+		position: absolute;
+		right: 7%;
+		top: 7%;
+		translate: 50% -50%;
+		display: grid;
+		place-items: center;
+		width: 14px;
+		height: 14px;
+		border-radius: 50%;
+		background: var(--call-accent);
+		color: var(--call-accent-ink);
+		animation: patchwork-call-arrive 200ms cubic-bezier(0.23, 1, 0.32, 1);
+
+		@media (prefers-reduced-motion: reduce) {
+			animation-name: patchwork-call-arrive-fade;
+		}
+	}
+	&[data-shape="tile"] .patchwork-call-glint {
+		right: 6px;
+		top: 6px;
+		translate: none;
+		width: 18px;
+		height: 18px;
 	}
 
 	/* sharing their screen: a little screen, top left */
@@ -476,8 +625,17 @@
 			border-radius: 50%;
 			font-size: 32px;
 		}
+		/* at the circle's own corner, which it grows out to meet */
 		& .patchwork-call-size {
-			right: 14%;
+			right: calc(12.5% + 3px);
+		}
+	}
+	/* sizing it, or about to: a round face's bottom right corner comes out to
+	   a corner, where it's held, so what's being dragged is the face's own */
+	& .patchwork-call-float[data-shape="round"][data-sizing],
+	& .patchwork-call-float[data-shape="round"]:has(.patchwork-call-size:hover) {
+		& .patchwork-call-float-picture .patchwork-call-face {
+			border-radius: 50% 50% 10px 50%;
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
@@ -524,48 +682,6 @@
 		opacity: 1;
 	}
 
-	/* filling the panes with it: its top right corner, the other side from
-	   sizing it, there while it's pointed at */
-	& .patchwork-call-float-fill {
-		position: absolute;
-		top: 3px;
-		right: 3px;
-		display: grid;
-		place-items: center;
-		width: 22px;
-		height: 22px;
-		padding: 0;
-		border: none;
-		border-radius: 4px;
-		background: transparent;
-		color: var(--call-on-video-ink);
-		filter: drop-shadow(0 0 1px var(--call-on-video-shadow));
-		cursor: pointer;
-		opacity: 0;
-		transition:
-			opacity 120ms ease-out,
-			background-color 120ms ease-out,
-			scale 120ms ease-out;
-
-		&:hover {
-			background: var(--call-on-video-scrim);
-		}
-		&:active {
-			scale: 0.9;
-		}
-		&:focus-visible {
-			opacity: 1;
-			outline: 2px solid var(--call-accent);
-			outline-offset: 1px;
-		}
-	}
-	& .patchwork-call-float:hover .patchwork-call-float-fill {
-		opacity: 1;
-	}
-	& .patchwork-call-float[data-shape="round"] .patchwork-call-float-fill {
-		right: 14%;
-	}
-
 	& .patchwork-call-float-muted {
 		display: inline-grid;
 		place-items: center;
@@ -578,15 +694,75 @@
 		vertical-align: -3px;
 	}
 
+	/* their name, and, pointed at, minimise either side of it and fill the
+	   panes the other: the pill opens out from the middle to show them, an
+	   island, and they pop in as it does */
 	& .patchwork-call-float-name {
 		/* over the wiggle */
 		position: relative;
+		display: inline-flex;
+		align-items: center;
 		padding: 1px 6px;
 		border-radius: var(--call-round);
 		background: var(--call-sheet);
 		color: var(--call-ink);
 		font: 600 10.5px/1.4 var(--call-sans);
 		white-space: nowrap;
+		transition: padding 260ms cubic-bezier(0.23, 1, 0.32, 1);
+	}
+	& .patchwork-call-float-label {
+		padding: 0 1px;
+	}
+	& .patchwork-call-float-reveal {
+		display: grid;
+		grid-template-columns: 0fr;
+		overflow: hidden;
+		transition: grid-template-columns 260ms cubic-bezier(0.23, 1, 0.32, 1);
+
+		& .patchwork-call-float-button {
+			min-width: 0;
+			opacity: 0;
+			scale: 0.4;
+			transition:
+				opacity 160ms ease-out,
+				scale 320ms cubic-bezier(0.34, 1.56, 0.64, 1),
+				background-color 120ms ease-out,
+				color 120ms ease-out;
+		}
+	}
+	& .patchwork-call-float:is(:hover, :has(:focus-visible), [data-sizing]) {
+		& .patchwork-call-float-name {
+			padding: 2px 3px;
+		}
+		& .patchwork-call-float-reveal {
+			grid-template-columns: 1fr;
+
+			& .patchwork-call-float-button {
+				opacity: 1;
+				scale: 1;
+			}
+		}
+	}
+	/* nothing to point with: they're there */
+	@media (hover: none) {
+		& .patchwork-call-float-name {
+			padding: 2px 3px;
+		}
+		& .patchwork-call-float-reveal {
+			grid-template-columns: 1fr;
+
+			& .patchwork-call-float-button {
+				opacity: 1;
+				scale: 1;
+			}
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		& .patchwork-call-float-name,
+		& .patchwork-call-float-reveal,
+		& .patchwork-call-float-reveal .patchwork-call-float-button {
+			transition: opacity 120ms ease-out;
+		}
 	}
 }
 
@@ -792,17 +968,16 @@
 	width: 32%;
 }
 
-/* a floating face's minimise: an arrow before their name, down to the call
-   bar. quiet till it's pointed at */
+/* a floating face's minimise (down to the call bar) and fill, in its name's
+   pill, either side of their name */
 .patchwork-call-floating .patchwork-call-float-button {
 	display: inline-grid;
 	place-items: center;
-	width: 16px;
-	height: 16px;
-	margin: 0 2px 0 -3px;
+	width: 18px;
+	height: 18px;
 	padding: 0;
 	border: none;
-	border-radius: 3px;
+	border-radius: 50%;
 	background: transparent;
 	color: var(--call-muted);
 	vertical-align: -4px;

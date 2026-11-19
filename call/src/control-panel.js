@@ -4,8 +4,11 @@
 // the one you're in: where it is, everyone in it, and your mic, camera,
 // screen (where there's one to share) and hanging up. its menu says where
 // faces go (floating, or in the sidebar where a frame can show them there),
-// which mic and camera, and what's done about noise. with nothing to show,
-// it takes no room (data-sidebar-size: none)
+// which mic and camera, what's done about noise, and how much video's sent
+// and wanted (less, on a bad network or a low battery). with nothing to show,
+// it takes no room (data-sidebar-size: none). the menu's a list of each
+// setting as it is, and each opens to its choices (any number of mics and
+// cameras), with a way back
 import { createEffect, createSignal, For, Show } from "solid-js";
 import { render } from "solid-js/web";
 import html from "solid-js/html";
@@ -22,10 +25,13 @@ import {
   setFaces,
   setMic,
   setNoise,
+  setPrefer,
+  setQuality,
   startScreen,
   stopScreen,
 } from "./engine/call.js";
 import { download, DOWNLOAD_BYTES, NOISE } from "./engine/noise.js";
+import { PREFER, QUALITY } from "./engine/sizes.js";
 import { DragOut, Face, StageButton, names } from "./ui/ui.js";
 import { scrollsAlong } from "./ui/along.js";
 import { arrivals } from "./ui/arriving.js";
@@ -47,6 +53,15 @@ export function CallControlPanel(element) {
 function Panel(props) {
   let menu;
   const [found, setFound] = createSignal({ audio: [], video: [] });
+  // which of the menu's submenus is open (PAGES), or null for the list of them
+  const [page, setPage] = createSignal(null);
+  // how it came: "into" a submenu, "back" out of one (it comes in from that
+  // side), or null, as the menu opens (it's there)
+  const [came, setCame] = createSignal(null);
+  const openPage = (id, how = id === null ? "back" : "into") => {
+    setCame(how);
+    setPage(id);
+  };
   const go = (url) => openDocument(props.element, url);
 
   async function openMenu(event) {
@@ -55,8 +70,11 @@ function Panel(props) {
     menu.style.left = `${Math.max(8, box.left)}px`;
     menu.style.bottom = `${innerHeight - box.top + 4}px`;
     menu.style.top = "auto";
+    // all of it on screen, however long it is: scrolled, if not
+    menu.style.maxHeight = `${Math.max(120, box.top - 12)}px`;
     // it grows up out of its button
     menu.style.transformOrigin = "0 100%";
+    openPage(null, null);
     menu.showPopover();
     setFound(await devices());
   }
@@ -76,20 +94,161 @@ function Panel(props) {
     </button>`;
   }
 
+  // the mic (`kind` "audio") or camera chosen: its id, or the first's
+  const chosenDevice = (kind) => {
+    const list = found()[kind];
+    const id = kind === "audio" ? call.settings.mic : call.settings.camera;
+    return list.find((device) => device.id === id) ?? list[0] ?? null;
+  };
+
   function Devices(props) {
-    const chosen = () => (props.kind === "audio" ? call.settings.mic : call.settings.camera);
-    return html`<${Show} when=${() => found()[props.kind].length > 1}>
-      <div class="patchwork-call-menu-heading">${props.kind === "audio" ? "mic" : "camera"}</div>
-      <${For} each=${() => found()[props.kind]}>
-        ${(device, at) =>
-          html`<${Choice}
-            label=${device.label}
-            checked=${() => chosen() === device.id || (!chosen() && at() === 0)}
-            choose=${(event) => setDevice(props.kind, device.id)}
-          />`}
-      <//>
+    return html`<${For} each=${() => found()[props.kind]}>
+      ${(device) =>
+        html`<${Choice}
+          label=${device.label}
+          checked=${() => chosenDevice(props.kind)?.id === device.id}
+          choose=${(event) => setDevice(props.kind, device.id)}
+        />`}
     <//>`;
   }
+
+  // a row of choices (`props.choices`: [id, label]), one chosen
+  // (`props.chosen`: a getter, as html makes a function of none),
+  // `props.choose(id)` to choose: it stays open, to try another
+  function Segments(props) {
+    return html`<div class="patchwork-call-menu-heading">${props.heading}</div>
+      <div class="patchwork-call-menu-segments" role="group" aria-label=${props.heading}>
+        <${For} each=${props.choices}>
+          ${([id, label]) =>
+            html`<button
+              class="patchwork-call-menu-segment"
+              role="menuitemradio"
+              aria-checked=${() => String(props.chosen === id)}
+              onClick=${() => props.choose(id)}
+            >
+              ${label}
+            </button>`}
+        <//>
+      </div>`;
+  }
+
+  // how much video's sent (`props.which`: "send"), or wanted ("receive")
+  const Quality = (props) =>
+    html`<${Segments}
+      heading=${props.heading}
+      choices=${QUALITY}
+      chosen=${() => call.settings[props.which] ?? "full"}
+      choose=${(id) => setQuality(props.which, id)}
+    />`;
+
+  const label = (list, id) => list.find(([known]) => known === id)?.[1] ?? "";
+  const facesChoices = () => FACES.filter(([id]) => id !== "sidebar" || call.canShowVideo());
+
+  // the menu's submenus: what each is, what it's set to now (on its row in
+  // the list), whether it's there at all, and its choices
+  const PAGES = [
+    {
+      id: "faces",
+      title: "faces",
+      now: () => label(FACES, call.mode()),
+      shown: () => true,
+      body: () => html`<${For} each=${facesChoices}>
+        ${([id, label]) => html`<${Choice} label=${label} checked=${() => call.mode() === id} choose=${(event) => setFaces(id)} />`}
+      <//>`,
+    },
+    {
+      id: "mic",
+      title: "mic",
+      now: () => chosenDevice("audio")?.label ?? "",
+      shown: () => found().audio.length > 0,
+      body: () => html`<${Devices} kind="audio" />`,
+    },
+    {
+      id: "camera",
+      title: "camera",
+      now: () => chosenDevice("video")?.label ?? "",
+      shown: () => found().video.length > 0,
+      body: () => html`<${Devices} kind="video" />`,
+    },
+    {
+      id: "noise",
+      title: "noise",
+      now: () => label(NOISE, call.settings.noise),
+      shown: () => true,
+      body: () => html`<${For} each=${NOISE}>
+        ${([id, label]) =>
+          html`<${Choice}
+            label=${() => (id === "deepfilternet" ? `${label} ${deepFilterNote()}` : label)}
+            checked=${() => call.settings.noise === id}
+            choose=${(event) => setNoise(id)}
+          />`}
+      <//>`,
+    },
+    {
+      id: "quality",
+      title: "video quality",
+      now: () => {
+        const send = call.settings.send ?? "full";
+        const receive = call.settings.receive ?? "full";
+        return send === receive ? send : `${send} out · ${receive} in`;
+      },
+      shown: () => true,
+      body: () => html`<${Quality} which="send" heading="video you send" />
+        <${Quality} which="receive" heading="video you get" />
+        <${Segments}
+          heading="when it's struggling, keep it"
+          choices=${PREFER}
+          chosen=${() => call.settings.prefer ?? "balanced"}
+          choose=${(id) => setPrefer(id)}
+        />
+        <${Show} when=${() => call.controls().strain > 0}>
+          <p class="patchwork-call-menu-note">this computer's struggling: capturing less till it isn't</p>
+        <//>`,
+    },
+  ];
+
+  // a submenu, or the list of them: the first thing in it has the focus, for
+  // the keyboard
+  const focusFirst = (el) =>
+    queueMicrotask(() => {
+      if (menu?.matches?.(":popover-open") && menu.contains(document.activeElement)) {
+        el.querySelector("button")?.focus({ preventScroll: true });
+      }
+    });
+
+  const Menu = () => html`<div
+    class="patchwork-call-menu"
+    popover="auto"
+    role="menu"
+    ref=${(el) => (menu = el)}
+    onToggle=${(event) => event.newState === "closed" && openPage(null, null)}
+  >
+    <${Show}
+      when=${() => PAGES.find((one) => one.id === page())}
+      keyed=${true}
+      fallback=${html`<div class="patchwork-call-menu-page" data-came=${came} ref=${focusFirst}>
+        <${For} each=${() => PAGES.filter((one) => one.shown())}>
+          ${(one) => html`<button
+            class="patchwork-call-menu-item patchwork-call-menu-into"
+            role="menuitem"
+            aria-haspopup="menu"
+            onClick=${() => openPage(one.id)}
+          >
+            <span class="patchwork-call-menu-into-title">${one.title}</span>
+            <span class="patchwork-call-menu-into-now">${one.now}</span>
+            ${icon("next", 12)}
+          </button>`}
+        <//>
+      </div>`}
+    >
+      ${(one) => html`<div class="patchwork-call-menu-page" data-came=${came} ref=${focusFirst}>
+        <button class="patchwork-call-menu-item patchwork-call-menu-back" onClick=${() => openPage(null)}>
+          ${icon("back", 12)} ${one.title}
+        </button>
+        ${one.body()}
+      </div>`}
+    <//>
+  </div>`;
 
   const In = () => {
     // someone joining while you're in it comes in (ui/arriving.js): not
@@ -103,8 +262,8 @@ function Panel(props) {
       </button>
       <button
         class="patchwork-call-panel-button"
-        title="faces, mic and camera"
-        aria-label="faces, mic and camera"
+        title="settings: faces, mic, camera, noise and video quality"
+        aria-label="call settings"
         aria-haspopup="menu"
         onPointerDown=${(event) => {
           event.currentTarget.dataset.callMenuWasOpen = String(menu.matches(":popover-open"));
@@ -176,28 +335,7 @@ function Panel(props) {
     <${Show} when=${() => call.settings.noise === "deepfilternet" && download().state === "failed"}>
       <p class="patchwork-call-panel-problem">couldn't get DeepFilterNet (${() => download().problem}): the browser's for now</p>
     <//>
-    <div class="patchwork-call-menu" popover="auto" role="menu" ref=${(el) => (menu = el)}>
-      <div class="patchwork-call-menu-heading">faces</div>
-      <${For} each=${() => FACES.filter(([id]) => id !== "sidebar" || call.canShowVideo())}>
-        ${([id, label]) =>
-          html`<${Choice}
-            label=${label}
-            checked=${() => call.mode() === id}
-            choose=${(event) => setFaces(id)}
-          />`}
-      <//>
-      <${Devices} kind="audio" />
-      <div class="patchwork-call-menu-heading">noise</div>
-      <${For} each=${NOISE}>
-        ${([id, label]) =>
-          html`<${Choice}
-            label=${() => (id === "deepfilternet" ? `${label} ${deepFilterNote()}` : label)}
-            checked=${() => call.settings.noise === id}
-            choose=${(event) => setNoise(id)}
-          />`}
-      <//>
-      <${Devices} kind="video" />
-    </div>
+    <${Menu} />
   </div>`;
   };
 

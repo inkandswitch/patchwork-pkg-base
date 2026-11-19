@@ -5,9 +5,37 @@ import { createEffect, createRoot } from "solid-js";
 import { render } from "solid-js/web";
 import html from "solid-js/html";
 import { accept } from "@inkandswitch/patchwork-providers";
-import { ask, call, hangUp, hearRoom, holdVideoSpot } from "./engine/call.js";
+import {
+  ask,
+  call,
+  hangUp,
+  hearRoom,
+  holdVideoSpot,
+  onMic,
+  setCamera,
+  setDevice,
+  setFaces,
+  setHint,
+  setMic,
+  setNoise,
+  setPrefer,
+  setQuality,
+  startScreen,
+  stopScreen,
+  toggleSharp,
+} from "./engine/call.js";
 import { roomUrl } from "./engine/room.js";
-import { CALL, CALL_EVENT, CALL_NOW, CALL_ROOM, CALL_VIDEO, roomState } from "./protocol.js";
+import {
+  CALL,
+  CALL_CONTROLS,
+  CALL_EVENT,
+  CALL_MEDIA,
+  CALL_MIC,
+  CALL_NOW,
+  CALL_ROOM,
+  CALL_VIDEO,
+  roomState,
+} from "./protocol.js";
 import { CallFloating, CallQuestion, CallStage } from "./ui/ui.js";
 import { stageArea } from "./ui/area.js";
 import { chimes } from "./engine/chimes.js";
@@ -87,13 +115,57 @@ export function CallProvider(element) {
           () => ({ wanted: call.videoWanted() }),
           () => holdVideoSpot({ showing: !!selector.showing }),
         );
+      case CALL_CONTROLS:
+        return answer(event, () => call.controls(), () => () => {});
+      case CALL_MEDIA: {
+        const onMedia = selector.onMedia;
+        if (typeof onMedia !== "function") return;
+        // (the media's handed over as it changes, directly: the answer's
+        // only that it's being)
+        return answer(
+          event,
+          () => ({ listening: true }),
+          () =>
+            createRoot((dispose) => {
+              createEffect(() => {
+                const media = call.media();
+                try {
+                  onMedia(media);
+                } catch (error) {
+                  console.warn("[call] call-media's listener threw", error);
+                }
+              });
+              return dispose;
+            }),
+        );
+      }
+      case CALL_MIC:
+        if (typeof selector.process !== "function") return;
+        return answer(event, () => ({ processing: true }), () => onMic(selector.process));
     }
   }
 
+  // one of what's chosen, set (an event: {action: "set", key, value})
+  const SETTERS = {
+    send: (value) => setQuality("send", value),
+    receive: (value) => setQuality("receive", value),
+    prefer: setPrefer,
+    noise: setNoise,
+    faces: setFaces,
+    mic: (value) => setDevice("audio", value),
+    camera: (value) => setDevice("video", value),
+  };
+
   function onCall(event) {
-    const { action, url, at } = event.detail ?? {};
+    const { action, url, at, key, value, id, on } = event.detail ?? {};
     if (action === "ask") ask(url, { at: at ?? null });
     else if (action === "hang-up") hangUp();
+    else if (action === "set") SETTERS[key]?.(value);
+    else if (action === "hint") setHint(value ?? null);
+    else if (action === "sharp") toggleSharp(id);
+    else if (action === "mic") setMic(!!on);
+    else if (action === "camera") setCamera(!!on);
+    else if (action === "screen") (on ? startScreen : stopScreen)();
   }
 
   // what floats: the question, faces, and whoever's on the stage, in a layer

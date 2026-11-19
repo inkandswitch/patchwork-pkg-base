@@ -44,6 +44,7 @@ import { createMarquee } from "./document-list/marquee.ts";
 import { createTreeNav } from "./document-list/tree-nav.ts";
 import { menuTarget } from "./state.ts";
 import { CallRoom, createCallRoom } from "./document-list/call-room.ts";
+import { hearFolder } from "./document-list/presence.ts";
 
 const ItemMenu = lazy(() =>
   import("./document-list/item-menu.tsx").then((m) => ({
@@ -92,6 +93,10 @@ export function DocumentListPanel(props: {
 
   createEffect(() => {
     if (folderHandle.latest) watchFolder(folderHandle.latest);
+  });
+  // who's in the folder at the top (presence.ts): each folder in it hears its own
+  createEffect(() => {
+    if (folderHandle.latest) onCleanup(hearFolder(folderHandle.latest));
   });
 
   // the doc your call's in, for its row's phone

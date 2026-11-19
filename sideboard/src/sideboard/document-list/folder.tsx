@@ -23,6 +23,7 @@ import {
 } from "../state.ts";
 import { DocumentList } from "./document-list.tsx";
 import { watchFolder } from "./auto-expand.ts";
+import { hearFolder } from "./presence.ts";
 import Item from "./item.tsx";
 import { ItemName } from "./name.tsx";
 import { LoadingRow } from "./loading-row.tsx";
@@ -63,6 +64,10 @@ export default function Folder(props: {
   const [folder, handle] = useDocument<FolderDoc>(() => props.url, props);
   createEffect(() => {
     if (handle.latest) watchFolder(handle.latest);
+  });
+  // who's in it (presence.ts), while its row's here
+  createEffect(() => {
+    if (handle.latest) onCleanup(hearFolder(handle.latest));
   });
 
   // Create a new Set with the current folder URL to prevent circular references

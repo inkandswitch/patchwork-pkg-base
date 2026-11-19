@@ -24,7 +24,20 @@ import { openChannel } from "./channel.js";
 import { callToRejoin, forgetCall, keepCall, leavingCall } from "./rejoin.js";
 import { listen } from "./speaking.js";
 import { haveModel, isNoise, loadModel, suppressed } from "./noise.js";
-import { videoFor } from "./sizes.js";
+import {
+  HINTS,
+  PREFER,
+  STRAIN_MOST,
+  askFor,
+  captureFor,
+  degradeFor,
+  isPrefer,
+  isQuality,
+  seenStep,
+  sendFor,
+} from "./sizes.js";
+import { measureFaces, worthSaying } from "./seen.js";
+import { announce } from "./presence.js";
 
 // (lattice's name for it: its calls and these hear each other)
 export const KEY = "lattice-wm:call";
@@ -42,6 +55,11 @@ const ICE_SERVERS = [
 ];
 // saying you're in it
 const HERE_EVERY = 3000;
+// how often how big everyone's shown is looked at (seen.js)
+const LOOK_EVERY = 600;
+// your tab hidden this long, you're not looking: everyone sends you a frame a
+// second. (any less, and a moment somewhere else would empty their faces)
+const AWAY_AFTER = 5000;
 // and forgotten after this long without
 const GONE_AFTER = 12000;
 // a connection that's only interrupted gets this long to come back
@@ -129,6 +147,11 @@ const {
       // what's done about the noise round your voice (noise.js)
       noise: isNoise(saved.noise) ? saved.noise : "browser",
       floating: isObject(saved.floating) ? saved.floating : {},
+      // how much video you send, and want from everyone else (sizes.js)
+      send: isQuality(saved.send) ? saved.send : "full",
+      receive: isQuality(saved.receive) ? saved.receive : "full",
+      // what gives, when it's struggling (sizes.js PREFER)
+      prefer: isPrefer(saved.prefer) ? saved.prefer : "balanced",
     });
     // who's heard to be on a call, in each room heard: {[room]: {[id]: {who, at}}}
     const [heard, setHeard] = createStore({});
@@ -178,6 +201,9 @@ function saveSettings() {
     mic: settings.mic,
     noise: settings.noise,
     floating: settings.floating,
+    send: settings.send,
+    receive: settings.receive,
+    prefer: settings.prefer,
   });
 }
 
@@ -201,6 +227,28 @@ const filled = lasting("patchwork-call:filled", () =>
   createRoot(() => {
     const [fill, setFill] = createSignal(null);
     return { fill, setFill };
+  }),
+);
+
+// whose video you want in full, whatever you want from everyone else
+// (alt clicking their face: toggleSharp): their ids. of its own, as above
+const sharpness = lasting("patchwork-call:sharp", () =>
+  createRoot(() => {
+    const [sharp, setSharp] = createSignal([]);
+    return { sharp, setSharp };
+  }),
+);
+
+// what's done with your camera and mic, beyond what's chosen: a contentHint
+// for a moment (setHint: something's seen a page held up), how much the
+// computer's struggling (strain: steps, sizes.js), what's captured now, and
+// what your mic goes through before it's sent (onMic). of its own, as above
+const media = lasting("patchwork-call:media", () =>
+  createRoot(() => {
+    const [hint, setHint] = createSignal(null);
+    const [strain, setStrain] = createSignal(0);
+    const [captured, setCaptured] = createSignal(null);
+    return { hint, setHint, strain, setStrain, captured, setCaptured, processes: [] };
   }),
 );
 
@@ -448,6 +496,61 @@ async function getAudio() {
   }
 }
 
+// your mic as it's sent: as settings.noise says (getAudio), then through
+// whatever's asked to go over it (onMic), each in turn
+async function getMic() {
+  let track = await getAudio();
+  for (const process of [...media.processes]) {
+    if (!track) break;
+    track = await through(process, track);
+  }
+  return track;
+}
+
+// `track` through `process`: what it gives (a track, or {track, stop}),
+// which, stopped, stops what it was given too. if it fails, or gives
+// nothing, the mic's as it was
+async function through(process, input) {
+  try {
+    const out = await process(input);
+    const track = out?.kind ? out : out?.track;
+    if (!track?.kind || track === input) return input;
+    const done = out?.track ? out.stop : null;
+    const stop = track.stop.bind(track);
+    track.stop = () => {
+      stop();
+      try {
+        done?.();
+      } catch {}
+      input.stop();
+    };
+    return track;
+  } catch (error) {
+    console.warn("[call] something going over your mic failed", error);
+    return input;
+  }
+}
+
+/**
+ * `process` (your mic track → a track, or {track, stop}, or a promise of
+ * either) goes over your mic before it's sent, after the noise is dealt
+ * with, from now till what this returns is called. the mic's taken again
+ * each time, a moment's quiet
+ */
+export function onMic(process) {
+  if (typeof process !== "function") return () => {};
+  media.processes.push(process);
+  refreshMic();
+  let held = true;
+  return () => {
+    if (!held) return;
+    held = false;
+    const at = media.processes.indexOf(process);
+    if (at >= 0) media.processes.splice(at, 1);
+    refreshMic();
+  };
+}
+
 // your mic taken again (a different one, or dealt with differently), in
 // place of the one you had, muted or not as that was
 async function refreshMic() {
@@ -458,7 +561,7 @@ async function refreshMic() {
   // the browser's noise suppression still on (or still off). there's a
   // moment's quiet, as it's swapped
   trackOf("audio")?.stop();
-  const track = await getAudio();
+  const track = await getMic();
   if (live.session !== now || !track) return track?.stop();
   track.enabled = state.call.mic;
   useTrack("audio", track);
@@ -487,6 +590,11 @@ function useTrack(kind, track) {
   if (track) live.session.local.addTrack(track);
   if (kind === "video") watchMine(track);
   if (kind === "audio") listenMine(track);
+  // another camera can be another size, and wants the same hint
+  if (kind === "video") {
+    hintCamera();
+    queueMicrotask(tuneVideo);
+  }
   for (const peer of live.session.peers.values()) {
     for (const transceiver of peer.pc.getTransceivers()) {
       if (slotOf(peer.pc, transceiver) === kind && !transceiver.stopped) {
@@ -565,7 +673,7 @@ export async function join(url, { video = false } = {}) {
     sayHere();
   });
   const [audio, camera] = await Promise.all([
-    getAudio(),
+    getMic(),
     video ? getTrack("video") : null,
     Promise.race([who, new Promise((resolve) => setTimeout(resolve, 800))]),
   ]);
@@ -577,6 +685,7 @@ export async function join(url, { video = false } = {}) {
   if (audio) now.local.addTrack(audio);
   if (camera) now.local.addTrack(camera);
   if (camera) watchMine(camera);
+  if (camera) hintCamera();
   if (audio) listenMine(audio);
   const problem = !audio ? (video && !camera ? "no mic or camera" : "no mic") : video && !camera ? "no camera" : null;
   setState("call", { joining: false, camera: !!camera, mic: !!audio, problem });
@@ -591,6 +700,15 @@ export async function join(url, { video = false } = {}) {
   for (const person of onCallIn(roomId)) onHere(person.id, person.peer, person);
   now.timers.push(setInterval(sayHere, HERE_EVERY));
   now.timers.push(setInterval(forgetGone, GONE_AFTER / 3));
+  watchSeen(now);
+  watchStrain(now);
+  // the folders your call's doc is in, told you're in a call there (presence.js)
+  now.presence = announce({
+    repo: pageRepo,
+    from: `${now.id}:call`,
+    where: () => (live.session === now && !state.call?.joining ? { call: roomId } : null),
+    who: () => (now.who?.contact ? now.who : null),
+  });
   // the page going (a reload, say): you're back in it if it's back soon
   now.onPageHide = () => hangUp({ rejoin: true });
   addEventListener("pagehide", now.onPageHide);
@@ -609,6 +727,9 @@ export function hangUp({ rejoin = false } = {}) {
   if (rejoin === true) leavingCall();
   else forgetCall();
   removeEventListener("pagehide", now.onPageHide);
+  document.removeEventListener("visibilitychange", now.onVisibility);
+  now.presence?.stop();
+  clearTimeout(now.awayTimer);
   now.timers.forEach(clearInterval);
   now.room.off(now.onMessage);
   try {
@@ -620,8 +741,49 @@ export function hangUp({ rejoin = false } = {}) {
   for (const track of now.local.getTracks()) track.stop();
   now.screen?.stop();
   closeStage();
+  sharpness.setSharp([]);
+  media.setStrain(0);
+  media.setHint(null);
+  media.setCaptured(null);
   setState({ call: null, peers: {} });
   bump();
+}
+
+// how much of everyone else you show (seen.js), told as it changes: each of
+// them sends you no more than that. your tab hidden a while, nothing's
+// shown: a frame a second. back, it's said at once
+function watchSeen(now) {
+  now.seen = {};
+  let before = null;
+  const look = () => {
+    if (now.dead || now.away || live.session !== now) return;
+    const measured = measureFaces();
+    const steps = {};
+    const dpr = globalThis.devicePixelRatio || 1;
+    for (const id of now.peers.keys()) steps[id] = seenStep(measured[id], dpr);
+    if (worthSaying(now.seen, steps, before)) {
+      now.seen = steps;
+      tellAll();
+    }
+    before = steps;
+  };
+  now.timers.push(setInterval(look, LOOK_EVERY));
+  now.onVisibility = () => {
+    clearTimeout(now.awayTimer);
+    if (document.visibilityState === "hidden") {
+      now.awayTimer = setTimeout(() => {
+        if (now.dead || document.visibilityState !== "hidden") return;
+        now.away = true;
+        now.seen = Object.fromEntries([...now.peers.keys()].map((id) => [id, 0]));
+        tellAll();
+      }, AWAY_AFTER);
+    } else if (now.away) {
+      now.away = false;
+      before = null;
+      look();
+    }
+  };
+  document.addEventListener("visibilitychange", now.onVisibility);
 }
 
 // the call you're in, as it is now, kept in the tab for after a reload
@@ -636,7 +798,7 @@ export function setMic(on) {
   if (!live.session || state.call?.joining) return;
   const track = trackOf("audio");
   if (on && !track) {
-    getAudio().then((track) => {
+    getMic().then((track) => {
       if (!live.session || !track) return setState("call", "problem", "no mic");
       useTrack("audio", track);
       setState("call", { mic: true, problem: null });
@@ -705,6 +867,50 @@ export function setFaces(faces) {
   saveSettings();
 }
 
+/**
+ * how much video you send (`which`: "send"), or want sent you ("receive"):
+ * `quality`, one of sizes.js's QUALITY. what you want, everyone's told
+ */
+export function setQuality(which, quality) {
+  if ((which !== "send" && which !== "receive") || !isQuality(quality)) return;
+  setSettings(which, quality);
+  saveSettings();
+  if (which === "send") tuneVideo();
+  else tellAll();
+}
+
+/** what gives when it's struggling: `prefer`, one of sizes.js's PREFER */
+export function setPrefer(prefer) {
+  if (!isPrefer(prefer)) return;
+  setSettings("prefer", prefer);
+  saveSettings();
+  hintCamera();
+  tuneSenders();
+}
+
+/**
+ * your camera's contentHint for now, over what's chosen (setPrefer), till
+ * it's set back (null): "motion", "detail" or "text". for something watching
+ * what you're doing, say, that sees a page held up. not remembered
+ */
+export function setHint(hint) {
+  media.setHint(HINTS.includes(hint) ? hint : null);
+  hintCamera();
+  tuneSenders();
+}
+
+/**
+ * someone's video (`id`) in full, just for you, or (again) as everyone
+ * else's. while anyone's is, everyone else's comes as you've chosen
+ * (settings.receive), and if that's full, low: it's theirs that matters
+ */
+export function toggleSharp(id) {
+  if (!id || id === "me") return;
+  const now = sharpness.sharp();
+  sharpness.setSharp(now.includes(id) ? now.filter((one) => one !== id) : [...now, id]);
+  tellAll();
+}
+
 /** where someone's floating face is (`key`: call.floatKey's): fractions of the window */
 export function setFloating(key, at) {
   setSettings("floating", key, at);
@@ -743,6 +949,47 @@ export const call = {
     }
     return state.peers[id]?.screen ? (now.peers.get(id)?.screen ?? null) : null;
   },
+  /**
+   * everything chosen, and what's done about it, as plain data: what's sent
+   * and wanted, what gives, noise, faces, which mic and camera, the hint for
+   * now, how much the computer's struggling, what's captured, whose video
+   * you want in full, and your mic, camera and screen on or off
+   */
+  controls() {
+    const captured = media.captured();
+    return {
+      send: settings.send ?? "full",
+      receive: settings.receive ?? "full",
+      prefer: settings.prefer ?? "balanced",
+      noise: settings.noise,
+      faces: settings.faces,
+      camera: settings.camera,
+      mic: settings.mic,
+      hint: media.hint(),
+      strain: media.strain(),
+      captured: captured ? { width: captured.width ?? null, height: captured.height ?? null, frameRate: captured.frameRate ?? null } : null,
+      sharp: [...sharpness.sharp()],
+      on: { mic: !!state.call?.mic, camera: !!state.call?.camera, screen: !!state.call?.screen },
+    };
+  },
+  /**
+   * the live media (read in an effect: it says when it changes): your mic as
+   * it's sent, your camera, your screen, and everyone else's sound and
+   * pictures, by their id
+   */
+  media() {
+    version();
+    const now = live.session;
+    if (!now) return null;
+    return {
+      mic: trackOf("audio"),
+      camera: trackOf("video"),
+      screen: now.screen ?? null,
+      peers: Object.fromEntries([...now.peers].map(([id, peer]) => [id, { stream: peer.stream, screen: peer.screen ?? null }])),
+    };
+  },
+  /** whether you want `id`'s video in full (toggleSharp) */
+  sharp: (id) => sharpness.sharp().includes(id),
   /** yours */
   local() {
     version();
@@ -910,28 +1157,156 @@ export function closeStage() {
   view.setFull(false);
 }
 
-// how much of your camera's sent, for how many are in the call (sizes.js):
-// past a handful, smaller and slower, so it goes to all of them
+// ── how much is sent, and captured ──────────────────────────────────────
+
+// each camera as it was opened: its size and frame rate, and what it was
+// asked for (its device), so it can be put back as it was
+const opened = new WeakMap();
+function openedAs(track) {
+  if (!opened.has(track)) {
+    const { width, height, frameRate } = track.getSettings?.() ?? {};
+    const asked = { ...(track.getConstraints?.() ?? {}) };
+    for (const key of ["width", "height", "frameRate", "resizeMode", "aspectRatio"]) delete asked[key];
+    opened.set(track, { width, height, frameRate, asked, applied: "null" });
+  }
+  return opened.get(track);
+}
+
+// what each of them has asked of you ({wants, seen}: tell)
+const asks = () => [...(live.session?.peers.keys() ?? [])].map((id) => ({ wants: state.peers[id]?.wants, seen: state.peers[id]?.seen }));
+
+// your camera's hint: what something's said for now (setHint), else what
+// gives when it's struggling, as chosen
+const cameraHint = () => media.hint() ?? PREFER.find(([id]) => id === settings.prefer)?.[2] ?? "";
+function hintCamera() {
+  const camera = trackOf("video");
+  if (camera && "contentHint" in camera) camera.contentHint = cameraHint();
+}
+
+// how much of your camera's captured (sizes.js captureFor): as much as the
+// one who wants most of it, no more than you'll send, nor than this
+// computer manages. then what's sent each of them (tuneSenders)
 function tuneVideo() {
   const now = live.session;
   if (!now) return;
-  const wanted = videoFor(now.peers.size + 1);
+  const camera = trackOf("video");
+  if (!camera || camera.readyState === "ended") {
+    media.setCaptured(null);
+    return tuneSenders();
+  }
+  const at = openedAs(camera);
+  const wanted = captureFor({
+    native: at,
+    count: now.peers.size + 1,
+    send: settings.send,
+    strain: media.strain(),
+    peers: asks(),
+  });
+  const said = JSON.stringify(wanted);
+  if (said === at.applied) return tuneSenders();
+  at.applied = said;
+  const height = wanted?.height ?? at.height;
+  const aspect = at.width && at.height ? at.width / at.height : 4 / 3;
+  const constraints = {
+    ...at.asked,
+    height: { ideal: height },
+    width: { ideal: Math.round(height * aspect) },
+    frameRate: wanted?.frameRate ? { ideal: wanted.frameRate, max: wanted.frameRate } : { ideal: at.frameRate },
+    resizeMode: "crop-and-scale",
+  };
+  Promise.resolve(camera.applyConstraints?.(constraints))
+    .catch((error) => console.warn("[call] couldn't change what's captured", error))
+    .finally(() => {
+      if (live.session !== now) return;
+      media.setCaptured(camera.getSettings?.() ?? null);
+      tuneSenders();
+    });
+}
+
+// what's sent each of them: voice first, then a screen, then your camera
+// (its priority, when there's not room for everything), and your camera
+// for what each of them has asked (sizes.js sendFor). a screen's sent as it
+// is: it's to be read
+const PRIORITY = { audio: "high", screen: "medium", video: "low" };
+function tuneSenders() {
+  const now = live.session;
+  if (!now) return;
+  const camera = trackOf("video");
+  const native = camera ? openedAs(camera).height || 720 : 720;
+  const captured = camera?.getSettings?.().height || native;
+  const degrade = degradeFor(cameraHint());
   for (const peer of now.peers.values()) {
+    const them = state.peers[peer.id];
     for (const transceiver of peer.pc.getTransceivers()) {
-      // (a screen's sent as it is: it's to be read)
-      if (slotOf(peer.pc, transceiver) !== "video" || transceiver.stopped) continue;
+      const slot = slotOf(peer.pc, transceiver);
+      if (!slot || transceiver.stopped) continue;
       const sender = transceiver.sender;
       const parameters = sender.getParameters();
       // none till it's been negotiated: it's tuned when it's connected
       const encoding = parameters.encodings?.[0];
       if (!encoding) continue;
-      for (const key of ["maxBitrate", "scaleResolutionDownBy", "maxFramerate"]) {
-        if (wanted) encoding[key] = wanted[key];
-        else delete encoding[key];
+      encoding.priority = PRIORITY[slot];
+      encoding.networkPriority = PRIORITY[slot];
+      if (slot === "video") {
+        const wanted = sendFor({
+          native,
+          captured,
+          count: now.peers.size + 1,
+          send: settings.send,
+          wants: them?.wants,
+          seen: them?.seen,
+        });
+        for (const key of ["maxBitrate", "scaleResolutionDownBy", "maxFramerate"]) {
+          if (wanted?.[key] != null) encoding[key] = wanted[key];
+          else delete encoding[key];
+        }
+        parameters.degradationPreference = degrade;
       }
-      sender.setParameters(parameters).catch((error) => console.warn("[call] couldn't tune video", error));
+      sender.setParameters(parameters).catch((error) => console.warn(`[call] couldn't tune ${slot}`, error));
     }
   }
+}
+
+// whether this computer's struggling to send your camera (the browser says,
+// qualityLimitationReason): twice running, it's captured a step less; calm
+// for half a minute, a step more again
+const STRAIN_EVERY = 3000;
+const STRAIN_AFTER = 2;
+const CALM_AFTER = 10;
+function watchStrain(now) {
+  let struggling = 0;
+  let calm = 0;
+  now.timers.push(
+    setInterval(async () => {
+      if (now.dead || live.session !== now) return;
+      const reasons = [];
+      for (const peer of now.peers.values()) {
+        for (const transceiver of peer.pc.getTransceivers()) {
+          if (slotOf(peer.pc, transceiver) !== "video" || transceiver.stopped || !transceiver.sender.track) continue;
+          try {
+            const stats = await transceiver.sender.getStats();
+            stats.forEach((report) => report.type === "outbound-rtp" && reasons.push(report.qualityLimitationReason));
+          } catch {}
+        }
+      }
+      if (live.session !== now || !reasons.length) return;
+      if (reasons.includes("cpu")) {
+        calm = 0;
+        if (++struggling >= STRAIN_AFTER && media.strain() < STRAIN_MOST) {
+          struggling = 0;
+          media.setStrain(media.strain() + 1);
+          tuneVideo();
+        }
+      } else {
+        struggling = 0;
+        if (++calm >= CALM_AFTER && media.strain() > 0) {
+          calm = 0;
+          media.setStrain(media.strain() - 1);
+          tuneVideo();
+        }
+      }
+    }, STRAIN_EVERY),
+  );
 }
 
 // ── talking ─────────────────────────────────────────────────────────────
@@ -952,7 +1327,55 @@ const about = () => ({
   camera: !!state.call?.camera,
   screen: !!live.session?.screen,
   face: state.call?.camera ? (state.call.face ?? null) : null,
+  // how much video you want from them, and who you want it from in full
 });
+
+// ── between just the two of you ─────────────────────────────────────────
+//
+// what you ask each of them for (sizes.js: askFor): how much video, and how
+// much of them you're showing. over the connection's own data channel, not
+// the room: nobody else hears it (who you've alt clicked, who you've put
+// away, whether you're looking), and it says no more than they need
+
+// told them, if it's not what they were told last (or `again`)
+function tell(peer, again = false) {
+  if (!live.session || peer.channel?.readyState !== "open") return;
+  const sharp = sharpness.sharp();
+  const ask = askFor({
+    receive: settings.receive ?? "full",
+    sharpened: sharp.includes(peer.id),
+    anySharp: sharp.length > 0,
+    seen: live.session.seen?.[peer.id],
+  });
+  const said = JSON.stringify(ask);
+  if (!again && said === peer.told) return;
+  try {
+    peer.channel.send(said);
+    peer.told = said;
+  } catch (error) {
+    console.warn("[call] couldn't tell them", error);
+  }
+}
+function tellAll() {
+  for (const peer of live.session?.peers.values() ?? []) tell(peer);
+}
+
+// what they've asked of you: what's sent them is tuned to it
+function onAsk(id, data) {
+  let ask;
+  try {
+    ask = JSON.parse(data);
+  } catch {
+    return;
+  }
+  if (!isObject(ask)) return;
+  const wants = isQuality(ask.wants) ? ask.wants : "full";
+  const seen = ask.seen === 0 || ask.seen > 0 ? Number(ask.seen) : null;
+  const had = state.peers[id];
+  if (had?.wants === wants && had?.seen === seen) return;
+  showPeer(id, { wants, seen });
+  tuneVideo();
+}
 
 function sayHere() {
   if (!live.session || state.call?.joining) return;
@@ -1026,7 +1449,14 @@ function onHere(from, tab, message) {
   if (!who) return;
   let peer = live.session.peers.get(from);
   if (!peer && offers(from)) peer = connect(from, crypto.randomUUID());
-  const fields = { ...who, peer: tab, mic: !!message.mic, camera: !!message.camera, face: faceFrom(message.face), screen: !!message.screen };
+  const fields = {
+    ...who,
+    peer: tab,
+    mic: !!message.mic,
+    camera: !!message.camera,
+    face: faceFrom(message.face),
+    screen: !!message.screen,
+  };
   if (peer) {
     peer.heard = Date.now();
     const was = !!state.peers[from]?.screen;
@@ -1105,6 +1535,17 @@ function connect(id, conn) {
       const track = slot === "screen" ? live.session.screen : trackOf(slot);
       if (track) transceiver.sender.replaceTrack(track);
     }
+  }
+  // between just the two of you (tell): made alike on both sides, so it's in
+  // the offer, and the answer, with nothing more to say about it
+  try {
+    peer.channel = pc.createDataChannel("patchwork-call", { negotiated: true, id: 0 });
+    peer.channel.onopen = () => tell(peer, true);
+    peer.channel.onmessage = (event) => onAsk(id, event.data);
+  } catch (error) {
+    console.warn("[call] no channel between you", error);
+  }
+  if (offers(id)) {
     pc.onnegotiationneeded = async () => {
       try {
         if (pc.signalingState !== "stable") return;
@@ -1144,6 +1585,7 @@ function drop(id, from = live.session) {
   peer.stopLevel?.();
   if (from === live.session) {
     setState("peers", id, undefined);
+    if (sharpness.sharp().includes(id)) sharpness.setSharp(sharpness.sharp().filter((one) => one !== id));
     if (view.stage() === id) closeStage();
     bump();
     tuneVideo();

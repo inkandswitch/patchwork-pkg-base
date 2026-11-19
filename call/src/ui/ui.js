@@ -18,6 +18,7 @@ import {
   toggleFill,
   setFull,
   closeStage,
+  toggleSharp,
 } from "../engine/call.js";
 import { tilesFor } from "../engine/sizes.js";
 import { hearing } from "../engine/speaking.js";
@@ -89,11 +90,13 @@ export function Face(props) {
   const image = () => faceImage(person()?.avatar);
   return html`<span
     class="patchwork-call-face"
+    data-call-id=${() => props.id}
     data-shape=${() => props.shape ?? "round"}
     data-mine=${() => (mine() ? "" : undefined)}
     data-camera=${() => (stream() ? "" : undefined)}
     data-connecting=${() => (!mine() && person()?.connection !== "connected" ? "" : undefined)}
     data-speaking=${() => ((mine() ? call.get()?.speaking : person()?.speaking) ? "" : undefined)}
+    data-sharp=${() => (!mine() && call.sharp(props.id) ? "" : undefined)}
     style=${() => ({
       "--call-face": person() ? colourOf(person(), props.id) : null,
       "--call-face-size": props.size ? `${props.size}px` : null,
@@ -105,6 +108,14 @@ export function Face(props) {
     <${Show} when=${() => !mine() && person()?.connection !== "connected"}>${Quilt}<//>
     <${Show} when=${() => props.muted !== false && person() && !person().mic}>
       <span class="patchwork-call-muted" aria-label="muted">${icon("mic-off", 9)}</span>
+    <//>
+    <${Show} when=${() => !mine() && call.sharp(props.id)}>
+      <span
+        class="patchwork-call-glint"
+        aria-label="in full, just for you"
+        title="their video in full, just for you (alt click: as everyone else's)"
+        >${icon("sharp", 9)}</span
+      >
     <//>
     <${Show} when=${() => (mine() ? call.get()?.screen : person()?.screen)}>
       <span class="patchwork-call-sharing" aria-label="sharing their screen" title="sharing their screen"
@@ -541,6 +552,14 @@ export function CallFloating(props) {
     const screen = floatOf(item).screen;
     return items().filter((other) => floatOf(other).screen === screen).indexOf(item);
   };
+  // each floating, by what it is: {float, id, key}, so all but one can be
+  // put away at once (alt double click)
+  const floats = new Map();
+  function minimiseOthers(except) {
+    for (const [item, { float, id, key }] of floats) {
+      if (item !== except) minimise(float, id, () => hideFloating(key));
+    }
+  }
   return html`<${Show} when=${floatingNow}>
     <div class="patchwork-call-floating" popover="manual" ref=${onTop}>
       <${For} each=${items}>
@@ -562,10 +581,18 @@ export function CallFloating(props) {
           // it's held, so nothing else moving (someone speaking, coming or
           // going) puts it back where it was from under the pointer
           let dragging = null;
+          // whether the press was a drag, so letting go isn't a click; and
+          // an alt click waiting to see it's not the first of a double
+          let moved = false;
+          let altClick = null;
+          onCleanup(() => {
+            clearTimeout(altClick);
+            floats.delete(item);
+          });
           const [held, setHeld] = createSignal(null);
           const where = () => held() ?? at();
           function onPointerDown(event) {
-            if (event.button !== 0 || event.target.closest(".patchwork-call-float-button, .patchwork-call-float-fill")) return;
+            if (event.button !== 0 || event.target.closest(".patchwork-call-float-button")) return;
             const box = float.getBoundingClientRect();
             const sizing = !!event.target.closest(".patchwork-call-size");
             const pointer = event.pointerId;
@@ -573,6 +600,8 @@ export function CallFloating(props) {
               ? { pointer, sizing, x: event.clientX, width: at().width }
               : { pointer, sizing, dx: event.clientX - box.left, dy: event.clientY - box.top };
             setHeld(at());
+            moved = false;
+            if (sizing) float.dataset.sizing = "";
             float.setPointerCapture(pointer);
             event.preventDefault();
           }
@@ -580,6 +609,7 @@ export function CallFloating(props) {
             if (!dragging || event.pointerId !== dragging.pointer) return;
             // let go somewhere it wasn't heard
             if (event.buttons === 0) return onPointerUp(event);
+            moved = true;
             if (dragging.sizing) {
               const width = Math.round(Math.max(FLOAT_MIN, Math.min(FLOAT_MAX, dragging.width + event.clientX - dragging.x)));
               setHeld({ ...held(), width });
@@ -593,6 +623,7 @@ export function CallFloating(props) {
           function onPointerUp(event) {
             if (!dragging || event.pointerId !== dragging.pointer) return;
             dragging = null;
+            delete float.dataset.sizing;
             const now = held();
             if (now) setFloating(key(), now);
             setHeld(null);
@@ -604,9 +635,34 @@ export function CallFloating(props) {
             data-shape=${shape}
             data-mine=${mine ? "" : undefined}
             data-staged=${() => (staged() ? "" : undefined)}
-            onDblClick=${() => !screen && setFloating(key(), { ...at(), shape: shape() === "round" ? "tile" : "round" })}
+            onClick=${(event) => {
+              // alt clicked: their video in full, just for you, or as
+              // everyone else's again. (not a screen: that's always full)
+              if (!event.altKey || moved || screen || mine || event.target.closest(".patchwork-call-float-button")) return;
+              // a second while the first's waiting: a double, not a toggle
+              if (altClick) {
+                clearTimeout(altClick);
+                altClick = null;
+                return;
+              }
+              altClick = setTimeout(() => {
+                altClick = null;
+                toggleSharp(id);
+              }, 260);
+            }}
+            onDblClick=${(event) => {
+              if (event.target.closest(".patchwork-call-float-button")) return;
+              // alt double clicked: everyone else put away
+              if (event.altKey) {
+                clearTimeout(altClick);
+                altClick = null;
+                return minimiseOthers(item);
+              }
+              if (!screen) setFloating(key(), { ...at(), shape: shape() === "round" ? "tile" : "round" });
+            }}
             ref=${(el) => {
               float = el;
+              floats.set(item, { float: el, id, key: key() });
               // once it's where it goes
               requestAnimationFrame(() => float.isConnected && arrive(float, id, key(), index()));
             }}
@@ -626,31 +682,37 @@ export function CallFloating(props) {
                 <${Screen} id=${id} />
               <//>
               <span class="patchwork-call-size" title="drag to size"></span>
-              <button
-                class="patchwork-call-float-fill"
-                data-fill=""
-                aria-label=${() => `fill the panes with ${whose()}`}
-                title="fill the panes (the rest float over it)"
-                onClick=${() => toggleFill(id, screen)}
-                onDblClick=${(event) => event.stopPropagation()}
-              >
-                ${icon("fill", 14)}
-              </button>
             </span>
             <span class="patchwork-call-float-name">
-              <button
-                class="patchwork-call-float-button"
-                aria-label=${() => `minimise ${whose()}`}
-                title="minimise to the call bar (click them there, or drag them out, to have them back)"
-                onClick=${() => minimise(float, id, () => hideFloating(key()))}
-                onDblClick=${(event) => event.stopPropagation()}
-              >
-                ${icon("minimise", 11)}
-              </button>
-              ${name}
-              <${Show} when=${muted}>
-                <span class="patchwork-call-float-muted" aria-label="muted">${icon("mic-off", 10)}</span>
-              <//>
+              <span class="patchwork-call-float-reveal">
+                <button
+                  class="patchwork-call-float-button"
+                  aria-label=${() => `minimise ${whose()}`}
+                  title="minimise to the call bar (click them there, or drag them out, to have them back)"
+                  onClick=${() => minimise(float, id, () => hideFloating(key()))}
+                  onDblClick=${(event) => event.stopPropagation()}
+                >
+                  ${icon("minimise", 11)}
+                </button>
+              </span>
+              <span class="patchwork-call-float-label">
+                ${name}
+                <${Show} when=${muted}>
+                  <span class="patchwork-call-float-muted" aria-label="muted">${icon("mic-off", 10)}</span>
+                <//>
+              </span>
+              <span class="patchwork-call-float-reveal">
+                <button
+                  class="patchwork-call-float-button"
+                  data-fill=""
+                  aria-label=${() => `fill the panes with ${whose()}`}
+                  title="fill the panes (the rest float over it)"
+                  onClick=${() => toggleFill(id, screen)}
+                  onDblClick=${(event) => event.stopPropagation()}
+                >
+                  ${icon("fill", 11)}
+                </button>
+              </span>
             </span>
           </div>`;
         }}
@@ -807,7 +869,12 @@ export function StageButton(props) {
           : "fill the panes with them"}
     onPointerDown=${drag.onPointerDown}
     onDragStart=${(event) => event.preventDefault()}
-    onClick=${() => !drag.wasDrag() && !restore(props.id) && toggleStage(props.id)}
+    onClick=${(event) => {
+      if (drag.wasDrag()) return;
+      // alt clicked: their video in full, just for you (or not)
+      if (event.altKey) return toggleSharp(props.id);
+      if (!restore(props.id)) toggleStage(props.id);
+    }}
   >
     ${props.children}
   </button>`;
@@ -844,7 +911,7 @@ export function CallTiles() {
       ${(peer) => html`<button
         class="patchwork-call-stage-button patchwork-call-tile"
         title="fill the box with them"
-        onClick=${() => setFocus(peer.id)}
+        onClick=${(event) => (event.altKey ? toggleSharp(peer.id) : setFocus(peer.id))}
       >
         <${Show}
           when=${() => layout() !== "chips"}
