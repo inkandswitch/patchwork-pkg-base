@@ -1,6 +1,7 @@
-import { type AutomergeUrl } from "@automerge/automerge-repo/slim";
+import { type AutomergeUrl, type Repo } from "@automerge/automerge-repo/slim";
 import { accept, type SubscribeEvent } from "@inkandswitch/patchwork-providers";
 import type { OpenDocumentEvent } from "@inkandswitch/patchwork-elements";
+import { announce, whoAmI, type Who } from "./presence.js";
 
 const SELECTED_DOC_SELECTOR = "patchwork:selected-doc";
 const SELECTED_VIEW_SELECTOR = "patchwork:selected-view";
@@ -22,6 +23,10 @@ type SelectedView = {
  *
  * Selection is transient UI state, so it lives only in memory here — it is
  * never written to an Automerge doc (and therefore never synced to peers).
+ *
+ * It's also where you are, so others can see: while the tab is visible, the
+ * open folders holding the selected doc are told you're looking at it
+ * (presence.ts). A hidden tab tells them bye.
  */
 export const SelectedDocProvider = (element: HTMLElement) => {
   let selectedView = selectedViewFromLocation();
@@ -44,11 +49,42 @@ export const SelectedDocProvider = (element: HTMLElement) => {
     selectedView = next;
     for (const emit of docSubscribers) emit(selectedDocUrls());
     for (const emit of viewSubscribers) emit(selectedView);
+    presence?.update();
   };
 
   const selectedDocUrls = (): AutomergeUrl[] => {
     return selectedView ? [selectedView.url] : [];
   };
+
+  // ── presence ──
+  const repo = () => (globalThis as { repo?: Repo }).repo;
+  let me: Who | null = null;
+  let asking = false;
+  const findMe = () => {
+    if (asking) return;
+    asking = true;
+    whoAmI(repo())
+      .then((who) => {
+        if (who) {
+          me = who;
+          presence.update();
+        }
+      })
+      .finally(() => (asking = false));
+  };
+  const presence = announce({
+    repo,
+    from: `${crypto.randomUUID()}:doc`,
+    where: () => {
+      if (!me) findMe();
+      if (document.visibilityState === "hidden" || !selectedView) return null;
+      return { doc: selectedView.url };
+    },
+    who: () => me,
+  });
+  // who you are can change (a new name): asked again now and then
+  const askAgain = setInterval(findMe, 60_000);
+  const onVisibility = () => presence.update();
 
   const onOpenDocument = (event: OpenDocumentEvent) => {
     const url = event.detail.url;
@@ -86,8 +122,12 @@ export const SelectedDocProvider = (element: HTMLElement) => {
   );
   element.addEventListener("patchwork:subscribe", onSubscribe);
   window.addEventListener("hashchange", onHashChange);
+  document.addEventListener("visibilitychange", onVisibility);
 
   return () => {
+    document.removeEventListener("visibilitychange", onVisibility);
+    clearInterval(askAgain);
+    presence.stop();
     element.removeEventListener(
       "patchwork:open-document",
       onOpenDocument as EventListener

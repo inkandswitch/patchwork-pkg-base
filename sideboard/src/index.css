@@ -456,11 +456,62 @@
 }
 
 /* the doc you're in a call on (call-room.ts) */
-.document-list-item__call {
-  display: grid;
-  place-items: center;
+/* who's there (document-list/presence-pill.tsx): a phone while there's a
+   call, then faces, scrolling along past a few */
+.document-list-presence {
+  display: inline-flex;
   flex: none;
+  align-items: center;
+  gap: 3px;
+  max-width: 76px;
+  height: 18px;
+  padding: 0 3px;
+  border-radius: 9px;
+  background: var(--document-list-widget-fill);
   color: var(--document-list-line-offset-20);
+
+  /* your own call: the phone stands out */
+  &[data-mine] .document-list-presence__phone {
+    color: var(--document-list-primary);
+  }
+}
+
+.document-list-presence__phone {
+  display: grid;
+  flex: none;
+  place-items: center;
+}
+
+.document-list-presence__faces {
+  display: flex;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.document-list-presence__face {
+  display: grid;
+  flex: none;
+  place-items: center;
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--face, var(--document-list-line-offset-20));
+  border-radius: 50%;
+  background: var(--document-list-fill) center / cover;
+  color: var(--document-list-line);
+  font: 600 7px/1 var(--document-list-family);
+
+  /* only looking: quieter than whoever's in the call */
+  &:not([data-calling]) {
+    opacity: 0.8;
+  }
 }
 
 .document-list-item__name {

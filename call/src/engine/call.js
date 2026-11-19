@@ -37,6 +37,7 @@ import {
   sendFor,
 } from "./sizes.js";
 import { measureFaces, worthSaying } from "./seen.js";
+import { announce } from "./presence.js";
 
 // (lattice's name for it: its calls and these hear each other)
 export const KEY = "lattice-wm:call";
@@ -701,6 +702,13 @@ export async function join(url, { video = false } = {}) {
   now.timers.push(setInterval(forgetGone, GONE_AFTER / 3));
   watchSeen(now);
   watchStrain(now);
+  // the folders your call's doc is in, told you're in a call there (presence.js)
+  now.presence = announce({
+    repo: pageRepo,
+    from: `${now.id}:call`,
+    where: () => (live.session === now && !state.call?.joining ? { call: roomId } : null),
+    who: () => (now.who?.contact ? now.who : null),
+  });
   // the page going (a reload, say): you're back in it if it's back soon
   now.onPageHide = () => hangUp({ rejoin: true });
   addEventListener("pagehide", now.onPageHide);
@@ -720,6 +728,7 @@ export function hangUp({ rejoin = false } = {}) {
   else forgetCall();
   removeEventListener("pagehide", now.onPageHide);
   document.removeEventListener("visibilitychange", now.onVisibility);
+  now.presence?.stop();
   clearTimeout(now.awayTimer);
   now.timers.forEach(clearInterval);
   now.room.off(now.onMessage);
