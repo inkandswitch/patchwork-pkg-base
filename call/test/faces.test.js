@@ -9,6 +9,7 @@ vi.mock("../src/engine/call.js", () => {
     get: () => inCall(),
     peers: () => peers(),
     me: () => ({ name: "me", contact: "automerge:mine", colour: "", avatar: "" }),
+    sharp: () => false,
     local: () => null,
     stream: () => null,
     screen: () => null,
@@ -38,6 +39,7 @@ vi.mock("../src/engine/call.js", () => {
     toggleFill: nothing,
     setFull: nothing,
     closeStage: nothing,
+    toggleSharp: () => {},
   };
 });
 

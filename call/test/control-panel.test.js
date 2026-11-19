@@ -91,9 +91,28 @@ describe("in a call", () => {
     expect(opened).toHaveBeenCalledWith(url);
   });
 
+  // the cog menu's submenu `title`, opened
+  const into = (title) =>
+    [...element.querySelectorAll(".patchwork-call-menu-into")]
+      .find((b) => b.querySelector(".patchwork-call-menu-into-title").textContent.trim() === title)
+      .click();
+
+  test("the menu's a list of each setting as it is, each opening to its choices, and back", () => {
+    const rows = () =>
+      [...element.querySelectorAll(".patchwork-call-menu-into-title")].map((title) => title.textContent.trim());
+    expect(rows()).toEqual(["faces", "noise", "video quality"]);
+    const faces = element.querySelector(".patchwork-call-menu-into-now");
+    expect(faces.textContent.trim()).toBe("floating");
+    into("faces");
+    expect(element.querySelector(".patchwork-call-menu-into")).toBe(null);
+    element.querySelector(".patchwork-call-menu-back").click();
+    expect(rows()).toContain("faces");
+  });
+
   test("the menu says where faces go: in the sidebar only where there's a sidebar to show them", async () => {
     const menu = () => element.querySelector(".patchwork-call-menu");
     const items = () => [...menu().querySelectorAll("button")].map((b) => b.textContent.trim());
+    into("faces");
     expect(items()).toContain("floating");
     expect(items()).not.toContain("in the sidebar");
     expect(items().some((text) => text.includes("cursor"))).toBe(false);
@@ -106,6 +125,7 @@ describe("in a call", () => {
   test("choosing in the sidebar puts faces there", async () => {
     const release = engine.holdVideoSpot();
     await settle();
+    into("faces");
     const item = [...element.querySelectorAll(".patchwork-call-menu button")].find(
       (b) => b.textContent.trim() === "in the sidebar",
     );
@@ -113,6 +133,23 @@ describe("in a call", () => {
     item.click();
     expect(engine.call.mode()).toBe("sidebar");
     release();
+  });
+
+  test("less video, sent and wanted, for a bad network or a low battery", () => {
+    const row = (heading) =>
+      element.querySelector(`.patchwork-call-menu-segments[aria-label="${heading}"]`);
+    const chosen = (heading) => row(heading).querySelector('[aria-checked="true"]').textContent.trim();
+    const choose = (heading, label) =>
+      [...row(heading).querySelectorAll("button")].find((b) => b.textContent.trim() === label).click();
+    into("video quality");
+    expect(chosen("video you send")).toBe("full");
+    choose("video you send", "low");
+    expect(engine.call.settings.send).toBe("low");
+    expect(chosen("video you send")).toBe("low");
+    choose("video you get", "potato");
+    expect(engine.call.settings.receive).toBe("potato");
+    choose("video you send", "full");
+    choose("video you get", "full");
   });
 
   test("hanging up", async () => {

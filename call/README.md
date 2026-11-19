@@ -320,8 +320,9 @@ camera shows (`call-face`).
    whether *you're* in the call, use the `patchwork:call` subscription.
 
 The rule underneath all of this: **your tool owns the layout and the call owns
-the media.** Keep your data about where people's cameras are. Don't try to get
-at their streams.
+the media.** Keep your data about where people's cameras are. To *show* a
+face, use `call-face` rather than drawing streams yourself. (To *do* something
+with the media, like transcribing it, see the next section.)
 
 **Not there yet.** These are the rough edges for in-canvas cameras today. If
 you need one of them, it belongs in the protocol, so open an issue rather than
@@ -334,6 +335,81 @@ working around it:
 - There's no list of who's in the call through the protocol, only a count
   (`others`). Use presence to know who's around, and `call-face` to show the
   ones who are in the call.
+
+### Every setting, and the media, for tools and agents
+
+Everything in the settings menu can be read and set through the protocol, as
+plain data. That means a tool, or an agent driving one, can work the call
+without the menu.
+
+```js
+const off = subscribe(element, { type: "patchwork:call-controls" }, (controls) => {
+  // {send, receive, prefer, noise, faces, camera, mic,
+  //  hint, strain, captured: {width, height, frameRate} | null,
+  //  sharp: [ids], on: {mic, camera, screen}}
+});
+
+send({ action: "set", key: "send", value: "low" });     // send, receive: "full" | "medium" | "low" | "potato"
+send({ action: "set", key: "prefer", value: "detail" }); // when it's struggling: "balanced" | "motion" | "detail"
+send({ action: "set", key: "noise", value: "browser" }); // also faces, mic, camera (a device id)
+send({ action: "hint", value: "text" });                 // camera contentHint for now; null to go back to prefer
+send({ action: "sharp", id });                           // their video in full quality, just for you (again: off)
+send({ action: "mic", on: false });                      // also camera, screen
+```
+
+`hint` is for things that watch what you're doing. For example, something
+that sees a page held up to the camera can say `"text"` so sharpness wins
+over smoothness until it says `null`. It's never remembered. `prefer` is the
+person's own choice and is remembered.
+
+`strain` is how many steps (0 to 2) the call has lowered your capture because
+the browser reported the computer couldn't keep up with encoding. It comes
+back up after half a minute of calm.
+
+Media can't go down a `MessagePort`, so the media subscriptions take a
+function in the selector and call it directly. They only work from the same
+window as the provider.
+
+```js
+// your mic as it's sent, your camera and screen, and everyone's streams
+// (null out of a call), now and whenever any of it changes
+const off = subscribe(element, { type: "patchwork:call-media", onMedia: (media) => {
+  // media?.mic, media?.camera, media?.screen, media?.peers[id].stream / .screen
+}}, () => {});
+
+// put something over your mic before it's sent, while subscribed. it gets the
+// mic's track (after noise suppression) and gives back a track, or
+// {track, stop}, or a promise of either. if it throws, the mic is left as it was
+const off = subscribe(element, { type: "patchwork:call-mic", process: async (track) => {
+  const processed = await myEffect(track);
+  return { track: processed, stop: () => myEffect.close() };
+}}, () => {});
+```
+
+For transcription, `call-media`'s `mic` is the track to feed it. It's your
+voice after noise suppression, exactly as everyone hears it. When it changes
+(a different mic, noise suppression switched), you're called again with the
+new one.
+
+### How much video goes where
+
+These are the defaults that the controls above adjust:
+
+- **Voice comes first, then screens, then cameras**, when there isn't room for
+  everything (each sender's `priority`).
+- **Each person tells each other person how much of them they show**, over a
+  data channel between just the two of them: not at all (their tab has been
+  hidden 5 seconds or more), how tall in pixels up to 120 CSS px, or "shown".
+  Anything bigger than that is one level, so nobody can tell they're big on
+  your screen.
+- **What's sent to each person** is scaled to what they show, combined with
+  their `receive`, your `send`, and fewer pixels in large calls. It keeps
+  every frame, except for someone not looking, who gets 1 fps.
+- **What your camera captures** is as much as the one who wants the most,
+  but no more than your `send`, and less while `strain` is up. That saves
+  the camera and every encoder at once.
+- **When it's struggling**, `prefer` (or a `hint`) says whether to keep it
+  smooth or sharp.
 
 ---
 
