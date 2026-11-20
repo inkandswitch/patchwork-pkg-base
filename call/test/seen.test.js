@@ -41,3 +41,20 @@ test("each face's biggest, but not yours", () => {
   assert.equal(seen.p1, 150);
   assert.equal("me" in seen, false);
 });
+
+test("over the page and the picture in picture alike: the biggest of each", () => {
+  const face = (id, height) => {
+    const el = document.createElement("span");
+    el.className = "patchwork-call-face";
+    el.dataset.callId = id;
+    el.getBoundingClientRect = () => ({ height });
+    el.checkVisibility = () => true;
+    return el;
+  };
+  const page = document.createElement("div");
+  page.append(face("p1", 26), face("p2", 300));
+  const pip = document.implementation.createHTMLDocument("");
+  pip.body.append(face("p1", 140));
+  assert.deepEqual(measureFaces([page, pip]), { p1: 140, p2: 300 });
+  assert.deepEqual(measureFaces([pip]), { p1: 140 });
+});

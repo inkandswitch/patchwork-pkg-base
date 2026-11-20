@@ -2,7 +2,8 @@
 // bottom; lattice's call bar, where this came from). the calls on screen
 // you're not in, to join, each by where it is (which takes you there); and
 // the one you're in: where it is, everyone in it, and your mic, camera,
-// screen (where there's one to share) and hanging up. its menu says where
+// screen (where there's one to share) and hanging up, and picture in picture
+// (where there's that: ui/pip.js). its menu says where
 // faces go (floating, or in the sidebar where a frame can show them there),
 // which mic and camera, what's done about noise, and how much video's sent
 // and wanted (less, on a bad network or a low battery). with nothing to show,
@@ -36,6 +37,7 @@ import { DragOut, Face, StageButton, names } from "./ui/ui.js";
 import { scrollsAlong } from "./ui/along.js";
 import { arrivals } from "./ui/arriving.js";
 import { icon } from "./ui/icons.js";
+import { canPip, closePip, openPip, pipOpen } from "./ui/pip.js";
 import "./ui/styles.css";
 
 export function CallControlPanel(element) {
@@ -260,6 +262,18 @@ function Panel(props) {
       <button class="patchwork-call-panel-where" title="go to it" onClick=${() => go(call.get()?.room)}>
         ${() => (call.get()?.joining ? "joining…" : call.nameOf(call.get()?.room) || "a doc")}
       </button>
+      <${Show} when=${canPip}>
+        <button
+          class="patchwork-call-panel-button"
+          data-on=${() => (pipOpen() ? "" : undefined)}
+          aria-pressed=${() => String(pipOpen())}
+          title=${() => (pipOpen() ? "close picture in picture" : "picture in picture: the call in a little window, over everything")}
+          aria-label=${() => (pipOpen() ? "close picture in picture" : "picture in picture")}
+          onClick=${() => (pipOpen() ? closePip() : openPip({ from: props.element }))}
+        >
+          ${icon("pip", 12)}
+        </button>
+      <//>
       <button
         class="patchwork-call-panel-button"
         title="settings: faces, mic, camera, noise and video quality"

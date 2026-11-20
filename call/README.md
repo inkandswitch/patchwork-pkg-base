@@ -173,6 +173,13 @@ doc is the same room).
   Both `button.js` and threepane's `CallVideoOpener` do this.
 - **The call floats over your frame.** The question, the faces and the stage
   are popovers in the top layer, so you don't need to make room for them.
+- **Picture in picture: nothing to do.** In Chrome, the control panel has a
+  button that opens the call in a small window of its own, and while you're
+  in a call the browser can open that window by itself when you leave the
+  tab (the Media Session's `enterpictureinpicture`). The window copies the
+  page's stylesheets and the provider's custom properties, so it matches your
+  theme. Faces in it count as seen, so people keep sending you full video
+  while you're in another tab.
 - **Theming.** The call's colours are `--call-*` custom properties
   (`src/ui/styles.css`). They're taken from the `--studio-*` theme variables,
   inside `@layer package`. Set the `--studio-*` variables and the call matches

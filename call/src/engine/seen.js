@@ -4,11 +4,13 @@
 /**
  * each face on the page but yours (`.patchwork-call-face[data-call-id]`):
  * its id's biggest height on screen, in css px. one that's there but
- * hidden (a floating face behind the one filling the panes) is 0
+ * hidden (a floating face behind the one filling the panes) is 0. `roots`:
+ * where to look, one or a list (the page, and the picture in picture)
  */
-export function measureFaces(root = document) {
+export function measureFaces(roots = document) {
   const out = {};
-  for (const face of root.querySelectorAll(".patchwork-call-face[data-call-id]")) {
+  const faces = [roots].flat().flatMap((root) => [...root.querySelectorAll(".patchwork-call-face[data-call-id]")]);
+  for (const face of faces) {
     const id = face.dataset.callId;
     if (!id || id === "me") continue;
     const shown = face.checkVisibility

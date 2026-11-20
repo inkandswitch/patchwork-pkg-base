@@ -178,7 +178,7 @@ function Screen(props) {
  * someone big (`props.id`): their screen while they're sharing it, with
  * their face small in its corner, else their face
  */
-function Picture(props) {
+export function Picture(props) {
   return html`<${Show}
     when=${() => call.screen(props.id)}
     fallback=${html`<${Face} id=${props.id} shape="tile" muted=${false} title=${false} />`}

@@ -37,6 +37,7 @@ import {
   sendFor,
 } from "./sizes.js";
 import { measureFaces, worthSaying } from "./seen.js";
+import { onPipChange, pipWindow } from "./pip.js";
 
 // (lattice's name for it: its calls and these hear each other)
 export const KEY = "lattice-wm:call";
@@ -720,6 +721,7 @@ export function hangUp({ rejoin = false } = {}) {
   else forgetCall();
   removeEventListener("pagehide", now.onPageHide);
   document.removeEventListener("visibilitychange", now.onVisibility);
+  now.offPip?.();
   clearTimeout(now.awayTimer);
   now.timers.forEach(clearInterval);
   now.room.off(now.onMessage);
@@ -742,13 +744,17 @@ export function hangUp({ rejoin = false } = {}) {
 
 // how much of everyone else you show (seen.js), told as it changes: each of
 // them sends you no more than that. your tab hidden a while, nothing's
-// shown: a frame a second. back, it's said at once
+// shown: a frame a second. back, it's said at once. the picture in picture
+// (pip.js) open, you're looking at what's in it, the tab hidden or not
 function watchSeen(now) {
   now.seen = {};
   let before = null;
+  const hidden = () => document.visibilityState === "hidden";
+  const looking = () => !hidden() || !!pipWindow();
   const look = () => {
     if (now.dead || now.away || live.session !== now) return;
-    const measured = measureFaces();
+    const pip = pipWindow()?.document;
+    const measured = measureFaces(pip ? (hidden() ? [pip] : [document, pip]) : [document]);
     const steps = {};
     const dpr = globalThis.devicePixelRatio || 1;
     for (const id of now.peers.keys()) steps[id] = seenStep(measured[id], dpr);
@@ -761,9 +767,9 @@ function watchSeen(now) {
   now.timers.push(setInterval(look, LOOK_EVERY));
   now.onVisibility = () => {
     clearTimeout(now.awayTimer);
-    if (document.visibilityState === "hidden") {
+    if (!looking()) {
       now.awayTimer = setTimeout(() => {
-        if (now.dead || document.visibilityState !== "hidden") return;
+        if (now.dead || looking()) return;
         now.away = true;
         now.seen = Object.fromEntries([...now.peers.keys()].map((id) => [id, 0]));
         tellAll();
@@ -775,6 +781,7 @@ function watchSeen(now) {
     }
   };
   document.addEventListener("visibilitychange", now.onVisibility);
+  now.offPip = onPipChange(now.onVisibility);
 }
 
 // the call you're in, as it is now, kept in the tab for after a reload

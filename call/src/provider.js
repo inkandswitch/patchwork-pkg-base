@@ -38,6 +38,7 @@ import {
 } from "./protocol.js";
 import { CallFloating, CallQuestion, CallStage } from "./ui/ui.js";
 import { stageArea } from "./ui/area.js";
+import { holdPip } from "./ui/pip.js";
 import { chimes } from "./engine/chimes.js";
 import "./ui/styles.css";
 
@@ -175,6 +176,8 @@ export function CallProvider(element) {
   element.append(layer);
   // the sounds of people coming and going (one frame, one set of them)
   const stopChimes = holdChimes();
+  // picture in picture, as you leave the tab while you're in a call
+  const stopPip = holdPip(element);
   const unrender = render(() => {
     // passed as it is: html calls it for the prop (a getter). wrapped in
     // another function, the prop would be this, not the box
@@ -199,6 +202,7 @@ export function CallProvider(element) {
     mounts.clear();
     unrender();
     stopChimes();
+    stopPip();
     layer.remove();
   };
 }
