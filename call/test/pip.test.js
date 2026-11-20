@@ -50,6 +50,12 @@ function fakeWindow() {
   const win = new EventTarget();
   win.document = document.implementation.createHTMLDocument("");
   win.close = vi.fn(() => win.dispatchEvent(new Event("pagehide")));
+  // its own frames, which go on while the page's are stopped (it's hidden)
+  win.requestAnimationFrame = vi.fn(() => 1);
+  win.cancelAnimationFrame = vi.fn();
+  win.getComputedStyle = (el) => getComputedStyle(el);
+  win.devicePixelRatio = 2;
+  Object.defineProperty(win.document, "defaultView", { value: win });
   return win;
 }
 
@@ -149,6 +155,19 @@ describe("what's in it", () => {
     expect(pip.querySelector(".patchwork-call-pip-grid").style.getPropertyValue("--columns")).toBe("2");
     // (each face measured, as the page's are: seen.js)
     expect(pip.querySelector(".patchwork-call-pip-tile [data-call-id='a']")).not.toBe(null);
+  });
+
+  test("each face's wiggle is drawn with its window's frames, not the page's", async () => {
+    setPeers([{ id: "a", name: "ana", mic: true }]);
+    const pages = vi.spyOn(window, "requestAnimationFrame");
+    const win = await openPip();
+    await tick();
+    const wiggles = win.document.querySelectorAll(".patchwork-call-pip-tile .patchwork-call-wiggle, .patchwork-call-pip-me .patchwork-call-wiggle");
+    expect(wiggles.length).toBe(2);
+    expect(win.requestAnimationFrame).toHaveBeenCalledTimes(2);
+    expect(pages).not.toHaveBeenCalled();
+    win.close();
+    expect(win.cancelAnimationFrame).toHaveBeenCalledTimes(2);
   });
 
   test("a screen being shared fills it", async () => {

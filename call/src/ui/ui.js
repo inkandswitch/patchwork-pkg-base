@@ -448,14 +448,30 @@ const TILE_ROUND = 10;
  * their sound's waveform, all the way round their floating face (in its
  * picture's box): its border, bumping out from where it is, as soon as
  * there's sound, and while `props.speaking`. behind the face, so still it's
- * the border. not with reduced motion (the ring's shown then, as elsewhere)
+ * the border. not with reduced motion (the ring's shown then, as elsewhere).
+ * drawn with the frames of the window it's in: the page's, or the picture
+ * in picture's (pip.js), whose go on while the page is hidden behind it
  */
-function Wiggle(props) {
+export function Wiggle(props) {
   const canvas = document.createElement("canvas");
   canvas.className = "patchwork-call-wiggle";
   canvas.setAttribute("aria-hidden", "true");
-  let frame = requestAnimationFrame(draw);
-  onCleanup(() => cancelAnimationFrame(frame));
+  let view = window;
+  let frame = 0;
+  let stopped = false;
+  const next = () => {
+    if (stopped) return;
+    // (the document it's in: a shadow root has no window, its owner has)
+    const root = canvas.isConnected ? canvas.getRootNode() : null;
+    view = root?.defaultView || (root && canvas.ownerDocument.defaultView) || window;
+    frame = view.requestAnimationFrame(draw);
+  };
+  // (once it's in, so it's that window's)
+  queueMicrotask(next);
+  onCleanup(() => {
+    stopped = true;
+    view.cancelAnimationFrame(frame);
+  });
   // how much it's shown (0 to 1), and whether there's anything to clear
   let shown = 0;
   let drawn = false;
@@ -466,7 +482,7 @@ function Wiggle(props) {
   let colourAt = -Infinity;
 
   function draw(now) {
-    frame = requestAnimationFrame(draw);
+    next();
     const analyser = !reducedMotion() && hearing(props.id);
     if (analyser) {
       if (samples?.length !== analyser.fftSize) samples = new Float32Array(analyser.fftSize);
@@ -482,7 +498,7 @@ function Wiggle(props) {
     const face = picture?.querySelector(".patchwork-call-face");
     if (!face) return;
     const g = canvas.getContext("2d");
-    const dpr = devicePixelRatio || 1;
+    const dpr = view.devicePixelRatio || 1;
     const width = picture.offsetWidth + 2 * WIGGLE_PAD;
     const height = picture.offsetHeight + 2 * WIGGLE_PAD;
     if (canvas.width !== Math.round(width * dpr) || canvas.height !== Math.round(height * dpr)) {
@@ -507,7 +523,7 @@ function Wiggle(props) {
     const points = wiggle(w, h, r, heard.values.map(Math.abs), -FACE_BORDER / 2, swing);
 
     if (now - colourAt > 500) {
-      colour = getComputedStyle(face).borderTopColor;
+      colour = view.getComputedStyle(face).borderTopColor;
       colourAt = now;
     }
     g.translate(WIGGLE_PAD + face.offsetLeft + w / 2, WIGGLE_PAD + face.offsetTop + h / 2);

@@ -1493,7 +1493,8 @@ body[data-call-pip] {
 	& .patchwork-call-pip-main {
 		position: relative;
 		min-height: 0;
-		padding: 6px 6px 0;
+		/* room round each face to wiggle into */
+		padding: 10px 10px 0;
 	}
 
 	/* everyone else, as many across as down */
@@ -1501,7 +1502,7 @@ body[data-call-pip] {
 		display: grid;
 		grid-template-columns: repeat(var(--columns, 1), minmax(0, 1fr));
 		grid-auto-rows: minmax(0, 1fr);
-		gap: 6px;
+		gap: 12px;
 		height: 100%;
 	}
 
@@ -1516,8 +1517,26 @@ body[data-call-pip] {
 		width: 100%;
 		height: 100%;
 		aspect-ratio: auto;
-		border-radius: 8px;
+		/* a floating face's corners: the wiggle's drawn round them (ui.js) */
+		border-radius: 10px;
 		font-size: 32px;
+	}
+
+	/* speaking: their border wiggling with their voice, from behind them,
+	   as a floating face's does. so not the ring too (but with reduced
+	   motion, the ring) */
+	& .patchwork-call-wiggle {
+		position: absolute;
+		inset: -32px;
+		width: calc(100% + 64px);
+		height: calc(100% + 64px);
+		pointer-events: none;
+	}
+	@media (prefers-reduced-motion: no-preference) {
+		& .patchwork-call-pip-tile > .patchwork-call-face[data-speaking],
+		& .patchwork-call-pip-me > .patchwork-call-face[data-speaking] {
+			outline-color: transparent;
+		}
 	}
 
 	& .patchwork-call-pip-name {
@@ -1558,17 +1577,17 @@ body[data-call-pip] {
 	/* you, small, in the corner over everyone; alone, all of it */
 	& .patchwork-call-pip-me {
 		position: absolute;
-		right: 12px;
-		bottom: 6px;
+		right: 14px;
+		bottom: 4px;
 		width: 26%;
 		max-width: 160px;
 		aspect-ratio: 4 / 3;
-		border-radius: 8px;
+		border-radius: 10px;
 		box-shadow: 0 4px 16px var(--call-float-shadow);
 	}
 
 	&[data-alone] .patchwork-call-pip-me {
-		inset: 6px 6px 0;
+		inset: 10px 10px 0;
 		width: auto;
 		max-width: none;
 		aspect-ratio: auto;

@@ -2,7 +2,8 @@
 // own, over everything, while you're somewhere else. opened from the call
 // bar, or by itself as you leave the tab (the browser asks the page, through
 // its media session, while it's using a camera or mic). everyone else's
-// faces, you in the corner, and your mic, camera and hanging up; a screen
+// faces, you in the corner, each one's border wiggling with their voice as
+// a floating face's does, and your mic, camera and hanging up; a screen
 // being shared fills it. it closes as the call ends, and one that opened by
 // itself closes as you come back to the tab
 //
@@ -15,7 +16,7 @@ import { clearDelegatedEvents, delegateEvents, DelegatedEvents, render } from "s
 import html from "solid-js/html";
 import { call, hangUp, setCamera, setMic } from "../engine/call.js";
 import { pipWindow, setPipWindow } from "../engine/pip.js";
-import { Face, Picture } from "./ui.js";
+import { Face, Picture, Wiggle } from "./ui.js";
 import { icon } from "./icons.js";
 
 // to start with: a little 4:3, as meet's is
@@ -175,6 +176,7 @@ export function CallPip() {
   const camera = () => !!call.get()?.camera;
 
   const Tile = (peer) => html`<div class="patchwork-call-pip-tile">
+    <${Wiggle} id=${peer.id} speaking=${() => peer.speaking} />
     <${Face} id=${peer.id} shape="tile" muted=${false} title=${false} />
     <span class="patchwork-call-pip-name">
       <span class="patchwork-call-pip-name-text">${() => peer.name}</span>
@@ -194,6 +196,7 @@ export function CallPip() {
         ${(id) => html`<div class="patchwork-call-pip-screen"><${Picture} id=${id} /></div>`}
       <//>
       <div class="patchwork-call-pip-me">
+        <${Wiggle} id="me" speaking=${() => call.get()?.speaking} />
         <${Face} id="me" shape="tile" muted=${false} title=${false} />
         <${Show} when=${alone}>
           <span class="patchwork-call-pip-name"><span class="patchwork-call-pip-name-text">no one else here yet</span></span>
