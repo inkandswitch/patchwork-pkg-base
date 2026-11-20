@@ -144,8 +144,9 @@ const {
       faces: saved.faces === "sidebar" ? "sidebar" : "floating",
       camera: string(saved.camera),
       mic: string(saved.mic),
-      // what's done about the noise round your voice (noise.js)
-      noise: isNoise(saved.noise) ? saved.noise : "browser",
+      // what's done about the noise round your voice (noise.js): DeepFilterNet,
+      // with the browser's while it's downloading or if it can't be had
+      noise: isNoise(saved.noise) ? saved.noise : "deepfilternet",
       floating: isObject(saved.floating) ? saved.floating : {},
       // how much video you send, and want from everyone else (sizes.js)
       send: isQuality(saved.send) ? saved.send : "full",

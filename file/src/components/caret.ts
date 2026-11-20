@@ -10,7 +10,8 @@ import {EditorState, Transaction, type Extension} from "@codemirror/state"
  * Keep the person's caret where they can see it when text moves under it.
  *
  * - a paste (or a text drop) can carry the caret a long way, so it's put in
- *   the middle, not just inside the edge
+ *   the middle, not just inside the edge. a caret that's still on the
+ *   screen after it isn't moved at all
  * - text that appears above the caret without moving it (someone else's
  *   edit, something dropped in) leaves the caret where it was on the
  *   screen. codemirror on its own keeps the top line still, so text arriving
@@ -18,20 +19,59 @@ import {EditorState, Transaction, type Extension} from "@codemirror/state"
  *   the screen is left to codemirror
  */
 export function createCaretExtension(): Extension {
-	return [centerAfterPaste, keepCaretInPlace]
+	return [centerAfterPaste, pastes, keepCaretInPlace]
 }
 
-const centerAfterPaste = EditorState.transactionExtender.of((tr) =>
-	tr.docChanged &&
-	tr.selection &&
-	(tr.isUserEvent("input.paste") || tr.isUserEvent("input.drop"))
-		? {
-				effects: EditorView.scrollIntoView(tr.newSelection.main.head, {
-					y: "center",
-				}),
-			}
-		: null,
+// paste and drop say "center", and this decides whether that scroll happens:
+// a caret that's still on the screen is left where it is
+const centerAfterPaste = [
+	EditorState.transactionExtender.of((tr) =>
+		isPaste(tr)
+			? {
+					effects: EditorView.scrollIntoView(tr.newSelection.main.head, {
+						y: "center",
+					})
+				}
+			: null
+	),
+	EditorView.scrollHandler.of((view, range) => {
+		const pasted = view.plugin(pastes)
+		if (!pasted?.pending) return false
+		pasted.pending = false
+		return onScreen(view, range.head)
+	}),
+]
+
+function isPaste(tr: Transaction) {
+	return (
+		tr.docChanged &&
+		tr.selection != null &&
+		(tr.isUserEvent("input.paste") || tr.isUserEvent("input.drop"))
+	)
+}
+
+// set by a paste, spent by the scroll it asks for
+const pastes = ViewPlugin.fromClass(
+	class {
+		pending = false
+		update(update: ViewUpdate) {
+			if (update.transactions.some(isPaste)) this.pending = true
+		}
+	}
 )
+
+// the whole caret is inside the scroller and inside the window, clear of
+// the scroll margins
+function onScreen(view: EditorView, pos: number) {
+	const caret = view.coordsAtPos(pos, 1)
+	if (!caret) return false
+	const scroller = view.scrollDOM.getBoundingClientRect()
+	const top = Math.max(scroller.top, 0) + scrollMarginTop(view)
+	const bottom =
+		Math.min(scroller.top + view.scrollDOM.clientHeight, window.innerHeight) -
+		scrollMarginBottom(view)
+	return caret.top >= top && caret.bottom <= bottom
+}
 
 class KeepCaretInPlace implements PluginValue {
 	// the caret's top, from the top of the scroller, or null when it's out of
@@ -112,4 +152,13 @@ function scrollMarginTop(view: EditorView) {
 		if (margins?.top != null) top = Math.max(top, margins.top)
 	}
 	return top
+}
+
+function scrollMarginBottom(view: EditorView) {
+	let bottom = 0
+	for (const source of view.state.facet(EditorView.scrollMargins)) {
+		const margins = source(view)
+		if (margins?.bottom != null) bottom = Math.max(bottom, margins.bottom)
+	}
+	return bottom
 }

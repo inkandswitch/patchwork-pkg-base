@@ -13,6 +13,7 @@ import {java} from "@codemirror/lang-java"
 import {php} from "@codemirror/lang-php"
 import {sql} from "@codemirror/lang-sql"
 import {wast} from "@codemirror/lang-wast"
+import {knitout} from "./lang-knitout"
 
 const extensionMap: Record<string, () => Extension> = {
 	".js": () => javascript(),
@@ -50,6 +51,8 @@ const extensionMap: Record<string, () => Extension> = {
 	".sql": () => sql(),
 	".wat": () => wast(),
 	".wast": () => wast(),
+	".k": () => knitout(),
+	".knitout": () => knitout(),
 }
 
 const mimeMap: Record<string, () => Extension> = {

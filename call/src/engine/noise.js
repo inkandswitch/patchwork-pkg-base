@@ -6,7 +6,9 @@
 //                  and chatter too, and keeps the whole voice. its wasm and
 //                  model (23MB) are downloaded the first time it's wanted,
 //                  checked, and kept in indexeddb (not the cache storage:
-//                  the service worker clears what isn't its own there)
+//                  the service worker clears what isn't its own there).
+//                  the default: the browser's stands in while it's
+//                  downloading, or if it can't be had
 //   none           nothing: the mic as it is (echo cancelling still)
 import { createRoot, createSignal } from "solid-js";
 import { lasting } from "./lasting.js";
