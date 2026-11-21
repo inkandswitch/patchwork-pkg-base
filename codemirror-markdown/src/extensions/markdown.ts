@@ -17,6 +17,7 @@ import { moveListItems } from "./move.ts";
 import { prefixes } from "./prefix.ts";
 import { verticalMemory } from "./vertical.ts";
 import { markdownZoom } from "./zoom.ts";
+import { formattedCaret } from "./caret.ts";
 
 /** Styles */
 import { bareUrl, theme } from "../themes/markdown.ts";
@@ -53,6 +54,7 @@ export function markdownExtensions() {
     headings,
     lists,
     moveListItems,
+    formattedCaret,
     indentUnit.of("    "),
   ];
 }
