@@ -113,11 +113,42 @@ export function Copyable(props: {
   );
 }
 
-/** A plugin that's registered right now. */
+/**
+ * What a plugin's id is to the others registering it: "shadowed by" the one
+ * in use, when it isn't; "overrides" the ones it shadows, when it is. Nothing
+ * when it's the only one (or the host doesn't keep shadowed registrations).
+ */
+export function ShadowNote(props: { plugin: Enriched }): JSX.Element {
+  return (
+    <>
+      <Show when={!props.plugin.inUse}>
+        <span
+          class="pw-pkg-shadow"
+          title="Registered, but another package's plugin with this id is the one in use. If that package goes, or stops providing the id, this one is used again."
+        >
+          shadowed by {props.plugin.shadowedByName ?? "another package"}
+        </span>
+      </Show>
+      <Show when={props.plugin.shadowsNames?.length}>
+        <span
+          class="pw-pkg-shadow pw-pkg-shadow--overrides"
+          title="In use over other packages' plugins with this id, which come back if this one goes."
+        >
+          overrides {props.plugin.shadowsNames!.join(", ")}
+        </span>
+      </Show>
+    </>
+  );
+}
+
+/** A plugin that's registered right now, in use or shadowed. */
 export function PluginRow(props: { plugin: Enriched }): JSX.Element {
   const dts = () => datatypesLabel(props.plugin.supportedDatatypes);
   return (
-    <li class="pw-pkg-plugin">
+    <li
+      class="pw-pkg-plugin"
+      classList={{ "is-shadowed": !props.plugin.inUse }}
+    >
       <span class="pw-pkg-plugin__dot" data-origin={props.plugin.origin} />
       <span
         class="pw-pkg-plugin__name"
@@ -139,6 +170,7 @@ export function PluginRow(props: { plugin: Enriched }): JSX.Element {
           <span class="pw-pkg-plugin__supports-label">supports</span> {dts()}
         </span>
       </Show>
+      <ShadowNote plugin={props.plugin} />
     </li>
   );
 }

@@ -8,6 +8,7 @@ import {
   hasActions,
   OriginBadge,
   PluginRow,
+  ShadowNote,
   SourceActions,
   SourceLine,
   UnlistedBadge,
@@ -37,8 +38,7 @@ export function ByPackage(props: { entries: Enriched[] }): JSX.Element {
                 </Show>
                 <OriginBadge origin={group.origin} />
                 <span class="pw-pkg-card__count">
-                  {group.plugins.length} plugin
-                  {group.plugins.length === 1 ? "" : "s"}
+                  {pluginCount(group.plugins)}
                 </span>
               </div>
             </header>
@@ -67,6 +67,14 @@ export function ByPackage(props: { entries: Enriched[] }): JSX.Element {
       </For>
     </ul>
   );
+}
+
+// "3 plugins", or "1 of 3 plugins in use" when some are shadowed
+function pluginCount(plugins: Enriched[]): string {
+  const total = plugins.length;
+  const inUse = plugins.filter((p) => p.inUse).length;
+  const noun = total === 1 ? "plugin" : "plugins";
+  return inUse === total ? `${total} ${noun}` : `${inUse} of ${total} ${noun} in use`;
 }
 
 /** One section per registry, i.e. per plugin type. */
@@ -117,6 +125,7 @@ function TypeRow(props: { plugin: Enriched }): JSX.Element {
         <Show when={dts()}>
           <span class="pw-pkg-regitem__supports">supports {dts()}</span>
         </Show>
+        <ShadowNote plugin={props.plugin} />
       </div>
       <div class="pw-pkg-regitem__source">
         <span class="pw-pkg-regitem__pkg">{props.plugin.pkgName}</span>
@@ -138,6 +147,9 @@ const COLUMNS: [SortKey, string][] = [
   ["origin", "Origin"],
   ["unlisted", "Unlisted"],
 ];
+// only on a host that keeps shadowed registrations: anywhere else, every
+// plugin's in use
+const IN_USE_COLUMN: [SortKey, string] = ["inUse", "In use"];
 
 /** A flat, sortable table. The sort lives with the caller so it survives view switches. */
 export function Table(props: {
@@ -145,16 +157,19 @@ export function Table(props: {
   sortKey: SortKey;
   sortAsc: boolean;
   onSort: (key: SortKey) => void;
+  /** Whether to say which plugins are in use (the host keeps shadowed registrations). */
+  inUse?: boolean;
 }): JSX.Element {
   const rows = createMemo(() =>
     sortRows(props.entries, props.sortKey, props.sortAsc)
   );
+  const columns = () => (props.inUse ? [...COLUMNS, IN_USE_COLUMN] : COLUMNS);
   return (
     <div class="pw-pkg-table-wrap">
       <table class="pw-pkg-table">
         <thead>
           <tr>
-            <For each={COLUMNS}>
+            <For each={columns()}>
               {([key, label]) => (
                 <th
                   class="pw-pkg-table__th"
@@ -176,7 +191,11 @@ export function Table(props: {
         <tbody>
           <For each={rows()}>
             {(e) => (
-              <tr class="pw-pkg-table__row" data-origin={e.origin}>
+              <tr
+                class="pw-pkg-table__row"
+                classList={{ "is-shadowed": !e.inUse }}
+                data-origin={e.origin}
+              >
                 <td
                   class="pw-pkg-table__name"
                   classList={{ "is-unlisted": e.unlisted }}
@@ -203,6 +222,13 @@ export function Table(props: {
                     </span>
                   </Show>
                 </td>
+                <Show when={props.inUse}>
+                  <td class="pw-pkg-table__use">
+                    <Show when={e.inUse} fallback={<ShadowNote plugin={e} />}>
+                      ✓
+                    </Show>
+                  </td>
+                </Show>
                 <td class="pw-pkg-table__url">
                   <div class="pw-pkg-source">
                     <SourceLine importUrl={e.importUrl} />

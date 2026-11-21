@@ -28,6 +28,7 @@ import {
   VIEW_LABEL,
   type OriginFilter,
   type SortKey,
+  type Enriched,
   type View,
 } from "./model.ts";
 import { Copyable, PackagesProvider, type PackagesActions } from "./bits.tsx";
@@ -69,9 +70,12 @@ export function Packages(props: {
       packages.add(e.importUrl ?? "∅");
       registries.add(e.registry);
     }
+    // shadowed registrations are listed, but they aren't plugins in use
+    const inUse = (entries: Enriched[]) => entries.filter((e) => e.inUse).length;
     return {
-      plugins: rows.length,
-      total: data.enriched().length,
+      plugins: inUse(rows),
+      total: inUse(data.enriched()),
+      shadowed: rows.length - inUse(rows),
       packages: packages.size,
       registries: registries.size,
     };
@@ -174,6 +178,11 @@ export function Packages(props: {
                 </Show>{" "}
                 plugins
               </span>
+              <Show when={stats().shadowed > 0}>
+                <span title="Registered, but another package's plugin with the same id is the one in use">
+                  <strong>{stats().shadowed}</strong> shadowed
+                </span>
+              </Show>
               <span>
                 <strong>{stats().packages}</strong> packages
               </span>
@@ -279,6 +288,7 @@ export function Packages(props: {
               sortKey={sortKey()}
               sortAsc={sortAsc()}
               onSort={toggleSort}
+              inUse={data.keepsShadows()}
             />
           </Show>
         </Show>

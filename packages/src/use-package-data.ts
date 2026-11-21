@@ -4,7 +4,11 @@
 // is `enriched`: every registered plugin tagged with where it came from.
 
 import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
-import { useLiveRegistries, type ToolHandle } from "./registry.ts";
+import {
+  hostKeepsShadows,
+  useLiveRegistries,
+  type ToolHandle,
+} from "./registry.ts";
 import {
   classifyOrigin,
   documentIdOf,
@@ -85,6 +89,8 @@ export function usePackageData(handle: ToolHandle) {
     const installed = installedKeys();
     const system = systemKeys();
     const metas = pkgMetas();
+    const nameOf = (url: string | undefined) =>
+      packageDisplayName(url, url ? metas[url] : undefined);
     return snapshot().map((entry) => {
       const meta = entry.importUrl ? metas[entry.importUrl] : undefined;
       return {
@@ -92,8 +98,17 @@ export function usePackageData(handle: ToolHandle) {
         origin: classifyOrigin(entry.importUrl, installed, system),
         pkgMeta: meta,
         pkgName: packageDisplayName(entry.importUrl, meta),
+        shadowedByName: entry.inUse ? undefined : nameOf(entry.shadowedBy),
+        shadowsNames: entry.shadows?.map(nameOf),
       };
     });
+  });
+
+  // Whether the host keeps shadowed registrations, so there's anything to say
+  // about what's in use
+  const keepsShadows = createMemo(() => {
+    snapshot();
+    return hostKeepsShadows();
   });
 
   return {
@@ -101,6 +116,7 @@ export function usePackageData(handle: ToolHandle) {
     installedKeys,
     snapshot,
     enriched,
+    keepsShadows,
     headsFor,
     systemPackageListUrl,
     isCustomSystemPackageList,
