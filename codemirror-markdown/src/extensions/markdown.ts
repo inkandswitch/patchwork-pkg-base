@@ -10,6 +10,7 @@ import { EditorView, keymap } from "@codemirror/view";
 
 import { markdownFormattingKeymap } from "./formatting.ts";
 import { taskCheckboxes } from "./tasks.ts";
+import { tables } from "./tables.ts";
 import { margin } from "./margin.ts";
 import { headings } from "./headings.ts";
 import { lists } from "./lists.ts";
@@ -47,6 +48,7 @@ export function markdownExtensions() {
       extensions: [bareUrls],
     }),
     taskCheckboxes,
+    tables,
     margin,
     prefixes,
     verticalMemory,
