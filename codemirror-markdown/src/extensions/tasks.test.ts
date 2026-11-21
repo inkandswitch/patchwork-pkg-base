@@ -81,6 +81,23 @@ describe("gfm task lists", () => {
     expect(view.state.doc.toString()).toBe("- [ ] todo");
   });
 
+  it("doesn't toggle in a read-only editor that can still take focus", () => {
+    const parent = document.createElement("div");
+    document.body.appendChild(parent);
+    const view = new EditorView({
+      parent,
+      state: EditorState.create({
+        doc: "- [ ] todo",
+        extensions: [markdownExtensions(), EditorState.readOnly.of(true)],
+      }),
+    });
+    ensureSyntaxTree(view.state, view.state.doc.length, 10_000);
+    view.dispatch({});
+    expect(boxes(view)[0].getAttribute("aria-disabled")).toBe("true");
+    click(boxes(view)[0]);
+    expect(view.state.doc.toString()).toBe("- [ ] todo");
+  });
+
   it("fades the text of done tasks, not open ones", () => {
     const view = makeView("- [ ] todo\n- [x] done\n    - [ ] nested");
     const faded = Array.from(

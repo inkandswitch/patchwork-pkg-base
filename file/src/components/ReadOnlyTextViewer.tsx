@@ -9,7 +9,7 @@ import {
 	keymap,
 	scrollPastEnd,
 } from "@codemirror/view"
-import {EditorState} from "@codemirror/state"
+import {EditorState, Transaction} from "@codemirror/state"
 import {bracketMatching, foldGutter, foldKeymap} from "@codemirror/language"
 import {highlightSelectionMatches, searchKeymap} from "@codemirror/search"
 import {defaultKeymap} from "@codemirror/commands"
@@ -19,6 +19,7 @@ import type {FileDoc} from "../types"
 import {fileText} from "../datatype"
 import {collectExtensions} from "./codemirror-extensions"
 import {createFileComments} from "./comments"
+import {zoomKeydown} from "./zoom"
 
 // Read-only text: ImmutableString files, and any text file opened through a
 // read-only handle. It follows the file as it changes (an ImmutableString is
@@ -43,8 +44,16 @@ export function ReadOnlyTextViewer(props: {
 	const view = new EditorView({
 		doc: fileText(props.handle?.doc() ?? props.doc),
 		extensions: [
+			// Not editable(false): that makes the content unfocusable, and with
+			// it go the caret, keyboard selection, search and zoom. readOnly
+			// makes CodeMirror drop DOM edits and built-in commands refuse; the
+			// filter drops doc changes from anything that doesn't check it, bar
+			// `follow` below; inputmode=none keeps a tap off a phone's keyboard.
 			EditorState.readOnly.of(true),
-			EditorView.editable.of(false),
+			EditorState.transactionFilter.of((tr) =>
+				!tr.docChanged || tr.annotation(Transaction.remote) ? tr : [],
+			),
+			EditorView.contentAttributes.of({inputmode: "none"}),
 			lineNumbers(),
 			highlightSpecialChars(),
 			highlightActiveLineGutter(),
@@ -67,7 +76,10 @@ export function ReadOnlyTextViewer(props: {
 	const follow = () => {
 		const text = fileText(props.handle?.doc())
 		if (text === view.state.doc.toString()) return
-		view.dispatch({changes: {from: 0, to: view.state.doc.length, insert: text}})
+		view.dispatch({
+			changes: {from: 0, to: view.state.doc.length, insert: text},
+			annotations: Transaction.remote.of(true),
+		})
 	}
 	props.handle?.on("change", follow)
 	comments?.attach(view)
@@ -77,8 +89,11 @@ export function ReadOnlyTextViewer(props: {
 		view.destroy()
 	})
 
+	const zoom = zoomKeydown(view)
+
 	return (
 		<div
+			onKeyDown={zoom}
 			ref={(el) => {
 				el.appendChild(view.dom)
 			}}

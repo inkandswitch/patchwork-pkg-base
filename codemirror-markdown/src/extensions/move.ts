@@ -215,7 +215,9 @@ const dragPlugin = ViewPlugin.fromClass(
       view.contentDOM.addEventListener("pointerdown", this.down);
     }
     down = (event: PointerEvent) => {
-      if (event.button !== 0 || !this.view.state.facet(EditorView.editable)) return;
+      const { state } = this.view;
+      if (event.button !== 0 || !state.facet(EditorView.editable) || state.readOnly)
+        return;
       const marker = (event.target as HTMLElement | null)?.closest<HTMLElement>(
         ".cm-md-list-marker"
       );

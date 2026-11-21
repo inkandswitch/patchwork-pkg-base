@@ -1,6 +1,33 @@
-import { Compartment, EditorState, type Extension } from "@codemirror/state"
+import {
+  Compartment,
+  EditorState,
+  Transaction,
+  type Extension,
+} from "@codemirror/state"
 import { EditorView, ViewPlugin } from "@codemirror/view"
 import type { DocHandle, DocHandleChangePayload } from "./DocHandle.js"
+import { isReconcileTx } from "./plugin.js"
+
+/**
+ * What read-only means here. Not `editable(false)`: that makes the content
+ * unfocusable, and with it go the caret, keyboard selection, search and
+ * font zoom. Instead:
+ *
+ * - `readOnly` makes CodeMirror drop DOM edits and built-in commands refuse.
+ * - A filter drops any other doc change — a custom command or plugin that
+ *   doesn't check `readOnly` — unless it's syncing the doc in from outside
+ *   (a reconcile, or annotated `Transaction.remote`).
+ * - `inputmode=none` keeps a tap from raising a phone's keyboard.
+ */
+export const readOnlyExtensions: Extension = [
+  EditorState.readOnly.of(true),
+  EditorState.transactionFilter.of(tr =>
+    !tr.docChanged || isReconcileTx(tr) || tr.annotation(Transaction.remote)
+      ? tr
+      : []
+  ),
+  EditorView.contentAttributes.of({ inputmode: "none" }),
+]
 
 type AutomergeReadOnlyConfig = {
   handle: DocHandle<unknown>
@@ -21,10 +48,7 @@ export const automergeReadOnly = ({
 }: AutomergeReadOnlyConfig): Extension => {
   const compartment = new Compartment()
   const isReadOnly = () => !!handle.isReadOnly?.()
-  const extensions = () =>
-    isReadOnly()
-      ? [EditorState.readOnly.of(true), EditorView.editable.of(false)]
-      : []
+  const extensions = () => (isReadOnly() ? readOnlyExtensions : [])
 
   const trackPlugin = ViewPlugin.fromClass(
     class {

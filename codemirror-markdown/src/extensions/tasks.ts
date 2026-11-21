@@ -76,7 +76,8 @@ class TaskWidget extends WidgetType {
     box.setAttribute("role", "checkbox");
     box.setAttribute("aria-checked", String(this.checked));
     box.setAttribute("aria-label", this.checked ? "Done" : "To do");
-    const disabled = !view.state.facet(EditorView.editable);
+    const disabled =
+      !view.state.facet(EditorView.editable) || view.state.readOnly;
     if (disabled) box.setAttribute("aria-disabled", "true");
 
     if (this.checked) {

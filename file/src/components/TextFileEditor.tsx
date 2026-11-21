@@ -33,32 +33,12 @@ import {createCaretExtension} from "./caret"
 import {collectExtensions} from "./codemirror-extensions"
 import {createFileComments} from "./comments"
 import {createPresenceExtension} from "./presence"
+import {mod, modshift, zoomKeydown} from "./zoom"
 import {subscribe} from "@inkandswitch/patchwork-providers-solid"
 import type {AutomergeUrl, Repo} from "@automerge/automerge-repo/slim"
 import codemirrorTheme from "../codemirror-theme"
 import {getLanguageExtension} from "../languages"
 import type {FileDoc} from "../types"
-
-enum mod {
-	shift = 1,
-	control = 2,
-	option = 3,
-	command = 4,
-}
-
-function modshift(event: {
-	ctrlKey: boolean
-	shiftKey: boolean
-	altKey: boolean
-	metaKey: boolean
-}) {
-	let bits = 0
-	bits |= +event.shiftKey << mod.shift
-	bits |= +event.ctrlKey << mod.control
-	bits |= +event.altKey << mod.option
-	bits |= +event.metaKey << mod.command
-	return bits
-}
 
 // A file is treated as text whenever its content actually is text — a plain
 // string (editable) or an ImmutableString (read-only). We key off the content
@@ -206,30 +186,7 @@ export function TextFileEditor(props: {
 		view.destroy()
 	})
 
-	// cmd+= / cmd+- / cmd+0 (ctrl off a Mac) resize the editor's text instead
-	// of zooming the whole page.
-	const MIN_FONT_SIZE = 6
-	const apple = ["Mac", "iPhone", "iPad"].some((name) =>
-		navigator.platform.includes(name),
-	)
-	const zoomMask = 1 << (apple ? mod.command : mod.control)
-	const zoom = (event: KeyboardEvent) => {
-		if ((modshift(event) & ~(1 << mod.shift)) != zoomMask) return
-		let step
-		if (event.key == "=" || event.key == "+") step = 1
-		else if (event.key == "-" || event.key == "_") step = -1
-		else if (event.key == "0") step = 0
-		else return
-		event.preventDefault()
-		event.stopPropagation()
-		if (step == 0) {
-			view.dom.style.fontSize = ""
-		} else {
-			const size = parseFloat(getComputedStyle(view.dom).fontSize)
-			view.dom.style.fontSize = `${Math.max(MIN_FONT_SIZE, size + step)}px`
-		}
-		view.requestMeasure()
-	}
+	const zoom = zoomKeydown(view)
 
 	return (
 		<div

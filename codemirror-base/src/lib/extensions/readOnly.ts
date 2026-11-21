@@ -2,7 +2,8 @@ import { createEffect } from "solid-js";
 
 /** CodeMirror */
 import { EditorView } from "@codemirror/view";
-import { Compartment, EditorState } from "@codemirror/state";
+import { Compartment } from "@codemirror/state";
+import { readOnlyExtensions } from "../../vendor/automerge-codemirror/index.js";
 
 /**
  * Force the editor read-only regardless of the handle's state.
@@ -10,7 +11,7 @@ import { Compartment, EditorState } from "@codemirror/state";
  * This is only the override: the handle's own read-only state (e.g. a
  * heads-pinned view, including flips when its backing is swapped in place)
  * is tracked by the vendored `automergeReadOnly`, installed via
- * `createAutomergeExtension`.
+ * `createAutomergeExtension`. Both apply the same `readOnlyExtensions`.
  *
  * @param force Forces read-only.
  * @returns A tuple containing the extension and a function to create the
@@ -19,10 +20,7 @@ import { Compartment, EditorState } from "@codemirror/state";
 export function createReadOnlyExtension(force: () => boolean) {
   const compartment = new Compartment();
 
-  const extensions = () =>
-    force()
-      ? [EditorState.readOnly.of(true), EditorView.editable.of(false)]
-      : [];
+  const extensions = () => (force() ? readOnlyExtensions : []);
 
   const createReconfigureEffect = (view: EditorView) =>
     createEffect(() => {

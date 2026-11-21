@@ -30,5 +30,5 @@ export const automergePlugin = ({
 
 export { automergeSyncPlugin } from "./plugin.js"
 export { automergeHistory } from "./history.js"
-export { automergeReadOnly } from "./readOnly.js"
+export { automergeReadOnly, readOnlyExtensions } from "./readOnly.js"
 export type { DocHandle, DocHandleChangePayload } from "./DocHandle.js"
