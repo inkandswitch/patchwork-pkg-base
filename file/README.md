@@ -67,6 +67,43 @@ host.addEventListener("file:codemirror-extensions", (event) => {
 The extensions must be built with the shared `@codemirror/*` modules from the
 import map (the same ones the editor uses), not a bundled copy.
 
+### The TypeScript language server
+
+JavaScript and TypeScript files in the editor (not the read-only viewer) get
+a TypeScript language server (tsgo, in a worker, shared by every editor on
+the page). Each open file is `file:///<documentId>/index.<ext>` to it, and an
+import of `automerge:<documentId>` (or `/automerge:<documentId>`) is that
+document's `index.js`. For those files the event's detail has two more
+fields; other files don't have them, so check before using them:
+
+- `languageServer`: `writeFile(path, text)` and `removeFile(path)` put files
+  of your own in the server's filesystem (paths from `/`), say the text of
+  docs the code imports, or a `.d.ts` of types for it. The server is told as
+  if a file watcher saw it, and the open files are checked again. Calls made
+  before the server has started wait for it.
+- `completionSources`: push CodeMirror completion sources onto it. They're
+  asked first, and the server's options with a label one of them already gave
+  at the same `from` are left out.
+
+Cmd+click (ctrl+click off a Mac), or F12, goes to the definition of what's
+under it. When that's in a file no editor on the page has open, the editor
+dispatches a bubbling, composed `file:open-definition` event instead, with
+`detail: {uri, line, character}` (the line and character are from 0):
+
+```js
+host.addEventListener("file:codemirror-extensions", (event) => {
+	const {languageServer, completionSources} = event.detail
+	languageServer?.writeFile("/lib/index.js", "export const width = 20")
+	completionSources?.push(mySource)
+})
+host.addEventListener("file:open-definition", (event) => {
+	const {uri, line, character} = event.detail
+})
+```
+
+The cmd+click handler is a `mousedown` at default precedence, so one of
+yours at `Prec.high` that returns true has the click first.
+
 ## Project Structure
 
 ```

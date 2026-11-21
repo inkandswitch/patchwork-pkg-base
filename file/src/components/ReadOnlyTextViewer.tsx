@@ -69,7 +69,7 @@ export function ReadOnlyTextViewer(props: {
 			...codemirrorTheme,
 			comments?.extension ?? [],
 			// last, so they can override anything above
-			collectExtensions(props.element, props.handle, props.doc, true),
+			collectExtensions(props.element, props.handle, props.doc, true).extensions,
 		],
 	})
 

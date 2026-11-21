@@ -38,6 +38,7 @@ import {subscribe} from "@inkandswitch/patchwork-providers-solid"
 import type {AutomergeUrl, Repo} from "@automerge/automerge-repo/slim"
 import codemirrorTheme from "../codemirror-theme"
 import {getLanguageExtension} from "../languages"
+import {lspLanguage} from "../lsp-language"
 import type {FileDoc} from "../types"
 
 // A file is treated as text whenever its content actually is text — a plain
@@ -47,25 +48,6 @@ import type {FileDoc} from "../types"
 // text.
 export const isTextFile = (doc: FileDoc) => {
 	return typeof doc?.content === "string" || (!!doc && isImmutableStringFileDoc(doc))
-}
-
-// Code files get TypeScript's language server (completions, hovers,
-// diagnostics), under the language id it knows each extension by.
-const LSP_LANGUAGES: Record<string, string> = {
-	js: "javascript",
-	mjs: "javascript",
-	cjs: "javascript",
-	jsx: "javascriptreact",
-	ts: "typescript",
-	mts: "typescript",
-	cts: "typescript",
-	tsx: "typescriptreact",
-}
-
-const lspLanguage = (extension?: string): string | undefined => {
-	if (!extension) return undefined
-	const ext = extension.startsWith(".") ? extension.slice(1) : extension
-	return LSP_LANGUAGES[ext.toLowerCase()]
 }
 
 export function TextFileEditor(props: {
@@ -103,6 +85,11 @@ export function TextFileEditor(props: {
 		() => (props.handle && repo ? (contactUrl() ?? null) : null),
 		repo as Repo,
 	)
+
+	// what a tool embedding this one adds: extensions (last in the editor, so
+	// they can override anything above them) and, for code files, completion
+	// sources for the language server's completion below
+	const embedder = collectExtensions(props.element, props.handle, props.doc, false)
 
 	const view = new EditorView({
 		doc: props.doc.content?.toString() || "",
@@ -148,8 +135,7 @@ export function TextFileEditor(props: {
 			presenceExtension,
 			createCaretExtension(),
 			comments?.extension ?? [],
-			// last, so they can override anything above
-			collectExtensions(props.element, props.handle, props.doc, false),
+			embedder.extensions,
 		],
 	})
 	comments?.attach(view)
@@ -168,12 +154,13 @@ export function TextFileEditor(props: {
 		const ext = props.doc.extension.replace(/^\./, "").toLowerCase()
 		const uri = `file:///${props.handle?.documentId ?? "untitled"}/index.${ext}`
 		void import("../typescript-language-server")
-			.then(({typescriptLanguageServer}) => {
+			.then(({typescriptLanguageServer, completion}) => {
 				if (disposed) return
 				view.dispatch({
-					effects: tsCompartment.reconfigure(
+					effects: tsCompartment.reconfigure([
 						typescriptLanguageServer().plugin(uri, languageId),
-					),
+						completion(embedder.completionSources),
+					]),
 				})
 			})
 			.catch((error) => {
