@@ -1,7 +1,7 @@
 // One TypeScript language server (tsgo, in a worker) shared by every JS/TS
 // editor on the page, started the first time a code file is opened. Its wasm
 // is ~49MB, so the first answers can take a while; the client waits.
-import type {EditorState, Extension, Text} from "@codemirror/state"
+import {EditorState, type Extension, type Text} from "@codemirror/state"
 import {EditorView, keymap} from "@codemirror/view"
 import {
 	autocompletion,
@@ -259,11 +259,15 @@ export function withoutDuplicates(
 	return [...sources.map((_, i) => (context: CompletionContext) => ask(i, context)), theirs]
 }
 
-// Completion for one editor: the server's, as lsp-client does it, unless the
-// embedder pushed sources of its own onto `detail.completionSources`.
+// Completion for one editor: the server's, as lsp-client does it (a
+// language-data source, beside the language's own keywords, snippets and
+// local names). Sources the embedder pushed onto `detail.completionSources`
+// join them there, and the only change is that the server leaves out what
+// they already gave.
 export function completion(sources: readonly CompletionSource[] = []): Extension {
 	if (!sources.length) return serverCompletion()
-	return autocompletion({override: withoutDuplicates(sources)})
+	const data = withoutDuplicates(sources).map((autocomplete) => ({autocomplete}))
+	return [autocompletion(), EditorState.languageData.of(() => data)]
 }
 
 export function createLanguageClient(transport: Transport): LSPClient {

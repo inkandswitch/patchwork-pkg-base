@@ -11,8 +11,10 @@ import {
 	OPEN_DEFINITION_EVENT,
 	createLanguageClient,
 	goToDefinition,
+	completion,
 	withoutDuplicates,
 } from "./typescript-language-server"
+import {javascript} from "@codemirror/lang-javascript"
 
 // a language server that says it can do definitions, and answers every
 // definition request with `definition`
@@ -97,6 +99,33 @@ describe("completion with an embedder's sources", () => {
 			null,
 			null,
 		])
+	})
+})
+
+describe("an editor's completion with an embedder's sources", () => {
+	// everything the editor would ask, as autocompletion() does without an override
+	async function labels(extensions: Extension, doc: string) {
+		const state = EditorState.create({doc, extensions})
+		const sources = state.languageDataAt<CompletionSource>("autocomplete", doc.length)
+		const results = await Promise.all(
+			sources.map((source) => source(new CompletionContext(state, doc.length, true))),
+		)
+		return results.flatMap((r) => r?.options.map((o) => o.label) ?? [])
+	}
+
+	it("keeps the language's own completions beside the embedder's", async () => {
+		const ours: CompletionSource = (context) => ({
+			from: context.pos - 3,
+			options: [{label: "retina"}],
+		})
+		const got = await labels([javascript(), completion([ours])], "let a = 1\nret")
+		expect(got).toContain("retina")
+		expect(got).toContain("return")
+	})
+
+	it("is the language's own completions alone when the embedder pushed nothing", async () => {
+		const got = await labels([javascript(), completion([])], "ret")
+		expect(got).toContain("return")
 	})
 })
 

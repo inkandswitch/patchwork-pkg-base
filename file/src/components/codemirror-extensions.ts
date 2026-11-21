@@ -18,9 +18,9 @@ import {
 // For a code file in the editor (the ones that get the TypeScript language
 // server) it also has `languageServer`, to give the server files of its own
 // (say, ones the code imports), and `completionSources`, to push completion
-// sources onto: they're asked first, and the server's options with a label
-// one of them already gave at the same place are left out. Other files don't
-// have them.
+// sources onto: they join the language's and the server's completions, and
+// the server's options with a label one of them already gave at the same
+// place are left out. Other files don't have them.
 export const CODEMIRROR_EXTENSIONS_EVENT = "file:codemirror-extensions"
 
 export type CodemirrorExtensionsDetail = {

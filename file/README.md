@@ -81,9 +81,10 @@ fields; other files don't have them, so check before using them:
   docs the code imports, or a `.d.ts` of types for it. The server is told as
   if a file watcher saw it, and the open files are checked again. Calls made
   before the server has started wait for it.
-- `completionSources`: push CodeMirror completion sources onto it. They're
-  asked first, and the server's options with a label one of them already gave
-  at the same `from` are left out.
+- `completionSources`: push CodeMirror completion sources onto it. They join
+  the editor's other completions (the language's keywords, snippets and local
+  names, and the server's), and the server's options with a label one of them
+  already gave at the same `from` are left out.
 
 Cmd+click (ctrl+click off a Mac), or F12, goes to the definition of what's
 under it. When that's in a file no editor on the page has open, the editor
