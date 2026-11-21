@@ -72,4 +72,12 @@ export const embedTheme = EditorView.baseTheme({
     height: "500px",
     width: "100%",
   },
+  // an embed on a line of its own is drawn between the lines, not in one, so
+  // it takes codemirror's line padding (6px, 2px) as margin to line up with
+  // the text. last, to win over the frame's max-width.
+  ".cm-embed.cm-embed-block": {
+    marginLeft: "6px",
+    marginRight: "2px",
+    maxWidth: "calc(100% - 8px)",
+  },
 });

@@ -7,7 +7,7 @@ import {
   dropCursor,
   type DecorationSet,
 } from "@codemirror/view";
-import { Range } from "@codemirror/state";
+import { Range, StateField, type Text } from "@codemirror/state";
 import {
   type AutomergeUrl,
   type DocumentId,
@@ -22,6 +22,65 @@ type Size = { width: number | null; height: number };
 const DEFAULT_HEIGHT = 500;
 const MIN_WIDTH = 160;
 const MIN_HEIGHT = 88;
+// a frame's 1px border, top and bottom (themes/embed.ts)
+const FRAME_BORDERS = 2;
+// codemirror's own padding on a line (left, right), which a block embed,
+// drawn between the lines, gets as margin instead so it lines up with them
+const LINE_PADDING = 8;
+
+/**
+ * The width embeds have to draw in, from the last editor measured. It's only
+ * for estimating heights before an embed is drawn, so one for the page will
+ * do; 0 until something's been measured.
+ */
+let columnWidth = 0;
+
+const measureColumn = ViewPlugin.fromClass(
+  class {
+    constructor(view: EditorView) {
+      this.measure(view);
+    }
+    update(update: ViewUpdate) {
+      if (update.geometryChanged) this.measure(update.view);
+    }
+    measure(view: EditorView) {
+      view.requestMeasure({
+        key: this,
+        read: () => {
+          const width = contentWidth(view.contentDOM) - LINE_PADDING;
+          if (width > 0) columnWidth = width;
+        },
+      });
+    }
+  }
+);
+
+function contentWidth(el: HTMLElement): number {
+  const style = getComputedStyle(el);
+  return (
+    el.clientWidth -
+    (parseFloat(style.paddingLeft) || 0) -
+    (parseFloat(style.paddingRight) || 0)
+  );
+}
+
+/** An image's pixels, from its marker, or from having drawn it before. */
+function imageSize(
+  size: Size | null,
+  known: Seen | undefined
+): { width: number; height: number } | null {
+  if (size?.width) return { width: size.width, height: size.height };
+  if (known?.kind === "image" && known.width && known.height) {
+    return { width: known.width, height: known.height };
+  }
+  return null;
+}
+
+/** How tall an image is drawn: at its size, shrunk to fit the column. */
+function drawnHeight({ width, height }: { width: number; height: number }) {
+  const drawn = columnWidth ? Math.min(width, columnWidth) : width;
+  return Math.round((height * drawn) / width);
+}
 
 /**
  * Renders an embedded doc through the shared "embed" tool, which draws the
@@ -35,34 +94,53 @@ const MIN_HEIGHT = 88;
  * A frame can be resized from its corner; the size goes in the marker
  * (`[patchwork:id/tool =640x400]`) and a size change keeps the same DOM, so
  * the embedded tool isn't remounted.
+ *
+ * An image's marker carries its size too (`[patchwork:id =1200x800]`, its
+ * pixels), written when it's pasted or dropped in, so its box is drawn the
+ * right size before the bytes arrive.
+ *
+ * A marker on a line of its own is drawn as a block, between the lines, and
+ * says how tall it'll be (`estimatedHeight`). codemirror keeps a height for
+ * every line, drawn or not, and scrolls by them: an embed it took for a line
+ * of text would put everything past it somewhere else than it scrolled to.
  */
 class EmbedWidget extends WidgetType {
   readonly docId: DocumentId;
   // `null` = no pinned tool; the embed frame uses the datatype's fallback.
   readonly toolId: string | null;
   readonly size: Size | null;
+  readonly block: boolean;
 
-  constructor(docId: DocumentId, toolId: string | null, size: Size | null) {
+  constructor(
+    docId: DocumentId,
+    toolId: string | null,
+    size: Size | null,
+    block: boolean
+  ) {
     super();
     this.docId = docId;
     this.toolId = toolId;
     this.size = size;
+    this.block = block;
   }
 
   eq(other: EmbedWidget) {
     return (
       other.docId === this.docId &&
       other.toolId === this.toolId &&
+      other.block === this.block &&
       other.size?.width === this.size?.width &&
       other.size?.height === this.size?.height
     );
   }
 
-  /** Same doc and tool, new size: resize in place rather than remount. */
+  /** Same framed doc and tool, new size: resize in place rather than remount. */
   updateDOM(dom: HTMLElement) {
     if (
       dom.dataset.docId !== this.docId ||
-      (dom.dataset.toolId ?? null) !== this.toolId
+      (dom.dataset.toolId ?? null) !== this.toolId ||
+      dom.classList.contains("cm-embed-block") !== this.block ||
+      !dom.classList.contains("cm-embed-frame")
     ) {
       return false;
     }
@@ -70,9 +148,21 @@ class EmbedWidget extends WidgetType {
     return true;
   }
 
+  get estimatedHeight() {
+    const known = seen.get(this.docId);
+    const framed =
+      this.toolId != null ||
+      known?.kind === "frame" ||
+      (this.size != null && this.size.width == null);
+    if (framed) return (this.size?.height ?? DEFAULT_HEIGHT) + FRAME_BORDERS;
+    const image = imageSize(this.size, known);
+    // nothing in the marker and not seen yet: leave it to codemirror
+    return image ? drawnHeight(image) : -1;
+  }
+
   toDOM(view: EditorView) {
     const container = document.createElement("div");
-    container.className = "cm-embed";
+    container.className = this.block ? "cm-embed cm-embed-block" : "cm-embed";
     container.dataset.docId = this.docId;
     if (this.toolId) container.dataset.toolId = this.toolId;
     // focusable by a click anywhere in it (not by Tab), so :focus-within —
@@ -90,7 +180,7 @@ class EmbedWidget extends WidgetType {
     if (this.toolId) {
       this.mountFrame(view, container);
     } else {
-      const cleanup = mountImageOrFrame(this.docId, container, () =>
+      const cleanup = mountImageOrFrame(this.docId, this.size, container, () =>
         this.mountFrame(view, container)
       );
       cleanups.set(container, cleanup);
@@ -221,16 +311,16 @@ function resizeHandle(view: EditorView, container: HTMLElement): HTMLElement {
   return handle;
 }
 
-/** The width the embed's line gives it: the line's, less its padding. */
+/**
+ * The width the embed's line gives it: the line's, less its padding. A block
+ * embed has no line: the content's, less the margin standing in for one's
+ * padding.
+ */
 function availableWidth(container: HTMLElement): number {
-  const line = container.closest<HTMLElement>(".cm-line") ?? container.parentElement;
-  if (!line) return Infinity;
-  const style = getComputedStyle(line);
-  return (
-    line.clientWidth -
-    (parseFloat(style.paddingLeft) || 0) -
-    (parseFloat(style.paddingRight) || 0)
-  );
+  const line = container.closest<HTMLElement>(".cm-line");
+  if (line) return contentWidth(line);
+  const parent = container.parentElement;
+  return parent ? contentWidth(parent) - LINE_PADDING : Infinity;
 }
 
 /** The marker this embed's DOM stands for, read fresh from the doc. */
@@ -353,6 +443,7 @@ function imageFor(docId: DocumentId, doc: FileDoc): ImageSeen {
  */
 function mountImageOrFrame(
   docId: DocumentId,
+  size: Size | null,
   container: HTMLElement,
   mountFrame: () => void
 ): () => void {
@@ -362,6 +453,22 @@ function mountImageOrFrame(
     return () => {};
   }
 
+  // a sized image's box, held until we know what's in it, so its line isn't
+  // drawn at 0px and grown a moment later
+  const pixels = imageSize(size, known);
+  if (pixels && known?.kind !== "image") {
+    container.style.aspectRatio = `${pixels.width} / ${pixels.height}`;
+    container.style.width = `min(${pixels.width}px, 100%)`;
+  }
+  const unreserve = () => {
+    container.style.removeProperty("aspect-ratio");
+    container.style.removeProperty("width");
+  };
+  const frame = () => {
+    unreserve();
+    mountFrame();
+  };
+
   const repo = (window as unknown as { repo?: any }).repo;
   let disposed = false;
   let handle: any;
@@ -369,24 +476,28 @@ function mountImageOrFrame(
 
   const show = (image: ImageSeen) => {
     if (!img) {
+      unreserve();
       container.classList.add("cm-embed-image");
       img = document.createElement("img");
       // Width/height attributes give the box its aspect ratio before the
-      // image decodes (the theme keeps `height: auto`).
+      // image decodes (the theme keeps `height: auto`). The marker's size
+      // wins; without one, the pixels it turned out to have.
       img.addEventListener("load", () => {
         const current = seen.get(docId);
         if (current?.kind !== "image" || img!.src !== current.url) return;
         current.width = img!.naturalWidth;
         current.height = img!.naturalHeight;
+        if (size?.width) return;
         img!.width = current.width;
         img!.height = current.height;
       });
       container.appendChild(img);
     }
     if (img.getAttribute("src") === image.url) return;
-    if (image.width && image.height) {
-      img.width = image.width;
-      img.height = image.height;
+    const box = imageSize(size, image);
+    if (box) {
+      img.width = box.width;
+      img.height = box.height;
     } else {
       img.removeAttribute("width");
       img.removeAttribute("height");
@@ -403,7 +514,7 @@ function mountImageOrFrame(
   if (known?.kind === "image") show(known);
 
   if (!repo?.find) {
-    if (!img) mountFrame();
+    if (!img) frame();
     return () => {};
   }
 
@@ -416,14 +527,14 @@ function mountImageOrFrame(
         if (doc) seen.set(docId, { kind: "frame" });
         img?.remove();
         container.classList.remove("cm-embed-image");
-        mountFrame();
+        frame();
         return;
       }
       render();
       handle.on("change", render);
     },
     () => {
-      if (!disposed && !img) mountFrame();
+      if (!disposed && !img) frame();
     }
   );
 
@@ -451,33 +562,74 @@ function refFromMatch(m: RegExpExecArray): DocRef {
   };
 }
 
-function getEmbedLinks(view: EditorView) {
-  const widgets: Range<Decoration>[] = [];
-  const { state } = view;
-
-  // Visible ranges are line-aligned and markers never span lines, so a marker
-  // is always fully inside or fully outside a range.
-  for (const { from, to } of view.visibleRanges) {
-    const text = state.doc.sliceString(from, to);
-    EMBED_PATTERN.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = EMBED_PATTERN.exec(text)) !== null) {
-      const matchFrom = from + m.index;
-      const matchTo = matchFrom + m[0].length;
-      const { docId, toolId, size } = refFromMatch(m);
-      if (!isValidDocumentId(docId)) continue;
-
-      const embed = Decoration.replace({
-        widget: new EmbedWidget(docId, toolId, size ?? null),
-      });
-      widgets.push(embed.range(matchFrom, matchTo));
-    }
+/** Decorate the markers between `from` and `to`, which are line-aligned. */
+function scanMarkers(
+  doc: Text,
+  from: number,
+  to: number,
+  into: Range<Decoration>[]
+): void {
+  const text = doc.sliceString(from, to);
+  EMBED_PATTERN.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = EMBED_PATTERN.exec(text)) !== null) {
+    const matchFrom = from + m.index;
+    const matchTo = matchFrom + m[0].length;
+    const { docId, toolId, size } = refFromMatch(m);
+    if (!isValidDocumentId(docId)) continue;
+    const line = doc.lineAt(matchFrom);
+    const block = line.from === matchFrom && line.to === matchTo;
+    into.push(
+      Decoration.replace({
+        widget: new EmbedWidget(docId, toolId, size ?? null, block),
+        block,
+      }).range(matchFrom, matchTo)
+    );
   }
-
-  // `true` lets CodeMirror sort the ranges defensively (matches are already in
-  // document order, but this is cheap insurance).
-  return Decoration.set(widgets, true);
 }
+
+/**
+ * Every marker in the doc, not just the ones on screen, so codemirror knows
+ * how tall the embeds it hasn't drawn are. (Block decorations have to come
+ * from state, too.) A change only rescans the lines it touched; markers never
+ * span lines.
+ */
+const embedField = StateField.define<DecorationSet>({
+  create(state) {
+    const found: Range<Decoration>[] = [];
+    scanMarkers(state.doc, 0, state.doc.length, found);
+    return Decoration.set(found);
+  },
+  update(decorations, tr) {
+    if (!tr.docChanged) return decorations;
+    const doc = tr.state.doc;
+    const touched: { from: number; to: number }[] = [];
+    tr.changes.iterChangedRanges((_fromA, _toA, fromB, toB) => {
+      const from = doc.lineAt(fromB).from;
+      const to = doc.lineAt(toB).to;
+      const last = touched[touched.length - 1];
+      if (last && from <= last.to + 1) last.to = Math.max(last.to, to);
+      else touched.push({ from, to });
+    });
+    decorations = decorations.map(tr.changes);
+    for (const { from, to } of touched) {
+      const found: Range<Decoration>[] = [];
+      scanMarkers(doc, from, to, found);
+      decorations = decorations.update({
+        filterFrom: from,
+        filterTo: to,
+        filter: () => false,
+        add: found,
+      });
+    }
+    return decorations;
+  },
+  provide: (field) => [
+    EditorView.decorations.from(field),
+    // Atomic: the cursor skips embeds and delete removes the whole marker.
+    EditorView.atomicRanges.of((view) => view.state.field(field)),
+  ],
+});
 
 // MIME types we accept document drags from. Mirrors the sideboard's convention.
 const PATCHWORK_DND = "text/x-patchwork-dnd";
@@ -589,7 +741,10 @@ async function importFileRefs(files: Iterable<File>): Promise<DocRef[]> {
       });
       const { documentId } = parseAutomergeUrl(handle.url as AutomergeUrl);
       if (isValidDocumentId(documentId)) {
-        refs.push({ docId: documentId as DocumentId, toolId: null });
+        const size = mimeType.startsWith("image/")
+          ? await pixelsOf(file)
+          : null;
+        refs.push({ docId: documentId as DocumentId, toolId: null, size });
       }
     } catch (err) {
       console.warn(
@@ -600,6 +755,22 @@ async function importFileRefs(files: Iterable<File>): Promise<DocRef[]> {
     }
   }
   return refs;
+}
+
+/** An image file's pixels, or null if it can't be decoded or has none. */
+async function pixelsOf(file: File): Promise<Size | null> {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const { naturalWidth: width, naturalHeight: height } = img;
+    return width && height ? { width, height } : null;
+  } catch {
+    return null;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 /** Insert embeds over `from..to` (a drop point, or a pasted-over selection). */
@@ -700,32 +871,13 @@ function embedDropHandlers() {
   });
 }
 
-const embedPlugin = ViewPlugin.fromClass(
-  class {
-    decorations: DecorationSet;
-
-    constructor(view: EditorView) {
-      this.decorations = getEmbedLinks(view);
-    }
-
-    update(update: ViewUpdate) {
-      // Viewport too, so newly-visible markers get decorated.
-      if (update.docChanged || update.viewportChanged) {
-        this.decorations = getEmbedLinks(update.view);
-      }
-    }
-  },
-  {
-    decorations: (v) => v.decorations,
-    // Atomic: the cursor skips embeds and delete removes the whole marker.
-    provide: (plugin) =>
-      EditorView.atomicRanges.of(
-        (view) => view.plugin(plugin)?.decorations ?? Decoration.none
-      ),
-  }
-);
-
 export function markdownEmbed() {
   // `dropCursor` observes events, so it coexists with our dragover handler.
-  return [embedPlugin, embedTheme, embedDropHandlers(), dropCursor()];
+  return [
+    embedField,
+    measureColumn,
+    embedTheme,
+    embedDropHandlers(),
+    dropCursor(),
+  ];
 }

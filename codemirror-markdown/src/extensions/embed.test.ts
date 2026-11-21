@@ -28,6 +28,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   delete (window as any).repo;
   document.body.innerHTML = "";
 });
@@ -88,6 +89,20 @@ describe("pasting images", () => {
 
     await vi.waitFor(() =>
       expect(view.state.doc.toString()).toBe(`[patchwork:${idOf(file)}]`)
+    );
+  });
+
+  it("writes the image's pixels into the marker", async () => {
+    vi.spyOn(HTMLImageElement.prototype, "naturalWidth", "get").mockReturnValue(1200);
+    vi.spyOn(HTMLImageElement.prototype, "naturalHeight", "get").mockReturnValue(800);
+    const view = makeView("", 0);
+    paste(view, { files: [png()] });
+
+    await vi.waitFor(() => expect(created).toHaveLength(1));
+    await vi.waitFor(() =>
+      expect(view.state.doc.toString()).toBe(
+        `[patchwork:${idOf(created[0])} =1200x800]`
+      )
     );
   });
 
@@ -264,10 +279,12 @@ describe("rendering embeds", () => {
       const view = makeView(`a\n[patchwork:${id}/raw]\nb`, 0);
       const embed = view.dom.querySelector<HTMLElement>(".cm-embed")!;
       const frame = embed.querySelector<HTMLElement>("patchwork-view")!;
-      // happy-dom has no layout: give the frame and its line a size
+      // happy-dom has no layout: give the frame and the text a size. (on a
+      // line of its own it's a block, so it measures the content, less the
+      // 8px of line padding it stands in for)
       embed.getBoundingClientRect = () => ({ width: 600 }) as DOMRect;
       frame.getBoundingClientRect = () => ({ height: 500 }) as DOMRect;
-      Object.defineProperty(embed.closest(".cm-line")!, "clientWidth", { value: 800 });
+      Object.defineProperty(view.contentDOM, "clientWidth", { value: 808 });
 
       const handle = embed.querySelector(".cm-embed-resize")!;
       pointer(handle, "pointerdown", 100, 100);
@@ -335,6 +352,85 @@ describe("rendering embeds", () => {
       neverLoads();
       const view = makeView(`[patchwork:${id}]`, 0);
       expect(view.dom.querySelector("patchwork-view")).not.toBeNull();
+    });
+  });
+
+  describe("laying out", () => {
+    const neverLoads = () => {
+      (window as any).repo.find = () => new Promise(() => {});
+    };
+
+    it("draws a marker on a line of its own between the lines", () => {
+      neverLoads();
+      const view = makeView(`a\n[patchwork:${docId()}]\nb`, 0);
+      const embed = view.dom.querySelector(".cm-embed")!;
+      expect(embed.classList.contains("cm-embed-block")).toBe(true);
+      expect(embed.closest(".cm-line")).toBeNull();
+    });
+
+    it("draws a marker among text inside its line", () => {
+      neverLoads();
+      const view = makeView(`a [patchwork:${docId()}] b`, 0);
+      const embed = view.dom.querySelector(".cm-embed")!;
+      expect(embed.classList.contains("cm-embed-block")).toBe(false);
+      expect(embed.closest(".cm-line")).not.toBeNull();
+    });
+
+    it("goes inline when text is typed beside it, and back when it's gone", () => {
+      neverLoads();
+      const marker = `[patchwork:${docId()}]`;
+      const view = makeView(`a\n${marker}\nb`, 0);
+      const end = 2 + marker.length;
+      view.dispatch({ changes: { from: end, insert: "!" } });
+      expect(view.dom.querySelector(".cm-embed-block")).toBeNull();
+      expect(view.dom.querySelector(".cm-line .cm-embed")).not.toBeNull();
+      view.dispatch({ changes: { from: end, to: end + 1 } });
+      expect(view.dom.querySelector(".cm-embed-block")).not.toBeNull();
+    });
+
+    it("keeps its embeds through edits elsewhere", () => {
+      neverLoads();
+      const view = makeView(`a\n[patchwork:${docId()}/raw]\nb`, 0);
+      const frame = view.dom.querySelector("patchwork-view");
+      view.dispatch({ changes: { from: 0, insert: "hello " } });
+      expect(view.dom.querySelector("patchwork-view")).toBe(frame);
+    });
+
+    it("knows how tall an embed it hasn't drawn is", () => {
+      neverLoads();
+      const filler = "text\n".repeat(5000);
+      const view = makeView(
+        `${filler}[patchwork:${docId()} =400x300]\n${filler}[patchwork:${docId()}/raw =x300]`,
+        0
+      );
+      const image = view.lineBlockAt(filler.length);
+      const frame = view.lineBlockAt(view.state.doc.length);
+      // off the screen, so codemirror has only the estimate to go on (an
+      // image narrower than any column, so drawn at its own size)
+      expect(view.viewport.to).toBeLessThan(filler.length);
+      expect(image.height).toBe(300);
+      expect(frame.height).toBe(302);
+    });
+
+    it("holds a sized image's box before it loads", () => {
+      neverLoads();
+      const view = makeView(`[patchwork:${docId()} =1200x800]`, 0);
+      const embed = view.dom.querySelector<HTMLElement>(".cm-embed")!;
+      expect(embed.style.aspectRatio).toBe("1200 / 800");
+    });
+
+    it("draws an image at its marker's size", async () => {
+      withDoc(imageDoc);
+      const view = makeView(`[patchwork:${docId()} =1200x800]`, 0);
+      let img: HTMLImageElement | null = null;
+      await vi.waitFor(() => {
+        img = view.dom.querySelector(".cm-embed-image > img");
+        expect(img).not.toBeNull();
+      });
+      expect(img!.getAttribute("width")).toBe("1200");
+      expect(img!.getAttribute("height")).toBe("800");
+      // the img holds the box now
+      expect(view.dom.querySelector<HTMLElement>(".cm-embed")!.style.aspectRatio).toBe("");
     });
   });
 });
