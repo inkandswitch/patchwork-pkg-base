@@ -92,6 +92,15 @@ describe("completion with an embedder's sources", () => {
 		expect(ours).toHaveBeenCalledTimes(1)
 	})
 
+	it("doesn't wait long on an embedder source that hasn't answered", async () => {
+		const never: CompletionSource = () => new Promise(() => {})
+		const server: CompletionSource = () => result(4, "width", "toString")
+		const [, theirs] = withoutDuplicates([never], server, 20)
+		const state = EditorState.create({doc: "doc.w"})
+		const answer = await theirs(new CompletionContext(state, 5, true))
+		expect(answer?.options.map((o) => o.label)).toEqual(["width", "toString"])
+	})
+
 	it("passes on a server with nothing to say", async () => {
 		const ours: CompletionSource = () => null
 		const server: CompletionSource = () => null

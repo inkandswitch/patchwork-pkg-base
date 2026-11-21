@@ -221,12 +221,30 @@ const extensions = [
 	definitionClick,
 ]
 
+// How long the server's completions wait on the embedder's sources, to leave
+// out what they gave: one that hasn't answered by then has no say.
+const EMBEDDER_WAIT = 1000
+
+// an answer, or null if it fails or takes longer than `ms`
+function within<T>(answer: Promise<T>, ms: number): Promise<T | null> {
+	return new Promise((resolve) => {
+		const timer = setTimeout(() => resolve(null), ms)
+		const done = (value: T | null) => {
+			clearTimeout(timer)
+			resolve(value)
+		}
+		answer.then(done, () => done(null))
+	})
+}
+
 // The server's completion source, with the options left out whose label one of
 // `sources` already gave at the same place, after `sources` themselves. Each
-// of them is asked once per completion, whichever wants its answer first.
+// of them is asked once per completion, whichever wants its answer first. The
+// server's answer waits `wait` ms at most for theirs.
 export function withoutDuplicates(
 	sources: readonly CompletionSource[],
 	server: CompletionSource = serverCompletionSource,
+	wait = EMBEDDER_WAIT,
 ): CompletionSource[] {
 	type Answer = Promise<CompletionResult | null>
 	const asked = new WeakMap<EditorState, Map<string, Answer>>()
@@ -244,8 +262,9 @@ export function withoutDuplicates(
 	const theirs: CompletionSource = async (context) => {
 		const [result, ours] = await Promise.all([
 			server(context),
-			// a source that failed has its own say; it just doesn't take any of these
-			Promise.all(sources.map((_, i) => ask(i, context).catch(() => null))),
+			// a source that failed, or is slow, has its own say; it just doesn't
+			// take any of these
+			Promise.all(sources.map((_, i) => within(ask(i, context), wait))),
 		])
 		if (!result) return result
 		const given = new Set<string>()

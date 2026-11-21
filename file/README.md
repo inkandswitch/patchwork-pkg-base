@@ -84,7 +84,8 @@ fields; other files don't have them, so check before using them:
 - `completionSources`: push CodeMirror completion sources onto it. They join
   the editor's other completions (the language's keywords, snippets and local
   names, and the server's), and the server's options with a label one of them
-  already gave at the same `from` are left out.
+  already gave at the same `from` are left out. The server's wait a second at
+  most for yours: one that hasn't answered by then leaves them all in.
 
 Cmd+click (ctrl+click off a Mac), or F12, goes to the definition of what's
 under it. When that's in a file no editor on the page has open, the editor
