@@ -206,6 +206,12 @@ const definitionClick = EditorView.domEventHandlers({
 	},
 })
 
+// That takes mod+click from CodeMirror's adding a cursor, so alt+click (on its
+// own) adds one, as TextFileEditor has it already
+const altClickAddsCursor = EditorView.clickAddsSelectionRange.of(
+	(event) => event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey,
+)
+
 // languageServerExtensions(), but with completion left to each editor (see
 // completion()) and go to definition our own
 const extensions = [
@@ -219,6 +225,7 @@ const extensions = [
 	signatureHelp(),
 	serverDiagnostics(),
 	definitionClick,
+	altClickAddsCursor,
 ]
 
 // How long the server's completions wait on the embedder's sources, to leave

@@ -302,6 +302,19 @@ describe("go to definition", () => {
 		view.destroy()
 	})
 
+	it("leaves adding a cursor to alt+click, as the file editor has it", async () => {
+		const {transport} = fakeServer([elsewhere])
+		const {view} = editor(transport)
+		const [adds] = view.state.facet(EditorView.clickAddsSelectionRange)
+		const click = (keys: MouseEventInit) => new MouseEvent("mousedown", {button: 0, ...keys})
+		expect(adds?.(click({altKey: true}))).toBe(true)
+		expect(adds?.(click({metaKey: true}))).toBe(false)
+		expect(adds?.(click({ctrlKey: true}))).toBe(false)
+		expect(adds?.(click({altKey: true, shiftKey: true}))).toBe(false)
+		expect(adds?.(click({}))).toBe(false)
+		view.destroy()
+	})
+
 	it("lets an embedder's Prec.high mousedown have the click first", async () => {
 		const {transport, sent} = fakeServer([elsewhere])
 		let theirs = 0

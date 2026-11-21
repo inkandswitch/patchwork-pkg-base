@@ -106,6 +106,12 @@ host.addEventListener("file:open-definition", (event) => {
 The cmd+click handler is a `mousedown` at default precedence, so one of
 yours at `Prec.high` that returns true has the click first.
 
+That takes cmd+click (ctrl+click) from CodeMirror, which adds a cursor with
+it by default, in every editor with the language server. Alt+click (option
+on a Mac) adds a cursor instead: the file editor already has it that way,
+and the language server's extensions say so too, for any other editor
+using them.
+
 ## Project Structure
 
 ```
