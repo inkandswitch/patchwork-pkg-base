@@ -2,7 +2,7 @@
 :root,
 :host,
 [theme] {
-	color-scheme: light;
+	color-scheme: light dark;
 	color: var(--studio-line);
 	accent-color: var(--studio-primary);
 	font-family: var(--studio-family);
