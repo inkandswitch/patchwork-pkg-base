@@ -31,6 +31,7 @@ import {automergeSyncPlugin} from "@automerge/automerge-codemirror"
 import {isImmutableStringFileDoc} from "../datatype"
 import {createCaretExtension} from "./caret"
 import {collectExtensions} from "./codemirror-extensions"
+import {tooltipLayer} from "./tooltip-layer"
 import {createFileComments} from "./comments"
 import {createPresenceExtension} from "./presence"
 import {mod, modshift, zoomKeydown} from "./zoom"
@@ -129,6 +130,7 @@ export function TextFileEditor(props: {
 				...defaultKeymap,
 			]),
 			languageExtension,
+			tooltipLayer(),
 			tsCompartment.of([]),
 			...codemirrorTheme,
 			automergeSyncPlugin({handle: props.handle, path: ["content"]}),

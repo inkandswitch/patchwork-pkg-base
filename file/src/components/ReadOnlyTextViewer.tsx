@@ -18,6 +18,7 @@ import {getLanguageExtension} from "../languages"
 import type {FileDoc} from "../types"
 import {fileText} from "../datatype"
 import {collectExtensions} from "./codemirror-extensions"
+import {tooltipLayer} from "./tooltip-layer"
 import {createFileComments} from "./comments"
 import {zoomKeydown} from "./zoom"
 
@@ -66,6 +67,7 @@ export function ReadOnlyTextViewer(props: {
 			scrollPastEnd(),
 			keymap.of([...searchKeymap, ...foldKeymap, ...defaultKeymap]),
 			languageExtension,
+			tooltipLayer(),
 			...codemirrorTheme,
 			comments?.extension ?? [],
 			// last, so they can override anything above

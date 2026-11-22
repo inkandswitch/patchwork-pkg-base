@@ -45,9 +45,106 @@ export const ui = {
 		placeItems: "center",
 		placeContent: "center",
 	},
+	// tooltips (hovers, completions, problems), as little panels: a hairline
+	// ring and a soft shadow, in the code's font, a little smaller
 	".cm-tooltip": {
-		backgroundColor: "var(--text-editor-tooltip-fill)",
+		padding: "0",
+		overflow: "visible",
+		maxWidth: "min(40em, calc(100vw - 24px))",
+		border: "0",
+		borderRadius: "var(--text-editor-tooltip-radius)",
 		color: "var(--text-editor-tooltip-color)",
+		backgroundColor: "var(--text-editor-tooltip-fill)",
+		boxShadow:
+			"0 0 0 1px var(--text-editor-tooltip-border), 0 4px 16px var(--text-editor-tooltip-shadow)",
+		fontFamily: "var(--text-editor-tooltip-family)",
+		fontSize: "var(--text-editor-tooltip-font-size)",
+		lineHeight: "var(--text-editor-tooltip-line-height)",
+	},
+	".cm-tooltip :is(code, pre, kbd, tt)": {
+		font: "inherit",
+		color: "inherit",
+		background: "none",
+	},
+	".cm-tooltip :is(p, ul, ol)": {
+		margin: "0.4em 0",
+	},
+	".cm-tooltip-section": {
+		padding: "6px 10px",
+	},
+	".cm-tooltip-section:not(:first-child)": {
+		borderTop: "1px solid var(--text-editor-tooltip-border)",
+	},
+	// what's hovered: its type, then what it is, in prose
+	".cm-lsp-documentation pre": {
+		margin: "0",
+		whiteSpace: "pre-wrap",
+		overflowWrap: "anywhere",
+	},
+	".cm-lsp-documentation :is(pre + :not(pre), hr + *)": {
+		color: "var(--text-editor-tooltip-muted)",
+		fontFamily: "var(--text-editor-tooltip-family-prose)",
+	},
+	".cm-lsp-documentation hr": {
+		margin: "6px -10px",
+		border: "0",
+		borderTop: "1px solid var(--text-editor-tooltip-border)",
+	},
+	// completions: a list, the picked one washed in the accent
+	".cm-tooltip-autocomplete > ul": {
+		maxHeight: "14em",
+		padding: "3px 0",
+		font: "inherit",
+	},
+	".cm-tooltip-autocomplete > ul > li": {
+		display: "flex",
+		alignItems: "baseline",
+		gap: "6px",
+		padding: "1px 10px 1px 6px",
+		lineHeight: "1.6",
+	},
+	".cm-tooltip-autocomplete ul li[aria-selected]": {
+		color: "var(--text-editor-tooltip-selected-line)",
+		background: "var(--text-editor-tooltip-selected-fill)",
+	},
+	".cm-completionIcon": {
+		width: "1.2em",
+		padding: "0",
+		color: "var(--text-editor-tooltip-faint)",
+		opacity: "1",
+		textAlign: "center",
+	},
+	// (CodeMirror's is a key, an emoji: a quiet letter, as ƒ is)
+	".cm-completionIcon-keyword::after": {
+		content: '"k"',
+		fontStyle: "italic",
+	},
+	".cm-completionMatchedText": {
+		color: "var(--text-editor-tooltip-match)",
+		textDecoration: "none",
+	},
+	".cm-completionDetail": {
+		marginLeft: "auto",
+		paddingLeft: "12px",
+		color: "var(--text-editor-tooltip-muted)",
+		fontStyle: "normal",
+	},
+	".cm-completionInfo": {
+		padding: "6px 10px",
+	},
+	// a problem: what's wrong, its edge in its severity's colour
+	".cm-tooltip-lint": {
+		padding: "0",
+	},
+	".cm-diagnostic": {
+		padding: "5px 10px",
+		borderLeft: "2px solid var(--text-editor-diagnostic-error)",
+	},
+	".cm-diagnostic-warning": {
+		borderLeftColor: "var(--text-editor-diagnostic-warning)",
+	},
+	".cm-diagnostic-info, .cm-diagnostic-hint": {
+		borderLeftColor: "var(--text-editor-diagnostic-info)",
 	},
 	".cm-panel.cm-search": {
 		backgroundColor: "#e3f6ff",
