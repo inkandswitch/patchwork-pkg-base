@@ -8,6 +8,13 @@ import type { AccountDoc, ThreepaneConfigDoc } from "./types";
 export const DEFAULT_TRAY_TOOLS: string[] = ["theme-tray", "llm-config-tray"];
 
 /**
+ * Tray tools every account always has. Unlike the other defaults these are
+ * put back on every mount if they're missing, so nobody is left without a way
+ * to pick a theme.
+ */
+export const REQUIRED_TRAY_TOOLS: string[] = ["theme-tray"];
+
+/**
  * The default doctitle tools for a fresh (or empty) account. Title + spacer are
  * intrinsic to the frame's top bar, so only the right-hand tools are listed.
  */

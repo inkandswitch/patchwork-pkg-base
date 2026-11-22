@@ -104,6 +104,26 @@ describe("ensureThreepaneConfig", () => {
     expect(config.doctitle.tools).toEqual([]);
   });
 
+  it("always puts the theme picker back in the tray", async () => {
+    const config = oldConfig();
+    const { configHandle, run } = setup(config);
+    await run();
+
+    config.tray = ["llm-config-tray"];
+    await run();
+    expect(config.tray).toEqual(["theme-tray", "llm-config-tray"]);
+    expect(config.version).toBe(THREEPANE_CONFIG_VERSION);
+
+    delete (config as any).tray;
+    await run();
+    expect(config.tray).toEqual(["theme-tray"]);
+
+    // already there: no change at all
+    vi.mocked(configHandle.change).mockClear();
+    await run();
+    expect(configHandle.change).not.toHaveBeenCalled();
+  });
+
   it("keeps the migration pending until the account has a root folder", async () => {
     const config = oldConfig();
     const { run } = setup(config, null);

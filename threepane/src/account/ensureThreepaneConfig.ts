@@ -5,6 +5,7 @@ import {
   DEFAULT_DOCTITLE_TOOLS,
   DEFAULT_TRAY_TOOLS,
   DOCUMENT_LIST_TOOL,
+  REQUIRED_TRAY_TOOLS,
   THREEPANE_CONFIG_VERSION,
 } from "../datatypes";
 import { loadDatatypeWhenReady } from "./loadDatatypeWhenReady";
@@ -64,6 +65,24 @@ export function migrateThreepaneConfig(
   doc.version = THREEPANE_CONFIG_VERSION;
 }
 
+/** Whether the tray is missing any of REQUIRED_TRAY_TOOLS. */
+function lacksRequiredTrayTools(doc: ThreepaneConfigDoc | undefined) {
+  if (!doc) return false;
+  const present = new Set((doc.tray ?? []).map((s) => slotId(s)));
+  return REQUIRED_TRAY_TOOLS.some((id) => !present.has(id));
+}
+
+/**
+ * Put back any of REQUIRED_TRAY_TOOLS the tray is missing, at the front (where
+ * the defaults put them). Runs on every mount, whatever the doc's version.
+ */
+export function restoreRequiredTrayTools(doc: ThreepaneConfigDoc) {
+  if (!doc.tray) doc.tray = [];
+  const present = new Set(doc.tray.map((s) => slotId(s)));
+  const missing = REQUIRED_TRAY_TOOLS.filter((id) => !present.has(id));
+  doc.tray.unshift(...missing);
+}
+
 /**
  * Lazily create the threepane layout config doc and point `account.tools.threepane`
  * at it, migrating the legacy `account.documentToolbarToolIds` into its
@@ -71,7 +90,9 @@ export function migrateThreepaneConfig(
  * account's root folder.
  *
  * Defaults are written only when the config doc is created, or once when an
- * older doc is migrated (see `migrateThreepaneConfig`), never on every mount.
+ * older doc is migrated (see `migrateThreepaneConfig`), never on every mount —
+ * except REQUIRED_TRAY_TOOLS (the theme picker), which are put back whenever
+ * they're missing.
  *
  * Non-destructive: the old `documentToolbarToolIds` / `accountSidebarToolId`
  * fields are left untouched so older builds keep working. Run the (separate,
@@ -86,8 +107,13 @@ export async function ensureThreepaneConfig(
 
   if (existingConfigUrl) {
     const configHandle = await repo.find<ThreepaneConfigDoc>(existingConfigUrl);
-    if ((configHandle.doc()?.version ?? 0) >= THREEPANE_CONFIG_VERSION) return;
-    configHandle.change((doc) => migrateThreepaneConfig(doc, rootFolderUrl));
+    const config = configHandle.doc();
+    const needsMigration = (config?.version ?? 0) < THREEPANE_CONFIG_VERSION;
+    if (!needsMigration && !lacksRequiredTrayTools(config)) return;
+    configHandle.change((doc) => {
+      if (needsMigration) migrateThreepaneConfig(doc, rootFolderUrl);
+      restoreRequiredTrayTools(doc);
+    });
     return;
   }
 
@@ -118,6 +144,7 @@ export async function ensureThreepaneConfig(
     if (doctitleTools.length) doc.doctitle.tools = doctitleTools;
     doc.sidebar.widgets = defaultSidebarWidgets(account?.rootFolderUrl);
     if (!doc.tray) doc.tray = DEFAULT_TRAY_TOOLS.slice();
+    restoreRequiredTrayTools(doc);
     // No root folder yet means no document list yet: leave the doc unversioned
     // so the next mount's migration seeds it.
     if (account?.rootFolderUrl) doc.version = THREEPANE_CONFIG_VERSION;
