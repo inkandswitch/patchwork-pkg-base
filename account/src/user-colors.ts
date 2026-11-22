@@ -32,7 +32,7 @@ const TOKENS = new Map(
 
 /**
  * A contact colour as it should be drawn: a palette colour becomes its theme
- * token (`--studio-presence-sky-blue`, see theming's theme.css), falling back
+ * token (`--studio-presence-sky-blue`, see @inkandswitch/patchwork's theme.css), falling back
  * to the stored value, so a theme can restyle everyone's colours. Any other
  * colour (picked with the custom picker) is drawn as it is.
  */

@@ -502,7 +502,7 @@ const FALLBACK_PRESENCE_COLOR = "#888";
 // token each colour is drawn through. Copied, not imported: tools don't share
 // code at build time. A contact stores the colour's value; a palette value is
 // drawn as `var(--studio-presence-<name>, <value>)` so a theme can restyle it
-// (see theming's theme.css). Any other colour is drawn as it is.
+// (see @inkandswitch/patchwork's theme.css). Any other colour is drawn as it is.
 const PRESENCE_TOKENS = new Map(
   (
     [

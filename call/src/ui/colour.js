@@ -20,7 +20,7 @@ export const colourFor = (url) =>
 
 
 // someone's colour as it's drawn: a palette colour is its theme token
-// (--studio-presence-sky-blue, theming's theme.css), falling back to what was
+// (--studio-presence-sky-blue, @inkandswitch/patchwork's theme.css), falling back to what was
 // stored, so the call's in the same colour as their cursor when a theme
 // restyles them. any other colour is as it is. (the account package's
 // themedColor, copied)

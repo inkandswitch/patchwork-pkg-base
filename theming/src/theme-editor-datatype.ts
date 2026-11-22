@@ -10,7 +10,7 @@ export interface EditableVariable {
 	label: string
 	type: "color" | "text"
 	/** shown when the field is empty. blank fields are left unset, so the
-	    theme.css default (or, for opt-in tokens, each tool's own value) applies. */
+	    @inkandswitch/patchwork's theme.css default (or, for opt-in tokens, each tool's own value) applies. */
 	placeholder?: string
 }
 
@@ -33,7 +33,7 @@ export const EDITABLE_VARIABLES: {group: string; vars: EditableVariable[]}[] = [
 		{key: "--studio-modified", label: "Modified", type: "color"},
 		{key: "--studio-link", label: "Link", type: "color"},
 	]},
-	// derived from the accents by default (see theme.css), so text fields:
+	// derived from the accents by default (see @inkandswitch/patchwork's theme.css), so text fields:
 	// left blank, a callout follows its accent.
 	{group: "Callouts", vars: [
 		{key: "--studio-callout-note", label: "Note", type: "text", placeholder: "var(--studio-link)"},
@@ -62,7 +62,7 @@ export const EDITABLE_VARIABLES: {group: string; vars: EditableVariable[]}[] = [
 		{key: "--studio-selection-fill", label: "Selection fill", type: "color"},
 	]},
 	{group: "Chrome", vars: [
-		// derived by default (see theme.css); kept as text so the var() default
+		// derived by default (see @inkandswitch/patchwork's theme.css); kept as text so the var() default
 		// survives unless the user types a concrete value.
 		{key: "--studio-chrome-fill", label: "Chrome fill", type: "text"},
 		{key: "--studio-chrome-line", label: "Chrome line", type: "text"},
@@ -141,7 +141,7 @@ export const DEFAULT_VALUES: Record<string, string> = {
 	"--studio-modified": "#f8c43b",
 	"--studio-link": "#3366ee",
 	"--studio-selection-fill": "#ffee8888",
-	// derived defaults — mirror the var() chains in theme.css so editing the
+	// derived defaults — mirror the var() chains in @inkandswitch/patchwork's theme.css so editing the
 	// source (fill/primary/sans) cascades unless overridden here.
 	"--studio-chrome-fill": "var(--studio-fill-offset-10)",
 	"--studio-chrome-line": "var(--studio-line)",

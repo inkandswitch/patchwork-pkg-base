@@ -4,7 +4,7 @@ import {EDITABLE_VARIABLES, DEFAULT_VALUES, type CustomThemeDoc} from "./theme-e
 
 // Fill offsets keep linear labels (10..50) but the actual mix amount curves:
 // finer steps near the fill where the eye is most sensitive, so subtle tints
-// (active line, gutter) stay distinct. 10 starts at the fill itself. See theme.css.
+// (active line, gutter) stay distinct. 10 starts at the fill itself. See @inkandswitch/patchwork's theme.css.
 const FILL_OFFSET_RAMP: [number, number][] = [[10, 0], [20, 7], [30, 18], [40, 32], [50, 50]]
 const LINE_OFFSET_RAMP: [number, number][] = [[10, 8], [20, 18], [30, 33], [40, 52], [50, 76]]
 
@@ -22,12 +22,12 @@ export function generateThemeCss(name: string, mode: "light" | "dark", vars: Rec
 		css += `\t${key}: ${value};\n`
 	}
 
-	// Derive fill offsets, tinted toward the secondary (see theme.css)
+	// Derive fill offsets, tinted toward the secondary (see @inkandswitch/patchwork's theme.css)
 	for (const [label, amount] of FILL_OFFSET_RAMP) {
 		css += `\t--studio-fill-offset-${label}: color-mix(in oklch, color-mix(in oklch, var(--studio-fill), var(--studio-line) ${amount}%), var(--studio-offset-tint, var(--studio-secondary)) var(--studio-offset-tint-amount, 10%));\n`
 	}
 
-	// Derive line offsets, tinted toward the secondary (see theme.css)
+	// Derive line offsets, tinted toward the secondary (see @inkandswitch/patchwork's theme.css)
 	for (const [label, amount] of LINE_OFFSET_RAMP) {
 		css += `\t--studio-line-offset-${label}: color-mix(in oklch, color-mix(in oklch, var(--studio-line), var(--studio-fill) ${amount}%), var(--studio-offset-tint, var(--studio-secondary)) var(--studio-offset-tint-amount, 10%));\n`
 	}

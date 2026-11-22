@@ -1,5 +1,4 @@
 import {getRegistry} from "@inkandswitch/patchwork-plugins"
-import themeCssUrl from "./theme.css"
 import lycheeCssUrl from "./lychee.css"
 import gloomCssUrl from "./gloom.css"
 
@@ -42,7 +41,7 @@ function defaultThemeIds() {
 	}
 }
 
-const bundledStyleUrls = [themeCssUrl, lycheeCssUrl, gloomCssUrl].map(
+const bundledStyleUrls = [lycheeCssUrl, gloomCssUrl].map(
 	(href) => new URL(href, import.meta.url).href
 )
 const bundledStyles = new Set(bundledStyleUrls)
