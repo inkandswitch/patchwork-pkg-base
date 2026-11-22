@@ -18,7 +18,7 @@
 	   set the amount to 0% for a purely neutral ramp. */
 	--studio-offset-tint: var(--studio-secondary);
 	--studio-offset-tint-amount: 10%;
-	--studio-fill: white;
+	--studio-fill: light-dark(white, black);
 	/* the offset labels (10..50) stay linear, but the actual mix amount curves:
 	   finer steps near the fill where the eye is most sensitive, so subtle
 	   tints (active line, gutter) stay distinct. 10 starts at the fill itself. */
@@ -47,7 +47,7 @@
 		color-mix(in oklch, var(--studio-fill), var(--studio-line) 50%),
 		var(--studio-offset-tint) var(--studio-offset-tint-amount)
 	);
-	--studio-line: black;
+	--studio-line: light-dark(black, white);
 	--studio-line-offset-10: color-mix(
 		in oklch,
 		color-mix(in oklch, var(--studio-line), var(--studio-fill) 8%),
@@ -324,7 +324,7 @@
 	--studio-heading-size-5: calc(1em * pow(var(--studio-font-scale), 0));
 	--studio-heading-size-6: calc(1em / var(--studio-font-scale));
 	--studio-font-weight: 400;
-	--studio-selection-fill: #ffee8888;
+	--studio-selection-fill: light-dark(#ffee8888, #26465388);
 	--studio-selection-line: var(--studio-line);
 	--studio-line-height: 1.5;
 
