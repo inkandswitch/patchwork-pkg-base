@@ -26,6 +26,11 @@ export function renderContactAvatar(
   let selfName = "me";
   const cleanups: (() => void)[] = [];
 
+  // The avatar fills its view; this class gives a view the host didn't size
+  // a default one (see styles.css).
+  element.classList.add("contact-avatar-view");
+  cleanups.push(() => element.classList.remove("contact-avatar-view"));
+
   // Track presence via ephemeral messages
   const heartbeats: Record<string, number> = {};
   let presenceTimer: ReturnType<typeof setInterval>;
