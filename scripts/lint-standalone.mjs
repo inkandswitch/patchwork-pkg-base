@@ -93,7 +93,7 @@ function packageDirs() {
       if (!entry.isDirectory() || entry.name.startsWith(".")) continue
       if (SKIP_DIRS.has(entry.name)) continue
       const at = path.join(dir, entry.name)
-      // keep walking past a package — packages can nest (tasks/src/in-the-cloud)
+      // keep walking past a package — packages can nest
       if (fs.existsSync(path.join(at, "package.json"))) found.push(path.relative(root, at))
       walk(at)
     }

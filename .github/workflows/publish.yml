@@ -36,7 +36,6 @@ jobs:
         with:
           path: |
             */node_modules
-            tasks/src/in-the-cloud/node_modules
           key: ${{ runner.os }}-publish-node-modules-${{ hashFiles('**/package.json', '**/pnpm-lock.yaml', '**/pnpm-workspace.yaml') }}
           restore-keys: |
             ${{ runner.os }}-publish-node-modules-
