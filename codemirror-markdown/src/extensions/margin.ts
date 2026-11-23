@@ -765,7 +765,7 @@ const zoomed = (length: string) => `calc(${length} * var(--markdown-zoom, 1))`;
 
 const marginTheme = EditorView.baseTheme({
   ".cm-content": {
-    "--markdown-hang": zoomed("2.5rem"),
+    "--markdown-hang": zoomed("1.75rem"),
     // in the text's own ems (resolved where used): a checkbox is about as
     // tall as the text, and its centre is the column every list marker and
     // quote bar is centred on; the text starts a gap after it
