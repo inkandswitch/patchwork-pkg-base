@@ -10,12 +10,15 @@ import {
   type ThemeMode as Mode,
 } from "@inkandswitch/patchwork-plugins";
 import { useToolStorage } from "../storage";
+import { detectColorScheme } from "./color-scheme";
 import { Toggle } from "../Toggle";
 import type { AccountDoc } from "../you/contact";
 
 type ThemeDescription = {
   id: string;
   name?: string;
+  style?: string;
+  colorScheme?: "light" | "dark";
 };
 type Preferences = {
   light?: string;
@@ -25,19 +28,36 @@ type Preferences = {
 
 function useThemes() {
   const registry = getRegistry("patchwork:theme");
+  // each theme's scheme, as its stylesheet says, by id
+  const [schemes, setSchemes] = createSignal<
+    Record<string, "light" | "dark" | undefined>
+  >({});
   const read = () =>
     ((registry.all?.() ?? []) as unknown as ThemeDescription[])
       .map((theme) => ({
         id: theme.id,
         name: theme.name || theme.id,
+        style: theme.style,
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  const [themes, setThemes] = createSignal(read());
+  const [listed, setListed] = createSignal(read());
+  const sniff = () => {
+    for (const theme of listed()) {
+      void detectColorScheme(theme.style).then((scheme) => {
+        if (schemes()[theme.id] === scheme) return;
+        setSchemes((all) => ({ ...all, [theme.id]: scheme }));
+      });
+    }
+  };
+  sniff();
   const off = registry.on("changed" as any, () => {
-    setThemes(read());
+    setListed(read());
+    sniff();
   });
   onCleanup(() => (off as () => void)?.());
-  return themes;
+  return createMemo(() =>
+    listed().map((theme) => ({ ...theme, colorScheme: schemes()[theme.id] }))
+  );
 }
 
 function useMode() {
@@ -139,6 +159,14 @@ export function Theme(props: {
       if (which !== "light") doc.dark = id;
     });
 
+  // light themes first for light mode, dark ones for dark
+  const forMode = (which: Mode) =>
+    [...themes()].sort(
+      (a, b) =>
+        Number((a.colorScheme ?? which) !== which) -
+        Number((b.colorScheme ?? which) !== which)
+    );
+
   const name = (id: string) =>
     themes().find((theme) => theme.id === id)?.name ?? id;
 
@@ -158,7 +186,7 @@ export function Theme(props: {
       </summary>
       <div class="settings-group-block">
         <Cards
-          themes={themes()}
+          themes={forMode(p.which)}
           chosen={chosen(p.which)}
           onChoose={(id) => choose(split() ? p.which : "both", id)}
           label={p.which === "light" ? "Light theme" : "Dark theme"}
