@@ -54,8 +54,8 @@ needs. `pnpm lint` checks the last three; the rest will just be wrong quietly.
    machine that made it and only shows up in a fresh clone, which is why the
    linter checks for it.
 
-The same applies to a package nested inside another one (there is one:
-`tasks/src/in-the-cloud`) — the linter walks those too.
+The same applies to a package nested inside another one — the linter walks
+those too.
 
 Then check the actual claim: copy the folder somewhere else on its own, and
 `pnpm install && pnpm build && pnpm test` in the copy.
