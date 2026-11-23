@@ -64,6 +64,22 @@ export const embedTheme = EditorView.baseTheme({
     {
       opacity: "1",
     },
+  // under a selection (extensions/embed.ts): washed over with the selection's
+  // colour, as the browser does a selected image. Above whatever the embedded
+  // tool draws, and never in the way of it.
+  ".cm-embed.cm-embed-selected": {
+    position: "relative",
+    isolation: "isolate",
+  },
+  ".cm-embed.cm-embed-selected::after": {
+    content: '""',
+    position: "absolute",
+    inset: "0",
+    zIndex: "2147483647",
+    background: "var(--text-editor-selection-fill, Highlight)",
+    opacity: "0.4",
+    pointerEvents: "none",
+  },
   ".cm-embed-resizing": {
     userSelect: "none",
   },

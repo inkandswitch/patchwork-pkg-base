@@ -98,6 +98,21 @@ describe("margin", () => {
     expect(selected().some(Boolean)).toBe(false);
   });
 
+  it("picks out the heading labels a selection covers", () => {
+    const doc = "# One\n\n## Two\n\nend";
+    const view = makeView(doc, doc.length);
+    const selected = () =>
+      lines(view)
+        .filter((l) => l.querySelector(".cm-md-heading-label"))
+        .map((l) => !!l.querySelector(".cm-md-heading-label-selected"));
+    expect(selected()).toEqual([false, false]);
+    view.dispatch({ selection: EditorSelection.range(0, doc.length) });
+    expect(selected()).toEqual([true, true]);
+    // from inside "One" on: only the second's `## `
+    view.dispatch({ selection: EditorSelection.range(3, doc.length) });
+    expect(selected()).toEqual([false, true]);
+  });
+
   it("tints the quote indents a selection covers, one band per bar", () => {
     const doc = "> one\n> > two\n\nend";
     const view = makeView(doc);

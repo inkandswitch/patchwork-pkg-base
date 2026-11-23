@@ -15,6 +15,7 @@ import {
   parseAutomergeUrl,
 } from "@automerge/automerge-repo/slim";
 import { embedTheme } from "../themes/embed.ts";
+import { selectedOver } from "./selected.ts";
 
 /** A resized embed: its width (unset = the text's full width) and height, px. */
 type Size = { width: number | null; height: number };
@@ -631,6 +632,30 @@ const embedField = StateField.define<DecorationSet>({
   ],
 });
 
+/**
+ * An embed under a selection is marked `cm-embed-selected` (themes/embed.ts
+ * tints it): the browser's selection doesn't paint widgets. Marked on the
+ * embed's element, after codemirror has drawn, rather than by a new widget:
+ * a different widget would mount what's embedded all over again.
+ */
+const markSelectedEmbeds = EditorView.updateListener.of((update) => {
+  if (!update.selectionSet && !update.docChanged && !update.viewportChanged) return;
+  const { view, state } = update;
+  const embeds = state.field(embedField);
+  for (const el of view.contentDOM.querySelectorAll<HTMLElement>(".cm-embed")) {
+    // (not one inside an editor that's embedded in this one)
+    if (el.closest(".cm-content") !== view.contentDOM) continue;
+    const at = view.posAtDOM(el);
+    let selected = false;
+    embeds.between(at, at, (from, to) => {
+      if (from !== at) return;
+      selected = selectedOver(state, from, to);
+      return false;
+    });
+    el.classList.toggle("cm-embed-selected", selected);
+  }
+});
+
 // MIME types we accept document drags from. Mirrors the sideboard's convention.
 const PATCHWORK_DND = "text/x-patchwork-dnd";
 const PATCHWORK_URLS = "text/x-patchwork-urls";
@@ -875,6 +900,7 @@ export function markdownEmbed() {
   // `dropCursor` observes events, so it coexists with our dragover handler.
   return [
     embedField,
+    markSelectedEmbeds,
     measureColumn,
     embedTheme,
     embedDropHandlers(),

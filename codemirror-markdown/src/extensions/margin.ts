@@ -8,6 +8,7 @@ import {
   type DecorationSet,
   type ViewUpdate,
 } from "@codemirror/view";
+import { selectedOver } from "./selected.ts";
 
 /**
  * Bear-style margin: block markers hang out to the left of the text, so the
@@ -43,22 +44,29 @@ const selectedTaskMark = Decoration.mark({
  *  selected markup is tinted by hand: see `.cm-md-list-marker-selected`. */
 const MARKER_SELECTED = " cm-md-list-marker-selected";
 
-/** Whether a non-empty selection covers any of `from..to`. */
-function selectedOver(state: EditorState, from: number, to: number) {
-  return state.selection.ranges.some((r) => !r.empty && r.from < to && r.to > from);
-}
-
 class HeadingLabel extends WidgetType {
-  /** `shown` only on the caret's line; elsewhere it keeps its room, unseen. */
-  constructor(readonly level: number, readonly shown: boolean) {
+  /** `shown` only on the caret's line; elsewhere it keeps its room, unseen.
+   *  `selected`: its `#`s are under a selection. */
+  constructor(
+    readonly level: number,
+    readonly shown: boolean,
+    readonly selected = false
+  ) {
     super();
   }
   eq(other: HeadingLabel) {
-    return other.level === this.level && other.shown === this.shown;
+    return (
+      other.level === this.level &&
+      other.shown === this.shown &&
+      other.selected === this.selected
+    );
   }
   toDOM() {
     const span = document.createElement("span");
-    span.className = `cm-md-hang cm-md-heading-label${this.shown ? "" : " cm-md-heading-label-idle"}`;
+    span.className =
+      "cm-md-hang cm-md-heading-label" +
+      (this.shown ? "" : " cm-md-heading-label-idle") +
+      (this.selected ? " cm-md-heading-label-selected" : "");
     span.setAttribute("aria-hidden", "true");
     // the text in a box of its own, to be picked out while the level menu
     // (headings.ts) is open, without the hang's empty room around it
@@ -588,10 +596,15 @@ function build(view: EditorView): DecorationSet {
           const start = containers.has(line.number)
             ? markupEnd(line, undefined)
             : line.from;
+          const end = skipSpaces(state, mark.to);
           decos.push(
             Decoration.replace({
-              widget: new HeadingLabel(Number(heading[1]), editing.has(line.number)),
-            }).range(start, skipSpaces(state, mark.to))
+              widget: new HeadingLabel(
+                Number(heading[1]),
+                editing.has(line.number),
+                selectedOver(state, start, end)
+              ),
+            }).range(start, end)
           );
           // the heading's size on the whole line, for what the highlighter
           // doesn't wrap (a rendered link): see headingLines in the theme.
@@ -784,6 +797,15 @@ const marginTheme = EditorView.baseTheme({
     background: "var(--text-editor-selection-fill, Highlight)",
   },
   ".cm-md-list-marker-selected.cm-md-hang-number": {
+    color: "var(--text-editor-selection-line, HighlightText)",
+  },
+  // a heading label over selected `#`s: picked out as its level menu picks it
+  // out (headings.ts), in the selection's colours
+  ".cm-md-heading-label-selected .cm-md-heading-text": {
+    borderRadius: "4px",
+    padding: "0 0.2em",
+    marginRight: "-0.2em",
+    background: "var(--text-editor-selection-fill, Highlight)",
     color: "var(--text-editor-selection-line, HighlightText)",
   },
   // highlight spans inside the box (a heading's `##`) keep their own size and

@@ -228,6 +228,35 @@ describe("rendering embeds", () => {
     expect(pv.hasAttribute("embed-removable")).toBe(true);
   });
 
+  it("looks selected under a selection, without mounting again", () => {
+    // one embed a view: past a frame is past the viewport here (no layout to
+    // measure it by), so a second wouldn't be drawn
+    for (const [before, after] of [
+      ["a\n", "\nb"], // on a line of its own: a block
+      ["a ", " b"], // in a line
+    ]) {
+      const doc = `${before}[patchwork:${docId()}/raw]${after}`;
+      const view = makeView(doc, 0);
+      const embed = () => view.dom.querySelector<HTMLElement>(".cm-embed")!;
+      const frame = view.dom.querySelector("patchwork-view");
+      const selected = () => embed().classList.contains("cm-embed-selected");
+      expect(selected(), before).toBe(false);
+
+      view.dispatch({ selection: EditorSelection.range(0, doc.length) });
+      expect(selected(), before).toBe(true);
+      // the same frame: selecting didn't mount what's embedded again
+      expect(view.dom.querySelector("patchwork-view"), before).toBe(frame);
+
+      // up to the marker, not into it
+      view.dispatch({ selection: EditorSelection.range(0, before.length) });
+      expect(selected(), before).toBe(false);
+
+      view.dispatch({ selection: EditorSelection.cursor(0) });
+      expect(selected(), before).toBe(false);
+      view.destroy();
+    }
+  });
+
   it("deletes the marker, and its line, when the frame asks to be removed", () => {
     const id = docId();
     const view = makeView(`a\n[patchwork:${id}/raw]\nb`, 0);
