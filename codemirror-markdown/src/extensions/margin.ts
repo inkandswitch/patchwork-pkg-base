@@ -351,11 +351,16 @@ function inset(containers: readonly Container[]) {
 type Bar = { left: string; first: boolean; last: boolean; callout?: CalloutType };
 
 class QuoteBars extends WidgetType {
-  constructor(readonly bars: Bar[]) {
+  /** `selected`: the line's `>`s are under a selection, so each bar's indent
+   *  is tinted as the selected text beside it is */
+  constructor(readonly bars: Bar[], readonly selected = false) {
     super();
   }
   eq(other: QuoteBars) {
-    return JSON.stringify(other.bars) === JSON.stringify(this.bars);
+    return (
+      other.selected === this.selected &&
+      JSON.stringify(other.bars) === JSON.stringify(this.bars)
+    );
   }
   toDOM() {
     // empty and in the flow, so it takes no room and a caret beside it is
@@ -364,6 +369,13 @@ class QuoteBars extends WidgetType {
     box.className = "cm-md-quote-bars";
     box.setAttribute("aria-hidden", "true");
     for (const bar of this.bars) {
+      // (before its bar, so the bar is drawn over it)
+      if (this.selected) {
+        const band = document.createElement("span");
+        band.className = "cm-md-quote-selected";
+        band.setAttribute("style", `left: calc(6px + ${bar.left})`);
+        box.append(band);
+      }
       const span = document.createElement("span");
       span.className =
         "cm-md-quote-bar" +
@@ -527,7 +539,10 @@ function build(view: EditorView): DecorationSet {
     if (bars.some((b) => b.first)) addLine(n, "cm-md-quote-first");
     if (bars.some((b) => b.last)) addLine(n, "cm-md-quote-last");
     decos.push(
-      Decoration.widget({ widget: new QuoteBars(bars), side: -1 }).range(line.from)
+      Decoration.widget({
+        widget: new QuoteBars(bars, selectedOver(state, line.from, end)),
+        side: -1,
+      }).range(line.from)
     );
     // the innermost callout a line is in tints it, from that callout's bar
     if (callout) {
@@ -1011,6 +1026,17 @@ const marginTheme = EditorView.baseTheme({
     background:
       "var(--syntax-quote-bar, var(--syntax-list-marker, var(--text-editor-primary-text, currentColor)))",
     opacity: "0.6",
+    pointerEvents: "none",
+  },
+  // a quote's indent under a selection, bar to text (see QuoteBars), in the
+  // colour of the selected text beside it; full height, so a run of selected
+  // lines joins up
+  ".cm-md-quote-selected": {
+    position: "absolute",
+    top: "0",
+    bottom: "0",
+    width: "var(--markdown-quote-indent)",
+    background: "var(--text-editor-selection-fill, Highlight)",
     pointerEvents: "none",
   },
   ".cm-md-quote-bar-first": {

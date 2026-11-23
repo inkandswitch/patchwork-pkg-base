@@ -98,6 +98,26 @@ describe("margin", () => {
     expect(selected().some(Boolean)).toBe(false);
   });
 
+  it("tints the quote indents a selection covers, one band per bar", () => {
+    const doc = "> one\n> > two\n\nend";
+    const view = makeView(doc);
+    const bands = () =>
+      lines(view).map((l) => l.querySelectorAll(".cm-md-quote-selected").length);
+    expect(bands()).toEqual([0, 0, 0, 0]);
+
+    // select all: each quote line, a band for each bar it has
+    view.dispatch({ selection: EditorSelection.range(0, doc.length) });
+    expect(bands()).toEqual([1, 2, 0, 0]);
+
+    // from inside "one" into "two": only the second line's `> > ` is covered
+    view.dispatch({ selection: EditorSelection.range(3, 11) });
+    expect(bands()).toEqual([0, 2, 0, 0]);
+
+    // a caret covers nothing
+    view.dispatch({ selection: EditorSelection.cursor(0) });
+    expect(bands()).toEqual([0, 0, 0, 0]);
+  });
+
   it("leaves a bare bullet as typed until its space comes", () => {
     for (const ch of ["-", "*", "+"]) {
       const view = makeView(ch);
