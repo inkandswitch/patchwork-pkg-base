@@ -92,6 +92,32 @@ export function createFileComments(props: {
 		{initialValue: []},
 	)
 
+	// The selections the editor wrote into the focus doc itself (see
+	// followSelection), which it doesn't scroll to: it's already showing them,
+	// and the echo comes back late and without a direction (a plain from..to),
+	// so following it scrolled to the selection's end even while it was being
+	// extended upwards, and fought the scrolling of a drag. The last few are
+	// kept, since an echo can arrive after a newer selection was written.
+	const ownSelections = new Set<AutomergeUrl>()
+	const rememberOwnSelection = (url: AutomergeUrl) => {
+		ownSelections.add(url)
+		if (ownSelections.size > 32)
+			ownSelections.delete(ownSelections.values().next().value!)
+	}
+
+	// What there is to scroll to: what the sidebar focuses (a thread picked or
+	// hovered), not the editor's own selection coming back.
+	const scrollUrls = createMemo(
+		() => focusUrls().filter((url) => !ownSelections.has(url)),
+		[],
+		{equals: sameUrls},
+	)
+	const [scrollFocused] = createResource(
+		scrollUrls,
+		(urls) => findAll(element.repo, urls),
+		{initialValue: []},
+	)
+
 	// Bumped after every change to the file, since that can move the ranges.
 	// Deferred so the editor has taken the same change first.
 	const [revision, setRevision] = createSignal(0)
@@ -153,6 +179,8 @@ export function createFileComments(props: {
 		const url = handle.sub(...PATH, cursor(from, to)).url
 		if (url === lastSelectionUrl) return
 		lastSelectionUrl = url
+		// before the write, which the focus doc may pass on straight away
+		rememberOwnSelection(url)
 		focus.change((doc) => {
 			doc.selection = {[url]: true}
 		})
@@ -183,7 +211,7 @@ export function createFileComments(props: {
 
 		// Bring a thread picked in the sidebar into view, if it isn't already.
 		createEffect(() => {
-			const ranges = commentRanges(focused())
+			const ranges = commentRanges(scrollFocused())
 			if (!ranges.length) return
 			const length = view.state.doc.length
 			const from = Math.min(Math.min(...ranges.map((r) => r[0])), length)
@@ -262,3 +290,6 @@ const highlightTheme = EditorView.baseTheme({
 			"color-mix(in oklch, var(--studio-secondary), var(--text-editor-fill) 56%)",
 	},
 })
+
+const sameUrls = (a: AutomergeUrl[], b: AutomergeUrl[]) =>
+	a.length === b.length && a.every((url, i) => url === b[i])

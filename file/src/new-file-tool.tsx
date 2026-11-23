@@ -63,10 +63,10 @@ function NewFilePrompt(props: {handle: DocHandle<FileDoc>}) {
 					outline: "none",
 				}}
 				onFocus={(e) => {
-					e.currentTarget.style["border-color"] = "#888"
+					e.currentTarget.style.borderColor = "#888"
 				}}
 				onBlur={(e) => {
-					e.currentTarget.style["border-color"] = "#ccc"
+					e.currentTarget.style.borderColor = "#ccc"
 				}}
 			/>
 			<button

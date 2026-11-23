@@ -72,6 +72,13 @@ const markdownStyles = (style: "serif" | "sans"): Record<string, any> => ({
   ".cm-content li": {
     marginBottom: 0,
   },
+  // the browser draws the selection (there's no drawSelection); these are the
+  // colours a selected list marker is tinted with too (extensions/margin.ts),
+  // so the two match.
+  ".cm-content ::selection": {
+    backgroundColor: "var(--text-editor-selection-fill, Highlight)",
+    color: "var(--text-editor-selection-line, HighlightText)",
+  },
   ".cm-task-done": {
     opacity: 0.6,
   },

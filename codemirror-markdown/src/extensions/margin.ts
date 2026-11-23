@@ -34,6 +34,19 @@ const taskMark = Decoration.mark({
   class: "cm-md-hang cm-md-list-marker",
   inclusive: true,
 });
+const selectedTaskMark = Decoration.mark({
+  class: "cm-md-hang cm-md-list-marker cm-md-list-marker-selected",
+  inclusive: true,
+});
+
+/** The browser's own selection doesn't paint widgets, so a list marker over
+ *  selected markup is tinted by hand: see `.cm-md-list-marker-selected`. */
+const MARKER_SELECTED = " cm-md-list-marker-selected";
+
+/** Whether a non-empty selection covers any of `from..to`. */
+function selectedOver(state: EditorState, from: number, to: number) {
+  return state.selection.ranges.some((r) => !r.empty && r.from < to && r.to > from);
+}
 
 class HeadingLabel extends WidgetType {
   /** `shown` only on the caret's line; elsewhere it keeps its room, unseen. */
@@ -69,16 +82,22 @@ class Bullet extends WidgetType {
    *  line (see markerShift) */
   constructor(
     readonly shape: (typeof BULLET_SHAPES)[number],
-    readonly shift?: string
+    readonly shift?: string,
+    readonly selected = false
   ) {
     super();
   }
   eq(other: Bullet) {
-    return other.shape === this.shape && other.shift === this.shift;
+    return (
+      other.shape === this.shape &&
+      other.shift === this.shift &&
+      other.selected === this.selected
+    );
   }
   toDOM() {
     const span = document.createElement("span");
-    span.className = "cm-md-hang cm-md-list-marker";
+    span.className =
+      "cm-md-hang cm-md-list-marker" + (this.selected ? MARKER_SELECTED : "");
     if (this.shift) span.setAttribute("style", this.shift);
     const dot = document.createElement("span");
     dot.className = `cm-bullet cm-bullet-${this.shape}`;
@@ -107,15 +126,25 @@ class Rule extends WidgetType {
 }
 
 class NumberLabel extends WidgetType {
-  constructor(readonly text: string, readonly shift?: string) {
+  constructor(
+    readonly text: string,
+    readonly shift?: string,
+    readonly selected = false
+  ) {
     super();
   }
   eq(other: NumberLabel) {
-    return other.text === this.text && other.shift === this.shift;
+    return (
+      other.text === this.text &&
+      other.shift === this.shift &&
+      other.selected === this.selected
+    );
   }
   toDOM() {
     const span = document.createElement("span");
-    span.className = "cm-md-hang cm-md-list-marker cm-md-hang-number";
+    span.className =
+      "cm-md-hang cm-md-list-marker cm-md-hang-number" +
+      (this.selected ? MARKER_SELECTED : "");
     if (this.shift) span.setAttribute("style", this.shift);
     span.textContent = this.text;
     return span;
@@ -582,6 +611,11 @@ function build(view: EditorView): DecorationSet {
             task?.name === "TaskMarker" &&
             doc.sliceString(end, task.from).trim() === "";
           const shift = markerShift(doc.lineAt(node.from), node.node.parent);
+          const selected = selectedOver(
+            state,
+            node.from,
+            isTask && task ? task.to : end
+          );
           if (isTask && task) {
             // the checkbox takes the bullet's place: drop the mark, and hang
             // the task marker (which tasks.ts draws as a checkbox).
@@ -589,11 +623,15 @@ function build(view: EditorView): DecorationSet {
             decos.push(
               (shift
                 ? Decoration.mark({
-                    class: "cm-md-hang cm-md-list-marker",
+                    class:
+                      "cm-md-hang cm-md-list-marker" +
+                      (selected ? MARKER_SELECTED : ""),
                     inclusive: true,
                     attributes: { style: shift },
                   })
-                : taskMark
+                : selected
+                  ? selectedTaskMark
+                  : taskMark
               ).range(task.from, task.to)
             );
             // the space after the box is hidden, not hung: hung, the caret
@@ -607,14 +645,19 @@ function build(view: EditorView): DecorationSet {
               Decoration.replace({
                 widget: new Bullet(
                   BULLET_SHAPES[(bulletDepth(node.node) - 1) % BULLET_SHAPES.length],
-                  shift
+                  shift,
+                  selected
                 ),
               }).range(node.from, end)
             );
           } else {
             decos.push(
               Decoration.replace({
-                widget: new NumberLabel(renderedNumber(state, node.node), shift),
+                widget: new NumberLabel(
+                  renderedNumber(state, node.node),
+                  shift,
+                  selected
+                ),
               }).range(node.from, end)
             );
           }
@@ -719,6 +762,14 @@ const marginTheme = EditorView.baseTheme({
     fontWeight: "normal",
     fontStyle: "normal",
     textDecoration: "none",
+  },
+  // a marker over selected markup, tinted as the selected text beside it is
+  // (themes/markdown.ts sets the same colours on the text's ::selection)
+  ".cm-md-list-marker-selected": {
+    background: "var(--text-editor-selection-fill, Highlight)",
+  },
+  ".cm-md-list-marker-selected.cm-md-hang-number": {
+    color: "var(--text-editor-selection-line, HighlightText)",
   },
   // highlight spans inside the box (a heading's `##`) keep their own size and
   // margins otherwise, and as flex items those margins would push the line.

@@ -107,14 +107,49 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
     { initialValue: [] }
   );
 
-  // Bounding range of the focused targets (selection ∪ highlight). Recomputes
-  // when the targets change -- e.g. selecting a comment thread elsewhere -- so
-  // the editor can scroll the freshly focused region into view. Positions are
-  // read imperatively; the resource re-emitting on focus change is the trigger.
+  // The selections this editor wrote into the focus doc itself (see
+  // onChangeSelection), which it doesn't scroll to: it's already showing them,
+  // and the echo comes back late and without a direction (a plain from..to),
+  // so following it scrolled to the selection's end even while it was being
+  // extended upwards, and fought the scrolling of a drag. The last few are
+  // kept, since an echo can arrive after a newer selection was written.
+  const ownSelections = new Set<AutomergeUrl>();
+  const rememberOwnSelection = (url: AutomergeUrl) => {
+    ownSelections.add(url);
+    if (ownSelections.size > 32)
+      ownSelections.delete(ownSelections.values().next().value!);
+  };
+
+  // What there is to scroll to: what other views focus (a thread picked or
+  // hovered in the sidebar), not our own selection coming back.
+  const scrollRefUrls = createMemo(
+    () => {
+      const doc = focusDoc();
+      return [
+        ...(Object.keys(doc?.selection ?? {}) as AutomergeUrl[]).filter(
+          (url) => !ownSelections.has(url)
+        ),
+        ...(Object.keys(doc?.highlight ?? {}) as AutomergeUrl[]),
+      ];
+    },
+    [],
+    { equals: sameUrls }
+  );
+
+  const [scrollRefs] = createResource(
+    scrollRefUrls,
+    async (urls) => resolveSubDocUrlsOfDoc(urls, props.handle.url, props.repo),
+    { initialValue: [] }
+  );
+
+  // Bounding range of the focused targets other views set. Recomputes when
+  // they change -- e.g. selecting a comment thread elsewhere -- so the editor
+  // can scroll the freshly focused region into view. Positions are read
+  // imperatively; the resource re-emitting on focus change is the trigger.
   const scrollTarget = createMemo<readonly [number, number] | null>(() => {
     let from = Infinity;
     let to = -Infinity;
-    for (const ref of emphasisTargets()) {
+    for (const ref of scrollRefs()) {
       const positions = ref.rangePositions();
       if (!positions) continue;
       const [start, end] = positions;
@@ -131,6 +166,8 @@ export function CodeMirrorEditor(props: PatchworkToolProps<TextDoc>) {
     if (!handle) return;
     const nextUrl = props.handle.sub(...PATH, cursor(from, to)).url;
     if (nextUrl === lastEmittedUrl) return;
+    // before the write, which the focus doc may pass on straight away
+    rememberOwnSelection(nextUrl);
     handle.change((doc) => {
       doc.selection = { [nextUrl]: true };
     });
@@ -359,6 +396,9 @@ async function getDedupedCommentTargets(
   }
   return Array.from(overlappingRefs);
 }
+
+const sameUrls = (a: AutomergeUrl[], b: AutomergeUrl[]) =>
+  a.length === b.length && a.every((url, i) => url === b[i]);
 
 // Scopes ref urls to this doc and resolves each one to a `DocHandle`.
 // Used for both our own `selection` and other views' `highlight`.

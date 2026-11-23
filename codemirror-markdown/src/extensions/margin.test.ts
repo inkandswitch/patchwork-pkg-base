@@ -77,6 +77,27 @@ describe("margin", () => {
     expect(d.textContent).toBe("2.second");
   });
 
+  it("tints the markers a selection covers, as selected text is", () => {
+    const doc = "- one\n- two\n\n1. first\n\n- [ ] task\n\nend";
+    const view = makeView(doc);
+    const selected = () =>
+      lines(view).map((l) => !!l.querySelector(".cm-md-list-marker-selected"));
+    expect(selected()).toEqual([false, false, false, false, false, false, false, false]);
+
+    // select all: every marker
+    view.dispatch({ selection: EditorSelection.range(0, doc.length) });
+    expect(selected()).toEqual([true, true, false, true, false, true, false, false]);
+
+    // from inside "one" to inside "two": the second marker is covered, the
+    // first (before the selection) isn't
+    view.dispatch({ selection: EditorSelection.range(3, 9) });
+    expect(selected()).toEqual([false, true, false, false, false, false, false, false]);
+
+    // a caret covers nothing
+    view.dispatch({ selection: EditorSelection.cursor(0) });
+    expect(selected().some(Boolean)).toBe(false);
+  });
+
   it("leaves a bare bullet as typed until its space comes", () => {
     for (const ch of ["-", "*", "+"]) {
       const view = makeView(ch);
