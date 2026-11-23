@@ -9,39 +9,40 @@
   --contact-fallback-fg: var(--editor-line-offset-30, #4d4d4d);
   --contact-family: var(--editor-family-sans, system-ui, sans-serif);
 }
-}
 
 /* Avatar */
 
+/* The contact-avatar tool fills the <patchwork-view> it's mounted on. A view
+   nobody sized is 2rem; any rule the host writes for its view wins over this
+   one, which has no specificity at all. */
+:where(.contact-avatar-view) {
+  display: inline-block;
+  width: 2rem;
+  height: 2rem;
+}
+
 .contact-avatar {
   position: relative;
-  display: inline-flex;
+  box-sizing: border-box;
+  display: flex;
   flex-shrink: 0;
   overflow: hidden;
   border-radius: 9999px;
   border: var(--studio-border-width, 1px) var(--studio-border-style, solid) var(--contact-border);
-  min-width: 2rem;
-  min-height: 2rem;
-  max-width: 2rem;
-  max-height: 2rem;
-  height: 100%;
   width: 100%;
+  height: 100%;
 }
 
 .contact-avatar--sm {
-  min-width: initial;
-  min-height: initial;
-  max-width: initial;
-  max-height: initial;
+  box-sizing: content-box;
+  display: inline-flex;
   width: 1.5rem;
   height: 1.5rem;
 }
 
 .contact-avatar--lg {
-  min-width: initial;
-  min-height: initial;
-  max-width: initial;
-  max-height: initial;
+  box-sizing: content-box;
+  display: inline-flex;
   width: 64px;
   height: 64px;
 }
@@ -114,4 +115,5 @@
   text-overflow: ellipsis;
   user-select: none;
   pointer-events: none;
+}
 }

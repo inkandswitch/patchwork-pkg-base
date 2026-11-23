@@ -746,9 +746,3 @@
 .account-bar__button:hover {
   border-color: var(--document-list-divider);
 }
-
-.account-bar__avatar patchwork-view {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
