@@ -6,6 +6,7 @@ import type {
   MessageToRouterChannel,
   MessageToTaskQueueChannel,
   MessageToWorkerChannel,
+  RepoConfig,
 } from './protocol';
 import type {
   AutomergeUrl,
@@ -14,16 +15,22 @@ import type {
   Repo,
 } from '@automerge/automerge-repo/slim';
 
-import { connectRepoPort, getRepo, setUpImportMap } from './webworker-lib';
+import { getRepo, setUpImportMap } from './webworker-lib';
 import generateName from 'boring-name-generator';
 import { seconds, shuffle } from './helpers';
+import { DeliveryStats, reportDeliveryStats, Sequencer } from './delivery-stats';
+import { RouterWatch } from './takeover';
 
 let repo: Repo;
 let contactUrl: AutomergeUrl;
 let thisRouterHandle: DocHandle<RouterDoc>;
 
+let status: 'not initialized' | 'initializing' | 'ready' = 'not initialized';
+let sequencer: Sequencer;
+const deliveryStats = new DeliveryStats();
+
 const taskQueueHandles = new Map<AutomergeUrl, DocHandle<TaskQueueDoc>>();
-const lastTimestampFromRouter = new Map<AutomergeUrl, number>();
+const routerWatch = new RouterWatch();
 const attemptingToTakeOverTaskQueueUrls = new Set<AutomergeUrl>();
 
 interface WorkerState {
@@ -36,6 +43,8 @@ interface WorkerState {
   claimIssuedAt: number;
   taskQueues: TaskQueueSet;
   lastTimestamp: number;
+  /** Whether the worker's host wants it given work just now (see availability.ts). */
+  available: boolean;
 }
 
 const workers = new Map<AutomergeUrl, WorkerState>();
@@ -49,7 +58,7 @@ self.addEventListener('connect', (e: any) => {
     try {
       switch (msg.type) {
         case 'init':
-          init(msg.repoPort, msg.contactUrl, msg.importMap, msg.baseURI);
+          init(msg.repoConfig, msg.contactUrl, msg.importMap, msg.baseURI);
           break;
         case 'update task queue set':
           updateTaskQueueSet(msg.taskQueues);
@@ -67,46 +76,54 @@ self.addEventListener('connect', (e: any) => {
 const { promise: repoPromise, resolve: repoResolve } = Promise.withResolvers();
 
 async function init(
-  repoPort: MessagePort,
+  repoConfig: RepoConfig,
   _contactUrl: AutomergeUrl,
   importMap: any,
   baseURI: string,
 ) {
-  if (repo) {
-    await connectRepoPort(repo, repoPort);
-  }
-
-  if (contactUrl && repo && thisRouterHandle) {
-    console.log('already initialized');
+  // Every tab sends `init`, and a second one can arrive while the first is
+  // still waiting on the Repo. Without this it would start a second Repo, a
+  // second router doc and a second copy of each loop below.
+  if (status !== 'not initialized') {
+    console.log('already', status === 'ready' ? 'initialized' : 'initializing');
     return;
   }
 
   console.log('initializing');
+  status = 'initializing';
 
   contactUrl = _contactUrl;
 
-  if (!repo) {
-    await setUpImportMap(importMap, baseURI);
-    repo = await getRepo(repoPort, `task-router-${Math.round(Math.random() * 1_000_000)}`);
-    repoResolve(repo);
-  }
+  await setUpImportMap(importMap, baseURI);
+  repo = await getRepo(repoConfig, `task-router-${Math.round(Math.random() * 1_000_000)}`);
+  repoResolve(repo);
 
   thisRouterHandle = repo.create<RouterDoc>({ name: generateName().dashed, contactUrl });
+  sequencer = new Sequencer(thisRouterHandle.url);
   thisRouterHandle.on('ephemeral-message', (payload) => {
     console.log('received ephemeral message directed at me (as the active router)');
     const msg: MessageToRouterChannel = payload.message as any;
     switch (msg.type) {
       case 'worker heartbeat':
-        processWorkerHeartbeat(msg.workerUrl, msg.currentTask?.taskUrl ?? null, msg.taskQueues);
+        deliveryStats.record(thisRouterHandle.url, msg);
+        processWorkerHeartbeat(
+          msg.workerUrl,
+          msg.currentTask?.taskUrl ?? null,
+          msg.taskQueues,
+          // a pool from before there was a choice is always available
+          msg.available ?? true,
+        );
         break;
     }
   });
+  reportDeliveryStats('router', deliveryStats);
 
   pRouteTasks();
   pSendHeartbeats();
   pDropStaleWorkerInfos();
   pTakeOverFromInactiveRouters();
 
+  status = 'ready';
   console.log('ready!', thisRouterHandle.url);
   console.log('hola, me llamo', thisRouterHandle.doc().name);
 }
@@ -138,6 +155,7 @@ async function pRouteTasks() {
       console.log('routing task', nextPendingTaskUrl, 'to worker', worker.handle.url);
       worker.handle.broadcast({
         type: 'work on',
+        ...sequencer.stamp(worker.handle.url),
         taskUrl: nextPendingTaskUrl,
         taskQueueUrl: taskQueue.url,
       } satisfies MessageToWorkerChannel);
@@ -160,11 +178,16 @@ async function pSendHeartbeats() {
     for (const taskQueueHandle of taskQueueHandles.values()) {
       if (thisIsTheActiveRouterFor(taskQueueHandle)) {
         console.log('sending router heartbeat');
+        const included = [...workers.values()].filter((worker) =>
+          shouldIncludeInHeartbeat(worker, taskQueueHandle.url),
+        );
         taskQueueHandle.broadcast({
           type: 'router heartbeat',
+          ...sequencer.stamp(taskQueueHandle.url),
           routerUrl: thisRouterHandle.url,
-          workerUrls: [...workers.values()]
-            .filter((worker) => shouldIncludeInHeartbeat(worker, taskQueueHandle.url))
+          workerUrls: included.map((worker) => worker.handle.url),
+          pausedWorkerUrls: included
+            .filter((worker) => !worker.available)
             .map((worker) => worker.handle.url),
         } satisfies MessageToTaskQueueChannel);
       }
@@ -199,18 +222,15 @@ async function pTakeOverFromInactiveRouters() {
   while (true) {
     for (const taskQueueHandle of taskQueueHandles.values()) {
       const activeRouterUrl = taskQueueHandle.doc().activeRouter;
-      if (
-        activeRouterUrl === thisRouterHandle.url ||
-        attemptingToTakeOverTaskQueueUrls.has(taskQueueHandle.url)
-      ) {
+      if (activeRouterUrl === thisRouterHandle.url) {
+        routerWatch.stopWatching(taskQueueHandle.url);
+        continue;
+      }
+      if (attemptingToTakeOverTaskQueueUrls.has(taskQueueHandle.url)) {
         continue;
       }
 
-      const lastTimestamp =
-        activeRouterUrl && lastTimestampFromRouter.has(activeRouterUrl)
-          ? lastTimestampFromRouter.get(activeRouterUrl)!
-          : 0;
-      if (lastTimestamp < Date.now() - 10 * 1_000) {
+      if (routerWatch.shouldTakeOver(taskQueueHandle.url, activeRouterUrl)) {
         attemptToTakeOver(taskQueueHandle);
       }
     }
@@ -274,7 +294,7 @@ function getIdleWorkersByTaskQueueUrl() {
   const idleWorkers = [...workers.values()].filter((worker) => {
     const docBusy = !!worker.handle.doc().currentTask;
     const heartbeatBusy = !!worker.currentTaskUrl;
-    return !docBusy && !heartbeatBusy && !worker.claimedTaskUrl;
+    return worker.available && !docBusy && !heartbeatBusy && !worker.claimedTaskUrl;
   });
   const idleWorkersByTaskQueueUrl = new Map<AutomergeUrl, Set<WorkerState>>();
   for (const worker of idleWorkers) {
@@ -345,6 +365,7 @@ async function leaveTaskQueue(taskQueueUrl: AutomergeUrl) {
   const handle = taskQueueHandles.get(taskQueueUrl);
   handle?.off('ephemeral-message', handleEphemeralMessages);
   taskQueueHandles.delete(taskQueueUrl);
+  routerWatch.stopWatching(taskQueueUrl);
 }
 
 function handleEphemeralMessages(payload: DocHandleEphemeralMessagePayload<TaskQueueDoc>) {
@@ -352,19 +373,21 @@ function handleEphemeralMessages(payload: DocHandleEphemeralMessagePayload<TaskQ
   console.log('received ephemeral message (directed at task queue)', msg);
   switch (msg.type) {
     case 'router heartbeat':
+      deliveryStats.record(payload.handle.url, msg);
       processRouterHeartbeat(msg.routerUrl);
       break;
   }
 }
 
 function processRouterHeartbeat(routerUrl: AutomergeUrl) {
-  lastTimestampFromRouter.set(routerUrl, Date.now());
+  routerWatch.heardFrom(routerUrl);
 }
 
 async function processWorkerHeartbeat(
   workerUrl: AutomergeUrl,
   currentTaskUrl: AutomergeUrl | null,
   taskQueues: TaskQueueSet,
+  available: boolean,
 ) {
   const lastTimestamp = Date.now();
   const state = workers.get(workerUrl);
@@ -372,6 +395,7 @@ async function processWorkerHeartbeat(
     state.currentTaskUrl = currentTaskUrl;
     state.taskQueues = taskQueues;
     state.lastTimestamp = lastTimestamp;
+    state.available = available;
     // Heartbeat proves the pool saw the worker pick up this assignment; router doc can still lag.
     if (state.claimedTaskUrl && currentTaskUrl === state.claimedTaskUrl) {
       state.claimedTaskUrl = null;
@@ -386,6 +410,7 @@ async function processWorkerHeartbeat(
         claimIssuedAt: 0,
         taskQueues,
         lastTimestamp,
+        available,
       });
     } catch (error) {
       console.error('unable to get doc handle for worker', { workerUrl, error });

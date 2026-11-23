@@ -1,4 +1,5 @@
 import type { Repo } from '@automerge/automerge-repo/slim';
+import type { RepoConfig } from './protocol';
 
 const shimCodeUrl = 'https://ga.jspm.io/npm:es-module-shims@1.6.2/dist/es-module-shims.wasm.js';
 
@@ -66,18 +67,39 @@ function resolveImportMap(importMap: any, baseURI: string) {
   return resolvedImportMap;
 }
 
-export async function getRepo(port: MessagePort, peerId: string) {
+// The task workers keep their documents in a database of their own, and tell
+// each other what they've saved on a channel of their own, rather than sharing
+// the site's. A site's own Repo may not be an ordinary one: on a keyhive site
+// it is wrapped in keyhive's machinery, and what that leaves in the site's
+// database is its business. Kept apart, the workers are the same on every site.
+// They and the site's tabs still see each other's documents, through the server.
+const TASKS_DATABASE = 'patchwork-tasks';
+const TASKS_HEADS_CHANNEL = 'patchwork-tasks-heads';
+
+/**
+ * A Repo for this shared worker: an ordinary Subduction node with a socket of
+ * its own to the sync server.
+ *
+ * Patchwork used to hand workers a MessagePort to one Repo they all synced
+ * through. That Repo is gone (every tab is its own node now), and with it the
+ * relay that every ephemeral message between two workers had to pass through:
+ * a broadcast now goes from this Repo to the server, and from there to every
+ * Repo that has the document open, on this machine or any other.
+ *
+ * No `signer`, on purpose: the Repo makes itself a new identity each time. The
+ * tabs on an origin all sign as one peer, and a worker that did the same would
+ * be relying on the server to pass a peer's ephemeral messages back to that
+ * same peer's other connections, which is exactly the traffic the router, the
+ * pool and the workers on one machine send each other. As peers of their own
+ * they are to each other what two machines are.
+ */
+export async function getRepo(config: RepoConfig, peerId: string) {
   if (!importMapReady) {
     throw new Error('Import map must be configured before creating a worker repo');
   }
 
-  const {
-    Repo,
-    MessageChannelNetworkAdapter,
-    IndexedDBStorageAdapter,
-    initializeWasm,
-    initSubductionSync,
-  } = await getRepoModules();
+  const { Repo, IndexedDBStorageAdapter, initializeWasm, initSubductionSync } =
+    await getRepoModules();
 
   const [automergeWasm, subductionWasm] = await Promise.all([
     fetch('/automerge.wasm').then((r) => r.arrayBuffer()),
@@ -88,12 +110,13 @@ export async function getRepo(port: MessagePort, peerId: string) {
   await initializeWasm(new Uint8Array(automergeWasm));
   console.log('Automerge & Subduction WASM initialized');
 
-  const repo = new Repo({
-    storage: new IndexedDBStorageAdapter(),
+  const repo: Repo = new Repo({
+    storage: new IndexedDBStorageAdapter(TASKS_DATABASE),
     peerId: peerId as any,
+    subductionWebsocketEndpoints: [config.syncServerUrl],
+    headsChannel: TASKS_HEADS_CHANNEL,
+    enableRemoteHeadsGossiping: true,
   });
-
-  await connectRepoPort(repo, port);
 
   (globalThis as any).repo = repo;
 
@@ -105,17 +128,15 @@ async function getRepoModules() {
     repoModulesReady = (async () => {
       await importMapReady;
 
-      const [automerge, repo, network, storage, subduction] = await Promise.all([
+      const [automerge, repo, storage, subduction] = await Promise.all([
         (self as any).importShim('@automerge/automerge/slim'),
         (self as any).importShim('@automerge/automerge-repo/slim'),
-        (self as any).importShim('@automerge/automerge-repo-network-messagechannel'),
         (self as any).importShim('@automerge/automerge-repo-storage-indexeddb'),
         (self as any).importShim('@automerge/automerge-subduction/slim'),
       ]);
 
       return {
         Repo: repo.Repo,
-        MessageChannelNetworkAdapter: network.MessageChannelNetworkAdapter,
         IndexedDBStorageAdapter: storage.IndexedDBStorageAdapter,
         initializeWasm: automerge.initializeWasm,
         initSubductionSync: subduction.initSync,
@@ -124,11 +145,4 @@ async function getRepoModules() {
   }
 
   return repoModulesReady;
-}
-
-export async function connectRepoPort(repo: Repo, port: MessagePort) {
-  const { MessageChannelNetworkAdapter } = await getRepoModules();
-  const adapter = new MessageChannelNetworkAdapter(port);
-  repo.networkSubsystem.addNetworkAdapter(adapter);
-  await adapter.whenReady();
 }

@@ -3,11 +3,17 @@
 console.log('task worker script starting; self.name =', (self as any).name);
 
 import type { TaskQueueDoc, TaskDoc, RunStatus, WorkerDoc, RunLogEntry } from './datatype';
-import type { MessageToWorker, MessageToWorkerChannel, MessageToWorkerPoolProxy } from './protocol';
+import type {
+  MessageToWorker,
+  MessageToWorkerChannel,
+  MessageToWorkerPoolProxy,
+  RepoConfig,
+} from './protocol';
 import type { Repo, AutomergeUrl, DocHandle } from '@automerge/automerge-repo/slim';
 
 import generateName from 'boring-name-generator';
-import { connectRepoPort, getRepo, setUpImportMap } from './webworker-lib';
+import { getRepo, setUpImportMap } from './webworker-lib';
+import { DeliveryStats, reportDeliveryStats } from './delivery-stats';
 
 let status: 'not initialized' | 'initializing' | 'ready' = 'not initialized';
 
@@ -19,6 +25,8 @@ declare global {
 
 let workerHandle: DocHandle<WorkerDoc>;
 
+const deliveryStats = new DeliveryStats();
+
 function handleConnect(e: any) {
   console.log('got a connection!');
   const port = e.ports[0];
@@ -28,7 +36,7 @@ function handleConnect(e: any) {
     try {
       switch (msg.type) {
         case 'init':
-          init(port, msg.repoPort, msg.contactUrl, msg.importMap, msg.baseURI);
+          init(port, msg.repoConfig, msg.contactUrl, msg.importMap, msg.baseURI);
           break;
       }
     } catch (error) {
@@ -43,7 +51,7 @@ self.addEventListener('connect', handleConnect as any);
 
 async function init(
   workerPoolProxyPort: MessagePort,
-  repoPort: MessagePort,
+  repoConfig: RepoConfig,
   _contactUrl: AutomergeUrl,
   _importMap: any,
   _baseURI: string,
@@ -52,7 +60,6 @@ async function init(
   // A second `init` must still announce this worker to the pool; otherwise the pool
   // never hears `register worker` and the router gets empty worker lists.
   if (status === 'ready') {
-    await connectRepoPort(globalThis.repo, repoPort);
     workerPoolProxyPort.postMessage({
       type: 'register worker',
       sharedWorkerName: self.name,
@@ -62,9 +69,6 @@ async function init(
   }
 
   if (status !== 'not initialized') {
-    if (globalThis.repo) {
-      await connectRepoPort(globalThis.repo, repoPort);
-    }
     return;
   }
 
@@ -76,7 +80,10 @@ async function init(
   // Important: if I take out the `globalThis.` from the assignment below, it doesn't work.
   // I get "ReferenceError: repo is not defined." This is probably b/c that variable only
   // counts as declared once it exists as a property in globalThis.
-  globalThis.repo = await getRepo(repoPort, `task-worker-${Math.round(Math.random() * 1_000_000)}`);
+  globalThis.repo = await getRepo(
+    repoConfig,
+    `task-worker-${Math.round(Math.random() * 1_000_000)}`,
+  );
 
   // create the worker document
   workerHandle = repo.create<WorkerDoc>({
@@ -97,10 +104,19 @@ async function init(
     const msg: MessageToWorkerChannel = payload.message as any;
     switch (msg.type) {
       case 'work on':
+        deliveryStats.record(workerHandle.url, msg);
+        if (workerHandle.doc().currentTask) {
+          // One task at a time. The router only sends work to a worker it
+          // believes is idle, so this is a repeat or a stale view; its claim
+          // on this worker lapses and the task is routed again.
+          console.log('busy, ignoring request to work on', msg.taskUrl);
+          break;
+        }
         processTask(msg.taskUrl, msg.taskQueueUrl);
         break;
     }
   });
+  reportDeliveryStats((self as any).name || 'task-worker', deliveryStats);
 
   workerHandle.change((doc) => {
     doc.currentTask = null;

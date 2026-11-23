@@ -1,7 +1,13 @@
 import type { AutomergeUrl } from '@automerge/automerge-repo/slim';
-import type { MessageToRouter, MessageToWorker, MessageToWorkerPool } from './protocol';
+import type {
+  MessageToRouter,
+  MessageToWorker,
+  MessageToWorkerPool,
+  RepoConfig,
+} from './protocol';
 
 import { getAccountHandle, getTaskQueues } from './helpers';
+import { watchHostActivity } from './host-activity';
 
 import WorkerPool from './worker-pool.ts?sharedworker';
 import TaskWorker from './worker.ts?sharedworker';
@@ -9,16 +15,33 @@ import TaskRouter from './router.ts?sharedworker';
 
 const NUM_WORKERS = 2;
 
+// Patchwork doesn't say at runtime which sync server a site was built for, so
+// this is the one its bootloader falls back to. A site on another server sets
+// `localStorage.tasksSyncServerUrl`.
+const DEFAULT_SYNC_SERVER_URL = 'wss://subduction.sync.inkandswitch.com';
+const SYNC_SERVER_URL_KEY = 'tasksSyncServerUrl';
+
+/** What the shared workers need to build their Repos (see `getRepo` in webworker-lib.ts). */
+export function getRepoConfig(): RepoConfig {
+  return {
+    syncServerUrl: localStorage.getItem(SYNC_SERVER_URL_KEY) || DEFAULT_SYNC_SERVER_URL,
+  };
+}
+
 export class WorkerPoolProxy {
   private readonly workerPool: SharedWorker;
   private readonly workers: SharedWorker[] = [];
   private readonly router: SharedWorker;
+
+  private readonly repoConfig: RepoConfig;
+  private readonly stopWatchingHost: () => void;
 
   constructor(
     readonly contactUrl: AutomergeUrl,
     importMap: any,
     baseURI: string,
   ) {
+    this.repoConfig = getRepoConfig();
     this.workerPool = this.createAndInitializeWorkerPool(importMap, baseURI);
 
     for (let workerId = 0; workerId < NUM_WORKERS; workerId++) {
@@ -26,6 +49,19 @@ export class WorkerPoolProxy {
     }
 
     this.router = this.createAndInitializeRouter(importMap, baseURI);
+
+    // The pool can't see the user; this tab can, and keeps it posted.
+    this.stopWatchingHost = watchHostActivity((message) =>
+      this.workerPool.port.postMessage(message satisfies MessageToWorkerPool),
+    );
+  }
+
+  /**
+   * Call when this tab's tool goes away. The shared workers carry on for as
+   * long as any tab has them open; this only stops this tab reporting to them.
+   */
+  dispose() {
+    this.stopWatchingHost();
   }
 
   private createAndInitializeWorkerPool(importMap: any, baseURI: string) {
@@ -33,19 +69,14 @@ export class WorkerPoolProxy {
     const workerPool = new WorkerPool({ name: `task-worker-pool` });
     workerPool.onerror = (error) => log(error);
 
-    this.subscribeToRepoChannel('worker pool', (repoPort) => {
-      log('sending init to worker pool');
-      workerPool.port.postMessage(
-        {
-          type: 'init',
-          contactUrl: this.contactUrl,
-          repoPort,
-          importMap,
-          baseURI,
-        } satisfies MessageToWorkerPool,
-        [repoPort],
-      );
-    });
+    log('sending init to worker pool');
+    workerPool.port.postMessage({
+      type: 'init',
+      contactUrl: this.contactUrl,
+      repoConfig: this.repoConfig,
+      importMap,
+      baseURI,
+    } satisfies MessageToWorkerPool);
 
     return workerPool;
   }
@@ -69,19 +100,14 @@ export class WorkerPoolProxy {
 
     (worker.port as any).start?.();
 
-    this.subscribeToRepoChannel(name, (repoPort) => {
-      log('sending init message to', name);
-      worker.port.postMessage(
-        {
-          type: 'init',
-          repoPort,
-          contactUrl: this.contactUrl,
-          importMap,
-          baseURI,
-        } satisfies MessageToWorker,
-        [repoPort],
-      );
-    });
+    log('sending init message to', name);
+    worker.port.postMessage({
+      type: 'init',
+      repoConfig: this.repoConfig,
+      contactUrl: this.contactUrl,
+      importMap,
+      baseURI,
+    } satisfies MessageToWorker);
 
     return worker;
   }
@@ -91,19 +117,14 @@ export class WorkerPoolProxy {
     const router = new TaskRouter({ name: `task-router` });
     router.onerror = (error) => log(error);
 
-    this.subscribeToRepoChannel('router', (repoPort) => {
-      log('sending init message to router');
-      router.port.postMessage(
-        {
-          type: 'init',
-          repoPort,
-          contactUrl: this.contactUrl,
-          importMap,
-          baseURI,
-        } satisfies MessageToRouter,
-        [repoPort],
-      );
-    });
+    log('sending init message to router');
+    router.port.postMessage({
+      type: 'init',
+      repoConfig: this.repoConfig,
+      contactUrl: this.contactUrl,
+      importMap,
+      baseURI,
+    } satisfies MessageToRouter);
 
     // note: no `await` on purpose
     this.setUpTaskQueueSetUpdates();
@@ -132,29 +153,6 @@ export class WorkerPoolProxy {
   sendToRouter(message: MessageToRouter) {
     this.router.port.postMessage(message);
   }
-
-  private subscribeToRepoChannel(
-    label: string,
-    listener: (repoPort: MessagePort) => void,
-  ) {
-    void getPatchworkSw().subscribeToRepoChannel(async (repoPort) => {
-      listener(repoPort);
-    }).catch((error) => {
-      console.error(`failed to subscribe ${label} to repo channel`, error);
-    });
-  }
-}
-
-function getPatchworkSw() {
-  const sw = (window as any).patchwork?.sw;
-  if (!sw?.subscribeToRepoChannel) {
-    throw new Error('patchwork service worker repo channel API is unavailable');
-  }
-  return sw as {
-    subscribeToRepoChannel: (
-      listener: (repoPort: MessagePort) => void | Promise<void>,
-    ) => Promise<() => void>;
-  };
 }
 
 function log(...args: any) {

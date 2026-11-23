@@ -1,5 +1,7 @@
 import type { AutomergeUrl } from '@automerge/automerge-repo/slim';
 import { TaskQueueSet } from './datatype';
+import type { Stamp } from './delivery-stats';
+import type { TabReport } from './availability';
 
 export type MessageToWorkerPoolProxy =
   // sent by workers
@@ -11,6 +13,7 @@ export type MessageToWorkerPool =
   | InitMessage
   | RegisterWorkerMessage // forwarded by the worker pool proxy when received from a worker
   | UpdateTaskQueueSetMessage
+  | HostActivityMessage
   | TerminateMessage
   ;
 
@@ -42,9 +45,18 @@ export type MessageToWorkerChannel =
   | WorkOnTaskMessage
   ;
 
+/**
+ * What a shared worker needs to build a Repo of its own (see `getRepo` in
+ * webworker-lib.ts). Only a tab can work it out, so it's sent along with `init`.
+ */
+export interface RepoConfig {
+  /** The Subduction sync server this site's tabs are connected to. */
+  syncServerUrl: string;
+}
+
 export interface InitMessage {
   type: 'init';
-  repoPort: MessagePort;
+  repoConfig: RepoConfig;
   contactUrl: AutomergeUrl;
   importMap: any;
   baseURI: string;
@@ -63,24 +75,41 @@ export interface UpdateTaskQueueSetMessage {
   taskQueues: TaskQueueSet;
 }
 
+/** One tab's view of what its host is doing; see availability.ts. */
+export interface HostActivityMessage {
+  type: 'host activity';
+  /** Which tab this is, so the pool keeps only the latest from each. */
+  tabId: string;
+  /** Null when the tab is going away. */
+  report: TabReport | null;
+}
+
 export interface TerminateMessage {
   type: 'terminate';
 }
 
-export interface WorkerHeartbeatMessage {
+export interface WorkerHeartbeatMessage extends Stamp {
   type: 'worker heartbeat';
   workerUrl: AutomergeUrl;
   currentTask: { taskUrl: AutomergeUrl; taskQueueUrl: AutomergeUrl } | null;
   taskQueues: TaskQueueSet;
+  /**
+   * False when this worker's host would rather it wasn't given work just now
+   * (see availability.ts). Missing from a pool that predates the choice, which
+   * is always available.
+   */
+  available?: boolean;
 }
 
-export interface RouterHeartbeatMessage {
+export interface RouterHeartbeatMessage extends Stamp {
   type: 'router heartbeat';
   routerUrl: AutomergeUrl;
   workerUrls: AutomergeUrl[];
+  /** Those of `workerUrls` whose hosts have asked not to be given work just now. */
+  pausedWorkerUrls?: AutomergeUrl[];
 };
 
-export interface WorkOnTaskMessage {
+export interface WorkOnTaskMessage extends Stamp {
   type: 'work on';
   taskUrl: AutomergeUrl;
   taskQueueUrl: AutomergeUrl;

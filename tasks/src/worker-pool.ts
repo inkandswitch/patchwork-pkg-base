@@ -2,10 +2,19 @@
 
 import type { AutomergeUrl, DocHandle, Repo } from '@automerge/automerge-repo/slim';
 import type { WorkerDoc, RouterDoc, TaskQueueDoc, TaskQueueSet } from './datatype';
-import type { MessageToWorkerPool, MessageToRouterChannel } from './protocol';
+import type { MessageToWorkerPool, MessageToRouterChannel, RepoConfig } from './protocol';
 
-import { connectRepoPort, getRepo, setUpImportMap } from './webworker-lib';
+import { getRepo, setUpImportMap } from './webworker-lib';
 import { seconds } from './helpers';
+import { Sequencer } from './delivery-stats';
+import {
+  AVAILABILITY_CHANNEL,
+  decideAvailability,
+  DEFAULT_AVAILABILITY_MODE,
+  type AvailabilityStatus,
+  type PressureState,
+  type TabReport,
+} from './availability';
 
 interface TaskQueueState {
   activeRouterHandle: DocHandle<RouterDoc> | null;
@@ -22,18 +31,43 @@ const workerByUrl = new Map<AutomergeUrl, WorkerDoc>();
 const taskQueueUrls = new Set<AutomergeUrl>();
 const taskQueueState = new Map<AutomergeUrl, TaskQueueState>();
 
+// A new id each time the pool starts, so routers count this run's heartbeats
+// apart from the last one's.
+const sequencer = new Sequencer(`pool-${crypto.randomUUID()}`);
+
+// What this browser's tabs last said about their host, and the CPU pressure
+// reading if the browser gives one: what `availability` is decided from.
+const tabReports = new Map<string, TabReport>();
+let pressure: PressureState | null = null;
+let availability: AvailabilityStatus = {
+  mode: DEFAULT_AVAILABILITY_MODE,
+  ...decideAvailability(DEFAULT_AVAILABILITY_MODE, { tabs: [], pressure }),
+};
+const availabilityChannel = new BroadcastChannel(AVAILABILITY_CHANNEL);
+
 console.log('hi there, I am the worker pool!');
+watchPressure();
 
 self.addEventListener('connect', (e: any) => {
   console.log('got a connection!');
   const port = e.ports[0];
   port.onmessage = (e: any) => {
     const msg: MessageToWorkerPool = e.data;
+    if (msg.type === 'host activity') {
+      // every couple of seconds from every tab: too many to log
+      if (msg.report) {
+        tabReports.set(msg.tabId, msg.report);
+      } else {
+        tabReports.delete(msg.tabId);
+      }
+      updateAvailability();
+      return;
+    }
     console.log('received message', msg);
     try {
       switch (msg.type) {
         case 'init':
-          init(msg.repoPort, msg.importMap, msg.baseURI);
+          init(msg.repoConfig, msg.importMap, msg.baseURI);
           break;
         case 'update task queue set':
           updateTaskQueueSet(msg.taskQueues);
@@ -48,11 +82,9 @@ self.addEventListener('connect', (e: any) => {
   };
 });
 
-async function init(port: MessagePort, importMap: any, baseURI: string) {
+async function init(repoConfig: RepoConfig, importMap: any, baseURI: string) {
   if (status !== 'not initialized') {
-    if (repo) {
-      await connectRepoPort(repo, port);
-    }
+    // every tab sends `init`; the first one is the one that counts
     return;
   }
 
@@ -60,7 +92,7 @@ async function init(port: MessagePort, importMap: any, baseURI: string) {
   status = 'initializing';
 
   await setUpImportMap(importMap, baseURI);
-  repo = await getRepo(port, `task-worker-pool-${Math.round(Math.random() * 10_000)}`);
+  repo = await getRepo(repoConfig, `task-worker-pool-${Math.round(Math.random() * 10_000)}`);
   pSendWorkerStatuses(); // this is a "process", meant to be running in the background (hence no `await`)
 
   console.log('ready');
@@ -152,9 +184,61 @@ async function registerWorker(sharedWorkerName: string, workerUrl: AutomergeUrl)
   }
 }
 
+/**
+ * Decides again whether this browser's workers should be given work, and tells
+ * the tabs. The router hears with the next heartbeat.
+ */
+function updateAvailability() {
+  const now = Date.now();
+  let latest: TabReport | null = null;
+  for (const [tabId, report] of tabReports) {
+    if (now - report.sentAt > 10 * 60_000) {
+      // closed without saying so; even a tab hidden for hours reports every minute
+      tabReports.delete(tabId);
+    } else if (report.sentAt > (latest?.sentAt ?? 0)) {
+      latest = report;
+    }
+  }
+
+  // The mode is whatever the tabs last said. With none left to say, keep it.
+  const mode = latest?.mode ?? availability.mode;
+  const decision = decideAvailability(mode, { tabs: [...tabReports.values()], pressure }, now);
+  if (
+    decision.available !== availability.available ||
+    decision.reason !== availability.reason ||
+    mode !== availability.mode
+  ) {
+    console.log(decision.available ? 'taking tasks:' : 'not taking tasks:', decision.reason);
+  }
+  availability = { mode, ...decision };
+  availabilityChannel.postMessage(availability);
+}
+
+/** Keeps `pressure` current where the browser reports it (Chrome and Edge). */
+function watchPressure() {
+  const PressureObserver = (self as any).PressureObserver;
+  if (!PressureObserver) {
+    return;
+  }
+  try {
+    const observer = new PressureObserver((records: { state: PressureState }[]) => {
+      pressure = records.at(-1)?.state ?? pressure;
+      updateAvailability();
+    });
+    Promise.resolve(observer.observe('cpu', { sampleInterval: 2_000 })).catch((error: unknown) => {
+      console.log('no CPU pressure readings here:', error);
+    });
+  } catch (error) {
+    console.log('no CPU pressure readings here:', error);
+  }
+}
+
 async function pSendWorkerStatuses() {
   while (true) {
     await seconds(1);
+
+    // time passing changes the answer too: "quiet for 30 seconds" comes true
+    updateAvailability();
 
     const taskQueues: TaskQueueSet = {};
     for (const taskQueueUrl of taskQueueUrls) {
@@ -173,9 +257,11 @@ async function pSendWorkerStatuses() {
           console.log('sending worker heartbeat to', activeRouterHandle.url, { workerUrl, currentTask });
           activeRouterHandle.broadcast({
             type: 'worker heartbeat',
+            ...sequencer.stamp(activeRouterHandle.url),
             workerUrl,
             currentTask,
             taskQueues,
+            available: availability.available,
           } satisfies MessageToRouterChannel);
         }
       }

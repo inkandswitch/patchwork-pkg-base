@@ -23,7 +23,12 @@ export async function getAccountHandle(repo: Repo): Promise<DocHandle<any>> {
 
 // TODO: what's the right way to get this??
 export function getAccountDocUrl(): AutomergeUrl {
-  return localStorage.getItem('tinyPatchworkAccountUrl') as AutomergeUrl;
+  // The site knows which account is open; the localStorage key is only where
+  // this particular site happens to remember it.
+  return (
+    (window as any).patchwork?.account?.url ??
+    (localStorage.getItem('tinyPatchworkAccountUrl') as AutomergeUrl)
+  );
 }
 
 export async function getSelfContactUrl(repo: Repo): Promise<AutomergeUrl> {
