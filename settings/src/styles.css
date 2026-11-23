@@ -795,6 +795,11 @@
   justify-self: stretch;
 }
 
+.settings-confirm p {
+  margin: 0 0 14px;
+  font-weight: 600;
+}
+
 /* ── theme ─────────────────────────────────────────────────────────── */
 
 /* "(active)": which of the two the computer's showing */

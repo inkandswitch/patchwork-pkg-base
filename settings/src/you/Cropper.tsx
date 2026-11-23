@@ -83,6 +83,22 @@ export function Cropper(props: {
     props.onCrop({ x: -o.x / s, y: -o.y / s, size: VIEWPORT / s });
   }
 
+  // only a click that starts and ends out on the backdrop lets go, and even
+  // then it asks first (so does the cancel button). dragging the picture and
+  // letting go past its edge, or pressing escape, keeps you here
+  const [confirming, setConfirming] = createSignal(false);
+  let pressedOutside = false;
+  const outside = (event: MouseEvent) => {
+    if (event.target !== dialog) return false;
+    const r = dialog.getBoundingClientRect();
+    return (
+      event.clientX < r.left ||
+      event.clientX > r.right ||
+      event.clientY < r.top ||
+      event.clientY > r.bottom
+    );
+  };
+
   let dialog!: HTMLDialogElement;
   onMount(() => dialog.showModal());
 
@@ -91,11 +107,12 @@ export function Cropper(props: {
       ref={dialog}
       class="settings-dialog settings-cropper"
       aria-label="Crop picture"
-      onCancel={(event) => {
-        event.preventDefault();
-        props.onCancel();
+      onCancel={(event) => event.preventDefault()}
+      onPointerDown={(event) => (pressedOutside = outside(event))}
+      onClick={(event) => {
+        if (pressedOutside && outside(event)) setConfirming(true);
+        pressedOutside = false;
       }}
-      onClick={(event) => event.target === dialog && props.onCancel()}
     >
       <div
         class="settings-cropper-view"
@@ -135,7 +152,11 @@ export function Cropper(props: {
         />
       </Show>
       <div class="settings-dialog-actions">
-        <button type="button" class="settings-button" onClick={props.onCancel}>
+        <button
+          type="button"
+          class="settings-button"
+          onClick={() => setConfirming(true)}
+        >
           Cancel
         </button>
         <button
@@ -146,6 +167,44 @@ export function Cropper(props: {
           onClick={crop}
         >
           Save
+        </button>
+      </div>
+      <Show when={confirming()}>
+        <ConfirmCancel
+          onYes={props.onCancel}
+          onNo={() => setConfirming(false)}
+        />
+      </Show>
+    </dialog>
+  );
+}
+
+function ConfirmCancel(props: { onYes: () => void; onNo: () => void }) {
+  let dialog!: HTMLDialogElement;
+  onMount(() => dialog.showModal());
+  return (
+    <dialog
+      ref={dialog}
+      class="settings-dialog settings-confirm"
+      aria-label="Cancel changing pic?"
+      onCancel={(event) => {
+        event.preventDefault();
+        props.onNo();
+      }}
+    >
+      <p>Cancel changing pic?</p>
+      <div class="settings-dialog-actions">
+        <button type="button" class="settings-button" onClick={props.onNo}>
+          No
+        </button>
+        <button
+          type="button"
+          class="settings-button"
+          data-primary
+          autofocus
+          onClick={props.onYes}
+        >
+          Yes
         </button>
       </div>
     </dialog>
