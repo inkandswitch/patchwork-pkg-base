@@ -77,62 +77,6 @@ describe("margin", () => {
     expect(d.textContent).toBe("2.second");
   });
 
-  it("tints the markers a selection covers, as selected text is", () => {
-    const doc = "- one\n- two\n\n1. first\n\n- [ ] task\n\nend";
-    const view = makeView(doc);
-    const selected = () =>
-      lines(view).map((l) => !!l.querySelector(".cm-md-list-marker-selected"));
-    expect(selected()).toEqual([false, false, false, false, false, false, false, false]);
-
-    // select all: every marker
-    view.dispatch({ selection: EditorSelection.range(0, doc.length) });
-    expect(selected()).toEqual([true, true, false, true, false, true, false, false]);
-
-    // from inside "one" to inside "two": the second marker is covered, the
-    // first (before the selection) isn't
-    view.dispatch({ selection: EditorSelection.range(3, 9) });
-    expect(selected()).toEqual([false, true, false, false, false, false, false, false]);
-
-    // a caret covers nothing
-    view.dispatch({ selection: EditorSelection.cursor(0) });
-    expect(selected().some(Boolean)).toBe(false);
-  });
-
-  it("picks out the heading labels a selection covers", () => {
-    const doc = "# One\n\n## Two\n\nend";
-    const view = makeView(doc, doc.length);
-    const selected = () =>
-      lines(view)
-        .filter((l) => l.querySelector(".cm-md-heading-label"))
-        .map((l) => !!l.querySelector(".cm-md-heading-label-selected"));
-    expect(selected()).toEqual([false, false]);
-    view.dispatch({ selection: EditorSelection.range(0, doc.length) });
-    expect(selected()).toEqual([true, true]);
-    // from inside "One" on: only the second's `## `
-    view.dispatch({ selection: EditorSelection.range(3, doc.length) });
-    expect(selected()).toEqual([false, true]);
-  });
-
-  it("tints the quote indents a selection covers, one band per bar", () => {
-    const doc = "> one\n> > two\n\nend";
-    const view = makeView(doc);
-    const bands = () =>
-      lines(view).map((l) => l.querySelectorAll(".cm-md-quote-selected").length);
-    expect(bands()).toEqual([0, 0, 0, 0]);
-
-    // select all: each quote line, a band for each bar it has
-    view.dispatch({ selection: EditorSelection.range(0, doc.length) });
-    expect(bands()).toEqual([1, 2, 0, 0]);
-
-    // from inside "one" into "two": only the second line's `> > ` is covered
-    view.dispatch({ selection: EditorSelection.range(3, 11) });
-    expect(bands()).toEqual([0, 2, 0, 0]);
-
-    // a caret covers nothing
-    view.dispatch({ selection: EditorSelection.cursor(0) });
-    expect(bands()).toEqual([0, 0, 0, 0]);
-  });
-
   it("leaves a bare bullet as typed until its space comes", () => {
     for (const ch of ["-", "*", "+"]) {
       const view = makeView(ch);

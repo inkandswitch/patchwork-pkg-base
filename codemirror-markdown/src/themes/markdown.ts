@@ -86,8 +86,8 @@ const markdownStyles = (style: "serif" | "sans"): Record<string, any> => ({
     marginBottom: 0,
   },
   // the selection drawSelection draws (behind the text, so .cm-content has no
-  // background of its own); the colour a selected list marker is tinted with
-  // too (extensions/margin.ts), so the two match.
+  // background of its own), and so covers the hung markers and labels too.
+  // a selected embed is tinted the same colour (themes/embed.ts).
   "& > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, &.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground": {
     background: "var(--text-editor-selection-fill, Highlight)",
   },

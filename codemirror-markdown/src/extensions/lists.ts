@@ -9,7 +9,6 @@ import {
   StateField,
 } from "@codemirror/state";
 import { type MenuItem as Item, menuTheme, openMenu } from "./menu.ts";
-import { selectedOver } from "./selected.ts";
 import {
   Decoration,
   EditorView,
@@ -214,24 +213,17 @@ const tabInOrderedList: Command = (view) => {
 const setHideDone = StateEffect.define<boolean>();
 
 class HiddenDone extends WidgetType {
-  /** `selected`: a selection covers some of the tasks it stands for (which
-   *  go with it when it's copied) */
-  constructor(readonly count: number, readonly selected = false) {
+  constructor(readonly count: number) {
     super();
   }
   eq(other: HiddenDone) {
-    return other.count === this.count && other.selected === this.selected;
+    return other.count === this.count;
   }
   toDOM(view: EditorView) {
     const button = document.createElement("button");
     button.type = "button";
-    button.className =
-      "cm-md-hidden-done" + (this.selected ? " cm-md-hidden-done-selected" : "");
-    // in a box of its own, to be tinted without the rest of the line
-    const label = document.createElement("span");
-    label.className = "cm-md-hidden-done-label";
-    label.textContent = `${this.count} done`;
-    button.append(label);
+    button.className = "cm-md-hidden-done";
+    button.textContent = `${this.count} done`;
     button.title = "Show done tasks";
     button.addEventListener("mousedown", (event) => {
       event.preventDefault();
@@ -260,8 +252,7 @@ function hiddenDone(state: EditorState): DecorationSet {
       const all = items(node.node);
       const total = all.filter((it) => done(state, it)).length;
       if (!total) return;
-      // the runs of done tasks this list hides, all stood for by one button
-      const runs: { from: number; to: number; last: boolean }[] = [];
+      const button = new HiddenDone(total);
       for (let i = 0; i < all.length; ) {
         if (!done(state, all[i])) {
           i++;
@@ -269,25 +260,15 @@ function hiddenDone(state: EditorState): DecorationSet {
         }
         let j = i;
         while (j + 1 < all.length && done(state, all[j + 1])) j++;
-        runs.push({
-          from: startOf(state, all[i]),
-          to: all[j].to,
-          last: j === all.length - 1,
-        });
-        i = j + 1;
-      }
-      const button = new HiddenDone(
-        total,
-        runs.some((r) => selectedOver(state, r.from, r.to))
-      );
-      for (const run of runs) {
+        const last = j === all.length - 1;
         decos.push(
-          (run.last ? Decoration.replace({ block: true, widget: button }) : hide).range(
-            run.from,
-            run.to
+          (last ? Decoration.replace({ block: true, widget: button }) : hide).range(
+            startOf(state, all[i]),
+            all[j].to
           )
         );
-        hiddenTo = Math.max(hiddenTo, run.to);
+        hiddenTo = Math.max(hiddenTo, all[j].to);
+        i = j + 1;
       }
       const end = all[all.length - 1];
       if (!done(state, end)) {
@@ -306,13 +287,7 @@ const hideDoneField = StateField.define<{ on: boolean; decos: DecorationSet }>({
     let on = value.on;
     for (const e of tr.effects) if (e.is(setHideDone)) on = e.value;
     if (!on) return { on, decos: Decoration.none };
-    // (the selection too: it says which buttons look selected)
-    if (
-      on === value.on &&
-      !tr.docChanged &&
-      !tr.selection &&
-      syntaxTree(tr.startState) === syntaxTree(tr.state)
-    )
+    if (on === value.on && !tr.docChanged && syntaxTree(tr.startState) === syntaxTree(tr.state))
       return value;
     return { on, decos: hiddenDone(tr.state) };
   },
@@ -409,11 +384,6 @@ const listsTheme = EditorView.baseTheme({
   },
   ".cm-md-hidden-done:hover": {
     textDecoration: "underline",
-  },
-  // standing for selected tasks: tinted as the selected text around it is
-  ".cm-md-hidden-done-selected .cm-md-hidden-done-label": {
-    background: "var(--text-editor-selection-fill, Highlight)",
-    color: "var(--text-editor-selection-line, HighlightText)",
   },
 });
 

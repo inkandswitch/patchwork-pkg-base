@@ -147,26 +147,6 @@ describe("the menu", () => {
     shown[0].dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
     expect(isHidingDone(view.state)).toBe(false);
   });
-
-  it("looks selected when a selection covers tasks it stands for", () => {
-    const doc = "- [ ] c\n- [x] a\n- [ ] d\n\nend";
-    const view = makeView(doc);
-    rightClick(view.contentDOM.querySelector(".cm-md-hang")!);
-    items().find((b) => b.textContent === "Hide done")!.click();
-    // (the menu gave the editor focus; focused, happy-dom's selectionchange
-    // lands in the middle of codemirror's update, as a browser's doesn't)
-    view.contentDOM.blur();
-    const selected = () =>
-      view.contentDOM.querySelector(".cm-md-hidden-done")!.classList.contains(
-        "cm-md-hidden-done-selected"
-      );
-    expect(selected()).toBe(false);
-    view.dispatch({ selection: { anchor: 0, head: doc.length } });
-    expect(selected()).toBe(true);
-    // "c" alone: none of the done ones
-    view.dispatch({ selection: { anchor: 0, head: doc.indexOf("\n") } });
-    expect(selected()).toBe(false);
-  });
 });
 
 describe("tab in an ordered list", () => {

@@ -8,7 +8,6 @@ import {
   type DecorationSet,
   type ViewUpdate,
 } from "@codemirror/view";
-import { selectedOver } from "./selected.ts";
 
 /**
  * Bear-style margin: block markers hang out to the left of the text, so the
@@ -35,38 +34,18 @@ const taskMark = Decoration.mark({
   class: "cm-md-hang cm-md-list-marker",
   inclusive: true,
 });
-const selectedTaskMark = Decoration.mark({
-  class: "cm-md-hang cm-md-list-marker cm-md-list-marker-selected",
-  inclusive: true,
-});
-
-/** The browser's own selection doesn't paint widgets, so a list marker over
- *  selected markup is tinted by hand: see `.cm-md-list-marker-selected`. */
-const MARKER_SELECTED = " cm-md-list-marker-selected";
 
 class HeadingLabel extends WidgetType {
-  /** `shown` only on the caret's line; elsewhere it keeps its room, unseen.
-   *  `selected`: its `#`s are under a selection. */
-  constructor(
-    readonly level: number,
-    readonly shown: boolean,
-    readonly selected = false
-  ) {
+  /** `shown` only on the caret's line; elsewhere it keeps its room, unseen. */
+  constructor(readonly level: number, readonly shown: boolean) {
     super();
   }
   eq(other: HeadingLabel) {
-    return (
-      other.level === this.level &&
-      other.shown === this.shown &&
-      other.selected === this.selected
-    );
+    return other.level === this.level && other.shown === this.shown;
   }
   toDOM() {
     const span = document.createElement("span");
-    span.className =
-      "cm-md-hang cm-md-heading-label" +
-      (this.shown ? "" : " cm-md-heading-label-idle") +
-      (this.selected ? " cm-md-heading-label-selected" : "");
+    span.className = `cm-md-hang cm-md-heading-label${this.shown ? "" : " cm-md-heading-label-idle"}`;
     span.setAttribute("aria-hidden", "true");
     // the text in a box of its own, to be picked out while the level menu
     // (headings.ts) is open, without the hang's empty room around it
@@ -90,22 +69,16 @@ class Bullet extends WidgetType {
    *  line (see markerShift) */
   constructor(
     readonly shape: (typeof BULLET_SHAPES)[number],
-    readonly shift?: string,
-    readonly selected = false
+    readonly shift?: string
   ) {
     super();
   }
   eq(other: Bullet) {
-    return (
-      other.shape === this.shape &&
-      other.shift === this.shift &&
-      other.selected === this.selected
-    );
+    return other.shape === this.shape && other.shift === this.shift;
   }
   toDOM() {
     const span = document.createElement("span");
-    span.className =
-      "cm-md-hang cm-md-list-marker" + (this.selected ? MARKER_SELECTED : "");
+    span.className = "cm-md-hang cm-md-list-marker";
     if (this.shift) span.setAttribute("style", this.shift);
     const dot = document.createElement("span");
     dot.className = `cm-bullet cm-bullet-${this.shape}`;
@@ -134,25 +107,15 @@ class Rule extends WidgetType {
 }
 
 class NumberLabel extends WidgetType {
-  constructor(
-    readonly text: string,
-    readonly shift?: string,
-    readonly selected = false
-  ) {
+  constructor(readonly text: string, readonly shift?: string) {
     super();
   }
   eq(other: NumberLabel) {
-    return (
-      other.text === this.text &&
-      other.shift === this.shift &&
-      other.selected === this.selected
-    );
+    return other.text === this.text && other.shift === this.shift;
   }
   toDOM() {
     const span = document.createElement("span");
-    span.className =
-      "cm-md-hang cm-md-list-marker cm-md-hang-number" +
-      (this.selected ? MARKER_SELECTED : "");
+    span.className = "cm-md-hang cm-md-list-marker cm-md-hang-number";
     if (this.shift) span.setAttribute("style", this.shift);
     span.textContent = this.text;
     return span;
@@ -359,16 +322,11 @@ function inset(containers: readonly Container[]) {
 type Bar = { left: string; first: boolean; last: boolean; callout?: CalloutType };
 
 class QuoteBars extends WidgetType {
-  /** `selected`: the line's `>`s are under a selection, so each bar's indent
-   *  is tinted as the selected text beside it is */
-  constructor(readonly bars: Bar[], readonly selected = false) {
+  constructor(readonly bars: Bar[]) {
     super();
   }
   eq(other: QuoteBars) {
-    return (
-      other.selected === this.selected &&
-      JSON.stringify(other.bars) === JSON.stringify(this.bars)
-    );
+    return JSON.stringify(other.bars) === JSON.stringify(this.bars);
   }
   toDOM() {
     // empty and in the flow, so it takes no room and a caret beside it is
@@ -377,13 +335,6 @@ class QuoteBars extends WidgetType {
     box.className = "cm-md-quote-bars";
     box.setAttribute("aria-hidden", "true");
     for (const bar of this.bars) {
-      // (before its bar, so the bar is drawn over it)
-      if (this.selected) {
-        const band = document.createElement("span");
-        band.className = "cm-md-quote-selected";
-        band.setAttribute("style", `left: calc(6px + ${bar.left})`);
-        box.append(band);
-      }
       const span = document.createElement("span");
       span.className =
         "cm-md-quote-bar" +
@@ -547,10 +498,7 @@ function build(view: EditorView): DecorationSet {
     if (bars.some((b) => b.first)) addLine(n, "cm-md-quote-first");
     if (bars.some((b) => b.last)) addLine(n, "cm-md-quote-last");
     decos.push(
-      Decoration.widget({
-        widget: new QuoteBars(bars, selectedOver(state, line.from, end)),
-        side: -1,
-      }).range(line.from)
+      Decoration.widget({ widget: new QuoteBars(bars), side: -1 }).range(line.from)
     );
     // the innermost callout a line is in tints it, from that callout's bar
     if (callout) {
@@ -596,15 +544,10 @@ function build(view: EditorView): DecorationSet {
           const start = containers.has(line.number)
             ? markupEnd(line, undefined)
             : line.from;
-          const end = skipSpaces(state, mark.to);
           decos.push(
             Decoration.replace({
-              widget: new HeadingLabel(
-                Number(heading[1]),
-                editing.has(line.number),
-                selectedOver(state, start, end)
-              ),
-            }).range(start, end)
+              widget: new HeadingLabel(Number(heading[1]), editing.has(line.number)),
+            }).range(start, skipSpaces(state, mark.to))
           );
           // the heading's size on the whole line, for what the highlighter
           // doesn't wrap (a rendered link): see headingLines in the theme.
@@ -639,11 +582,6 @@ function build(view: EditorView): DecorationSet {
             task?.name === "TaskMarker" &&
             doc.sliceString(end, task.from).trim() === "";
           const shift = markerShift(doc.lineAt(node.from), node.node.parent);
-          const selected = selectedOver(
-            state,
-            node.from,
-            isTask && task ? task.to : end
-          );
           if (isTask && task) {
             // the checkbox takes the bullet's place: drop the mark, and hang
             // the task marker (which tasks.ts draws as a checkbox).
@@ -651,15 +589,11 @@ function build(view: EditorView): DecorationSet {
             decos.push(
               (shift
                 ? Decoration.mark({
-                    class:
-                      "cm-md-hang cm-md-list-marker" +
-                      (selected ? MARKER_SELECTED : ""),
+                    class: "cm-md-hang cm-md-list-marker",
                     inclusive: true,
                     attributes: { style: shift },
                   })
-                : selected
-                  ? selectedTaskMark
-                  : taskMark
+                : taskMark
               ).range(task.from, task.to)
             );
             // the space after the box is hidden, not hung: hung, the caret
@@ -673,19 +607,14 @@ function build(view: EditorView): DecorationSet {
               Decoration.replace({
                 widget: new Bullet(
                   BULLET_SHAPES[(bulletDepth(node.node) - 1) % BULLET_SHAPES.length],
-                  shift,
-                  selected
+                  shift
                 ),
               }).range(node.from, end)
             );
           } else {
             decos.push(
               Decoration.replace({
-                widget: new NumberLabel(
-                  renderedNumber(state, node.node),
-                  shift,
-                  selected
-                ),
+                widget: new NumberLabel(renderedNumber(state, node.node), shift),
               }).range(node.from, end)
             );
           }
@@ -790,23 +719,6 @@ const marginTheme = EditorView.baseTheme({
     fontWeight: "normal",
     fontStyle: "normal",
     textDecoration: "none",
-  },
-  // a marker over selected markup, tinted as the selected text beside it is
-  // (themes/markdown.ts sets the same colours on the text's ::selection)
-  ".cm-md-list-marker-selected": {
-    background: "var(--text-editor-selection-fill, Highlight)",
-  },
-  ".cm-md-list-marker-selected.cm-md-hang-number": {
-    color: "var(--text-editor-selection-line, HighlightText)",
-  },
-  // a heading label over selected `#`s: picked out as its level menu picks it
-  // out (headings.ts), in the selection's colours
-  ".cm-md-heading-label-selected .cm-md-heading-text": {
-    borderRadius: "4px",
-    padding: "0 0.2em",
-    marginRight: "-0.2em",
-    background: "var(--text-editor-selection-fill, Highlight)",
-    color: "var(--text-editor-selection-line, HighlightText)",
   },
   // highlight spans inside the box (a heading's `##`) keep their own size and
   // margins otherwise, and as flex items those margins would push the line.
@@ -1048,17 +960,6 @@ const marginTheme = EditorView.baseTheme({
     background:
       "var(--syntax-quote-bar, var(--syntax-list-marker, var(--text-editor-primary-text, currentColor)))",
     opacity: "0.6",
-    pointerEvents: "none",
-  },
-  // a quote's indent under a selection, bar to text (see QuoteBars), in the
-  // colour of the selected text beside it; full height, so a run of selected
-  // lines joins up
-  ".cm-md-quote-selected": {
-    position: "absolute",
-    top: "0",
-    bottom: "0",
-    width: "var(--markdown-quote-indent)",
-    background: "var(--text-editor-selection-fill, Highlight)",
     pointerEvents: "none",
   },
   ".cm-md-quote-bar-first": {
