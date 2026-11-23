@@ -42,6 +42,11 @@ const markdownStyles = (style: "serif" | "sans"): Record<string, any> => ({
   },
   ".cm-scroller": {
     background: "var(--text-editor-fill)",
+    // the container `.cm-content` checks its reading width against (below).
+    containerType: "inline-size",
+    // a container query's `ex` is the container's, so the scroller gets the
+    // body font too: otherwise it's codemirror's monospace.
+    fontFamily: bodyFont(style),
   },
   ".cm-gutter": {
     background: "transparent",
@@ -68,6 +73,16 @@ const markdownStyles = (style: "serif" | "sans"): Record<string, any> => ({
     boxShadow: "none",
     marginBottom: "8em",
     borderRadius: "8px",
+  },
+  // The inline padding is there to hold the text to reading width. Once the
+  // editor is narrower than that it only costs room, so it goes — all but
+  // the hang, which the margin markers live in. A query can't read a custom
+  // property, so this is `--max-text-line-width`'s default written out.
+  "@container (width < 100ex)": {
+    ".cm-content": {
+      paddingInline: 0,
+      paddingLeft: "var(--markdown-hang, 0px)",
+    },
   },
   ".cm-content li": {
     marginBottom: 0,
