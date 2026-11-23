@@ -1,29 +1,23 @@
 import {createEffect, createMemo, createSignal, For, onCleanup, Show} from "solid-js"
 import {Portal, render} from "solid-js/web"
-import {getRegistry} from "@inkandswitch/patchwork-plugins"
 import {
-	getActiveThemeState,
-	hasThemePreferences,
+	getActiveTheme,
+	getRegistry,
 	onActiveThemeChange,
-	serveCurrentThemeProvider,
-	setThemeForCurrentMode,
-	startActiveTheme,
-} from "./active-theme.ts"
-
-type ThemeDescription = {
-	id: string
-	name?: string
-	style?: string
-	colorScheme?: "light" | "dark"
-}
+	type ThemeDescription,
+} from "@inkandswitch/patchwork-plugins"
+import {
+	connectThemePreferences,
+	setThemeForMode,
+	type ThemePreferencesHandle,
+} from "./preferences.ts"
 
 export function ThemeTray(element: HTMLElement) {
-	startActiveTheme(element)
-
-	// Serve the active theme to isolated tools (e.g. the titlebar theme tool)
-	// over the `patchwork:current-theme` provider. Installed on <html> so that
-	// bridged subscribe events, which bubble up to the document root, reach it.
-	const stopThemeProvider = serveCurrentThemeProvider(document.documentElement)
+	// The host shows the account's theme; this only needs the doc to change it.
+	let preferences: ThemePreferencesHandle | undefined
+	const stopPreferences = connectThemePreferences(element, (handle) => {
+		preferences = handle
+	})
 
 	const style = document.createElement("style")
 	style.textContent = `
@@ -173,7 +167,7 @@ export function ThemeTray(element: HTMLElement) {
 	element.appendChild(style)
 
 	const dispose = render(() => {
-		const [state, setState] = createSignal(getActiveThemeState())
+		const [state, setState] = createSignal(getActiveTheme())
 		const [open, setOpen] = createSignal(false)
 		const [popoverPosition, setPopoverPosition] = createSignal<{
 			left: number
@@ -189,7 +183,7 @@ export function ThemeTray(element: HTMLElement) {
 		createEffect(() =>
 			localStorage.setItem(showNameKey, showName() ? "true" : "false")
 		)
-		const themeRegistry = getRegistry("patchwork:theme") as any
+		const themeRegistry = getRegistry<ThemeDescription>("patchwork:theme")
 		const unsubscribe = onActiveThemeChange(setState)
 		let buttonElement: HTMLButtonElement | undefined
 		let popoverElement: HTMLDivElement | undefined
@@ -213,10 +207,11 @@ export function ThemeTray(element: HTMLElement) {
 			)
 		})
 
-		const refreshThemes = () => setThemes(themeRegistry.all?.() || [])
+		const refreshThemes = () => {
+			setThemes(themeRegistry.all())
+		}
 		refreshThemes()
-		themeRegistry.on("registered", refreshThemes)
-		themeRegistry.on("removed", refreshThemes)
+		const stopRefreshing = themeRegistry.on("changed", refreshThemes)
 
 		const updatePopoverPosition = () => {
 			if (!buttonElement || !popoverElement) return
@@ -269,15 +264,14 @@ export function ThemeTray(element: HTMLElement) {
 
 		onCleanup(() => {
 			unsubscribe()
-			themeRegistry.off?.("registered", refreshThemes)
-			themeRegistry.off?.("removed", refreshThemes)
+			stopRefreshing()
 			document.removeEventListener("click", onDocumentClick)
 			document.removeEventListener("keydown", onDocumentKeyDown)
 		})
 
 		function chooseTheme(id: string) {
-			if (!hasThemePreferences()) return
-			setThemeForCurrentMode(id)
+			if (!preferences) return
+			setThemeForMode(preferences, state().mode, id)
 			setOpen(false)
 		}
 
@@ -364,6 +358,6 @@ export function ThemeTray(element: HTMLElement) {
 	return () => {
 		dispose()
 		style.remove()
-		stopThemeProvider()
+		stopPreferences()
 	}
 }

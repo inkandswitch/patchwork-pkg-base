@@ -1,28 +1,25 @@
 import {render} from "solid-js/web"
 import {createEffect, createMemo, createSignal, For, Show} from "solid-js"
-import {getRegistry} from "@inkandswitch/patchwork-plugins"
 import {
-	detectColorScheme,
-	getActiveThemeState,
+	getActiveTheme,
+	getRegistry,
 	onActiveThemeChange,
-	setThemeForMode,
-	startActiveTheme,
-} from "./active-theme.ts"
+	resolveTheme,
+	themeDefaults,
+	type ThemeDescription,
+	type ThemeMode as Mode,
+} from "@inkandswitch/patchwork-plugins"
+import {detectColorScheme} from "./color-scheme.ts"
+import {setThemeForMode, type ThemePreferencesHandle} from "./preferences.ts"
 
-type ThemeDescription = {
-	id: string
-	name?: string
-	style?: string
-	colorScheme?: "light" | "dark"
-}
-
-type Mode = "light" | "dark"
-
-export function ThemePickerTool(handle: any, element: HTMLElement) {
-	startActiveTheme(element, handle)
-
-	const [themeState, setThemeState] = createSignal(getActiveThemeState())
-	const unsubscribeThemeState = onActiveThemeChange(setThemeState)
+export function ThemePickerTool(handle: ThemePreferencesHandle, element: HTMLElement) {
+	// What this doc chooses, in the mode the host is showing. The host puts the
+	// account's on the page; this one may be any theme-preferences doc.
+	const read = () => resolveTheme(handle.doc(), getActiveTheme().mode, themeDefaults())
+	const [themeState, setThemeState] = createSignal(read())
+	const update = () => setThemeState(read())
+	const unsubscribeThemeState = onActiveThemeChange(update)
+	handle.on?.("change", update)
 
 	const [themes, setThemes] = createSignal<ThemeDescription[]>([])
 	const [colorSchemes, setColorSchemes] = createSignal<
@@ -31,7 +28,7 @@ export function ThemePickerTool(handle: any, element: HTMLElement) {
 	// Whether the light/dark themes are edited separately. Defaults to whether the
 	// two saved themes already differ; the "same theme in both" checkbox flips it.
 	const [splitModes, setSplitModes] = createSignal(
-		getActiveThemeState().light !== getActiveThemeState().dark
+		themeState().light !== themeState().dark
 	)
 
 	async function detectAll(themeList: ThemeDescription[]) {
@@ -52,8 +49,8 @@ export function ThemePickerTool(handle: any, element: HTMLElement) {
 		detectAll(all)
 	}
 	refresh()
-	themeRegistry.on("registered", refresh)
-	themeRegistry.on("removed", refresh)
+	const stopRegistered = themeRegistry.on("registered", refresh)
+	const stopRemoved = themeRegistry.on("removed", refresh)
 
 	const themeLabel = (theme: ThemeDescription) => theme.name || theme.id
 	const nameFor = (id: string) => {
@@ -245,12 +242,7 @@ export function ThemePickerTool(handle: any, element: HTMLElement) {
 		const showTwoSections = () => splitModes()
 
 		function choose(mode: Mode | "both", id: string) {
-			if (mode === "both") {
-				setThemeForMode("light", id)
-				setThemeForMode("dark", id)
-			} else {
-				setThemeForMode(mode, id)
-			}
+			setThemeForMode(handle, mode, id)
 		}
 
 		function setSameForBoth(same: boolean) {
@@ -403,8 +395,9 @@ export function ThemePickerTool(handle: any, element: HTMLElement) {
 
 	return () => {
 		unsubscribeThemeState()
-		themeRegistry.off?.("registered", refresh)
-		themeRegistry.off?.("removed", refresh)
+		handle.off?.("change", update)
+		stopRegistered()
+		stopRemoved()
 		dispose()
 		style.remove()
 	}

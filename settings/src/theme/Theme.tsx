@@ -1,9 +1,14 @@
 // the theme: each one drawn as a little patchwork in it (lattice's cards).
 // which is chosen is the account's theme preferences (theme-preferences'
-// tool storage, as `light` and `dark`), which the theming package watches
-// and puts on the page. one theme for both unless you say otherwise
+// tool storage, as `light` and `dark`), which the host watches and puts on
+// the page. one theme for both unless you say otherwise
 import { createMemo, createSignal, For, onCleanup, Show } from "solid-js";
-import { getRegistry } from "@inkandswitch/patchwork-plugins";
+import {
+  THEME_PREFERENCES_TOOL_ID as PREFERENCES,
+  getRegistry,
+  themeDefaults,
+  type ThemeMode as Mode,
+} from "@inkandswitch/patchwork-plugins";
 import { useToolStorage } from "../storage";
 import { Toggle } from "../Toggle";
 import type { AccountDoc } from "../you/contact";
@@ -11,21 +16,12 @@ import type { AccountDoc } from "../you/contact";
 type ThemeDescription = {
   id: string;
   name?: string;
-  colorScheme?: "light" | "dark";
 };
 type Preferences = {
   light?: string;
   dark?: string;
   "@patchwork"?: { type: string };
 };
-type Mode = "light" | "dark";
-
-const PREFERENCES = "theme-preferences";
-
-// the site's own, for when nothing's been picked (as theming has it)
-const defaultFor = (mode: Mode) =>
-  document.documentElement.getAttribute(`data-theme-${mode}`) ||
-  (mode === "dark" ? "gloom" : "lychee");
 
 function useThemes() {
   const registry = getRegistry("patchwork:theme");
@@ -34,7 +30,6 @@ function useThemes() {
       .map((theme) => ({
         id: theme.id,
         name: theme.name || theme.id,
-        colorScheme: theme.colorScheme,
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
   const [themes, setThemes] = createSignal(read());
@@ -131,7 +126,7 @@ export function Theme(props: {
     }
   );
 
-  const chosen = (which: Mode) => prefs()?.[which] || defaultFor(which);
+  const chosen = (which: Mode) => prefs()?.[which] || themeDefaults()[which];
   // split only once someone's chosen two different ones
   const [splitByHand, setSplitByHand] = createSignal<boolean>();
   const split = createMemo(
@@ -143,14 +138,6 @@ export function Theme(props: {
       if (which !== "dark") doc.light = id;
       if (which !== "light") doc.dark = id;
     });
-
-  // light themes first for light mode, dark ones for dark
-  const forMode = (which: Mode) =>
-    [...themes()].sort(
-      (a, b) =>
-        Number((a.colorScheme ?? which) !== which) -
-        Number((b.colorScheme ?? which) !== which)
-    );
 
   const name = (id: string) =>
     themes().find((theme) => theme.id === id)?.name ?? id;
@@ -171,7 +158,7 @@ export function Theme(props: {
       </summary>
       <div class="settings-group-block">
         <Cards
-          themes={forMode(p.which)}
+          themes={themes()}
           chosen={chosen(p.which)}
           onChoose={(id) => choose(split() ? p.which : "both", id)}
           label={p.which === "light" ? "Light theme" : "Dark theme"}
