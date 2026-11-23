@@ -61,8 +61,6 @@ const markdownStyles = (style: "serif" | "sans"): Record<string, any> => ({
     fontFamily: bodyFont(style),
     lineHeight: zoomed("1.5rem"),
     color: "var(--text-editor-line)",
-    caretColor: "var(--text-editor-cursor-fill)",
-    background: "var(--text-editor-fill)",
     marginBlock: zoomed("2rem"),
     marginInline: "auto",
     // lol i guess this is the same as box-sizing: content-box
@@ -87,12 +85,15 @@ const markdownStyles = (style: "serif" | "sans"): Record<string, any> => ({
   ".cm-content li": {
     marginBottom: 0,
   },
-  // the browser draws the selection (there's no drawSelection); these are the
-  // colours a selected list marker is tinted with too (extensions/margin.ts),
-  // so the two match.
-  ".cm-content ::selection": {
-    backgroundColor: "var(--text-editor-selection-fill, Highlight)",
-    color: "var(--text-editor-selection-line, HighlightText)",
+  // the selection drawSelection draws (behind the text, so .cm-content has no
+  // background of its own); the colour a selected list marker is tinted with
+  // too (extensions/margin.ts), so the two match.
+  "& > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, &.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground": {
+    background: "var(--text-editor-selection-fill, Highlight)",
+  },
+  // drawSelection's caret (the browser's is hidden)
+  "& > .cm-scroller > .cm-cursorLayer .cm-cursor, & .cm-dropCursor": {
+    borderLeftColor: "var(--text-editor-cursor-fill, currentColor)",
   },
   ".cm-task-done": {
     opacity: 0.6,

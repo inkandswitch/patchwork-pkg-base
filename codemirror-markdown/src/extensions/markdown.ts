@@ -6,7 +6,7 @@ import { foldKeymap, indentOnInput, indentUnit } from "@codemirror/language";
 import { styleTags, tags } from "@lezer/highlight";
 import { languages } from "@codemirror/language-data";
 import { searchKeymap } from "@codemirror/search";
-import { EditorView, keymap } from "@codemirror/view";
+import { drawSelection, EditorView, keymap } from "@codemirror/view";
 
 import { markdownFormattingKeymap } from "./formatting.ts";
 import { taskCheckboxes } from "./tasks.ts";
@@ -41,6 +41,10 @@ export function markdownExtensions() {
       indentWithTab,
     ]),
     EditorView.lineWrapping,
+    // codemirror draws the selection, not the browser: Safari doesn't paint
+    // the selection on lines drawn inside one that's already there, so
+    // scrolling through a select-all left most of it looking unselected.
+    drawSelection(),
     // GFM base: task lists, tables, strikethrough, autolinks.
     markdown({
       base: markdownLanguage,
