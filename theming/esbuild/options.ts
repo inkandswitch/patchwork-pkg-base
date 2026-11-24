@@ -9,7 +9,11 @@ import pkgJSON from "../package.json" with {type: "json"}
 const pushworking = process.argv.includes("pushwork") || process.env.PUSHWORK
 
 export default {
-	entryPoints: Object.values(pkgJSON.exports).map((dsc) => dsc.source),
+	// Only exports with a `source` are built; a plain string export (a CSS
+	// file, say) is served as it is.
+	entryPoints: Object.values(pkgJSON.exports).flatMap((dsc) =>
+		typeof dsc == "object" && dsc && "source" in dsc ? [dsc.source] : []
+	),
 	outdir: "dist",
 	bundle: true,
 	platform: "browser",
