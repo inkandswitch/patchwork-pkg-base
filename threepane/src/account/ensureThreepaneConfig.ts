@@ -6,6 +6,7 @@ import {
   DEFAULT_TRAY_TOOLS,
   DOCUMENT_LIST_TOOL,
   REQUIRED_TRAY_TOOLS,
+  RETIRED_DOCTITLE_TOOLS,
   THREEPANE_CONFIG_VERSION,
 } from "../datatypes";
 import { loadDatatypeWhenReady } from "./loadDatatypeWhenReady";
@@ -83,6 +84,25 @@ export function restoreRequiredTrayTools(doc: ThreepaneConfigDoc) {
   doc.tray.unshift(...missing);
 }
 
+/** Whether the doctitle lane holds any of RETIRED_DOCTITLE_TOOLS. */
+function hasRetiredDoctitleTools(doc: ThreepaneConfigDoc | undefined) {
+  return !!doc?.doctitle?.tools?.some((s) =>
+    RETIRED_DOCTITLE_TOOLS.includes(slotId(s))
+  );
+}
+
+/**
+ * Take any of RETIRED_DOCTITLE_TOOLS out of the doctitle lane. Runs on every
+ * mount, whatever the doc's version.
+ */
+export function dropRetiredDoctitleTools(doc: ThreepaneConfigDoc) {
+  const tools = doc.doctitle?.tools;
+  if (!tools) return;
+  for (let i = tools.length - 1; i >= 0; i--) {
+    if (RETIRED_DOCTITLE_TOOLS.includes(slotId(tools[i]))) tools.splice(i, 1);
+  }
+}
+
 /**
  * Lazily create the threepane layout config doc and point `account.tools.threepane`
  * at it, migrating the legacy `account.documentToolbarToolIds` into its
@@ -92,7 +112,8 @@ export function restoreRequiredTrayTools(doc: ThreepaneConfigDoc) {
  * Defaults are written only when the config doc is created, or once when an
  * older doc is migrated (see `migrateThreepaneConfig`), never on every mount —
  * except REQUIRED_TRAY_TOOLS (the theme picker), which are put back whenever
- * they're missing.
+ * they're missing, and RETIRED_DOCTITLE_TOOLS, which are taken out whenever
+ * they're there.
  *
  * Non-destructive: the old `documentToolbarToolIds` / `accountSidebarToolId`
  * fields are left untouched so older builds keep working. Run the (separate,
@@ -109,10 +130,16 @@ export async function ensureThreepaneConfig(
     const configHandle = await repo.find<ThreepaneConfigDoc>(existingConfigUrl);
     const config = configHandle.doc();
     const needsMigration = (config?.version ?? 0) < THREEPANE_CONFIG_VERSION;
-    if (!needsMigration && !lacksRequiredTrayTools(config)) return;
+    if (
+      !needsMigration &&
+      !lacksRequiredTrayTools(config) &&
+      !hasRetiredDoctitleTools(config)
+    )
+      return;
     configHandle.change((doc) => {
       if (needsMigration) migrateThreepaneConfig(doc, rootFolderUrl);
       restoreRequiredTrayTools(doc);
+      dropRetiredDoctitleTools(doc);
     });
     return;
   }
@@ -134,7 +161,10 @@ export async function ensureThreepaneConfig(
   // selected main-view doc, so a slot tuple's docid would be ignored — keep
   // them as plain strings.
   const doctitleTools: ToolSlot[] = (account?.documentToolbarToolIds ?? [])
-    .filter((id) => !INTRINSIC_DOCTITLE_TOOLS.has(id));
+    .filter(
+      (id) =>
+        !INTRINSIC_DOCTITLE_TOOLS.has(id) && !RETIRED_DOCTITLE_TOOLS.includes(id)
+    );
 
   const configHandle = await createDocOfDatatype2<ThreepaneConfigDoc>(
     datatype,

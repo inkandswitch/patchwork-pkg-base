@@ -5,21 +5,64 @@
   "type": "module",
   "main": "./dist/main.js",
   "exports": {
-    ".": {
-      "import": "./dist/main.js",
-      "source": "./src/main.ts"
-    },
-    "./codemirror-theme": {
+    "./codemirror/theme": {
       "import": "./dist/codemirror-theme.js",
       "source": "./src/codemirror-theme.ts"
     },
-    "./tool": {
-      "import": "./dist/tool.js",
-      "source": "./src/tool.tsx"
+    "./datatypes/theme-preferences": {
+      "import": "./dist/datatype.js",
+      "source": "./src/datatype.ts"
     },
-    "./theme-editor": {
-      "import": "./dist/theme-editor.js",
-      "source": "./src/theme-editor.tsx"
+    "./components/theme-tray": {
+      "import": "./dist/theme-tray.js",
+      "source": "./src/theme-tray.tsx"
+    },
+    "./gloom.css": "./gloom.css",
+    "./lychee.css": "./lychee.css"
+  },
+  "patchwork": {
+    "plugins": {
+      "codemirror:extension": {
+        "codemirror-theme": {
+          "name": "Theme",
+          "supportedDatatypes": "*",
+          "export": "./codemirror-theme"
+        }
+      },
+      "patchwork:theme": {
+        "lychee": {
+          "name": "Lychee",
+          "style": "./gloom.css"
+        },
+        "gloom": {
+          "name": "Gloom",
+          "style": "./gloom.css"
+        }
+      },
+      "patchwork:datatype": {
+        "theme-preferences": {
+          "name": "Theme Preferences",
+          "icon": "Palette",
+          "unlisted": true,
+          "export": "./datatypes/theme-preferences"
+        },
+        "custom-theme": {
+          "name": "Custom Theme",
+          "unlisted": true,
+          "icon": "Paintbrush",
+          "export": "./datatypes/theme-editor"
+        }
+      },
+      "patchwork:component": {
+        "theme-tray": {
+          "name": "Theme Tray",
+          "icon": "Palette",
+          "export": "./components/theme-tray",
+          "tags": [
+            "system-tray"
+          ]
+        }
+      }
     }
   },
   "scripts": {

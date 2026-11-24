@@ -23,8 +23,14 @@ export const DEFAULT_DOCTITLE_TOOLS: string[] = [
   "doc-openwith",
   "doc-presence",
   "sync-indicator",
-  "theme-titlebar",
 ];
+
+/**
+ * Doctitle tools that no longer exist. Taken out of the lane on every mount,
+ * so they don't sit there as dead slots. (theme-titlebar only mirrored the
+ * host's theme into isolated documents; theming lives in core now.)
+ */
+export const RETIRED_DOCTITLE_TOOLS: string[] = ["theme-titlebar"];
 
 /**
  * The sidebar's default widget: a document list pinned to the account's root

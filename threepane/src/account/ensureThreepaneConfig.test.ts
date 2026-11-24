@@ -124,6 +124,31 @@ describe("ensureThreepaneConfig", () => {
     expect(configHandle.change).not.toHaveBeenCalled();
   });
 
+  it("takes the retired theme titlebar tool out of the title bar", async () => {
+    const config = oldConfig();
+    const { configHandle, run } = setup(config);
+    await run();
+
+    config.doctitle.tools = ["doc-openwith", "theme-titlebar", ["theme-titlebar", "doc"] as any, "sync-indicator"];
+    await run();
+    expect(config.doctitle.tools).toEqual(["doc-openwith", "sync-indicator"]);
+
+    // already gone: no change at all
+    vi.mocked(configHandle.change).mockClear();
+    await run();
+    expect(configHandle.change).not.toHaveBeenCalled();
+  });
+
+  it("doesn't carry the theme titlebar tool over from the legacy account field", async () => {
+    const config = {} as ThreepaneConfigDoc;
+    ThreepaneConfigDatatype.init!(config as any, undefined as any);
+    vi.mocked(createDocOfDatatype2).mockResolvedValue(fakeHandle(config, "automerge:new") as any);
+    const account: any = { rootFolderUrl: ROOT, documentToolbarToolIds: ["doc-presence", "theme-titlebar"] };
+
+    await ensureThreepaneConfig(fakeHandle(account, "automerge:account") as any, {} as any);
+    expect(config.doctitle.tools).toEqual(["doc-presence"]);
+  });
+
   it("keeps the migration pending until the account has a root folder", async () => {
     const config = oldConfig();
     const { run } = setup(config, null);
