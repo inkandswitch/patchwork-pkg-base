@@ -25,7 +25,7 @@ import {
 import { Sidebar } from "./components/Sidebar";
 import { SidebarWidgets } from "./components/SidebarWidgets";
 import { DocumentAreaRoot } from "./components/DocumentAreaRoot";
-import { IsolatedDocumentArea } from "./components/IsolatedDocumentArea";
+import { HostedDocumentArea } from "./components/HostedDocumentArea";
 import { MainDocumentView } from "./components/MainDocumentView";
 import { Tray } from "./components/Tray";
 import {
@@ -83,8 +83,9 @@ const useFrameProviderReady = (
 };
 
 // Fire a `patchwork:open-document` request from an account-bar button. Bubbles +
-// composed so it reaches the footer intercept (isolation → popover) or the
-// selected-doc provider (otherwise → main frame), matching the sideboard tool.
+// composed so it reaches the footer intercept (hosted document area → popover)
+// or the selected-doc provider (otherwise → main frame), matching the sideboard
+// tool.
 function dispatchOpen(el: HTMLElement, detail: OpenDocumentEventDetail) {
   el.dispatchEvent(
     new CustomEvent("patchwork:open-document", {
@@ -102,7 +103,7 @@ export function PatchworkFrame({
 }: {
   handle: DocHandle<AccountDoc>;
   repo: Repo;
-  isolation?: boolean;
+  documentAreaHost?: string;
 }) {
   ensureFrameStyles();
   const accountDocUrl = handle.url;
@@ -143,11 +144,6 @@ export function PatchworkFrame({
       <aside class="frame-warning-banner">
         research grade software. do not share links. sharing a doc is sharing
         your account.
-        <Show when={props.isolation}>
-          {" "}
-          isolation is highly experimental. if things are broken, switch back to
-          wild west.
-        </Show>
       </aside>
       <div class="frame">
         {/*
@@ -176,7 +172,7 @@ export function PatchworkFrame({
               {/*
                 Runs workers (like the LLM's) on the host for
                 patchwork:worker-channel subscriptions, including ones relayed
-                out of isolation. It wraps the document area because this
+                out of a hosted document area. It wraps the document area because this
                 element is the ctx a worker spec's open(ctx) gets.
               */}
               <patchwork-view component="patchwork-worker-provider">
@@ -191,7 +187,7 @@ export function PatchworkFrame({
                     <PatchworkFrameInner
                       handle={handle}
                       repo={repo}
-                      isolation={props.isolation}
+                      documentAreaHost={props.documentAreaHost}
                     />
                   </Show>
                 </patchwork-view>
@@ -207,7 +203,7 @@ export function PatchworkFrame({
 function PatchworkFrameInner(props: {
   handle: DocHandle<AccountDoc>;
   repo: Repo;
-  isolation?: boolean;
+  documentAreaHost?: string;
 }) {
   const accountDocHandle = useDocHandle<AccountDoc>(() => props.handle.url, {
     repo: props.repo,
@@ -268,14 +264,13 @@ function PatchworkFrameInner(props: {
     null
   );
 
-  // Under isolation the main document area lives inside a sandboxed iframe, so
-  // host-realm chrome tools opened from the account bar (account picker /
-  // Packages / Settings) must NOT be routed into it as a `selected-view` — they
-  // need host repo access the iframe is denied. FrameLayout intercepts their
-  // `patchwork:open-document` events (stopping them before they reach the
-  // selected-doc provider) and surfaces them here, floating in a popover over
-  // the frame instead. Off-isolation this stays null and the events open in the
-  // main frame as usual.
+  // When a host mounts the document area, it may be somewhere these frame
+  // tools can't run (another realm, without this repo). So the frame tools
+  // opened from the account bar (Settings / Packages) are not routed into it
+  // as a `selected-view`. FrameLayout stops their `patchwork:open-document`
+  // events before they reach the selected-doc provider and surfaces them here,
+  // floating in a popover over the frame. With the document area rendered
+  // inline this stays null and they open in the main frame as usual.
   const [popoverView, setPopoverView] = createSignal<SelectedView | null>(null);
 
   onMount(() => {
@@ -292,15 +287,13 @@ function PatchworkFrameInner(props: {
   const selectedDocUrl = () => selectedView()?.url;
   const selectedToolId = () => selectedView()?.toolId ?? undefined;
 
-  // Right-sidebar seeds, read from host localStorage. The host owns this read
-  // and hands the values to whichever document-area path renders — the local
-  // `DocumentAreaRoot`, or the isolated root via `IsolatedDocumentArea`'s boot
-  // spec (localStorage is stubbed inside the sandboxed iframe, so the isolated
-  // path can't read it itself). The right-sidebar collapse/width state and the
-  // selected context tab then live *inside* `DocumentAreaRoot`, so the context
-  // sidebar — and its chrome — sit inside the isolation boundary and are
-  // sandboxed alongside the main view. The system tray is separate trusted host
-  // chrome in the left sidebar (see `FrameLayout`).
+  // Right-sidebar seeds, read from this realm's localStorage and handed to
+  // whichever document area renders: the inline `DocumentAreaRoot`, or the
+  // hosted one through its props (a host may mount it where localStorage isn't
+  // this one). The right-sidebar collapse/width state and the selected context
+  // tab then live *inside* `DocumentAreaRoot`, so the context sidebar goes
+  // wherever the main view goes. The system tray stays frame chrome in the left
+  // sidebar (see `FrameLayout`).
   const initialRightWidth = () =>
     getStoredNumber(SIDEBAR_KEYS.rightWidth, DEFAULT_SIDEBAR_WIDTH);
   const initialRightCollapsed = () =>
@@ -312,15 +305,14 @@ function PatchworkFrameInner(props: {
   // immediately. Latched: once revealed they stay mounted across later doc
   // switches — we only want to win the *first* race, not re-suspend every time.
   //
-  // Under isolation the main document lives inside the iframe, so the host-side
-  // mount ref can never be set; we reveal the widgets immediately instead of
-  // gating on a mount that will never reach this realm.
+  // A hosted document area never sets the mount ref here, so the widgets show
+  // at once instead of waiting on a mount this frame won't see.
   const [mainDocElement, setMainDocElement] = createSignal<HTMLElement>();
   const isMainDocMounted = useMainDocMounted(mainDocElement, selectedDocUrl);
   const [widgetsReady, setWidgetsReady] = createSignal(false);
   createEffect(() => {
     if (widgetsReady()) return;
-    if (props.isolation || !selectedDocUrl() || isMainDocMounted())
+    if (props.documentAreaHost || !selectedDocUrl() || isMainDocMounted())
       setWidgetsReady(true);
   });
 
@@ -344,7 +336,7 @@ function PatchworkFrameInner(props: {
         contactUrl={() => accountDoc()?.contactUrl}
         contactName={contactName}
         moduleSettingsUrl={() => accountDoc()?.moduleSettingsUrl}
-        isolation={props.isolation}
+        accountBarInPopover={!!props.documentAreaHost}
         onInterceptOpen={setPopoverView}
       >
         <Show
@@ -361,17 +353,15 @@ function PatchworkFrameInner(props: {
           }
         >
           {/*
-            Document area: isolated (rendered inside a sandboxed iframe) or local
-            (rendered directly). `isolation` is fixed per tool instance. Both
-            paths render the whole main column (doc column + context sidebar) and
-            own the right-sidebar state, seeded from the host localStorage reads
-            above — so under isolation the context sidebar lives *inside* the
-            iframe, sandboxed with the main view. The local path additionally
-            threads `setMainDocElement` for the host's widgetsReady race (the
-            iframe can't drive that host ref).
+            Document area: rendered inline, or handed to the component named
+            by `documentAreaHost` (fixed per tool instance). Both render the
+            whole main column (doc column + context sidebar) and own the
+            right-sidebar state, seeded from the localStorage reads above. The
+            inline one also threads `setMainDocElement` for the widgetsReady
+            race.
           */}
           <Show
-            when={props.isolation}
+            when={props.documentAreaHost}
             fallback={
               <DocumentAreaRoot
                 setMainDocElement={setMainDocElement}
@@ -384,15 +374,18 @@ function PatchworkFrameInner(props: {
               />
             }
           >
-            <IsolatedDocumentArea
-              contactUrl={accountDoc()?.contactUrl}
-              selectedDocUrl={selectedDocUrl}
-              selectedToolId={selectedToolId}
-              doctitleSlots={doctitleSlots}
-              isLeftCollapsed={sidebarState.isSidebarCollapsed}
-              initialRightWidth={initialRightWidth}
-              initialRightCollapsed={initialRightCollapsed}
-            />
+            {(host) => (
+              <HostedDocumentArea
+                host={host()}
+                contactUrl={accountDoc()?.contactUrl}
+                selectedDocUrl={selectedDocUrl}
+                selectedToolId={selectedToolId}
+                doctitleSlots={doctitleSlots}
+                isLeftCollapsed={sidebarState.isSidebarCollapsed}
+                initialRightWidth={initialRightWidth}
+                initialRightCollapsed={initialRightCollapsed}
+              />
+            )}
           </Show>
         </Show>
       </FrameLayout>
@@ -406,9 +399,9 @@ function PatchworkFrameInner(props: {
   );
 }
 
-// The isolation-mode chrome popover: floats a host-realm tool (account picker /
-// Packages / Settings) over the frame on a dimmed, theme-tinted wash so it can
-// run in the host realm instead of being routed into the isolated main frame.
+// The account-bar popover, used when the document area is hosted: floats a
+// frame tool (Settings / Packages) over the frame on a dimmed, theme-tinted
+// wash so it runs here instead of being routed into the hosted main frame.
 // Click the backdrop or press Escape to dismiss.
 function FramePopover(props: { view: SelectedView; onClose: () => void }) {
   // The tool the popover currently renders the doc with. Seeded from the
@@ -430,8 +423,8 @@ function FramePopover(props: { view: SelectedView; onClose: () => void }) {
     // The "Open with" picker (and any tool inside the popover) fires
     // `patchwork:open-document`. Catch it here and re-point the popover in place
     // rather than letting it bubble out to the selected-doc provider — these are
-    // host-realm chrome tools that must not be routed into the isolated main
-    // frame (the whole reason this popover exists).
+    // frame tools that must not be routed into the hosted main frame (the whole
+    // reason this popover exists).
     const el = popoverEl;
     if (!el) return;
     const onOpen = (event: OpenDocumentEvent) => {
@@ -488,9 +481,12 @@ export function FrameLayout(props: {
   /** Your name, beside your picture; "" when you've none (just the picture). */
   contactName?: Accessor<string>;
   moduleSettingsUrl: Accessor<AutomergeUrl | undefined>;
-  /** Fixed per tool instance: whether the main document area is isolated. */
-  isolation?: boolean;
-  /** Isolation only: called with an account-bar tool to open in the popover. */
+  /**
+   * Fixed per tool instance: open account-bar tools in the popover rather than
+   * the main frame (because the document area is hosted).
+   */
+  accountBarInPopover?: boolean;
+  /** `accountBarInPopover` only: called with an account-bar tool to open. */
   onInterceptOpen?: (view: SelectedView) => void;
   children: JSX.Element;
 }) {
@@ -542,11 +538,11 @@ export function FrameLayout(props: {
 
   // One `patchwork:open-document` listener on the sidebar content, for two jobs:
   //
-  // 1. Isolation only: events from the account bar (account picker / Packages /
-  //    Settings) are stopped here and handed to the host-side popover. Left to
-  //    propagate they'd select a view for the isolated main frame — the
-  //    sandboxed iframe — where these host-realm chrome tools can't run.
-  //    Off-isolation they pass straight through to the selected-doc provider.
+  // 1. `accountBarInPopover` only: events from the account bar (Settings /
+  //    Packages) are stopped here and handed to the popover. Left to propagate
+  //    they'd select a view for the hosted main frame, which may be somewhere
+  //    these frame tools can't run. Otherwise they pass straight through to
+  //    the selected-doc provider.
   //
   // 2. Narrow viewports: when the left sidebar covers most of the frame (>75%
   //    of the viewport width — acting as a full-screen overlay rather than a
@@ -567,7 +563,7 @@ export function FrameLayout(props: {
       const { url, toolId } = event.detail;
       const footer = footerEl;
       if (
-        props.isolation &&
+        props.accountBarInPopover &&
         url &&
         footer &&
         event.composedPath().includes(footer)
@@ -625,8 +621,8 @@ export function FrameLayout(props: {
             The account bar, pinned to the sidebar's bottom: you (your picture
             and your name), which opens the settings page, and Packages. Each
             button dispatches a `patchwork:open-document` event (bubbles +
-            composed), which the footer intercepts into the popover under
-            isolation, or lets bubble to the selected-doc provider otherwise.
+            composed), which the footer intercepts into the popover when the
+            document area is hosted, or lets bubble to the selected-doc provider otherwise.
           */}
           <div class="threepane-sidebar__footer" ref={footerEl}>
             <footer class="threepane-account-bar">
@@ -782,16 +778,22 @@ function PanelLeftIcon() {
   );
 }
 
-export function renderPatchworkFrame(
-  isolation?: boolean
-): ToolImplementation<AccountDoc> {
+/**
+ * The frame tool. If the tool's element has a `document-area-host` attribute,
+ * the document area is handed to that `patchwork:component` (see
+ * components/HostedDocumentArea.tsx) instead of rendered inline. Read once, at
+ * mount.
+ */
+export function renderPatchworkFrame(): ToolImplementation<AccountDoc> {
   return (handle, element) => {
+    const documentAreaHost =
+      element.getAttribute("document-area-host") || undefined;
     return render(
       () => (
         <PatchworkFrame
           handle={handle}
           repo={element.repo}
-          isolation={isolation}
+          documentAreaHost={documentAreaHost}
         />
       ),
       element

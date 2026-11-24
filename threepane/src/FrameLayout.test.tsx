@@ -10,7 +10,7 @@ vi.mock("@inkandswitch/patchwork-plugins", () => ({
   getRegistry: vi.fn(),
 }));
 
-function mount(isolation: boolean) {
+function mount(accountBarInPopover: boolean) {
   const [collapsed, setCollapsed] = createSignal(false);
   const sidebarState = {
     isSidebarCollapsed: collapsed,
@@ -36,7 +36,7 @@ function mount(isolation: boolean) {
         widgetsReady={() => false}
         contactUrl={() => undefined}
         moduleSettingsUrl={() => undefined}
-        isolation={isolation}
+        accountBarInPopover={accountBarInPopover}
         onInterceptOpen={onInterceptOpen}
       >
         <div />
@@ -71,7 +71,7 @@ function mount(isolation: boolean) {
   };
 }
 
-describe("account bar under isolation", () => {
+describe("account bar", () => {
   it("opens account actions from the settings button's context menu", () => {
     const f = mount(false);
     const event = f.contextMenuSettings();
@@ -111,7 +111,7 @@ describe("account bar under isolation", () => {
     f.dispose();
   });
 
-  it("passes through to the selected-doc provider without isolation", () => {
+  it("passes through to the selected-doc provider when the document area is inline", () => {
     const f = mount(false);
     f.clickSettings();
     expect(f.onInterceptOpen).not.toHaveBeenCalled();

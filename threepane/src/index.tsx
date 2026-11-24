@@ -16,12 +16,10 @@ function yieldToMacrotask(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve));
 }
 
-async function loadFrame(
-  isolation?: boolean
-): Promise<ToolImplementation<AccountDoc>> {
+async function loadFrame(): Promise<ToolImplementation<AccountDoc>> {
   const { renderPatchworkFrame } = await import("./PatchworkFrame");
   await yieldToMacrotask();
-  return renderPatchworkFrame(isolation);
+  return renderPatchworkFrame();
 }
 
 export const plugins: Plugin<any>[] = [
@@ -67,29 +65,21 @@ export const plugins: Plugin<any>[] = [
     unlisted: true,
   },
   {
-    type: "patchwork:tool",
-    id: "threepane-isolation",
-    tags: ["frame-tool"],
-    name: "Threepane (isolate)",
-    icon: "Window",
-    supportedDatatypes: ["account"],
-    load: () => loadFrame(true),
-    unlisted: true,
-  },
-  {
-    // The isolated document-area root mounted inside the iframe by `threepane-isolation`.
+    // The document area on its own, for a host to mount when the frame tool's
+    // element names one in its `document-area-host` attribute (see
+    // components/HostedDocumentArea.tsx).
     type: "patchwork:component",
-    id: "threepane-isolation-root",
-    name: "Threepane Isolation Root",
+    id: "threepane-document-area",
+    name: "Threepane Document Area",
     async load() {
-      const { mountIsolationRoot } =
-        await import("./components/IsolatedDocumentArea");
-      // Same WebKit render-before-init race as loadFrame — this component is
-      // mounted the same way (registry invokes it on import resolve).
+      const { mountDocumentArea } = await import(
+        "./components/HostedDocumentArea"
+      );
+      // Same WebKit render-before-init race as loadFrame: the registry mounts
+      // this the moment its import resolves.
       await yieldToMacrotask();
-      return mountIsolationRoot;
+      return mountDocumentArea;
     },
-    
   },
   {
     // Back-compat alias: accounts whose frameToolId still points at the old id

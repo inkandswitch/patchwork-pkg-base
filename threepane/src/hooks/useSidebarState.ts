@@ -3,7 +3,7 @@ import { createEffect, createSignal, on } from "solid-js";
 /**
  * The localStorage keys for persisted sidebar state. Defined here, the canonical
  * sidebar-persistence module, and imported wherever sidebar state is read/written
- * (e.g. the isolated document-area root seeds + persists the right-sidebar keys),
+ * (e.g. the document area seeds + persists the right-sidebar keys),
  * so the key strings live in exactly one place.
  */
 export const SIDEBAR_KEYS = {
@@ -17,8 +17,9 @@ export const SIDEBAR_KEYS = {
 /**
  * DOM event (dispatched on `window`) asking the context (right) sidebar to
  * collapse. The left sidebar is host-owned and collapsed directly, but the
- * right-sidebar collapse state lives inside `DocumentAreaRoot` (so it survives
- * the isolation boundary), so the host signals it out-of-band through this event.
+ * right-sidebar collapse state lives inside `DocumentAreaRoot` (so it goes
+ * wherever the document area is mounted), so the frame signals it out-of-band
+ * through this event.
  */
 export const COLLAPSE_CONTEXT_SIDEBAR_EVENT =
   "patchwork:collapse-context-sidebar";
@@ -44,7 +45,7 @@ export function getStoredBoolean(key: string): boolean {
 /**
  * The host-owned LEFT sidebar's collapse and width state, persisted to
  * localStorage. The right (context) sidebar's state is owned by
- * `DocumentAreaRoot`, so it survives inside the isolation boundary.
+ * `DocumentAreaRoot`, so it goes wherever the document area is mounted.
  */
 export function useSidebarState() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = createSignal(

@@ -8,7 +8,7 @@ import externals from "@inkandswitch/patchwork-bootloader/externals";
 const pushworking = process.argv.includes("pushwork") || process.env.PUSHWORK;
 
 export default {
-  // Single entry: the plugin array. The frame, datatypes and isolation root are
+  // Single entry: the plugin array. The frame, datatypes and document area are
   // reached via dynamic import() from here, so `splitting` emits them as chunks.
   entryPoints: ["src/index.tsx"],
   outdir: "dist",
@@ -34,7 +34,6 @@ export default {
     } satisfies Plugin,
   ].concat(pushworking ? pushworkSync() : []),
   // `.css` as text: `ensureFrameStyles` imports styles.css as a string and
-  // injects it into whichever realm the frame mounts in (host + isolation
-  // iframe). This is the esbuild equivalent of Vite's `styles.css?inline`.
+  // injects it into whichever realm the frame or document area mounts in. This is the esbuild equivalent of Vite's `styles.css?inline`.
   loader: { ".ttf": "dataurl", ".css": "text" },
 } satisfies BuildOptions;

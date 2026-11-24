@@ -1,18 +1,17 @@
 /**
  * `DocumentAreaRoot` — the threepane document column (draft scope + top bar +
- * main view + context sidebar), extracted so it can run either directly in the
- * host (`threepane`) or as an isolated `patchwork:component` inside the iframe
- * (`threepane-isolation`).
+ * main view + context sidebar), on its own so it can render inline in the frame
+ * or be mounted by a host as the `threepane-document-area` component (see
+ * HostedDocumentArea.tsx).
  *
- * It takes Accessor-shaped props uniformly: the local caller passes its reactive
- * accessors; the isolated caller (the mount fn in `isolation-entry.tsx`) wraps
- * parsed-JSON values in constant accessors, which is correct because any real
- * change to the boot spec reboots the iframe.
+ * It takes Accessor-shaped props uniformly: the inline caller passes its
+ * reactive accessors; `mountDocumentArea` passes accessors over a store it
+ * re-reads from the props script.
  *
  * The right-sidebar collapse/width state, its resize handlers, and the selected
- * context-tab signal live HERE (not threaded from the host), so they survive
- * inside the isolation boundary. The left sidebar is host-side; this component
- * only reads `isLeftCollapsed` for top-bar layout.
+ * context-tab signal live HERE (not threaded from the frame), so they go
+ * wherever the document area is mounted. The left sidebar stays in the frame;
+ * this component only reads `isLeftCollapsed` for top-bar layout.
  */
 
 import { type AutomergeUrl } from "@automerge/automerge-repo/slim";
@@ -43,11 +42,11 @@ import { CallVideoOpener } from "./CallVideoOpener";
 import { MainDocumentView } from "./MainDocumentView";
 
 /**
- * The reactive inputs the document area needs, shared by both the local caller
- * (`PatchworkFrame` → `DocumentAreaRoot`) and the isolated caller
- * (`IsolatedDocumentArea`, which forwards them into the boot spec). The host
- * owns these — including reading the right-sidebar seeds from localStorage — so
- * both paths receive an identical contract.
+ * The reactive inputs the document area needs, shared by the inline caller
+ * (`PatchworkFrame` → `DocumentAreaRoot`) and the hosted one
+ * (`HostedDocumentArea`, which serializes them into the props script). The
+ * frame owns these — including reading the right-sidebar seeds from
+ * localStorage — so both receive an identical contract.
  */
 export interface DocumentAreaInputs {
   selectedDocUrl: Accessor<AutomergeUrl | undefined>;
@@ -62,17 +61,16 @@ export interface DocumentAreaInputs {
 
 export interface DocumentAreaRootProps extends DocumentAreaInputs {
   /**
-   * Host-realm ref set when the main document view mounts, used by the host to
-   * flip its left-sidebar `widgetsReady` gate. Only supplied in the local
-   * (non-isolated) path; inside the iframe it stays undefined (that realm can't
-   * drive the host's signal), which is correct.
+   * Ref set when the main document view mounts, used by the frame to flip its
+   * left-sidebar `widgetsReady` gate. Only supplied inline; a hosted document
+   * area leaves it undefined, which is correct.
    */
   setMainDocElement?: (el: HTMLElement) => void;
 }
 
 export function DocumentAreaRoot(props: DocumentAreaRootProps) {
   // ── Right-sidebar state (document-area-local) ──────────────────
-  // Lives here so it survives inside the isolation boundary. Seeded from props
+  // Lives here so it goes wherever the document area is mounted. Seeded from props
   // (the host reads persisted values from its localStorage and passes them in,
   // since localStorage is stubbed inside the sandboxed iframe). Persisted back
   // to localStorage when host-side; a harmless no-op inside the iframe.
@@ -119,8 +117,8 @@ export function DocumentAreaRoot(props: DocumentAreaRootProps) {
   // The host collapses the left sidebar directly, but the right-sidebar collapse
   // state lives here, so it asks us to collapse out-of-band via a window event
   // (e.g. after a finger-tap opens a document in the left sidebar — see
-  // `FrameLayout`). Only wired on the host (non-isolated) path; the sandboxed
-  // iframe realm never receives the host's window events.
+  // `FrameLayout`). Only reaches an inline document area; a hosted one in
+  // another realm never receives the frame's window events.
   onMount(() => {
     const onCollapse = () => setIsRightSidebarCollapsed(true);
     window.addEventListener(COLLAPSE_CONTEXT_SIDEBAR_EVENT, onCollapse);
@@ -321,7 +319,7 @@ function DraftDocumentArea(props: {
                         selectedDocUrl={props.selectedDocUrl}
                         toolId={props.selectedToolId}
                         // Always pass a function ref. Passing `ref={undefined}`
-                        // (the isolated path, where no host ref is threaded)
+                        // (the hosted path, where no frame ref is threaded)
                         // makes Solid's component-ref codegen fall back to
                         // assigning the prop, which throws on the getter-only
                         // reactive props object. A no-op wrapper avoids that.

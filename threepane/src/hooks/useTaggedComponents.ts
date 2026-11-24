@@ -16,10 +16,8 @@ export type TaggedComponent = {
  * declares its tag and shows up everywhere that tag is rendered.
  *
  * Reactive to the registry's `"changed"` event, so a late-registering or
- * hot-reloaded plugin appears without a remount. Safe to call from inside the
- * isolated iframe realm too — it mounts the same plugin set as the host (see
- * `registry.start` in `isolation/src/boot/iframe/main.ts`), so each realm
- * resolves its own local, equivalent list.
+ * hot-reloaded plugin appears without a remount. When a host mounts the document
+ * area in another realm, this resolves against that realm's registry.
  */
 export function useTaggedComponents(tag: string): Accessor<TaggedComponent[]> {
   const registry = getRegistry<ToolDescription>("patchwork:component");

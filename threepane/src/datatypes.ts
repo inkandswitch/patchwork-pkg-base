@@ -28,7 +28,7 @@ export const DEFAULT_DOCTITLE_TOOLS: string[] = [
 /**
  * Doctitle tools that no longer exist. Taken out of the lane on every mount,
  * so they don't sit there as dead slots. (theme-titlebar only mirrored the
- * host's theme into isolated documents; theming lives in core now.)
+ * frame's theme into other realms; theming lives in core now.)
  */
 export const RETIRED_DOCTITLE_TOOLS: string[] = ["theme-titlebar"];
 

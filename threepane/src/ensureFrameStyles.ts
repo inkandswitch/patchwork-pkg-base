@@ -6,8 +6,8 @@ import frameStyles from "./styles.css";
 /**
  * Inject the threepane stylesheet into the current realm's document, once.
  *
- * Called from both realms: host-side by `PatchworkFrame`, and inside the isolated iframe by
- * `IsolationRoot`.
+ * Called by `PatchworkFrame`, and by `mountDocumentArea` wherever a host mounts
+ * the document area (possibly another realm with its own document).
  */
 export function ensureFrameStyles() {
   const id = "patchwork-frame-styles";

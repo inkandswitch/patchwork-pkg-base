@@ -787,10 +787,10 @@
   height: auto;
 }
 
-/* Isolation-mode chrome popover.
-   In isolation the main document area is a sandboxed iframe, so host-realm tools
-   opened from the account bar (account picker / Packages / Settings) are floated
-   over the frame here instead of being routed into the iframe. The backdrop is a
+/* Account-bar popover.
+   When a host mounts the document area, frame tools opened from the account bar
+   (Settings / Packages) are floated over the frame here instead of being routed
+   into the hosted main frame. The backdrop is a
    lowish-opacity, theme-tinted ink wash (dims the frame + picks up the theme's
    ink hue); the panel carries a soft drop shadow so it reads as lifted. Absolute
    inset:0 resolves to the `.frame` (its nearest positioned ancestor). */
