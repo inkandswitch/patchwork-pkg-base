@@ -9,3 +9,5 @@ export const ThemePreferencesDatatype = {
 		// Theme preferences doc title is not user-editable
 	},
 }
+
+export default ThemePreferencesDatatype

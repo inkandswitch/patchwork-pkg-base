@@ -17,8 +17,8 @@
       "import": "./dist/theme-tray.js",
       "source": "./src/theme-tray.tsx"
     },
-    "./gloom.css": "./gloom.css",
-    "./lychee.css": "./lychee.css"
+    "./gloom.css": "./src/gloom.css",
+    "./lychee.css": "./src/lychee.css"
   },
   "patchwork": {
     "plugins": {
@@ -26,17 +26,17 @@
         "codemirror-theme": {
           "name": "Theme",
           "supportedDatatypes": "*",
-          "export": "./codemirror-theme"
+          "export": "./codemirror/theme"
         }
       },
       "patchwork:theme": {
         "lychee": {
           "name": "Lychee",
-          "style": "./lychee.css"
+          "style": "./src/lychee.css"
         },
         "gloom": {
           "name": "Gloom",
-          "style": "./gloom.css"
+          "style": "./src/gloom.css"
         }
       },
       "patchwork:datatype": {

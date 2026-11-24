@@ -361,3 +361,5 @@ export function ThemeTray(element: HTMLElement) {
 		stopPreferences()
 	}
 }
+
+export default ThemeTray
