@@ -84,8 +84,13 @@ jobs:
       # A version npm has staged but not yet made live (it takes a few minutes)
       # doesn't show up in `npm view`, so the bump above can pick a number
       # that's already taken; npm answers that with a 409. Take the next one.
+      #
+      # `shell: bash` is `bash -eo pipefail`; the default `run:` shell has no
+      # pipefail, so `npm publish | tee` took tee's status, a 409 read as a
+      # successful publish, and the retry below never ran.
       - name: publish
         working-directory: static-dist
+        shell: bash
         run: |
           log="$RUNNER_TEMP/npm-publish.log"
           for attempt in 1 2 3 4 5; do
