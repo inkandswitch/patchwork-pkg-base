@@ -16,6 +16,12 @@
  * We still resolve the entry point here, but only to validate the build and to
  * know which files to copy.
  *
+ * A package that lists its plugins under `patchwork.plugins` in package.json
+ * needs no entry point: the runtime reads the list without importing anything.
+ * For those, each plugin's `export` (resolved through `exports`) and each
+ * relative theme `style` is a file to copy. One that's missing is reported as
+ * skipped, but doesn't keep the package's other plugins out of the bundle.
+ *
  * Tools may also ship an `example.js` next to their package.json: a plain ES
  * module whose default export creates example document(s) for a fresh account
  * and returns their DocLink(s). Those are copied alongside the tool and
@@ -92,6 +98,44 @@ function resolveExportValue(value) {
   return undefined;
 }
 
+/** Resolve one `exports` subpath (no patterns) to a package-relative path. */
+function resolveSubpath(pkg, subpath) {
+  if (subpath === ".") return resolveEntry(pkg);
+  const exp = pkg.exports;
+  if (!exp || typeof exp !== "object" || !(subpath in exp)) return undefined;
+  return resolveExportValue(exp[subpath]);
+}
+
+const URL_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
+
+/**
+ * The files a `patchwork.plugins` list points at, as package-relative paths,
+ * and a reason for each plugin that points at nothing. `undefined` if the
+ * package has no such list.
+ */
+function manifestFiles(pkg) {
+  const byType = pkg.patchwork?.plugins;
+  if (!byType || typeof byType !== "object" || Array.isArray(byType)) return undefined;
+  const files = [];
+  const problems = [];
+  for (const [type, byId] of Object.entries(byType)) {
+    if (!byId || typeof byId !== "object") continue;
+    for (const [id, entry] of Object.entries(byId)) {
+      if (!entry || typeof entry !== "object") continue;
+      if (entry.export !== undefined) {
+        const resolved =
+          typeof entry.export === "string" ? resolveSubpath(pkg, entry.export) : undefined;
+        if (resolved) files.push({ plugin: `${type}:${id}`, path: normalizeRel(resolved) });
+        else problems.push(`${type}:${id} export ${JSON.stringify(entry.export)} matches nothing in exports`);
+      }
+      if (typeof entry.style === "string" && !URL_SCHEME.test(entry.style) && !entry.style.startsWith("/")) {
+        files.push({ plugin: `${type}:${id}`, path: normalizeRel(entry.style) });
+      }
+    }
+  }
+  return { files, problems };
+}
+
 function normalizeRel(p) {
   return p.replace(/^\.\//, "").replace(/^\//, "");
 }
@@ -125,6 +169,40 @@ function main() {
     }
 
     const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+
+    // A package listing its plugins in package.json is loaded from that list,
+    // so it needs no entry point: copy what each plugin points at instead.
+    const listed = manifestFiles(pkg);
+    if (listed) {
+      const present = listed.files.filter((file) => {
+        if (existsSync(join(toolDir, file.path))) return true;
+        listed.problems.push(`${file.plugin}: ${file.path} not found`);
+        return false;
+      });
+      for (const problem of listed.problems) skipped.push(`${name} (${problem})`);
+      if (!present.length && listed.files.length) {
+        if (filtered.has(name)) {
+          rmSync(join(packagesOutDir, name), { recursive: true, force: true });
+        }
+        continue;
+      }
+
+      const destDir = join(packagesOutDir, name);
+      const copy = !filtered.size || filtered.has(name);
+      if (copy) {
+        rmSync(destDir, { recursive: true, force: true });
+        mkdirSync(destDir, { recursive: true });
+        // Each file's top-level entry (dist/, a root stylesheet) and package.json.
+        const tops = new Set(present.map((file) => file.path.split("/")[0]));
+        for (const top of tops) cpSync(join(toolDir, top), join(destDir, top), { recursive: true });
+        cpSync(pkgPath, join(destDir, "package.json"));
+      }
+      modules.push(`./packages/${name}/`);
+      if (copy) {
+        console.log(`[ok]    ${name} -> ./packages/${name}/ (plugins from package.json)`);
+      }
+      continue;
+    }
 
     const entry = resolveEntry(pkg);
     if (!entry) {
