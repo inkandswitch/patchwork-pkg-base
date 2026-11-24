@@ -45,12 +45,6 @@
           "icon": "Palette",
           "unlisted": true,
           "export": "./datatypes/theme-preferences"
-        },
-        "custom-theme": {
-          "name": "Custom Theme",
-          "unlisted": true,
-          "icon": "Paintbrush",
-          "export": "./datatypes/theme-editor"
         }
       },
       "patchwork:component": {
