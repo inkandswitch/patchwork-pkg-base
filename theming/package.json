@@ -32,7 +32,7 @@
       "patchwork:theme": {
         "lychee": {
           "name": "Lychee",
-          "style": "./gloom.css"
+          "style": "./lychee.css"
         },
         "gloom": {
           "name": "Gloom",
