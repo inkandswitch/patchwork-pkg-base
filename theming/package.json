@@ -17,8 +17,8 @@
       "import": "./dist/theme-tray.js",
       "source": "./src/theme-tray.tsx"
     },
-    "./gloom.css": "./src/gloom.css",
-    "./lychee.css": "./src/lychee.css"
+    "./gloom.css": "./gloom.css",
+    "./lychee.css": "./lychee.css"
   },
   "patchwork": {
     "plugins": {
@@ -32,11 +32,11 @@
       "patchwork:theme": {
         "lychee": {
           "name": "Lychee",
-          "style": "./src/lychee.css"
+          "style": "./lychee.css"
         },
         "gloom": {
           "name": "Gloom",
-          "style": "./src/gloom.css"
+          "style": "./gloom.css"
         }
       },
       "patchwork:datatype": {
