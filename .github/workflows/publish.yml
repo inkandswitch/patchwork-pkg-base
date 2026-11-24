@@ -110,6 +110,25 @@ jobs:
           done
           exit 1
 
+      # A fresh publish is staged for several minutes before it installs. Told
+      # sooner, the site's update installs the previous version and changes
+      # nothing (0.0.188 took ~7 minutes). Waiting here also means the next
+      # queued run reads this version as latest instead of 409ing on it.
+      - name: wait for the published version to install
+        working-directory: static-dist
+        shell: bash
+        run: |
+          spec="$(node -p 'const p = require("./package.json"); `${p.name}@${p.version}`')"
+          for attempt in $(seq 1 60); do
+            if npm view "$spec" version >/dev/null 2>&1; then
+              echo "$spec is live"
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "::error::$spec still isn't installable after 20 minutes"
+          exit 1
+
       - name: update patchwork.inkandswitch.com
         env:
           GH_TOKEN: ${{ secrets.PATCHWORK_CROW_TOKEN }}
