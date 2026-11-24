@@ -180,14 +180,17 @@ export function LlmConfigTray(element: HTMLElement) {
   // Loading on open makes the first click wait on the fetch, so warm it once
   // things are idle (still off the boot path, so the button never waits on
   // it). The button's hover/focus preload covers an idle that never comes.
+  //
+  // Only where there's a real idle callback. WebKit has none, and falling back
+  // to setTimeout(0) loaded the library mid-boot; closing that first tab
+  // within a few seconds then left the service worker answering nothing, for
+  // every tab on the origin (patchwork-system's closed-tab-persistence e2e).
+  // There the hover/focus preload is the only one.
   const preload = () => void loadLlm().catch(() => {});
-  let cancelIdle: () => void;
+  let cancelIdle = () => {};
   if (typeof requestIdleCallback === "function") {
     const id = requestIdleCallback(preload);
     cancelIdle = () => cancelIdleCallback(id);
-  } else {
-    const id = setTimeout(preload, 0);
-    cancelIdle = () => clearTimeout(id);
   }
 
   const dispose = render(
