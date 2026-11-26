@@ -1,5 +1,6 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
 import { filterOptions, type LaneItem } from "./lanes";
+import { placePopover } from "./place";
 
 // "Add…", and a search over `options` that pops out of it, like the title
 // bar's "Open with…". type to filter, arrows to move, enter to add. enter on
@@ -29,20 +30,7 @@ export function AddPicker(props: {
   }
 
   function place() {
-    const rect = button.getBoundingClientRect();
-    const width = Math.max(rect.width, 220);
-    menu.style.top = `${rect.bottom + 2}px`;
-    menu.style.minWidth = `${width}px`;
-    // under the button, from its left edge, unless that runs off the page
-    if (rect.left + width > window.innerWidth - 8) {
-      menu.style.left = "";
-      menu.style.right = `${window.innerWidth - rect.right}px`;
-      menu.style.transformOrigin = "top right";
-    } else {
-      menu.style.right = "";
-      menu.style.left = `${rect.left}px`;
-      menu.style.transformOrigin = "top left";
-    }
+    placePopover(menu, button, { width: 220 });
   }
 
   return (
@@ -77,8 +65,8 @@ export function AddPicker(props: {
         <input
           ref={input}
           class="settings-picker-input"
-          placeholder="Search or enter tool id…"
-          aria-label="Search or enter tool id"
+          placeholder="Add or filter tools…"
+          aria-label="Add or filter tools"
           spellcheck={false}
           autocomplete="off"
           value={query()}

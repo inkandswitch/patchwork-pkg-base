@@ -179,7 +179,7 @@ export function FrameTopBar(props: FrameTopBarProps) {
           <ToolPicker
             anchor={anchor()}
             items={addable()}
-            placeholder="Search or enter a tool id…"
+            placeholder="Add or filter tools…"
             onPick={(id) =>
               dispatchLayoutEdit(bar, { lane: "doctitle", action: "add", id })
             }
