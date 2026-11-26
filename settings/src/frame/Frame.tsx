@@ -1,15 +1,21 @@
-// what used to be the frame configurator: which frame the studio is, and
-// which tools sit in a document's title bar. the frame's on the account doc
-// (`frameToolId`); the title bar's in threepane's config doc
-// (`account.tools.threepane`), as frame-configurator kept them
+// what used to be the frame configurator: which frame the studio is, which
+// tools sit in a document's title bar, and which tabs the context sidebar
+// has. the frame's on the account doc (`frameToolId`); the title bar and the
+// context sidebar are in threepane's config doc (`account.tools.threepane`)
 import { createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import type { DocHandle } from "@automerge/automerge-repo/slim";
 import { getRegistry } from "@inkandswitch/patchwork-plugins";
 import { useDocument } from "solid-automerge";
 import type { AccountDoc } from "../you/contact";
+import { AddPicker } from "./AddPicker";
+import {
+  contextLane,
+  editContext,
+  editTitlebar,
+  slotId,
+  type ThreepaneConfigDoc,
+} from "./lanes";
 
-type ToolSlot = [toolId: string, docId: string] | string;
-type ThreepaneConfigDoc = { doctitle?: { tools?: ToolSlot[] } };
 type Describable = {
   id: string;
   name?: string;
@@ -32,13 +38,19 @@ function useRegistry(type: string) {
   return tools;
 }
 
-const tagged = (tools: Describable[], tag: string): Option[] =>
+// `unlisted` ones too, for the context sidebar, which shows every tagged
+// component whether it's listed or not
+const tagged = (
+  tools: Describable[],
+  tag: string,
+  { unlisted = false } = {}
+): Option[] =>
   tools
-    .filter((tool) => !tool.unlisted && (tool.tags ?? []).includes(tag))
+    .filter(
+      (tool) => (unlisted || !tool.unlisted) && (tool.tags ?? []).includes(tag)
+    )
     .map((tool) => ({ id: tool.id, name: tool.name || tool.id }))
     .sort((a, b) => a.name.localeCompare(b.name));
-
-const slotId = (slot: ToolSlot) => (typeof slot === "string" ? slot : slot[0]);
 
 // the frame this page is in: the nearest patchwork-view around it that's one
 // of the frames. an account that's never chosen has no frameToolId, but it's
@@ -77,12 +89,47 @@ export function Frame(props: {
   const frames = createMemo(() => tagged(tools(), "frame-tool"));
   const current = () =>
     props.account()?.frameToolId ?? runningFrame(props.element, frames());
-  const titlebar = createMemo(() => tagged(tools(), "titlebar-tool"));
+  const nameOf = (id: string) => names().get(id) ?? id;
 
   const [threepane, threepaneHandle] = useDocument<ThreepaneConfigDoc>(
     () => props.account()?.tools?.threepane
   );
-  const doctitle = () => threepane()?.doctitle?.tools?.map(slotId);
+
+  const titlebarItems = createMemo(() => {
+    const hidden = new Set((threepane()?.doctitle?.hidden ?? []).map(String));
+    return (threepane()?.doctitle?.tools ?? []).map(slotId).map((id) => ({
+      id,
+      name: nameOf(id),
+      hidden: hidden.has(id),
+    }));
+  });
+  const titlebarOptions = createMemo(() => {
+    const present = new Set(titlebarItems().map((item) => item.id));
+    return tagged(tools(), "titlebar-tool").filter(
+      (option) => !present.has(option.id)
+    );
+  });
+
+  // every component tagged "context-tool", with the person's edits on top.
+  // what's left to add is the tagged ones they took out
+  const contextTagged = createMemo(() =>
+    tagged(components(), "context-tool", { unlisted: true })
+  );
+  const contextItems = createMemo(() => {
+    const config = threepane()?.context;
+    const hidden = new Set((config?.hidden ?? []).map(String));
+    // in bar order, the hidden ones where they'd be if they weren't
+    const { shown } = contextLane(
+      contextTagged(),
+      { added: config?.added, removed: config?.removed },
+      nameOf
+    );
+    return shown.map((item) => ({ ...item, hidden: hidden.has(item.id) }));
+  });
+  const contextOptions = createMemo(() => {
+    const present = new Set(contextItems().map((item) => item.id));
+    return contextTagged().filter((option) => !present.has(option.id));
+  });
 
   function chooseFrame(id: string) {
     if (current() === id) return;
@@ -129,54 +176,93 @@ export function Frame(props: {
 
       <Show when={threepaneHandle()}>
         {(handle) => (
-          <section class="settings-section" aria-labelledby="settings-titlebar">
-            <h2 id="settings-titlebar">Title bar</h2>
-            <div class="settings-group">
-              <div class="settings-group-block">
-                <Strip
-                  values={doctitle() ?? []}
-                  options={titlebar()}
-                  names={names()}
-                  setValues={(next) =>
-                    handle().change((doc) => {
-                      doc.doctitle ??= {};
-                      doc.doctitle.tools = next.slice();
-                    })
-                  }
-                />
+          <>
+            <section
+              class="settings-section"
+              aria-labelledby="settings-titlebar"
+            >
+              <h2 id="settings-titlebar">Title bar</h2>
+              <div class="settings-group">
+                <div class="settings-group-block">
+                  <Strip
+                    items={titlebarItems()}
+                    options={titlebarOptions()}
+                    onAdd={(id) =>
+                      handle().change((doc) =>
+                        editTitlebar(doc, { action: "add", id })
+                      )
+                    }
+                    onRemove={(id) =>
+                      handle().change((doc) =>
+                        editTitlebar(doc, { action: "remove", id })
+                      )
+                    }
+                    onHidden={(id, hidden) =>
+                      handle().change((doc) =>
+                        editTitlebar(doc, {
+                          action: hidden ? "hide" : "show",
+                          id,
+                        })
+                      )
+                    }
+                    onMove={(from, to) =>
+                      handle().change((doc) =>
+                        editTitlebar(doc, { action: "move", from, to })
+                      )
+                    }
+                  />
+                </div>
               </div>
-            </div>
-          </section>
+            </section>
+
+            <section
+              class="settings-section"
+              aria-labelledby="settings-context"
+            >
+              <h2 id="settings-context">Context sidebar</h2>
+              <div class="settings-group">
+                <div class="settings-group-block">
+                  <Strip
+                    items={contextItems()}
+                    options={contextOptions()}
+                    onAdd={(id) =>
+                      handle().change((doc) => editContext(doc, "add", id))
+                    }
+                    onRemove={(id) =>
+                      handle().change((doc) => editContext(doc, "remove", id))
+                    }
+                    onHidden={(id, hidden) =>
+                      handle().change((doc) =>
+                        editContext(doc, hidden ? "hide" : "show", id)
+                      )
+                    }
+                  />
+                </div>
+              </div>
+            </section>
+          </>
         )}
       </Show>
     </>
   );
 }
 
-// an ordered row of tool ids: drag to reorder, × to take one out, + to add.
+type StripItem = Option & { hidden?: boolean };
+
+// a row of tools: × takes one out, the eye hides it without taking it out,
+// "Add…" puts one in. drag to reorder, when the lane has an order to keep.
 // ids are kept as they are, even ones whose plugin hasn't registered yet
 // (they're shown by id), so a slow plugin isn't dropped by a rewrite
 function Strip(props: {
-  values: string[];
+  items: StripItem[];
   options: Option[];
-  names: Map<string, string>;
-  setValues: (next: string[]) => void;
+  onAdd: (id: string) => void;
+  onRemove: (id: string) => void;
+  onHidden: (id: string, hidden: boolean) => void;
+  onMove?: (from: number, to: number) => void;
 }) {
-  const [adding, setAdding] = createSignal(false);
-  const [custom, setCustom] = createSignal("");
   const [from, setFrom] = createSignal<number | null>(null);
   const [to, setTo] = createSignal<number | null>(null);
-
-  const nameOf = (id: string) => props.names.get(id) ?? id;
-  const available = createMemo(() =>
-    props.options.filter((option) => !props.values.includes(option.id))
-  );
-
-  const add = (id: string) => {
-    const clean = id.trim();
-    if (clean && !props.values.includes(clean))
-      props.setValues([...props.values, clean]);
-  };
 
   // `dropped` is false when the drag was called off: Escape, or let go
   // somewhere that isn't the strip. Then nothing moves.
@@ -186,10 +272,7 @@ function Strip(props: {
     setFrom(null);
     setTo(null);
     if (!dropped || a == null || b == null || a === b) return;
-    const next = props.values.slice();
-    const [moved] = next.splice(a, 1);
-    next.splice(b, 0, moved);
-    props.setValues(next);
+    props.onMove?.(a, b);
   }
 
   return (
@@ -202,21 +285,25 @@ function Strip(props: {
           if (from() !== null) event.preventDefault();
         }}
       >
-        <For each={props.values}>
-          {(id, index) => (
+        <For each={props.items}>
+          {(item, index) => (
             <li
               class="settings-strip-item"
-              draggable={true}
+              draggable={!!props.onMove}
+              data-fixed={props.onMove ? undefined : ""}
+              data-hidden={item.hidden ? "" : undefined}
               data-dragging={from() === index() ? "" : undefined}
               data-over={
                 to() === index() && from() !== index() ? "" : undefined
               }
               onDragStart={(event) => {
+                if (!props.onMove) return;
                 event.dataTransfer!.effectAllowed = "move";
                 setFrom(index());
                 setTo(index());
               }}
               onDragOver={(event) => {
+                if (from() === null) return;
                 event.preventDefault();
                 event.dataTransfer!.dropEffect = "move";
                 setTo(index());
@@ -225,14 +312,25 @@ function Strip(props: {
                 drop(event.dataTransfer?.dropEffect !== "none")
               }
             >
-              <span>{nameOf(id)}</span>
+              <span class="settings-strip-name">{item.name}</span>
               <button
                 type="button"
-                class="settings-strip-remove"
-                aria-label={`Remove ${nameOf(id)}`}
-                onClick={() =>
-                  props.setValues(props.values.filter((_, i) => i !== index()))
-                }
+                class="settings-strip-icon"
+                aria-label={`${item.hidden ? "Show" : "Hide"} ${item.name}`}
+                title={item.hidden ? "Hidden — show it" : "Hide"}
+                onClick={() => props.onHidden(item.id, !item.hidden)}
+              >
+                <Show when={item.hidden} fallback={<EyeIcon />}>
+                  <EyeOffIcon />
+                </Show>
+              </button>
+              <button
+                type="button"
+                class="settings-strip-icon"
+                data-remove
+                aria-label={`Remove ${item.name}`}
+                title="Remove"
+                onClick={() => props.onRemove(item.id)}
               >
                 ×
               </button>
@@ -240,67 +338,48 @@ function Strip(props: {
           )}
         </For>
       </ol>
-      <Show
-        when={adding()}
-        fallback={
-          <button
-            type="button"
-            class="settings-button"
-            onClick={() => setAdding(true)}
-          >
-            Add…
-          </button>
-        }
-      >
-        <div
-          class="settings-strip-add"
-          onKeyDown={(event) => event.key === "Escape" && setAdding(false)}
-        >
-          <For each={available()}>
-            {(option) => (
-              <button
-                type="button"
-                class="settings-button"
-                onClick={() => add(option.id)}
-              >
-                + {option.name}
-              </button>
-            )}
-          </For>
-          <form
-            class="settings-cluster"
-            onSubmit={(event) => {
-              event.preventDefault();
-              add(custom());
-              setCustom("");
-            }}
-          >
-            <input
-              class="settings-input settings-code"
-              placeholder="Tool id"
-              aria-label="Tool id"
-              spellcheck={false}
-              value={custom()}
-              onInput={(event) => setCustom(event.currentTarget.value)}
-            />
-            <button
-              type="submit"
-              class="settings-button"
-              data-primary
-              disabled={!custom().trim()}
-            >
-              Add
-            </button>
-            <button
-              type="button"
-              class="settings-button"
-              onClick={() => setAdding(false)}
-            >
-              Cancel
-            </button>
-          </form>
-        </div>
-      </Show>
+      <AddPicker options={props.options} onPick={props.onAdd} />
     </div>
+  );
+}
+
+// lucide `eye` and `eye-off`
+function EyeIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="12"
+      height="12"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M2.06 12.35a1 1 0 0 1 0-.7 10.75 10.75 0 0 1 19.88 0 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-19.88 0" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function EyeOffIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="12"
+      height="12"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c4.97 0 9.17 3.3 10.5 7a10.6 10.6 0 0 1-1.67 2.68" />
+      <path d="M14.08 14.16a3 3 0 0 1-4.24-4.24" />
+      <path d="M17.48 17.5A10.43 10.43 0 0 1 12 19c-4.97 0-9.17-3.3-10.5-7a10.75 10.75 0 0 1 4.02-5.04" />
+      <path d="m2 2 20 20" />
+    </svg>
   );
 }

@@ -48,6 +48,23 @@ export type ToolRef = [toolId: string, docId: AutomergeUrl];
 export type ToolSlot = ToolRef | string;
 
 /**
+ * The context tabs are every `patchwork:component` tagged `"context-tool"`, so
+ * a newly installed one shows up by itself. This records the person's edits on
+ * top of that list, all as component ids:
+ *
+ * - `added`: components that aren't tagged but were added by hand (the tab
+ *   bar's "+"), in the order they were added, after the tagged ones.
+ * - `removed`: tagged components taken out of the bar.
+ * - `hidden`: tabs still in the bar's list but not shown (unhide from the
+ *   tab bar's context menu).
+ */
+export type ContextLaneConfig = {
+  added?: string[];
+  removed?: string[];
+  hidden?: string[];
+};
+
+/**
  * The threepane layout config (its own document, referenced from
  * `AccountDoc.tools["threepane"]`). The context sidebar is host chrome and
  * still registry-driven (every `patchwork:component` tagged `"context-tool"`),
@@ -56,7 +73,11 @@ export type ToolSlot = ToolRef | string;
  */
 export type ThreepaneConfigDoc = {
   sidebar: { widgets: ToolSlot[] };
-  doctitle: { tools: ToolSlot[] };
+  /** `hidden`: tool ids still in `tools` but not shown (unhide from the bar's
+   *  context menu). */
+  doctitle: { tools: ToolSlot[]; hidden?: string[] };
+  /** Edits to the registry-driven context tabs. See ContextLaneConfig. */
+  context?: ContextLaneConfig;
   /** The system-tray tools, docked at the frame's bottom-left, in order. */
   tray: ToolSlot[];
   /**

@@ -1020,7 +1020,17 @@
   }
 }
 
-.settings-strip-remove {
+.settings-strip-item {
+  &[data-fixed] {
+    cursor: default;
+  }
+  &[data-hidden] .settings-strip-name {
+    color: var(--settings-muted);
+    text-decoration: line-through;
+  }
+}
+
+.settings-strip-icon {
   display: grid;
   place-items: center;
   width: 16px;
@@ -1036,16 +1046,89 @@
   @media (hover: hover) and (pointer: fine) {
     &:hover {
       background: var(--settings-hover);
+      color: var(--settings-fg);
+    }
+    &[data-remove]:hover {
       color: var(--settings-danger);
     }
   }
 }
 
-.settings-strip-add {
+.settings-button[data-open] {
+  background: var(--settings-hover);
+  box-shadow: none;
+}
+
+/* "Add…"'s search, like the title bar's "Open with…" */
+.settings-picker[popover] {
+  position: fixed;
+  inset: unset;
+  margin: 0;
+  padding: 0;
+  border: var(--studio-border-width, 1px) solid var(--settings-rule);
+  border-radius: var(--studio-radius-sm, 4px);
+  background: var(--settings-fill);
+  box-shadow: var(--studio-shadow-sm, 0 2px 8px rgb(0 0 0 / 8%));
+  color: var(--settings-fg);
+  font: 400 13px/1.4 var(--settings-family);
+  overflow: hidden;
+  /* grows out of the button; closing is instant */
+  transition:
+    opacity var(--settings-quick) var(--settings-ease-out),
+    scale var(--settings-quick) var(--settings-ease-out);
+}
+
+@starting-style {
+  .settings-picker[popover]:popover-open {
+    opacity: 0;
+    scale: 0.97;
+  }
+}
+
+.settings-picker-input {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-bottom: var(--studio-border-width, 1px) solid var(--settings-rule);
+  background: none;
+  color: inherit;
+  font: inherit;
+  outline: none;
+}
+
+.settings-picker-list {
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.settings-picker-item {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
+  align-items: baseline;
+  gap: 4px;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 4px 8px;
+  border: none;
+  border-radius: var(--studio-radius-xs, 2px);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: var(--studio-cursor-pointer, pointer);
+
+  &[data-highlight] {
+    background: var(--settings-hover);
+  }
+}
+
+.settings-picker-empty {
+  margin: 0;
+  padding: 4px 8px;
+  color: var(--settings-muted);
 }
 
 /* ── contributed ───────────────────────────────────────────────────── */

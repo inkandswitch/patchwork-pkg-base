@@ -21,7 +21,7 @@
 import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
 import { createMemo } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
-import type { ToolSlot } from "../types";
+import type { ContextLaneConfig, ToolSlot } from "../types";
 import { render } from "solid-js/web";
 import type { DocumentAreaInputs } from "./DocumentAreaRoot";
 import { DocumentAreaRoot } from "./DocumentAreaRoot";
@@ -54,6 +54,8 @@ export function HostedDocumentArea(props: HostedDocumentAreaProps) {
       selectedDocUrl: props.selectedDocUrl(),
       selectedToolId: props.selectedToolId(),
       doctitleSlots: props.doctitleSlots(),
+      doctitleHidden: props.doctitleHidden(),
+      contextLane: props.contextLane(),
       isLeftCollapsed: props.isLeftCollapsed(),
       initialRightWidth: props.initialRightWidth(),
       initialRightCollapsed: props.initialRightCollapsed(),
@@ -78,6 +80,8 @@ interface DocumentAreaProps {
   selectedDocUrl?: AutomergeUrl;
   selectedToolId?: string;
   doctitleSlots?: ToolSlot[];
+  doctitleHidden?: string[];
+  contextLane?: ContextLaneConfig;
   isLeftCollapsed?: boolean;
   initialRightWidth?: number;
   initialRightCollapsed?: boolean;
@@ -131,6 +135,8 @@ export function mountDocumentArea(element: HTMLElement): () => void {
           selectedDocUrl={() => p.selectedDocUrl}
           selectedToolId={() => p.selectedToolId}
           doctitleSlots={() => p.doctitleSlots}
+          doctitleHidden={() => p.doctitleHidden}
+          contextLane={() => p.contextLane}
           isLeftCollapsed={() => p.isLeftCollapsed ?? false}
           initialRightWidth={() => p.initialRightWidth ?? DEFAULT_SIDEBAR_WIDTH}
           initialRightCollapsed={() => p.initialRightCollapsed ?? false}

@@ -43,6 +43,7 @@ import type { ToolImplementation } from "@inkandswitch/patchwork-plugins";
 import { ensureThreepaneConfig } from "./account/ensureThreepaneConfig";
 import { seedExampleDocuments } from "./account/seedExampleDocuments";
 import { handleAddToSidebar } from "./account/addToSidebar";
+import { handleLayoutEdits } from "./layoutEdits";
 import { ensureFrameStyles } from "./ensureFrameStyles";
 import { useHandleDoc } from "./hooks/useHandleDoc";
 import { CALL_PROVIDER } from "./datatypes";
@@ -237,6 +238,8 @@ function PatchworkFrameInner(props: {
   // to render each. `tray` is the system tray's explicit ordered list of tools,
   // rendered by the one stable host-owned instance below.
   const doctitleSlots = () => threepaneConfig()?.doctitle?.tools;
+  const doctitleHidden = () => threepaneConfig()?.doctitle?.hidden;
+  const contextLane = () => threepaneConfig()?.context;
   const sidebarWidgets = (): ToolSlot[] =>
     threepaneConfig()?.sidebar?.widgets ?? [];
   const traySlots = (): ToolSlot[] => threepaneConfig()?.tray ?? [];
@@ -282,6 +285,10 @@ function PatchworkFrameInner(props: {
 
     onCleanup(unsubscribeSelectedView);
     onCleanup(handleAddToSidebar(element, props.repo, props.handle));
+    // The tab bar's and top bar's add / remove / hide / show.
+    onCleanup(
+      handleLayoutEdits(element, (fn) => threepaneConfigHandle()?.change(fn))
+    );
   });
 
   const selectedDocUrl = () => selectedView()?.url;
@@ -368,6 +375,8 @@ function PatchworkFrameInner(props: {
                 selectedDocUrl={selectedDocUrl}
                 selectedToolId={selectedToolId}
                 doctitleSlots={doctitleSlots}
+                doctitleHidden={doctitleHidden}
+                contextLane={contextLane}
                 isLeftCollapsed={sidebarState.isSidebarCollapsed}
                 initialRightWidth={initialRightWidth}
                 initialRightCollapsed={initialRightCollapsed}
@@ -381,6 +390,8 @@ function PatchworkFrameInner(props: {
                 selectedDocUrl={selectedDocUrl}
                 selectedToolId={selectedToolId}
                 doctitleSlots={doctitleSlots}
+                doctitleHidden={doctitleHidden}
+                contextLane={contextLane}
                 isLeftCollapsed={sidebarState.isSidebarCollapsed}
                 initialRightWidth={initialRightWidth}
                 initialRightCollapsed={initialRightCollapsed}

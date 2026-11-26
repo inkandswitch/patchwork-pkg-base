@@ -1,6 +1,7 @@
 import { Show } from "solid-js";
 import type { Accessor } from "solid-js";
-import { useTaggedComponents } from "../hooks";
+import type { ContextLaneConfig } from "../types";
+import { useContextLane } from "../hooks/useContextLane";
 import { Sidebar } from "./Sidebar";
 import { ContextTabs } from "./ContextTabs";
 
@@ -11,6 +12,8 @@ type ContextSidebarProps = {
    */
   selectedToolId: Accessor<string | undefined>;
   setSelectedToolId: (id: string) => void;
+  /** The person's edits to the tab list, from the threepane config doc. */
+  config: Accessor<ContextLaneConfig | undefined>;
   isCollapsed: Accessor<boolean>;
   width: Accessor<number>;
   onMouseDown: (e: MouseEvent) => void;
@@ -25,12 +28,13 @@ type ContextSidebarProps = {
  * (the tabs that select the active tool, plus a collapse button), and the
  * active context tool's content.
  *
- * The tab list is every `patchwork:component` tagged `"context-tool"` —
- * registry-driven, not configured — so it's always rendered as a bare
- * component with no document.
+ * The tab list is every `patchwork:component` tagged `"context-tool"`, with
+ * the person's adds, removes and hides from the config doc applied (see
+ * `useContextLane`). Each is rendered as a bare component with no document.
  */
 export function ContextSidebar(props: ContextSidebarProps) {
-  const items = useTaggedComponents("context-tool");
+  const lane = useContextLane(props.config);
+  const items = lane.shown;
 
   // The selection may name a tool that isn't in the current list (or be unset);
   // fall back to the first tab so there's always a valid active tool.
@@ -51,26 +55,26 @@ export function ContextSidebar(props: ContextSidebarProps) {
     >
       <div class="context-sidebar">
         {/* Tab header: selects the active tool, with a collapse button at the
-            end. Only when there are tabs — a tray-only sidebar has no header
-            and is collapsed via the resize handle. */}
-        <Show when={items().length}>
-          <div class="context-sidebar__tabs">
-            <ContextTabs
-              items={items}
-              selectedToolId={props.selectedToolId}
-              setSelectedToolId={props.setSelectedToolId}
-            />
-            <button
-              type="button"
-              class="context-sidebar__close"
-              title="Hide context sidebar"
-              aria-label="Hide context sidebar"
-              onClick={() => props.onCollapse()}
-            >
-              <PanelRightIcon />
-            </button>
-          </div>
-        </Show>
+            end. There even with every tab hidden or removed, so its "+" and
+            right-click menu can bring them back. */}
+        <div class="context-sidebar__tabs">
+          <ContextTabs
+            items={items}
+            hidden={lane.hidden}
+            addable={lane.addable}
+            selectedToolId={props.selectedToolId}
+            setSelectedToolId={props.setSelectedToolId}
+          />
+          <button
+            type="button"
+            class="context-sidebar__close"
+            title="Hide context sidebar"
+            aria-label="Hide context sidebar"
+            onClick={() => props.onCollapse()}
+          >
+            <PanelRightIcon />
+          </button>
+        </div>
         {/* `Sidebar` unmounts all of this once it has finished closing. */}
         <div class="context-sidebar__content">
           <Show when={activeToolId()} keyed>

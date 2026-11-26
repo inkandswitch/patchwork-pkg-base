@@ -27,7 +27,8 @@ import {
   type Accessor,
   type JSX,
 } from "solid-js";
-import type { ToolSlot } from "../types";
+import type { ContextLaneConfig, ToolSlot } from "../types";
+import { useContextLane } from "../hooks/useContextLane";
 import {
   useProviderReady,
   useTaggedComponents,
@@ -52,6 +53,10 @@ export interface DocumentAreaInputs {
   selectedDocUrl: Accessor<AutomergeUrl | undefined>;
   selectedToolId: Accessor<string | undefined>;
   doctitleSlots: Accessor<ToolSlot[] | undefined>;
+  /** Doctitle tool ids hidden from the top bar. */
+  doctitleHidden: Accessor<string[] | undefined>;
+  /** The person's edits to the context tabs. */
+  contextLane: Accessor<ContextLaneConfig | undefined>;
   /** The host-side left sidebar's collapsed state, for top-bar layout only. */
   isLeftCollapsed: Accessor<boolean>;
   /** Seed values for the document-area-local right-sidebar state. */
@@ -174,6 +179,8 @@ export function DocumentAreaRoot(props: DocumentAreaRootProps) {
                   selectedDocUrl={props.selectedDocUrl}
                   selectedToolId={props.selectedToolId}
                   doctitleSlots={props.doctitleSlots}
+                  doctitleHidden={props.doctitleHidden}
+                  contextLane={props.contextLane}
                   isLeftCollapsed={props.isLeftCollapsed}
                   isRightSidebarCollapsed={isRightSidebarCollapsed}
                   setIsRightSidebarCollapsed={setIsRightSidebarCollapsed}
@@ -210,6 +217,8 @@ function DraftDocumentArea(props: {
   selectedDocUrl: Accessor<AutomergeUrl | undefined>;
   selectedToolId: Accessor<string | undefined>;
   doctitleSlots: Accessor<ToolSlot[] | undefined>;
+  doctitleHidden: Accessor<string[] | undefined>;
+  contextLane: Accessor<ContextLaneConfig | undefined>;
   isLeftCollapsed: Accessor<boolean>;
   isRightSidebarCollapsed: Accessor<boolean>;
   setIsRightSidebarCollapsed: (
@@ -221,9 +230,9 @@ function DraftDocumentArea(props: {
   selectedContextToolId: Accessor<string | undefined>;
   setSelectedContextToolId: (id: string) => void;
 }) {
-  // The context sidebar exists only if something is tagged `context-tool`.
-  const contextItems = useTaggedComponents("context-tool");
-  const hasContext = () => contextItems().length > 0;
+  // The context sidebar exists only if something is tagged `context-tool`, or
+  // was added to it by hand.
+  const hasContext = useContextLane(props.contextLane).exists;
 
   // Remount key for the main view: just the selected doc. Checkpoint pins are
   // streamed by the overlay provider on the descriptors' *backing* urls and
@@ -304,6 +313,7 @@ function DraftDocumentArea(props: {
                     <FrameTopBar
                       docUrl={props.selectedDocUrl}
                       toolSlots={props.doctitleSlots}
+                      hiddenTools={props.doctitleHidden}
                       isLeftCollapsed={props.isLeftCollapsed}
                       hasContext={hasContext}
                       isRightCollapsed={props.isRightSidebarCollapsed}
@@ -332,6 +342,7 @@ function DraftDocumentArea(props: {
                     <ContextSidebar
                       selectedToolId={props.selectedContextToolId}
                       setSelectedToolId={props.setSelectedContextToolId}
+                      config={props.contextLane}
                       isCollapsed={props.isRightSidebarCollapsed}
                       width={props.rightSidebarWidth}
                       onMouseDown={props.handleMouseDown}
