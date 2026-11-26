@@ -11,16 +11,20 @@ export type TaggedComponent = {
 };
 
 /**
- * Live, registry-driven list of every `patchwork:component` carrying `tag`
- * (e.g. `"context-tool"` or `"system-tray"`), sorted by name. A component just
+ * Live, registry-driven list of every `patchwork:component` (or, given
+ * `registryType`, every plugin of that type) carrying `tag` (e.g.
+ * `"context-tool"` or `"system-tray"`), sorted by name. A component just
  * declares its tag and shows up everywhere that tag is rendered.
  *
  * Reactive to the registry's `"changed"` event, so a late-registering or
  * hot-reloaded plugin appears without a remount. When a host mounts the document
  * area in another realm, this resolves against that realm's registry.
  */
-export function useTaggedComponents(tag: string): Accessor<TaggedComponent[]> {
-  const registry = getRegistry<ToolDescription>("patchwork:component");
+export function useTaggedComponents(
+  tag: string,
+  registryType = "patchwork:component"
+): Accessor<TaggedComponent[]> {
+  const registry = getRegistry<ToolDescription>(registryType);
 
   const [version, setVersion] = createSignal(0);
   const off = registry.on("changed", () => setVersion((v) => v + 1));

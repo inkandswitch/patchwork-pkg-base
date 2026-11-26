@@ -20,7 +20,7 @@ type ContextTabsProps = {
  * frame so it survives branch switches.
  *
  * Right-click a tab to copy its id, hide it or remove it; right-click anywhere
- * on the bar to show a hidden one again. Edits are sent up as
+ * on the bar to add a tab or show a hidden one again. Edits are sent up as
  * `threepane:edit-layout` events for the frame to write to its config doc.
  */
 export function ContextTabs(props: ContextTabsProps) {
@@ -53,9 +53,15 @@ export function ContextTabs(props: ContextTabsProps) {
         }
       );
     }
+    if (entries.length) entries.push("separator");
+    const at = { x: event.clientX, y: event.clientY };
+    entries.push({
+      label: "Add tab…",
+      onSelect: () => setPicker(new DOMRect(at.x, at.y, 0, 0)),
+    });
     const hidden = props.hidden();
     if (hidden.length) {
-      if (entries.length) entries.push("separator");
+      entries.push("separator");
       entries.push({ heading: "Hidden" });
       for (const item of hidden) {
         entries.push({
@@ -71,9 +77,8 @@ export function ContextTabs(props: ContextTabsProps) {
         });
       }
     }
-    if (!entries.length) return;
     event.preventDefault();
-    setMenu({ at: { x: event.clientX, y: event.clientY }, entries });
+    setMenu({ at, entries });
   }
 
   function add(id: string) {
