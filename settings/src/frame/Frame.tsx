@@ -38,8 +38,9 @@ function useRegistry(type: string) {
   return tools;
 }
 
-// `unlisted` ones too, for the context sidebar, which shows every tagged
-// component whether it's listed or not
+// `unlisted` ones too, for the context sidebar and the title bar, which show
+// every tagged tool whether it's listed or not (every titlebar tool is
+// unlisted, so it stays out of "Open with")
 const tagged = (
   tools: Describable[],
   tag: string,
@@ -105,7 +106,7 @@ export function Frame(props: {
   });
   const titlebarOptions = createMemo(() => {
     const present = new Set(titlebarItems().map((item) => item.id));
-    return tagged(tools(), "titlebar-tool").filter(
+    return tagged(tools(), "titlebar-tool", { unlisted: true }).filter(
       (option) => !present.has(option.id)
     );
   });

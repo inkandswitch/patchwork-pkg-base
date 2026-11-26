@@ -140,7 +140,7 @@ export function ContextTabs(props: ContextTabsProps) {
           <ToolPicker
             anchor={anchor()}
             items={props.addable()}
-            placeholder="Search or enter a component id…"
+            placeholder="Add or filter tools…"
             onPick={add}
             onClose={() => setPicker(undefined)}
           />
