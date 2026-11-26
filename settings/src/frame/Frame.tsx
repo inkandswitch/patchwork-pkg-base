@@ -8,6 +8,7 @@ import { getRegistry } from "@inkandswitch/patchwork-plugins";
 import { useDocument } from "solid-automerge";
 import type { AccountDoc } from "../you/contact";
 import { AddPicker } from "./AddPicker";
+import { ItemMenu } from "./ItemMenu";
 import {
   contextLane,
   editContext,
@@ -250,8 +251,8 @@ export function Frame(props: {
 
 type StripItem = Option & { hidden?: boolean };
 
-// a row of tools: × takes one out, the eye hides it without taking it out,
-// "Add…" puts one in. drag to reorder, when the lane has an order to keep.
+// a row of tools: each one's × has a menu to hide it (still there, just not
+// shown) or take it out, and "Add…" puts one in. drag to reorder, when the lane has an order to keep.
 // ids are kept as they are, even ones whose plugin hasn't registered yet
 // (they're shown by id), so a slow plugin isn't dropped by a rewrite
 function Strip(props: {
@@ -314,73 +315,17 @@ function Strip(props: {
               }
             >
               <span class="settings-strip-name">{item.name}</span>
-              <button
-                type="button"
-                class="settings-strip-icon"
-                aria-label={`${item.hidden ? "Show" : "Hide"} ${item.name}`}
-                title={item.hidden ? "Hidden — show it" : "Hide"}
-                onClick={() => props.onHidden(item.id, !item.hidden)}
-              >
-                <Show when={item.hidden} fallback={<EyeIcon />}>
-                  <EyeOffIcon />
-                </Show>
-              </button>
-              <button
-                type="button"
-                class="settings-strip-icon"
-                data-remove
-                aria-label={`Remove ${item.name}`}
-                title="Remove"
-                onClick={() => props.onRemove(item.id)}
-              >
-                ×
-              </button>
+              <ItemMenu
+                name={item.name}
+                hidden={item.hidden}
+                onHidden={(hidden) => props.onHidden(item.id, hidden)}
+                onRemove={() => props.onRemove(item.id)}
+              />
             </li>
           )}
         </For>
       </ol>
       <AddPicker options={props.options} onPick={props.onAdd} />
     </div>
-  );
-}
-
-// lucide `eye` and `eye-off`
-function EyeIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="12"
-      height="12"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M2.06 12.35a1 1 0 0 1 0-.7 10.75 10.75 0 0 1 19.88 0 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-19.88 0" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  );
-}
-
-function EyeOffIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="12"
-      height="12"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c4.97 0 9.17 3.3 10.5 7a10.6 10.6 0 0 1-1.67 2.68" />
-      <path d="M14.08 14.16a3 3 0 0 1-4.24-4.24" />
-      <path d="M17.48 17.5A10.43 10.43 0 0 1 12 19c-4.97 0-9.17-3.3-10.5-7a10.75 10.75 0 0 1 4.02-5.04" />
-      <path d="m2 2 20 20" />
-    </svg>
   );
 }
