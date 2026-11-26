@@ -11,7 +11,11 @@ export const EDIT_LAYOUT_EVENT = "threepane:edit-layout";
 
 export type LayoutEdit =
   | { lane: "context"; action: "add" | "remove" | "hide" | "show"; id: string }
-  | { lane: "doctitle"; action: "remove" | "hide" | "show"; id: string };
+  | {
+      lane: "doctitle";
+      action: "add" | "remove" | "hide" | "show";
+      id: string;
+    };
 
 export function dispatchLayoutEdit(from: Element, edit: LayoutEdit) {
   from.dispatchEvent(
@@ -69,6 +73,12 @@ export function applyLayoutEdit(doc: ThreepaneConfigDoc, edit: LayoutEdit) {
   if (!doc.doctitle) doc.doctitle = { tools: [] };
   const doctitle = doc.doctitle;
   switch (edit.action) {
+    case "add":
+      if (!doctitle.tools) doctitle.tools = [];
+      if (!doctitle.tools.some((slot) => slotId(slot) === id))
+        doctitle.tools.push(id);
+      drop(doctitle.hidden, id);
+      return;
     case "remove": {
       const tools = doctitle.tools ?? [];
       for (let i = tools.length - 1; i >= 0; i--) {

@@ -17,7 +17,9 @@ let edits: LayoutEdit[];
 afterEach(() => {
   dispose?.();
   host?.remove();
-  document.querySelectorAll(".threepane-menu").forEach((m) => m.remove());
+  document
+    .querySelectorAll(".threepane-menu, .threepane-picker")
+    .forEach((m) => m.remove());
 });
 
 function mount(ui: () => any) {
@@ -60,6 +62,7 @@ describe("the context tab bar's menu", () => {
       "Copy tool id",
       "Hide",
       "Remove",
+      "Add tab…",
     ]);
     menuItems()[2].click();
     expect(edits).toEqual([{ lane: "context", action: "remove", id: "drafts" }]);
@@ -68,20 +71,48 @@ describe("the context tab bar's menu", () => {
   it("shows a hidden tab again", () => {
     tabs([{ id: "notes", name: "Notes" }]);
     rightClick(host.querySelector(".context-sidebar__add")!);
-    expect(menuItems().map((b) => b.textContent)).toEqual(["Show Notes"]);
-    menuItems()[0].click();
+    expect(menuItems().map((b) => b.textContent)).toEqual([
+      "Add tab…",
+      "Show Notes",
+    ]);
+    menuItems()[1].click();
     expect(edits).toEqual([{ lane: "context", action: "show", id: "notes" }]);
   });
 
-  it("leaves the browser's menu alone with nothing to offer", () => {
+  it("adds a tab from the search it opens", () => {
     tabs();
-    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
-    host.querySelector(".context-sidebar__add")!.dispatchEvent(event);
-    expect(event.defaultPrevented).toBe(false);
+    rightClick(host.querySelector(".context-sidebar__add")!);
+    menuItems()[0].click();
+    const input = document.querySelector<HTMLInputElement>(
+      ".threepane-picker__input"
+    )!;
+    input.value = "my-thing";
+    input.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", bubbles: true })
+    );
+    expect(edits).toEqual([{ lane: "context", action: "add", id: "my-thing" }]);
   });
 });
 
 describe("the top bar's doctitle tools", () => {
+  it("can be added from the bar's menu", () => {
+    bar([], []);
+    rightClick(host.querySelector(".threepane__spacer")!);
+    menuItems()[0].click();
+    const input = document.querySelector<HTMLInputElement>(
+      ".threepane-picker__input"
+    )!;
+    input.value = "doc-presence";
+    input.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", bubbles: true })
+    );
+    expect(edits).toEqual([
+      { lane: "doctitle", action: "add", id: "doc-presence" },
+    ]);
+  });
+
   const bar = (tools: ToolSlot[], hidden: string[]) =>
     mount(() => (
       <FrameTopBar
@@ -103,7 +134,10 @@ describe("the top bar's doctitle tools", () => {
     expect(ids).toEqual(["doc-openwith"]);
 
     rightClick(host.querySelector(".threepane__spacer")!);
-    expect(menuItems().map((b) => b.textContent)).toEqual(["Show sync-indicator"]);
+    expect(menuItems().map((b) => b.textContent)).toEqual([
+      "Add tool…",
+      "Show sync-indicator",
+    ]);
   });
 
   it("can each be removed", () => {

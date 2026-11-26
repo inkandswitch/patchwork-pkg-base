@@ -81,6 +81,9 @@ export function ToolPicker(props: {
       <div
         ref={root}
         class="threepane-picker"
+        // Solid's delegated events cross the portal back to the owner: keep a
+        // right-click in the search box (for paste) from opening its menu.
+        onContextMenu={(event) => event.stopPropagation()}
         style={{
           left: `${left()}px`,
           top: `${props.anchor.bottom + 2}px`,

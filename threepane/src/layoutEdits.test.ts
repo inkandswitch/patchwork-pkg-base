@@ -72,6 +72,20 @@ describe("doctitle tools", () => {
     expect(doc.doctitle.tools).toEqual(["doc-openwith"]);
   });
 
+  it("are added once, at the end, and a hidden one is shown", () => {
+    const doc = config();
+    applyLayoutEdit(doc, { lane: "doctitle", action: "hide", id: "doc-openwith" });
+    applyLayoutEdit(doc, { lane: "doctitle", action: "add", id: "doc-openwith" });
+    applyLayoutEdit(doc, { lane: "doctitle", action: "add", id: "doc-presence" });
+    applyLayoutEdit(doc, { lane: "doctitle", action: "add", id: "sync-indicator" });
+    expect(doc.doctitle.hidden).toEqual([]);
+    expect(doc.doctitle.tools.map(String)).toEqual([
+      "doc-openwith",
+      "sync-indicator,automerge:x",
+      "doc-presence",
+    ]);
+  });
+
   it("can be hidden and shown", () => {
     const doc = config();
     applyLayoutEdit(doc, { lane: "doctitle", action: "hide", id: "doc-openwith" });

@@ -1,15 +1,17 @@
 import type { AutomergeUrl } from "@automerge/automerge-repo/slim";
-import { createSignal, For, Show, type Accessor } from "solid-js";
+import { createMemo, createSignal, For, Show, type Accessor } from "solid-js";
 import {
   getRegistry,
   type ToolDescription,
 } from "@inkandswitch/patchwork-plugins";
 import type { ToolSlot } from "../types";
 import { dispatchLayoutEdit } from "../layoutEdits";
+import { useTaggedComponents } from "../hooks";
 import { DocumentTitle } from "./DocumentTitle";
 import { PanelRightIcon } from "./ContextSidebar";
 import { ContextMenu, copyText, type MenuAt, type MenuEntry } from "./ContextMenu";
 import { slotId } from "./SlotView";
+import { ToolPicker } from "./ToolPicker";
 
 type FrameTopBarProps = {
   docUrl: Accessor<AutomergeUrl | undefined>;
@@ -35,13 +37,14 @@ type FrameTopBarProps = {
  * context sidebar is collapsed a reopen toggle appears at the bar's right end.
  *
  * Right-click a doctitle tool to copy its id, hide it or remove it; right-click
- * the bar's empty space (or any tool) to show a hidden one again. Edits are
+ * the bar's empty space (or any tool) to add a tool or show a hidden one again. Edits are
  * sent up as `threepane:edit-layout` events for the frame to write to its
  * config doc.
  */
 export function FrameTopBar(props: FrameTopBarProps) {
   let bar!: HTMLDivElement;
   const [menu, setMenu] = createSignal<{ at: MenuAt; entries: MenuEntry[] }>();
+  const [picker, setPicker] = createSignal<DOMRect>();
 
   // Title + spacer are intrinsic to the bar and never in the config (the
   // migration drops them), so the configured doctitle tools render as-is,
@@ -49,6 +52,14 @@ export function FrameTopBar(props: FrameTopBarProps) {
   const hidden = () => new Set((props.hiddenTools() ?? []).map(String));
   const docToolSlots = () =>
     (props.toolSlots() ?? []).filter((slot) => !hidden().has(slotId(slot)));
+
+  // What "Add tool…" offers: every tool tagged `titlebar-tool` that isn't
+  // showing (a hidden one is shown again by adding it).
+  const titlebarTools = useTaggedComponents("titlebar-tool", "patchwork:tool");
+  const addable = createMemo(() => {
+    const showing = new Set(docToolSlots().map(slotId));
+    return titlebarTools().filter((tool) => !showing.has(tool.id));
+  });
 
   function onContextMenu(event: MouseEvent) {
     // The title keeps the browser's own menu (it's an input when renaming).
@@ -74,11 +85,18 @@ export function FrameTopBar(props: FrameTopBarProps) {
         }
       );
     }
+    if (entries.length) entries.push("separator");
+    const at = { x: event.clientX, y: event.clientY };
+    entries.push({
+      label: "Add tool…",
+      onSelect: () => setPicker(new DOMRect(at.x, at.y, 0, 0)),
+    });
+
     // Only hidden ids still configured: a stale one has nothing to show.
     const configured = new Set((props.toolSlots() ?? []).map(slotId));
     const hiddenIds = [...hidden()].filter((hid) => configured.has(hid));
     if (hiddenIds.length) {
-      if (entries.length) entries.push("separator");
+      entries.push("separator");
       entries.push({ heading: "Hidden" });
       const tools = getRegistry<ToolDescription>("patchwork:tool");
       for (const hid of hiddenIds) {
@@ -89,9 +107,8 @@ export function FrameTopBar(props: FrameTopBarProps) {
         });
       }
     }
-    if (!entries.length) return;
     event.preventDefault();
-    setMenu({ at: { x: event.clientX, y: event.clientY }, entries });
+    setMenu({ at, entries });
   }
 
   return (
@@ -154,6 +171,19 @@ export function FrameTopBar(props: FrameTopBarProps) {
             entries={open().entries}
             label="Toolbar actions"
             onClose={() => setMenu(undefined)}
+          />
+        )}
+      </Show>
+      <Show when={picker()}>
+        {(anchor) => (
+          <ToolPicker
+            anchor={anchor()}
+            items={addable()}
+            placeholder="Search or enter a tool id…"
+            onPick={(id) =>
+              dispatchLayoutEdit(bar, { lane: "doctitle", action: "add", id })
+            }
+            onClose={() => setPicker(undefined)}
           />
         )}
       </Show>
