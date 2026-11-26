@@ -38,3 +38,22 @@ export function useTaggedComponents(tag: string): Accessor<TaggedComponent[]> {
       .sort((a, b) => a.name.localeCompare(b.name));
   });
 }
+
+/**
+ * The registered name of a `patchwork:component` (its id if it has none, or
+ * isn't registered), live like `useTaggedComponents`.
+ */
+export function useComponentName(): (id: string) => string {
+  const registry = getRegistry<ToolDescription>("patchwork:component");
+
+  const [version, setVersion] = createSignal(0);
+  const off = registry.on("changed", () => {
+    setVersion((v) => v + 1);
+  });
+  onCleanup(off);
+
+  return (id) => {
+    version();
+    return registry.get(id)?.name || id;
+  };
+}

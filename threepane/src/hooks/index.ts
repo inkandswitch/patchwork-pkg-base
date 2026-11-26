@@ -12,4 +12,8 @@ export {
 } from "./useSidebarResize";
 export { useProviderReady } from "./useProviderReady";
 export { useMainDocMounted } from "./useMainDocMounted";
-export { useTaggedComponents, type TaggedComponent } from "./useTaggedComponents";
+export {
+  useTaggedComponents,
+  useComponentName,
+  type TaggedComponent,
+} from "./useTaggedComponents";
